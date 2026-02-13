@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# Project scratch space
+tmp/
+!tmp/.gitkeep
+
+# Generated output
+output/
+!output/.gitkeep
+
+# OS
+Thumbs.db
+.DS_Store
+nul
+
+# Claude IDE local settings
+.claude/
+
+# pip/npm version artifacts
+=*

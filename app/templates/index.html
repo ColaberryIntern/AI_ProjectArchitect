@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}AI Project Architect — Projects{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Projects</h2>
+    <div class="d-flex gap-2">
+        {% if projects %}
+        <form action="/projects/delete-all" method="POST"
+              onsubmit="return confirm('Delete ALL {{ projects|length }} projects? This cannot be undone.')"
+              style="display:inline">
+            <button type="submit" class="btn btn-outline-danger">Delete All</button>
+        </form>
+        {% endif %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newProjectModal">
+            New Project
+        </button>
+    </div>
+</div>
+
+{% if request.query_params.get('error') %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ request.query_params.get('error') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if projects %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Project Name</th>
+                <th>Current Phase</th>
+                <th>Created</th>
+                <th>Updated</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in projects %}
+            <tr>
+                <td><strong>{{ p.name }}</strong></td>
+                <td><span class="badge bg-info">{{ p.phase_label }}</span></td>
+                <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
+                <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
+                <td>
+                    <a href="/projects/{{ p.slug }}" class="btn btn-sm btn-outline-primary">Resume</a>
+                    <form action="/projects/{{ p.slug }}/delete" method="POST"
+                          onsubmit="return confirm('Delete project {{ p.name }}?')"
+                          style="display:inline">
+                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <h4>No projects yet</h4>
+    <p>Create your first project to get started.</p>
+</div>
+{% endif %}
+
+<!-- New Project Modal -->
+<div class="modal fade" id="newProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/projects/new" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New Project</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="project_name" class="form-label">Project Name</label>
+                    <input type="text" class="form-control" id="project_name" name="project_name"
+                           placeholder="e.g., AI Task Manager" required maxlength="200">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

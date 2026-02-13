@@ -1,0 +1,16 @@
+/* Minimal custom styles for AI Project Architect */
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+pre {
+    font-size: 0.85rem;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #e7f1ff;
+}

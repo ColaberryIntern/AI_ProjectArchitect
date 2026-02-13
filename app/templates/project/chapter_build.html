@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Chapter Build — {{ state.project.name }}{% endblock %}
+
+{% block left_subnav %}
+{% include "partials/chapter_nav.html" %}
+{% if all_approved and state.current_phase == 'chapter_build' %}
+<div class="px-3 pb-3">
+    <form action="/projects/{{ slug }}/chapter-build/advance" method="POST">
+        <button type="submit" class="btn btn-success btn-sm w-100">Advance to Quality Gates</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block center_pane %}
+<div style="padding: 1.5rem; overflow-y: auto; flex: 1;">
+{% if selected_chapter and chapter_content %}
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <h5 class="mb-0">Chapter {{ selected_chapter.index }}: {{ selected_chapter.outline_section }}</h5>
+        {% if selected_chapter.status == 'approved' %}
+        <span class="badge bg-success">Approved</span>
+        {% elif selected_chapter.status == 'pending' %}
+        <span class="badge bg-secondary">Pending</span>
+        {% else %}
+        <span class="badge bg-warning text-dark">{{ selected_chapter.status|replace('_', ' ')|title }}</span>
+        {% endif %}
+    </div>
+    {% if selected_chapter.chapter_score %}
+    <div class="d-flex gap-3 mb-3 small text-muted">
+        <span><strong>Score:</strong> {{ selected_chapter.chapter_score.total_score|default('—') }}/100</span>
+        <span><strong>Words:</strong> {{ selected_chapter.chapter_score.word_count|default('—') }}</span>
+    </div>
+    {% endif %}
+    <div class="border rounded p-3 bg-light" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6;">{{ chapter_content }}</div>
+{% elif selected_chapter %}
+    <div class="text-center py-5 text-muted">
+        <h5>Chapter {{ selected_chapter.index }}: {{ selected_chapter.outline_section }}</h5>
+        <p>This chapter has not been generated yet.</p>
+        <p class="small">Use the <a href="/projects/{{ slug }}/auto-build">Auto Builder</a> to generate all chapters.</p>
+    </div>
+{% else %}
+    <h5 class="mb-3">Chapter Overview</h5>
+    <p class="text-muted small mb-3">Select a chapter from the left nav to view its content, or use the Auto Builder to generate all chapters.</p>
+    <table class="table table-sm small">
+        <thead>
+            <tr>
+                <th>Ch</th>
+                <th>Title</th>
+                <th>Status</th>
+                <th class="text-end">Score</th>
+                <th class="text-end">Words</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for ch in state.chapters %}
+            <tr>
+                <td>{{ ch.index }}</td>
+                <td><a href="/projects/{{ slug }}/chapter-build/{{ ch.index }}">{{ ch.outline_section }}</a></td>
+                <td>
+                    {% if ch.status == 'approved' %}
+                    <span class="badge bg-success" style="font-size:0.7rem;">Approved</span>
+                    {% elif ch.status == 'pending' %}
+                    <span class="badge bg-secondary" style="font-size:0.7rem;">Pending</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark" style="font-size:0.7rem;">{{ ch.status|replace('_', ' ')|title }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">{{ ch.chapter_score.total_score if ch.chapter_score else '—' }}</td>
+                <td class="text-end">{{ ch.chapter_score.word_count|default('—') if ch.chapter_score else '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Chapter Status{% endblock %}
+
+{% block right_pane_content %}
+{% if gate_results %}
+{% with gate_results=gate_results %}
+{% include "partials/quality_report.html" %}
+{% endwith %}
+
+{% if gate_results.all_passed and selected_chapter.status != 'approved' and state.current_phase == 'chapter_build' %}
+<form action="/projects/{{ slug }}/chapter-build/{{ selected_index }}/approve" method="POST" class="mt-3">
+    <button type="submit" class="btn btn-success btn-sm">Approve Chapter</button>
+</form>
+{% endif %}
+{% elif selected_chapter %}
+<p class="text-muted small">Submit the chapter to see quality gate results.</p>
+{% else %}
+<p class="text-muted small">Select a chapter from the navigation.</p>
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chapter",
+  "description": "Schema for a project chapter",
+  "type": "object",
+  "required": ["title", "purpose", "design_intent", "implementation_guidance"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Why this chapter exists and what it supports"
+    },
+    "design_intent": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Why this approach was chosen, tradeoffs, constraints"
+    },
+    "implementation_guidance": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Practical steps, sequencing, file-level guidance"
+    }
+  },
+  "additionalProperties": true
+}

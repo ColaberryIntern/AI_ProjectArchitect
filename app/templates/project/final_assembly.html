@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Final Assembly — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="py-4">
+    <div class="text-center mb-4">
+        <h5>Final Assembly</h5>
+        <p class="text-muted small">Compile all approved chapters into the final build guide document.</p>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger mx-auto" style="max-width: 560px;">{{ error }}</div>
+    {% endif %}
+
+    <div class="card mx-auto mb-3" style="max-width: 620px;">
+        <div class="card-header">Pre-Assembly Checklist</div>
+        <div class="card-body">
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2">
+                    {% if checks.all_chapters_approved %}
+                    <span class="text-success">&#10003;</span>
+                    {% else %}
+                    <span class="text-danger">&#10007;</span>
+                    {% endif %}
+                    All chapters approved
+                </li>
+                <li class="mb-2">
+                    {% if checks.quality_gates_passed %}
+                    <span class="text-success">&#10003;</span>
+                    {% else %}
+                    <span class="text-danger">&#10007;</span>
+                    {% endif %}
+                    Quality gates passed
+                </li>
+                <li>
+                    {% if checks.outline_integrity %}
+                    <span class="text-success">&#10003;</span>
+                    {% else %}
+                    <span class="text-danger">&#10007;</span>
+                    {% endif %}
+                    Outline integrity verified
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    {% if state.current_phase == 'final_assembly' and all_ready %}
+    <div class="text-center">
+        <form action="/projects/{{ slug }}/final-assembly/assemble" method="POST"
+              onsubmit="return confirm('Assemble the final document?')">
+            <button type="submit" class="btn btn-success btn-lg">Assemble Document</button>
+        </form>
+    </div>
+    {% elif state.document.filename %}
+    <div class="text-center">
+        <div class="alert alert-success mx-auto d-inline-block" style="max-width: 500px;">
+            <strong>Document assembled!</strong><br>
+            Filename: {{ state.document.filename }}<br>
+            <a href="/projects/{{ slug }}/final-assembly/download" class="btn btn-primary mt-2">Download Build Guide</a>
+            {% if state.current_phase == 'complete' %}
+            <a href="/projects/{{ slug }}/complete" class="btn btn-outline-secondary mt-2 ms-2">View Summary</a>
+            {% endif %}
+        </div>
+    </div>
+    {% elif not all_ready %}
+    <div class="text-center">
+        <div class="alert alert-warning mx-auto d-inline-block" style="max-width: 500px;">
+            Not all checks pass. Please resolve issues before assembling.
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Assembly{% endblock %}
+{% block right_pane_content %}
+<p class="text-muted small">The final assembly combines all chapters into a single build guide document.</p>
+<hr>
+<p class="text-muted small"><strong>Chapters:</strong> {{ state.chapters|length }}</p>
+{% if state.document.filename %}
+<p class="text-muted small"><strong>Output:</strong> {{ state.document.filename }}</p>
+{% endif %}
+{% endblock %}

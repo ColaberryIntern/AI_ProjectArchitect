@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Profile Review — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="feature-catalog-panel">
+    <div class="feature-catalog-header">
+        <h5>Review Project Profile</h5>
+        <p class="text-muted small mb-0">Review each field below. Select the best option for your project, then confirm to continue.</p>
+        {% if error == 'all_required' %}
+        <div class="alert alert-danger mt-2 mb-0 py-1 small">All fields must have a selection.</div>
+        {% endif %}
+    </div>
+
+    <form id="profile-form" action="/projects/{{ slug }}/idea-intake/profile" method="POST"
+          onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.innerHTML='<span class=\'spinner-border spinner-border-sm me-2\'></span>Confirming profile...';return true;">
+        <div class="feature-catalog-body">
+            {% for field_key in required_fields %}
+            {% set field = profile[field_key] %}
+            {% set label = field_labels[field_key] %}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">{{ label }}</span>
+                    {% if field.confidence is not none %}
+                    <span class="badge bg-{{ 'success' if field.confidence >= 0.8 else ('warning' if field.confidence >= 0.5 else 'secondary') }}">
+                        {{ (field.confidence * 100)|int }}% confidence
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% for option in field.options %}
+                    <label class="profile-radio-option">
+                        <input type="radio" name="{{ field_key }}" value="{{ option.value }}"
+                               {% if option.value == field.selected %}checked{% endif %} required>
+                        <div>
+                            <span class="fw-bold">{{ option.label }}</span>
+                            {% if option.description %}
+                            <span class="text-muted small d-block">{{ option.description }}</span>
+                            {% endif %}
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="feature-catalog-actions">
+            <a href="/projects/{{ slug }}/idea-intake" class="btn btn-outline-secondary btn-sm"
+               onclick="return confirm('Go back to edit your idea? Profile selections will be lost.')">Edit Idea</a>
+            <div class="feature-catalog-actions-right">
+                <button type="submit" class="btn btn-primary">Confirm Profile & Continue &rarr;</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Project Intelligence{% endblock %}
+{% block right_pane_content %}
+<p class="text-muted small fw-bold">Original Idea</p>
+<p class="text-muted small">{{ state.idea.original_raw[:300] }}{% if state.idea.original_raw|length > 300 %}...{% endif %}</p>
+
+{% if profile.core_use_cases %}
+<hr>
+<p class="text-muted small fw-bold">Core Use Cases</p>
+<ul class="text-muted small">
+{% for uc in profile.core_use_cases %}
+    <li>{{ uc }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if profile.technical_constraints %}
+<hr>
+<p class="text-muted small fw-bold">Technical Constraints</p>
+<ul class="text-muted small">
+{% for tc in profile.technical_constraints %}
+    <li>{{ tc }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if profile.risk_assessment %}
+<hr>
+<p class="text-muted small fw-bold">Risks</p>
+<ul class="text-muted small">
+{% for risk in profile.risk_assessment %}
+    <li>{{ risk }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

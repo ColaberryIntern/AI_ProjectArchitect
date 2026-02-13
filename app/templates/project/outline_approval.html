@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Outline Approval — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="feature-catalog-panel">
+    <div class="feature-catalog-header">
+        <h5>Review & Approve Outline (v{{ state.outline.version }})</h5>
+        {% if state.outline.status == 'approved' %}
+        <p class="text-success small mb-0">Outline locked at {{ state.outline.locked_at[:19] }}</p>
+        {% else %}
+        <p class="text-muted small mb-0">Review each section. When satisfied, lock the outline to begin writing chapters.</p>
+        {% endif %}
+    </div>
+
+    <div class="feature-catalog-body">
+        {% for section in state.outline.sections %}
+        <div class="card mb-3">
+            <div class="card-header fw-bold">{{ section.index }}. {{ section.title }}</div>
+            <div class="card-body">
+                <p class="mb-0">{{ section.summary }}</p>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if state.outline.approval_history %}
+        <h6 class="mt-4 mb-2">Approval History</h6>
+        {% for event in state.outline.approval_history %}
+        <div class="border-bottom py-2 small">
+            <strong>v{{ event.version }}</strong> — {{ event.decision }}
+            <span class="text-muted">{{ event.timestamp[:19] }}</span>
+            {% if event.notes %}<br><span class="text-muted">{{ event.notes }}</span>{% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    {% if state.current_phase == 'outline_approval' and depth_modes is defined and depth_modes %}
+    <div class="card mb-3 border-primary">
+        <div class="card-header fw-bold">Build Depth</div>
+        <div class="card-body">
+            <form action="/projects/{{ slug }}/outline-approval/depth" method="POST" class="d-flex gap-2 align-items-center flex-wrap">
+                {% for mode_key, mode_cfg in depth_modes.items() %}
+                <label class="depth-radio-option{% if mode_key == current_depth %} active{% endif %}">
+                    <input type="radio" name="depth_mode" value="{{ mode_key }}"
+                           {% if mode_key == current_depth %}checked{% endif %}
+                           onchange="this.form.submit()">
+                    <span class="fw-bold">{{ mode_cfg.label }}</span>
+                    <span class="text-muted small">({{ mode_cfg.target_pages }} pages)</span>
+                </label>
+                {% endfor %}
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="feature-catalog-actions">
+        {% if state.current_phase == 'outline_approval' %}
+        <a href="/projects/{{ slug }}/outline-generation" class="btn btn-outline-secondary btn-sm">Edit Outline</a>
+        <div class="feature-catalog-actions-right">
+            <form action="/projects/{{ slug }}/outline-approval/lock" method="POST"
+                  onsubmit="if(!confirm('Lock this outline? The system will automatically generate all chapters in {{ current_depth }} mode.'))return false;var b=this.querySelector('button[type=submit]');b.disabled=true;b.innerHTML='<span class=\'spinner-border spinner-border-sm me-2\'></span>Locking outline...';return true;">
+                <button type="submit" class="btn btn-success">Approve & Lock Outline</button>
+            </form>
+        </div>
+        {% elif state.outline.status == 'approved' %}
+        <form action="/projects/{{ slug }}/outline-approval/unlock" method="POST"
+              class="d-flex gap-2 align-items-end w-100">
+            <input type="text" class="form-control form-control-sm" name="reason" required minlength="5"
+                   placeholder="Reason for unlocking">
+            <button type="submit" class="btn btn-outline-warning btn-sm"
+                    onclick="return confirm('Unlock outline? Version will increment.')">Unlock</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Outline Sections{% endblock %}
+{% block right_pane_content %}
+<p class="text-muted small fw-bold">Quick Reference</p>
+{% for section in state.outline.sections %}
+<div class="extracted-feature-card">
+    <div class="feature-name">{{ section.index }}. {{ section.title }}</div>
+    <div class="feature-desc">{{ section.summary[:100] }}{% if section.summary|length > 100 %}...{% endif %}</div>
+</div>
+{% endfor %}
+{% endblock %}

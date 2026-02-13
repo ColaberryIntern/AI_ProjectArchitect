@@ -1,0 +1,11 @@
+<nav class="phase-nav">
+    {% for phase in phase_info.phases %}
+    <a href="{% if phase.is_completed or phase.is_current %}/projects/{{ slug }}/{{ phase.url_segment }}{% else %}#{% endif %}"
+       class="phase-nav-item {% if phase.is_current %}current{% elif phase.is_completed %}completed{% else %}future{% endif %}">
+        <span class="phase-nav-dot">
+            {% if phase.is_completed %}&#10003;{% else %}{{ phase.index + 1 }}{% endif %}
+        </span>
+        <span class="phase-nav-label">{{ phase.label }}</span>
+    </a>
+    {% endfor %}
+</nav>

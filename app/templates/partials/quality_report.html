@@ -1,0 +1,33 @@
+{% if gate_results %}
+<div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Quality Gate Results</span>
+        {% if gate_results.all_passed %}
+        <span class="badge bg-success">PASS</span>
+        {% else %}
+        <span class="badge bg-danger">FAIL</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% for key, val in gate_results.items() %}
+        {% if val is mapping and val.passed is defined %}
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <span>{{ key | replace('_', ' ') | title }}</span>
+            {% if val.passed %}
+            <span class="badge bg-success">PASS</span>
+            {% else %}
+            <span class="badge bg-danger">FAIL</span>
+            {% endif %}
+        </div>
+        {% if not val.passed and val.issues is defined %}
+        <ul class="list-unstyled ms-3 mt-1 mb-2">
+            {% for issue in val.issues[:5] %}
+            <li class="text-danger"><small>{{ issue }}</small></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

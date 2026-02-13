@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Complete — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="text-center py-4">
+    <h4 class="text-success mb-3">Project Complete!</h4>
+    <p class="lead mb-4">{{ state.project.name }} build guide has been assembled.</p>
+
+    <div class="card d-inline-block" style="max-width: 420px;">
+        <div class="card-body">
+            <p class="mb-1"><strong>Filename:</strong> {{ state.document.filename }}</p>
+            <p class="mb-1"><strong>Version:</strong> {{ state.document.version }}</p>
+            <p class="mb-3"><strong>Assembled:</strong> {{ state.document.assembled_at[:19] if state.document.assembled_at else 'N/A' }}</p>
+            <a href="/projects/{{ slug }}/final-assembly/download" class="btn btn-primary">
+                Download Build Guide
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Chapter Scores -->
+{% if state.chapters %}
+<div class="mx-auto mt-4" style="max-width: 620px;">
+    <h6 class="mb-3">Chapter Scores</h6>
+    <table class="table table-sm small">
+        <thead>
+            <tr>
+                <th>Ch</th>
+                <th>Title</th>
+                <th class="text-end">Score</th>
+                <th class="text-end">Words</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ch in state.chapters %}
+            <tr>
+                <td>{{ ch.index }}</td>
+                <td>{{ ch.outline_section }}</td>
+                <td class="text-end">{{ ch.chapter_score.total_score if ch.chapter_score else '—' }}</td>
+                <td class="text-end">{{ ch.chapter_score.word_count|default('—') if ch.chapter_score else '—' }}</td>
+                <td>
+                    {% if ch.chapter_score %}
+                    {% if ch.chapter_score.status == 'complete' %}
+                    <span class="badge bg-success" style="font-size:0.7rem;">Complete</span>
+                    {% elif ch.chapter_score.status == 'needs_expansion' %}
+                    <span class="badge bg-warning text-dark" style="font-size:0.7rem;">Needs Expansion</span>
+                    {% else %}
+                    <span class="badge bg-danger" style="font-size:0.7rem;">Incomplete</span>
+                    {% endif %}
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="text-center mt-4 mb-4">
+    <a href="/" class="btn btn-outline-secondary">Back to Projects</a>
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Summary{% endblock %}
+{% block right_pane_content %}
+<p class="text-muted small"><strong>{{ state.project.name }}</strong></p>
+<hr>
+<p class="text-muted small"><strong>Document:</strong> {{ state.document.filename }}</p>
+<p class="text-muted small"><strong>Version:</strong> {{ state.document.version }}</p>
+<p class="text-muted small"><strong>Assembled:</strong> {{ state.document.assembled_at[:19] if state.document.assembled_at else 'N/A' }}</p>
+<hr>
+{% if state.chapters %}
+{% set ns = namespace(total_words=0, total_score=0, count=0) %}
+{% for ch in state.chapters %}
+{% if ch.chapter_score %}
+{% set ns.total_words = ns.total_words + ch.chapter_score.word_count|default(0) %}
+{% set ns.total_score = ns.total_score + ch.chapter_score.total_score|default(0) %}
+{% set ns.count = ns.count + 1 %}
+{% endif %}
+{% endfor %}
+<p class="text-muted small"><strong>Total Words:</strong> {{ ns.total_words|int }}</p>
+<p class="text-muted small"><strong>Est. Pages:</strong> ~{{ (ns.total_words / 500)|round|int }}</p>
+<p class="text-muted small"><strong>Target:</strong> {{ target_pages|default('—') }} pages</p>
+{% if ns.count > 0 %}
+<p class="text-muted small"><strong>Avg Score:</strong> {{ (ns.total_score / ns.count)|round(1) }}/100</p>
+{% endif %}
+<p class="text-muted small"><strong>Chapters:</strong> {{ state.chapters|length }}</p>
+{% endif %}
+{% endblock %}

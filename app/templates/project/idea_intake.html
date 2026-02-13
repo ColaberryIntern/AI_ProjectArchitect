@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Idea Intake — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="idea-intake-panel">
+    <div class="idea-intake-header">
+        <h5>Tell Us About Your Project</h5>
+        <p class="text-muted small mb-0">Describe your project idea in any form — a sentence, a paragraph, a comparison. Be as specific as you can.</p>
+    </div>
+
+    {% if state.current_phase == 'idea_intake' and not state.idea.original_raw %}
+    <form action="/projects/{{ slug }}/idea-intake" method="POST" class="idea-intake-form"
+          onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.innerHTML='<span class=\'spinner-border spinner-border-sm me-2\'></span>Analyzing your idea...';return true;">
+        <div class="mb-3">
+            <textarea class="form-control" id="raw_idea" name="raw_idea" rows="8"
+                      placeholder="e.g., Build an AI-powered task manager for remote teams that..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Capture Idea &amp; Continue</button>
+    </form>
+    {% elif state.current_phase == 'idea_intake' %}
+    <div class="card mt-3">
+        <div class="card-header">Recorded Idea</div>
+        <div class="card-body">
+            <p>{{ state.idea.original_raw }}</p>
+            <small class="text-muted">Captured at: {{ state.idea.captured_at }}</small>
+            <div class="mt-3">
+                <a href="/projects/{{ slug }}/idea-intake/profile" class="btn btn-primary btn-sm">Review Profile &rarr;</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card mt-3">
+        <div class="card-header">Recorded Idea</div>
+        <div class="card-body">
+            <p>{{ state.idea.original_raw }}</p>
+            <small class="text-muted">Captured at: {{ state.idea.captured_at }}</small>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Idea Intake{% endblock %}
+
+{% block right_pane_content %}
+<p class="text-muted small">This is the starting point. Describe your project idea and we'll help you discover features, build an outline, and create execution-ready documentation.</p>
+<hr>
+<p class="text-muted small"><strong>What makes a good idea input?</strong></p>
+<ul class="text-muted small">
+    <li>What problem are you solving?</li>
+    <li>Who is it for?</li>
+    <li>Why does it need to exist?</li>
+</ul>
+{% endblock %}

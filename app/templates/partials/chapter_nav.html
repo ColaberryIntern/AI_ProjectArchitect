@@ -1,0 +1,18 @@
+<div class="list-group mb-3">
+    {% for ch in state.chapters %}
+    <a href="/projects/{{ slug }}/chapter-build/{{ ch.index }}"
+       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center
+              {% if selected_index is defined and selected_index == ch.index %}active{% endif %}">
+        Ch {{ ch.index }}: {{ ch.outline_section | truncate(25) }}
+        {% if ch.status == 'approved' %}
+        <span class="badge bg-success">Approved</span>
+        {% elif ch.status == 'pending' %}
+        <span class="badge bg-secondary">Pending</span>
+        {% elif ch.status == 'draft' %}
+        <span class="badge bg-warning text-dark">Draft</span>
+        {% else %}
+        <span class="badge bg-info">{{ ch.status }}</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>

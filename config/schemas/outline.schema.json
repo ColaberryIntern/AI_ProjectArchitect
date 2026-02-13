@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Outline",
+  "description": "Schema for a project outline structure",
+  "type": "object",
+  "required": ["version", "sections"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "required": ["index", "title", "type", "summary"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["required", "optional"] },
+          "summary": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

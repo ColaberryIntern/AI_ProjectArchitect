@@ -1,0 +1,458 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project State",
+  "description": "Schema for the AI Project Architect project state file",
+  "type": "object",
+  "required": ["project", "current_phase"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": ["name", "slug", "created_at", "updated_at"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable project name"
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "URL-safe project identifier"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 datetime when project was created"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 datetime when project was last updated"
+        }
+      },
+      "additionalProperties": false
+    },
+    "current_phase": {
+      "type": "string",
+      "enum": [
+        "idea_intake",
+        "feature_discovery",
+        "outline_generation",
+        "outline_approval",
+        "chapter_build",
+        "quality_gates",
+        "final_assembly",
+        "complete"
+      ],
+      "description": "Current pipeline phase"
+    },
+    "idea": {
+      "type": "object",
+      "properties": {
+        "original_raw": {
+          "type": "string",
+          "description": "Verbatim user input of the original idea"
+        },
+        "captured_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When the idea was captured"
+        }
+      },
+      "additionalProperties": false
+    },
+    "project_profile": {
+      "type": "object",
+      "description": "Structured project intelligence extracted from the idea",
+      "properties": {
+        "problem_definition": { "$ref": "#/$defs/profile_field" },
+        "target_user": { "$ref": "#/$defs/profile_field" },
+        "value_proposition": { "$ref": "#/$defs/profile_field" },
+        "deployment_type": { "$ref": "#/$defs/profile_field" },
+        "ai_depth": { "$ref": "#/$defs/profile_field" },
+        "monetization_model": { "$ref": "#/$defs/profile_field" },
+        "mvp_scope": { "$ref": "#/$defs/profile_field" },
+        "technical_constraints": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "non_functional_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "success_metrics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "risk_assessment": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "core_use_cases": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "selected_features": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "generated_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "confirmed_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "intelligence_goals": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Selected intelligence goals for the project"
+        },
+        "build_depth_mode": {
+          "type": ["string", "null"],
+          "description": "Build depth mode (light, standard, professional, enterprise)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ideation": {
+      "type": "object",
+      "properties": {
+        "business_model": {
+          "$ref": "#/$defs/ideation_dimension"
+        },
+        "user_problem": {
+          "$ref": "#/$defs/ideation_dimension"
+        },
+        "differentiation": {
+          "$ref": "#/$defs/ideation_dimension"
+        },
+        "ai_leverage": {
+          "$ref": "#/$defs/ideation_dimension"
+        },
+        "ideation_summary": {
+          "type": ["string", "null"],
+          "description": "Synthesis of who, what problem, why, AI fit, what NOT"
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "Whether ideation phase has been approved"
+        },
+        "extracted_features": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Features extracted during ideation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "core": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/core_feature" }
+        },
+        "optional": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optional_feature" }
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "Whether feature discovery has been approved"
+        },
+        "catalog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "category": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Generated feature catalog for selection"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outline": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current outline version number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "approved", "unlocked"],
+          "description": "Outline approval status"
+        },
+        "locked_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When the outline was locked"
+        },
+        "locked_hash": {
+          "type": ["string", "null"],
+          "description": "SHA256 hash of locked outline content"
+        },
+        "sections": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/outline_section" }
+        },
+        "approval_history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/approval_event" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "chapters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/chapter" }
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "final_report": {
+          "type": "object",
+          "properties": {
+            "ran_at": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "all_passed": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "array",
+              "items": { "type": "object" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Document version string (e.g., v1)"
+        },
+        "filename": {
+          "type": ["string", "null"],
+          "description": "Final document filename"
+        },
+        "assembled_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "output_path": {
+          "type": ["string", "null"],
+          "description": "Path to the assembled document"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "created_at", "change_summary"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "change_summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "chat": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "text", "timestamp"],
+            "properties": {
+              "role": { "type": "string", "enum": ["bot", "user"] },
+              "text": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "options": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "options_mode": {
+                "type": "string",
+                "enum": ["single", "multi"]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "current_step": {
+          "type": "string",
+          "description": "Current conversation step identifier"
+        },
+        "context": {
+          "type": "object",
+          "description": "Arbitrary context data for the conversation engine"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "profile_field": {
+      "type": "object",
+      "description": "A single profile field with options, selection, and confirmation",
+      "properties": {
+        "selected": { "type": ["string", "null"] },
+        "confidence": { "type": ["number", "null"] },
+        "confirmed": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": { "type": "string" },
+              "label": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ideation_dimension": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["open", "answered"]
+        },
+        "responses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": { "type": "string" },
+              "answer": { "type": "string" }
+            },
+            "required": ["question", "answer"],
+            "additionalProperties": false
+          }
+        },
+        "summary": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "core_feature": {
+      "type": "object",
+      "required": ["id", "name", "description", "rationale", "problem_mapped_to", "build_order"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "rationale": { "type": "string" },
+        "problem_mapped_to": { "type": "string" },
+        "build_order": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "optional_feature": {
+      "type": "object",
+      "required": ["id", "name", "description", "rationale"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "rationale": { "type": "string" },
+        "deferred": { "type": "boolean" },
+        "defer_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "outline_section": {
+      "type": "object",
+      "required": ["index", "title", "type", "summary"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "enum": ["required", "optional"] },
+        "summary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "approval_event": {
+      "type": "object",
+      "required": ["version", "decision", "timestamp"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "decision": {
+          "type": "string",
+          "enum": ["approved", "revise", "expand", "reduce"]
+        },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "chapter": {
+      "type": "object",
+      "required": ["index", "outline_section", "status", "revision_count"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "outline_section": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "draft", "revision_1", "revision_2", "approved"]
+        },
+        "revision_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "content_path": { "type": ["string", "null"] },
+        "quality_report": {
+          "type": ["object", "null"],
+          "properties": {
+            "completeness": { "type": "string", "enum": ["pass", "fail"] },
+            "clarity": { "type": "string", "enum": ["pass", "fail"] },
+            "build_readiness": { "type": "string", "enum": ["pass", "fail"] },
+            "anti_vagueness": { "type": "string", "enum": ["pass", "fail"] },
+            "intern_test": { "type": "string", "enum": ["pass", "fail"] },
+            "details": { "type": "array", "items": { "type": "object" } }
+          },
+          "additionalProperties": false
+        },
+        "approved_at": { "type": ["string", "null"], "format": "date-time" },
+        "chapter_score": {
+          "type": ["object", "null"],
+          "description": "Chapter scoring result from quality gate runner"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

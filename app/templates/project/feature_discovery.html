@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{% block title %}Feature Discovery — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="feature-catalog-panel">
+    <div class="feature-catalog-header">
+        <h5>Select Features for Your Project</h5>
+        <p class="text-muted small mb-0">Check the features you need across product and architecture categories.</p>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger mx-3 mt-2 small" id="exclusion-error">
+        <strong>Conflict:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <div id="alignment-warnings" style="display:none;" class="mx-3 mt-2"></div>
+
+    <form id="feature-catalog-form" method="post" action="/projects/{{ slug }}/feature-discovery/select">
+
+        <div class="feature-layer-tabs">
+            <button type="button" class="feature-layer-tab active" onclick="switchLayer('functional')">
+                Product Features <span class="layer-tab-count" id="functional-count">0</span>
+            </button>
+            <button type="button" class="feature-layer-tab" onclick="switchLayer('architectural')">
+                Architecture &amp; Ops <span class="layer-tab-count" id="architectural-count">0</span>
+            </button>
+        </div>
+
+        <div class="feature-catalog-body">
+
+            <div class="layer-tab-pane" id="layer-functional">
+                {% for cat_group in catalog_by_layer.functional %}
+                <div class="feature-category">
+                    <div class="feature-category-header">
+                        <h6 class="feature-category-title">{{ cat_group.name }}</h6>
+                        <div class="category-toggle-btns">
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleCategory(this, true)">All</button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleCategory(this, false)">Clear</button>
+                        </div>
+                    </div>
+                    {% for feat in cat_group.features %}
+                    <label class="feature-checkbox">
+                        <input type="checkbox" name="features" value="{{ feat.id }}"
+                               {% if feat.id in selected_ids %}checked{% endif %}
+                               onchange="onFeatureChange()">
+                        <div class="feature-checkbox-info">
+                            <span class="feature-checkbox-name">{{ feat.name }}</span>
+                            <span class="feature-checkbox-desc">{{ feat.description }}</span>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+
+                {% if show_intelligence_goals %}
+                <div class="intelligence-goals-section">
+                    <div class="intelligence-goals-header">
+                        <h6>Intelligence Goals</h6>
+                        <p class="text-muted small mb-2">What should this system intelligently determine or adapt for this project?</p>
+                    </div>
+                    <div id="intelligence-goals-container">
+                        {% if existing_goals %}
+                        {% for goal in existing_goals %}
+                        <div class="intelligence-goal-item" data-goal-id="{{ goal.id }}">
+                            <label class="feature-checkbox">
+                                <input type="checkbox" class="intelligence-goal-cb" value="{{ goal.id }}"
+                                       data-user-facing-label="{{ goal.user_facing_label }}" data-description="{{ goal.description }}"
+                                       data-goal-type="{{ goal.goal_type }}"
+                                       onchange="saveIntelligenceGoals()">
+                                <div class="feature-checkbox-info">
+                                    <span class="feature-checkbox-name">{{ goal.user_facing_label }}</span>
+                                    <span class="feature-checkbox-desc">{{ goal.description }}</span>
+                                </div>
+                            </label>
+                            {% if goal.goal_type in confidence_goal_types %}
+                            <select class="form-select form-select-sm confidence-select mt-1"
+                                    data-goal-id="{{ goal.id }}" onchange="saveIntelligenceGoals()"
+                                    style="max-width: 250px; margin-left: 1.75rem;">
+                                <option value="">How reliable should this be?</option>
+                                {% for level in confidence_levels %}
+                                <option value="{{ level.value }}" {% if goal.confidence_required == level.value %}selected{% endif %}>
+                                    {{ level.label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p class="text-muted small" id="goals-empty-state">Intelligence goals could not be generated. Click Regenerate to retry.</p>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="generate-goals-btn"
+                            onclick="generateIntelligenceGoals()">
+                        Regenerate AI Goals
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="layer-tab-pane" id="layer-architectural" style="display:none;">
+                {% for cat_group in catalog_by_layer.architectural %}
+                <div class="feature-category">
+                    <div class="feature-category-header">
+                        <h6 class="feature-category-title">{{ cat_group.name }}</h6>
+                        <div class="category-toggle-btns">
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleCategory(this, true)">All</button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleCategory(this, false)">Clear</button>
+                        </div>
+                    </div>
+                    {% for feat in cat_group.features %}
+                    <label class="feature-checkbox">
+                        <input type="checkbox" name="features" value="{{ feat.id }}"
+                               {% if feat.id in selected_ids %}checked{% endif %}
+                               onchange="onFeatureChange()">
+                        <div class="feature-checkbox-info">
+                            <span class="feature-checkbox-name">{{ feat.name }}</span>
+                            <span class="feature-checkbox-desc">{{ feat.description }}</span>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+
+        </div>
+
+        <div class="feature-catalog-actions">
+            <div class="feature-catalog-actions-right">
+                <button type="submit" class="btn btn-primary">Save &amp; Continue to Outline &rarr;</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block right_pane_title %}Selected Features{% endblock %}
+
+{% block right_pane_content %}
+<div id="feature-tally">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <small class="text-muted fw-bold">Selected</small>
+        <span class="feature-count" id="feature-tally-count">0</span>
+    </div>
+    <div id="exclusion-warnings"></div>
+    <div id="feature-tally-list"></div>
+    <p class="text-muted small" id="feature-tally-empty">No features selected yet.</p>
+</div>
+
+<script>
+var EXCLUSION_GROUPS = {{ exclusion_groups | tojson }};
+
+function switchLayer(layer) {
+    document.querySelectorAll('.layer-tab-pane').forEach(function(pane) {
+        pane.style.display = 'none';
+    });
+    var target = document.getElementById('layer-' + layer);
+    if (target) target.style.display = 'block';
+
+    document.querySelectorAll('.feature-layer-tab').forEach(function(tab) {
+        tab.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+}
+
+function toggleCategory(btn, selectAll) {
+    var category = btn.closest('.feature-category');
+    if (!category) return;
+    var checkboxes = category.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(function(cb) { cb.checked = selectAll; });
+    onFeatureChange();
+}
+
+function onFeatureChange() {
+    updateFeatureTally();
+    checkExclusions();
+}
+
+function updateFeatureTally() {
+    var checked = document.querySelectorAll('#feature-catalog-form input[name="features"]:checked');
+    var count = checked.length;
+    var countEl = document.getElementById('feature-tally-count');
+    var listEl = document.getElementById('feature-tally-list');
+    var emptyEl = document.getElementById('feature-tally-empty');
+
+    if (countEl) countEl.textContent = count;
+    if (emptyEl) emptyEl.style.display = count > 0 ? 'none' : 'block';
+
+    if (listEl) {
+        listEl.innerHTML = '';
+        checked.forEach(function(cb) {
+            var label = cb.closest('.feature-checkbox');
+            var nameEl = label ? label.querySelector('.feature-checkbox-name') : null;
+            var name = nameEl ? nameEl.textContent : cb.value;
+            var card = document.createElement('div');
+            card.className = 'extracted-feature-card';
+            card.innerHTML = '<div class="feature-name">' + name + '</div>';
+            listEl.appendChild(card);
+        });
+    }
+
+    var funcPane = document.getElementById('layer-functional');
+    var archPane = document.getElementById('layer-architectural');
+    var funcCount = funcPane ? funcPane.querySelectorAll('input[name="features"]:checked').length : 0;
+    var archCount = archPane ? archPane.querySelectorAll('input[name="features"]:checked').length : 0;
+    var funcCountEl = document.getElementById('functional-count');
+    var archCountEl = document.getElementById('architectural-count');
+    if (funcCountEl) funcCountEl.textContent = funcCount;
+    if (archCountEl) archCountEl.textContent = archCount;
+}
+
+function checkExclusions() {
+    var checked = document.querySelectorAll('#feature-catalog-form input[name="features"]:checked');
+    var selectedIds = Array.from(checked).map(function(cb) { return cb.value; });
+    var warningsEl = document.getElementById('exclusion-warnings');
+    if (!warningsEl) return;
+
+    var warnings = [];
+    EXCLUSION_GROUPS.forEach(function(group) {
+        var conflicting = group.feature_ids.filter(function(id) {
+            return selectedIds.indexOf(id) !== -1;
+        });
+        if (conflicting.length > 1) {
+            warnings.push(group.label + ': cannot select both ' + conflicting.join(' and '));
+        }
+    });
+
+    if (warnings.length > 0) {
+        warningsEl.innerHTML = '<div class="exclusion-warning alert alert-warning py-1 small mb-2">' +
+            warnings.join('<br>') + '</div>';
+    } else {
+        warningsEl.innerHTML = '';
+    }
+}
+
+var CONFIDENCE_LEVELS = {{ confidence_levels | default([], true) | tojson }};
+var CONFIDENCE_GOAL_TYPES = {{ confidence_goal_types | default([], true) | tojson }};
+
+function generateIntelligenceGoals() {
+    var btn = document.getElementById('generate-goals-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    fetch('/projects/{{ slug }}/api/intelligence-goals/generate')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('intelligence-goals-container');
+            if (!container || !data.goals) return;
+            container.innerHTML = '';
+            data.goals.forEach(function(goal) {
+                var div = document.createElement('div');
+                div.className = 'intelligence-goal-item';
+                div.dataset.goalId = goal.id;
+                var goalType = goal.goal_type || goal.type || '';
+                var label = goal.user_facing_label || goal.label || '';
+                var needsConfidence = CONFIDENCE_GOAL_TYPES.indexOf(goalType) !== -1;
+                var confidenceHtml = '';
+                if (needsConfidence) {
+                    confidenceHtml = '<select class="form-select form-select-sm confidence-select mt-1" ' +
+                        'data-goal-id="' + goal.id + '" onchange="saveIntelligenceGoals()" ' +
+                        'style="max-width: 250px; margin-left: 1.75rem;">' +
+                        '<option value="">How reliable should this be?</option>';
+                    CONFIDENCE_LEVELS.forEach(function(lvl) {
+                        confidenceHtml += '<option value="' + lvl.value + '">' + lvl.label + '</option>';
+                    });
+                    confidenceHtml += '</select>';
+                }
+                div.innerHTML =
+                    '<label class="feature-checkbox">' +
+                    '<input type="checkbox" class="intelligence-goal-cb" value="' + goal.id + '"' +
+                    ' data-user-facing-label="' + label.replace(/"/g, '&quot;') + '"' +
+                    ' data-description="' + goal.description.replace(/"/g, '&quot;') + '"' +
+                    ' data-goal-type="' + goalType + '" onchange="saveIntelligenceGoals()">' +
+                    '<div class="feature-checkbox-info">' +
+                    '<span class="feature-checkbox-name">' + label + '</span>' +
+                    '<span class="feature-checkbox-desc">' + goal.description + '</span>' +
+                    '</div></label>' + confidenceHtml;
+                container.appendChild(div);
+            });
+            btn.textContent = 'Regenerate AI Goals';
+            btn.disabled = false;
+            saveIntelligenceGoals();
+        })
+        .catch(function(err) {
+            btn.textContent = 'Regenerate AI Goals';
+            btn.disabled = false;
+        });
+}
+
+function saveIntelligenceGoals() {
+    var checkboxes = document.querySelectorAll('.intelligence-goal-cb:checked');
+    var goals = [];
+    checkboxes.forEach(function(cb) {
+        var goal = {
+            id: cb.value,
+            user_facing_label: cb.dataset.userFacingLabel || '',
+            description: cb.dataset.description || '',
+            goal_type: cb.dataset.goalType || 'recommendation',
+            confidence_required: null,
+            impact_level: null
+        };
+        var select = document.querySelector('.confidence-select[data-goal-id="' + cb.value + '"]');
+        if (select) goal.confidence_required = select.value || null;
+        goals.push(goal);
+    });
+
+    fetch('/projects/{{ slug }}/api/intelligence-goals/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({goals: goals})
+    }).catch(function() {});
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    onFeatureChange();
+    fetch('/projects/{{ slug }}/api/features/validate-alignment')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var warnings = [];
+            for (var key in data) {
+                if (data[key] && typeof data[key] === 'object' && data[key].warnings) {
+                    warnings = warnings.concat(data[key].warnings);
+                }
+            }
+            if (warnings.length > 0) {
+                var div = document.getElementById('alignment-warnings');
+                div.style.display = 'block';
+                div.innerHTML = '<div class="alert alert-warning py-2 small mb-0"><strong>Alignment:</strong> ' +
+                    warnings.join('<br>') + '</div>';
+            }
+        })
+        .catch(function() {});
+});
+</script>
+{% endblock %}

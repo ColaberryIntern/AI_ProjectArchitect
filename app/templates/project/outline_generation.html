@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Outline Generation — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="feature-catalog-panel">
+    <div class="feature-catalog-header">
+        <h5>Requirements Document Outline</h5>
+        <p class="text-muted small mb-0">Review and edit the {{ state.outline.sections|length or 10 }} sections. Each needs a title and summary.</p>
+    </div>
+
+    <form id="outline-form" action="/projects/{{ slug }}/outline-generation/sections" method="POST">
+        <div class="feature-catalog-body">
+            {% for i in range(state.outline.sections|length or 10) %}
+            {% set idx = i + 1 %}
+            {% set existing = state.outline.sections[i] if state.outline.sections|length > i else none %}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Section {{ idx }}</span>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small">Title</label>
+                        <input type="text" class="form-control form-control-sm"
+                               name="title_{{ idx }}"
+                               value="{{ existing.title if existing else '' }}"
+                               {% if state.current_phase != 'outline_generation' %}disabled{% endif %}
+                               required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small">Summary</label>
+                        <textarea class="form-control form-control-sm"
+                                  name="summary_{{ idx }}" rows="3"
+                                  {% if state.current_phase != 'outline_generation' %}disabled{% endif %}
+                                  required>{{ existing.summary if existing else '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if state.current_phase == 'outline_generation' %}
+        <div class="feature-catalog-actions">
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-outline-primary btn-sm">Save Changes</button>
+                <button type="button" class="btn btn-outline-info btn-sm" id="validateOutline">Validate</button>
+            </div>
+            <div class="feature-catalog-actions-right">
+                {% if state.outline.sections %}
+                <button type="submit" formaction="/projects/{{ slug }}/outline-generation/advance"
+                        class="btn btn-primary">Continue to Approval &rarr;</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+{% if state.current_phase == 'outline_generation' and state.outline.sections %}
+<div id="validationResults" style="display:none;"></div>
+<script>
+document.getElementById('validateOutline')?.addEventListener('click', async function() {
+    const resp = await fetch('/projects/{{ slug }}/api/outline/validate');
+    const data = await resp.json();
+    const div = document.getElementById('validationResults');
+    div.style.display = 'block';
+    let html = '<div class="card"><div class="card-body">';
+    html += '<p><strong>Overall: </strong>' + (data.all_passed ? '<span class="text-success">PASS</span>' : '<span class="text-danger">FAIL</span>') + '</p>';
+    for (const [key, val] of Object.entries(data)) {
+        if (typeof val === 'object' && val !== null && 'passed' in val) {
+            html += '<p>' + key.replace(/_/g, ' ') + ': ' + (val.passed ? '<span class="text-success">PASS</span>' : '<span class="text-danger">FAIL</span>') + '</p>';
+        }
+    }
+    html += '</div></div>';
+    div.innerHTML = html;
+});
+</script>
+{% endif %}
+{% endblock %}
+
+{% block right_pane_title %}Outline Status{% endblock %}
+{% block right_pane_content %}
+{% if state.project_profile and state.project_profile.confirmed_at %}
+<p class="text-muted small fw-bold">Project Profile</p>
+{% for key in ['problem_definition', 'target_user', 'deployment_type', 'ai_depth'] %}
+{% if state.project_profile[key].selected %}
+<p class="text-muted small mb-1"><strong>{{ key|replace('_', ' ')|title }}:</strong> {{ state.project_profile[key].selected|replace('_', ' ')|title }}</p>
+{% endif %}
+{% endfor %}
+<hr>
+{% else %}
+<p class="text-muted small"><strong>Project Idea:</strong></p>
+<p class="text-muted small">{{ state.idea.original_raw[:200] }}{% if state.idea.original_raw|length > 200 %}...{% endif %}</p>
+<hr>
+{% endif %}
+<p class="text-muted small"><strong>Selected Features ({{ state.features.core|length }}):</strong></p>
+<ul class="text-muted small">
+{% for feat in state.features.core %}
+    <li>{{ feat.name }}</li>
+{% endfor %}
+</ul>
+{% endblock %}

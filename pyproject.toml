@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ai-project-architect"
+version = "0.1.0"
+description = "AI Project Architect & Build Companion - transforms ideas into execution-ready project documentation"
+requires-python = ">=3.10"
+dependencies = [
+    "jsonschema>=4.20.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+    "openai>=1.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "httpx>=0.26.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["execution", "app"]
+omit = ["tests/*", "*/conftest.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80

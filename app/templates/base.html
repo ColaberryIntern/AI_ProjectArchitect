@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Project Architect{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/custom.css" rel="stylesheet">
+    <link href="/static/css/chat.css?v=d15" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">AI Project Architect</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">All Projects</a>
+            </div>
+        </div>
+    </nav>
+
+    {% if phase_info is defined and phase_info %}
+    <div class="app-wrapper">
+        <div class="app-layout-3 {% block layout_class %}{% endblock %}">
+            <aside class="left-nav" id="left-nav">
+                <div class="left-nav-header">
+                    <h6>{{ state.project.name }}</h6>
+                    <button class="pane-toggle" id="left-nav-toggle">&laquo;</button>
+                </div>
+                <div class="left-nav-body">
+                    {% include "partials/phase_nav.html" %}
+                    {% block left_subnav %}{% endblock %}
+                </div>
+            </aside>
+
+            <div class="center-pane">
+                {% block center_pane %}
+                {% include "partials/chat_panel.html" %}
+                {% endblock %}
+            </div>
+
+            <aside class="right-pane" id="right-pane">
+                <div class="right-pane-header">
+                    <h6>{% block right_pane_title %}Context{% endblock %}</h6>
+                    <button class="pane-toggle" id="right-pane-toggle">&raquo;</button>
+                </div>
+                <div class="right-pane-body">
+                    {% block right_pane_content %}
+                    <p class="text-muted small">No confirmed data yet.</p>
+                    {% endblock %}
+                </div>
+            </aside>
+        </div>
+    </div>
+    {% else %}
+    <div class="container mt-4 mb-5">
+        <div>
+            {% include "partials/flash_messages.html" %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <footer class="bg-light text-center text-muted py-3 border-top">
+        <small>AI Project Architect & Build Companion</small>
+    </footer>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/wizard.js"></script>
+    <script src="/static/js/chat.js?v=d14"></script>
+    <script src="/static/js/layout.js"></script>
+</body>
+</html>

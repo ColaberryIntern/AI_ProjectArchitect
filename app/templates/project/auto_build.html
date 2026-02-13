@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block title %}Building — {{ state.project.name }}{% endblock %}
+
+{% block center_pane %}
+<div class="auto-build-panel text-center py-4">
+    <h5>Building Your Project Guide</h5>
+    <p class="text-muted small mb-1" id="build-depth-info">
+        {{ depth_label|default('Professional') }} mode — target {{ depth_pages|default('80-120') }} pages
+    </p>
+    <p class="text-muted" id="build-status">
+        {% if building %}
+        Build in progress...
+        {% else %}
+        Preparing to build {{ state.chapters|length }} chapters...
+        {% endif %}
+    </p>
+
+    <!-- Progress bar -->
+    <div class="progress mb-4 mx-auto" style="height: 24px; max-width: 500px;">
+        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+             id="build-progress" role="progressbar" style="width: 0%"
+             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+    </div>
+
+    <!-- Chapter progress list -->
+    <div id="chapter-list" class="text-start mx-auto" style="max-width: 620px;">
+        {% for ch in state.chapters %}
+        <div class="d-flex align-items-center gap-2 py-2 border-bottom" id="ch-row-{{ ch.index }}">
+            <span class="spinner-border spinner-border-sm text-primary d-none" id="spinner-{{ ch.index }}"></span>
+            <span class="badge bg-secondary" id="badge-{{ ch.index }}" style="min-width: 80px;">Pending</span>
+            <span class="small flex-grow-1">Chapter {{ ch.index }}: {{ ch.outline_section }}</span>
+            <span class="score-info small text-muted d-none" id="score-{{ ch.index }}"></span>
+            <span class="metrics-info small text-muted d-none" id="metrics-{{ ch.index }}"></span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Validation status -->
+    <div id="validation-status" class="mt-3 d-none">
+        <div class="d-flex align-items-center justify-content-center gap-2 py-2">
+            <span class="spinner-border spinner-border-sm text-info" id="validation-spinner"></span>
+            <span class="text-muted" id="validation-label">Running post-build validation...</span>
+        </div>
+    </div>
+
+    <!-- Final quality gates + assembly status -->
+    <div id="final-status" class="mt-3 d-none">
+        <div class="d-flex align-items-center justify-content-center gap-2 py-2">
+            <span class="spinner-border spinner-border-sm text-primary" id="final-spinner"></span>
+            <span class="text-muted" id="final-label">Running final quality gates...</span>
+        </div>
+    </div>
+
+    <!-- Document score summary (shown after scoring) -->
+    <div id="doc-score-summary" class="d-none mt-3 mx-auto" style="max-width: 620px;">
+        <div class="d-flex justify-content-around text-center small">
+            <div><strong id="doc-avg-score">—</strong><br>Avg Score</div>
+            <div><strong id="doc-word-count">—</strong><br>Words</div>
+            <div><strong id="doc-page-estimate">—</strong><br>Est. Pages</div>
+            <div><strong id="doc-total-tokens">—</strong><br>Tokens</div>
+            <div><strong id="doc-llm-calls">—</strong><br>LLM Calls</div>
+            <div><strong id="doc-cost">—</strong><br>Est. Cost</div>
+        </div>
+    </div>
+
+    <!-- Complete section (hidden until done) -->
+    <div id="complete-section" class="d-none mt-4">
+        <div class="alert alert-success mx-auto" style="max-width: 500px;">
+            <h5 class="alert-heading mb-2">Build Complete!</h5>
+            <p class="mb-3" id="complete-message">Your build guide is ready.</p>
+            <a href="/projects/{{ slug }}/final-assembly/download" class="btn btn-primary">
+                Download Build Guide
+            </a>
+            <a href="/projects/{{ slug }}/complete" class="btn btn-outline-secondary ms-2">
+                View Summary
+            </a>
+            <p class="text-muted small mt-2 d-none" id="redirect-note"></p>
+        </div>
+    </div>
+
+    <!-- Error section (hidden unless fatal error) -->
+    <div id="error-section" class="d-none mt-4">
+        <div class="alert alert-danger mx-auto" style="max-width: 500px;">
+            <h5 class="alert-heading mb-2">Build Issue</h5>
+            <p id="error-message"></p>
+            <a href="/projects/{{ slug }}/chapter-build" class="btn btn-outline-secondary btn-sm">
+                Switch to Manual Build
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const slug = "{{ slug }}";
+    let buildStarted = false;
+
+    // Start the build via POST
+    function startBuild() {
+        fetch(`/projects/${slug}/auto-build/start`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'started' || data.status === 'already_running') {
+                    connectSSE();
+                } else {
+                    showError(data.message || 'Failed to start build');
+                }
+            })
+            .catch(err => {
+                showError('Failed to connect to server: ' + err.message);
+            });
+    }
+
+    // Connect to SSE endpoint
+    function connectSSE() {
+        const evtSource = new EventSource(`/projects/${slug}/auto-build/events`);
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleEvent(data);
+
+            if (data.event_type === 'complete') {
+                evtSource.close();
+            }
+        };
+
+        evtSource.onerror = function() {
+            // SSE connection lost — fall back to polling
+            evtSource.close();
+            pollStatus();
+        };
+    }
+
+    // Handle a build event
+    function handleEvent(data) {
+        // Update status text
+        document.getElementById('build-status').textContent = data.message;
+
+        // Update progress bar
+        const bar = document.getElementById('build-progress');
+        bar.style.width = data.percent + '%';
+        bar.textContent = data.percent + '%';
+        bar.setAttribute('aria-valuenow', data.percent);
+
+        // Handle chapter-specific events
+        if (data.chapter_index > 0) {
+            updateChapterRow(data.chapter_index, data.event_type, data.data || {});
+        }
+
+        // Handle scoring events with document-level data
+        if (data.event_type === 'scoring' && data.chapter_index === 0 && data.data) {
+            updateDocScoreSummary(data.data);
+        }
+
+        // Handle validation events
+        if (data.event_type === 'validation') {
+            const valStatus = document.getElementById('validation-status');
+            valStatus.classList.remove('d-none');
+            document.getElementById('validation-label').textContent = data.message;
+        }
+
+        // Handle phase events (final gates, assembly)
+        if (data.event_type === 'phase') {
+            document.getElementById('validation-status').classList.add('d-none');
+            const finalStatus = document.getElementById('final-status');
+            finalStatus.classList.remove('d-none');
+            document.getElementById('final-label').textContent = data.message;
+        }
+
+        // Handle completion
+        if (data.event_type === 'complete') {
+            document.getElementById('complete-section').classList.remove('d-none');
+            document.getElementById('complete-message').textContent = data.message;
+            document.getElementById('final-status').classList.add('d-none');
+            document.getElementById('validation-status').classList.add('d-none');
+            bar.classList.remove('progress-bar-animated');
+            bar.classList.add('bg-success');
+            // Show page estimate in complete data
+            if (data.data && data.data.estimated_pages) {
+                updateDocScoreSummary(data.data);
+            }
+            // Auto-redirect to complete page after a short delay
+            var countdown = 5;
+            var redirectNote = document.getElementById('redirect-note');
+            if (redirectNote) {
+                redirectNote.classList.remove('d-none');
+                redirectNote.textContent = 'Redirecting to summary in ' + countdown + 's...';
+                var timer = setInterval(function() {
+                    countdown--;
+                    if (countdown <= 0) {
+                        clearInterval(timer);
+                        window.location.href = '/projects/' + slug + '/complete';
+                    } else {
+                        redirectNote.textContent = 'Redirecting to summary in ' + countdown + 's...';
+                    }
+                }, 1000);
+            }
+        }
+
+        // Handle non-fatal errors (warnings)
+        if (data.event_type === 'error' && data.percent > 0) {
+            // Non-fatal — just update the chapter badge
+            if (data.chapter_index > 0) {
+                const badge = document.getElementById('badge-' + data.chapter_index);
+                if (badge) {
+                    badge.className = 'badge bg-warning';
+                    badge.style.minWidth = '80px';
+                    badge.textContent = 'Warning';
+                }
+            }
+        }
+
+        // Handle fatal errors
+        if (data.event_type === 'error' && data.percent === 0) {
+            showError(data.message);
+        }
+    }
+
+    // Update document-level score summary
+    function updateDocScoreSummary(scoreData) {
+        const summary = document.getElementById('doc-score-summary');
+        summary.classList.remove('d-none');
+        if (scoreData.average_score !== undefined) {
+            document.getElementById('doc-avg-score').textContent = scoreData.average_score + '/100';
+        }
+        if (scoreData.total_word_count !== undefined) {
+            document.getElementById('doc-word-count').textContent = scoreData.total_word_count.toLocaleString();
+        }
+        if (scoreData.estimated_pages !== undefined) {
+            document.getElementById('doc-page-estimate').textContent = '~' + scoreData.estimated_pages;
+        }
+        if (scoreData.total_tokens !== undefined) {
+            document.getElementById('doc-total-tokens').textContent = scoreData.total_tokens.toLocaleString();
+        }
+        if (scoreData.total_llm_calls !== undefined) {
+            document.getElementById('doc-llm-calls').textContent = scoreData.total_llm_calls;
+        }
+        if (scoreData.estimated_cost_usd !== undefined) {
+            document.getElementById('doc-cost').textContent = '$' + scoreData.estimated_cost_usd.toFixed(4);
+        }
+        // Update right pane metrics
+        if (scoreData.total_tokens !== undefined) {
+            var rp = document.getElementById('rp-total-tokens');
+            if (rp) rp.textContent = scoreData.total_tokens.toLocaleString();
+        }
+        if (scoreData.total_llm_calls !== undefined) {
+            var rp2 = document.getElementById('rp-llm-calls');
+            if (rp2) rp2.textContent = scoreData.total_llm_calls;
+        }
+        if (scoreData.total_retries !== undefined) {
+            var rp3 = document.getElementById('rp-retries');
+            if (rp3) rp3.textContent = scoreData.total_retries;
+        }
+        if (scoreData.estimated_cost_usd !== undefined) {
+            var rp4 = document.getElementById('rp-cost');
+            if (rp4) rp4.textContent = '$' + scoreData.estimated_cost_usd.toFixed(4);
+        }
+    }
+
+    // Update a chapter row's badge and spinner
+    function updateChapterRow(index, eventType, eventData) {
+        const badge = document.getElementById('badge-' + index);
+        const spinner = document.getElementById('spinner-' + index);
+        const scoreEl = document.getElementById('score-' + index);
+        const metricsEl = document.getElementById('metrics-' + index);
+        if (!badge || !spinner) return;
+
+        badge.style.minWidth = '80px';
+
+        switch (eventType) {
+            case 'chapter':
+                badge.className = 'badge bg-primary';
+                badge.textContent = 'Writing...';
+                spinner.classList.remove('d-none');
+                break;
+            case 'scoring':
+                // Show score badge with status color
+                spinner.classList.add('d-none');
+                if (eventData && eventData.status) {
+                    const statusClass = eventData.status === 'complete' ? 'bg-success'
+                        : eventData.status === 'needs_expansion' ? 'bg-warning text-dark'
+                        : 'bg-danger';
+                    badge.className = 'badge ' + statusClass;
+                    badge.textContent = (eventData.score || 0) + '/100';
+                }
+                // Show word count
+                if (scoreEl && eventData && eventData.word_count) {
+                    scoreEl.classList.remove('d-none');
+                    scoreEl.textContent = eventData.word_count.toLocaleString() + ' words';
+                }
+                // Show per-chapter metrics (tokens, attempt, latency)
+                if (metricsEl && eventData) {
+                    var parts = [];
+                    if (eventData.tokens_used) parts.push(eventData.tokens_used.toLocaleString() + ' tok');
+                    if (eventData.attempt_number && eventData.attempt_number > 1) parts.push('attempt ' + eventData.attempt_number);
+                    if (eventData.latency_ms) parts.push(Math.round(eventData.latency_ms / 1000) + 's');
+                    if (parts.length > 0) {
+                        metricsEl.classList.remove('d-none');
+                        metricsEl.textContent = parts.join(' \u00b7 ');
+                    }
+                }
+                break;
+            case 'gate':
+                badge.className = 'badge bg-success';
+                badge.textContent = 'Approved';
+                spinner.classList.add('d-none');
+                break;
+            case 'retry':
+                badge.className = 'badge bg-warning text-dark';
+                badge.textContent = 'Retrying...';
+                spinner.classList.remove('d-none');
+                break;
+            case 'regenerating':
+                badge.className = 'badge bg-info text-dark';
+                badge.textContent = 'Regenerating...';
+                spinner.classList.remove('d-none');
+                break;
+            case 'error':
+                badge.className = 'badge bg-warning text-dark';
+                badge.textContent = 'Warning';
+                spinner.classList.add('d-none');
+                break;
+        }
+    }
+
+    // Polling fallback
+    function pollStatus() {
+        const interval = setInterval(() => {
+            fetch(`/projects/${slug}/api/auto-build/status`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.latest_event) {
+                        handleEvent(data.latest_event);
+                    }
+                    if (data.phase === 'complete' || !data.building) {
+                        clearInterval(interval);
+                        if (data.phase === 'complete') {
+                            window.location.href = `/projects/${slug}/complete`;
+                        }
+                    }
+                })
+                .catch(() => {});
+        }, 2000);
+    }
+
+    // Show fatal error
+    function showError(message) {
+        document.getElementById('error-section').classList.remove('d-none');
+        document.getElementById('error-message').textContent = message;
+    }
+
+    // Auto-start on page load
+    {% if not building %}
+    startBuild();
+    {% else %}
+    connectSSE();
+    {% endif %}
+})();
+</script>
+{% endblock %}
+
+{% block right_pane_title %}Build Progress{% endblock %}
+{% block right_pane_content %}
+<p class="text-muted small">The system is automatically generating all chapters for your build guide.</p>
+<hr>
+<p class="text-muted small"><strong>Build mode:</strong> {{ depth_label|default('Professional') }}</p>
+<p class="text-muted small"><strong>Target:</strong> {{ depth_pages|default('80-120') }} pages</p>
+<hr>
+<p class="text-muted small"><strong>What's happening:</strong></p>
+<ul class="text-muted small">
+    <li>Each chapter is generated with chapter-specific subsections</li>
+    <li>Chapters are scored (0-100) across word count, subsection coverage, technical density, and implementation specificity</li>
+    <li>Failed chapters are automatically retried with feedback</li>
+    <li>Post-build validation regenerates deficient chapters</li>
+    <li>Final quality gates run on the complete document</li>
+    <li>The build guide is assembled and ready for download</li>
+</ul>
+<hr>
+<p class="text-muted small"><strong>Score thresholds:</strong></p>
+<ul class="text-muted small">
+    <li><span class="badge bg-danger" style="font-size:0.7rem;">Incomplete</span> &lt; {{ incomplete_threshold|default(40) }}</li>
+    <li><span class="badge bg-warning text-dark" style="font-size:0.7rem;">Needs Expansion</span> {{ incomplete_threshold|default(40) }}-{{ (complete_threshold|default(75)) - 1 }}</li>
+    <li><span class="badge bg-success" style="font-size:0.7rem;">Complete</span> &ge; {{ complete_threshold|default(75) }}</li>
+</ul>
+<hr>
+<p class="text-muted small"><strong>Build assumptions:</strong></p>
+<ul class="text-muted small">
+    <li>Project built using <strong>VS Code</strong></li>
+    <li>AI assistance via <strong>Claude Code</strong></li>
+    <li>Instructions detailed enough for junior developers</li>
+</ul>
+<hr>
+<div id="right-pane-metrics">
+    <p class="text-muted small"><strong>Build Metrics</strong></p>
+    <table class="table table-sm small text-muted mb-0" style="font-size: 0.8rem;">
+        <tbody>
+            <tr><td>Total Tokens</td><td class="text-end" id="rp-total-tokens">—</td></tr>
+            <tr><td>LLM Calls</td><td class="text-end" id="rp-llm-calls">—</td></tr>
+            <tr><td>Retries</td><td class="text-end" id="rp-retries">—</td></tr>
+            <tr><td>Est. Cost</td><td class="text-end" id="rp-cost">—</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
