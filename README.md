@@ -130,6 +130,16 @@ For a deep technical reference, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
+## Media & Presentations
+
+| Resource | Format | Link |
+|----------|--------|------|
+| Executive Summary | Audio (3 min) | [Download audio overview](docs/audio-overview.m4a) |
+| Video Overview | MP4 | [Watch on Google Drive](https://drive.google.com/drive/folders/1XcVPzKTVXIYf_geJ31bExAPmkRSj4Zvx?usp=drive_link) |
+| Strategic Vision Slide Deck | PDF (10 slides) | [View on Google Drive](https://drive.google.com/drive/folders/1XcVPzKTVXIYf_geJ31bExAPmkRSj4Zvx?usp=drive_link) |
+
+---
+
 ## Core Philosophies
 
 1. **Conversation Before Construction** — Understand before building. No outline is generated until the idea is sharp.
@@ -209,4 +219,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, architecture guide
 
 ## License
 
-This project is proprietary to Colaberry / Novedea. All rights reserved.
+This project is proprietary to Colaberry. All rights reserved.
