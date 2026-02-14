@@ -134,9 +134,9 @@ For a deep technical reference, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 | Resource | Format | Link |
 |----------|--------|------|
-| Executive Summary | Audio (3 min) | [Download audio overview](docs/audio-overview.m4a) |
-| Video Overview | MP4 | [Watch on Google Drive](https://drive.google.com/drive/folders/1XcVPzKTVXIYf_geJ31bExAPmkRSj4Zvx?usp=drive_link) |
-| Strategic Vision Slide Deck | PDF (10 slides) | [View on Google Drive](https://drive.google.com/drive/folders/1XcVPzKTVXIYf_geJ31bExAPmkRSj4Zvx?usp=drive_link) |
+| Executive Summary | Audio (3 min) | [Listen on Google Drive](https://drive.google.com/file/d/1zxIRR8JLzBSBR7SOvnFDJ-rX9k5eenrm/view?usp=sharing) |
+| Video Overview | MP4 | [Watch on Google Drive](https://drive.google.com/file/d/1RkwMgiiJniT0e6W1hr4istGaRIAsKlpJ/view?usp=sharing) |
+| Strategic Vision Slide Deck | PDF (10 slides) | [View on Google Drive](https://drive.google.com/file/d/154mUdgP-9oMYL02scRSyYW2isqsk8CWT/view?usp=sharing) |
 
 ---
 
