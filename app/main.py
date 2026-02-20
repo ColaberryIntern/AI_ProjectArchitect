@@ -13,6 +13,7 @@ from app.routers import (
     chat,
     feature_discovery,
     final_assembly,
+    generate,
     idea_intake,
     outline_approval,
     outline_generation,
@@ -42,6 +43,7 @@ app.include_router(chapter_build.router, prefix="/projects/{slug}")
 app.include_router(quality_gates.router, prefix="/projects/{slug}")
 app.include_router(final_assembly.router, prefix="/projects/{slug}")
 app.include_router(chat.router, prefix="/projects/{slug}")
+app.include_router(generate.router)
 
 
 @app.exception_handler(ValueError)
