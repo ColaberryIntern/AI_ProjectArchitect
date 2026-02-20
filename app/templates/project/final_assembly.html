@@ -44,29 +44,43 @@
         </div>
     </div>
 
-    {% if state.current_phase == 'final_assembly' and all_ready %}
-    <div class="text-center">
-        <form action="/projects/{{ slug }}/final-assembly/assemble" method="POST"
-              onsubmit="return confirm('Assemble the final document?')">
-            <button type="submit" class="btn btn-success btn-lg">Assemble Document</button>
-        </form>
-    </div>
-    {% elif state.document.filename %}
-    <div class="text-center">
+    {# --- Download section: always shown when a document was previously assembled --- #}
+    {% if state.document.filename %}
+    <div class="text-center mb-3">
         <div class="alert alert-success mx-auto d-inline-block" style="max-width: 500px;">
             <strong>Document assembled!</strong><br>
             Filename: {{ state.document.filename }}<br>
+            {% if file_exists %}
             <a href="/projects/{{ slug }}/final-assembly/download" class="btn btn-primary mt-2">Download Build Guide</a>
+            {% else %}
+            <span class="text-danger d-block mt-1 mb-1">
+                <small>File missing from disk. Re-assemble to regenerate.</small>
+            </span>
+            {% endif %}
             {% if state.current_phase == 'complete' %}
             <a href="/projects/{{ slug }}/complete" class="btn btn-outline-secondary mt-2 ms-2">View Summary</a>
             {% endif %}
         </div>
     </div>
-    {% elif not all_ready %}
+    {% endif %}
+
+    {# --- Assemble / Re-assemble button --- #}
+    {% if state.current_phase in ('final_assembly', 'complete') %}
     <div class="text-center">
-        <div class="alert alert-warning mx-auto d-inline-block" style="max-width: 500px;">
-            Not all checks pass. Please resolve issues before assembling.
+        {% if not all_ready %}
+        <div class="alert alert-warning mx-auto d-inline-block mb-3" style="max-width: 500px;">
+            <strong>Warning:</strong> Not all pre-assembly checks pass.
+            You may still assemble, but the document may have quality issues.
         </div>
+        {% endif %}
+
+        {% set is_reassembly = state.document.filename is not none and state.document.filename %}
+        <form action="/projects/{{ slug }}/final-assembly/assemble" method="POST"
+              onsubmit="return confirm('{% if is_reassembly %}Re-assemble the document? This will overwrite the existing file.{% elif not all_ready %}Some checks have not passed. Assemble anyway?{% else %}Assemble the final document?{% endif %}')">
+            <button type="submit" class="btn {% if not all_ready %}btn-warning{% else %}btn-success{% endif %} btn-lg">
+                {% if is_reassembly %}Re-Assemble Document{% else %}Assemble Document{% endif %}
+            </button>
+        </form>
     </div>
     {% endif %}
 </div>

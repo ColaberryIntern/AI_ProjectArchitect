@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
-from app.dependencies import check_phase, get_phase_info, get_project_state
+from app.dependencies import get_phase_info, get_project_state
 from execution.build_depth import get_build_profile
 from execution.document_assembler import assemble_full_document
 from execution.state_manager import (
@@ -31,21 +31,36 @@ async def final_assembly_page(request: Request, slug: str):
         "quality_gates_passed": state["quality"]["final_report"].get("all_passed", False),
         "outline_integrity": verify_outline_integrity(state),
     }
+    output_path = state["document"].get("output_path")
+    file_exists = bool(output_path and Path(output_path).exists())
     return request.app.state.templates.TemplateResponse(
         request, "project/final_assembly.html",
         {
             "state": state, "slug": slug, "phase_info": phase_info,
             "checks": checks, "all_ready": all(checks.values()),
-            "error": error,
+            "error": error, "file_exists": file_exists,
         },
     )
 
 
 @router.post("/final-assembly/assemble")
 async def assemble_document(request: Request, slug: str):
-    """Run the full document assembly pipeline."""
+    """Run the full document assembly pipeline.
+
+    Accepts assembly from both ``final_assembly`` and ``complete`` phases.
+    The latter enables re-assembly when the output file has been deleted.
+    """
     state = get_project_state(slug)
-    check_phase(state, "final_assembly")
+
+    allowed_phases = ("final_assembly", "complete")
+    if state["current_phase"] not in allowed_phases:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Project is in phase '{state['current_phase']}', "
+                f"expected one of {allowed_phases}"
+            ),
+        )
 
     chapter_paths = []
     chapter_titles = []
@@ -67,7 +82,8 @@ async def assemble_document(request: Request, slug: str):
     )
 
     record_document_assembly(state, result["filename"], result["output_path"])
-    advance_phase(state, "complete")
+    if state["current_phase"] == "final_assembly":
+        advance_phase(state, "complete")
     save_state(state, slug)
     return RedirectResponse(
         url=f"/projects/{slug}/complete", status_code=303

@@ -1,5 +1,7 @@
 """Tests for final assembly and complete routes."""
 
+from pathlib import Path
+
 import pytest
 from execution.state_manager import (
     add_feature,
@@ -80,6 +82,44 @@ class TestFinalAssemblyPage:
         assert "Final Assembly" in response.text
         assert "Pre-Assembly Checklist" in response.text
 
+    def test_shows_assemble_button_when_checks_fail(self, client, assembly_project):
+        """Button should be visible with a warning even when checks fail."""
+        state = load_state(assembly_project)
+        state["quality"]["final_report"]["all_passed"] = False
+        save_state(state, assembly_project)
+
+        response = client.get(f"/projects/{assembly_project}/final-assembly")
+        assert response.status_code == 200
+        assert "Assemble Document" in response.text
+        assert "btn-warning" in response.text
+        assert "Not all pre-assembly checks pass" in response.text
+
+    def test_shows_download_and_reassemble_after_assembly(self, client, assembly_project):
+        """After assembly, page should show both download link and re-assemble button."""
+        client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        response = client.get(f"/projects/{assembly_project}/final-assembly")
+        assert response.status_code == 200
+        assert "Download Build Guide" in response.text
+        assert "Re-Assemble Document" in response.text
+
+    def test_shows_file_missing_message(self, client, assembly_project):
+        """When assembled file is deleted, show file-missing message and re-assemble."""
+        client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        state = load_state(assembly_project)
+        Path(state["document"]["output_path"]).unlink()
+
+        response = client.get(f"/projects/{assembly_project}/final-assembly")
+        assert response.status_code == 200
+        assert "File missing from disk" in response.text
+        assert "Re-Assemble Document" in response.text
+        assert "Download Build Guide" not in response.text
+
 
 class TestAssembleDocument:
     def test_assembles_and_completes(self, client, assembly_project):
@@ -92,6 +132,65 @@ class TestAssembleDocument:
         state = load_state(assembly_project)
         assert state["current_phase"] == "complete"
         assert state["document"]["filename"] is not None
+
+    def test_force_assemble_with_failed_checks(self, client, assembly_project):
+        """Assembly should succeed even when pre-assembly checks fail."""
+        state = load_state(assembly_project)
+        state["quality"]["final_report"]["all_passed"] = False
+        save_state(state, assembly_project)
+
+        response = client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert "complete" in response.headers["location"]
+
+    def test_reassemble_from_complete_phase(self, client, assembly_project):
+        """Should allow re-assembly when already in complete phase."""
+        client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        state = load_state(assembly_project)
+        assert state["current_phase"] == "complete"
+        first_assembled_at = state["document"]["assembled_at"]
+
+        response = client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        state = load_state(assembly_project)
+        assert state["current_phase"] == "complete"
+        assert state["document"]["assembled_at"] != first_assembled_at
+
+    def test_reassemble_after_file_deletion(self, client, assembly_project):
+        """Should re-assemble successfully after output file is deleted."""
+        client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        state = load_state(assembly_project)
+        output_path = state["document"]["output_path"]
+        Path(output_path).unlink()
+        assert not Path(output_path).exists()
+
+        response = client.post(
+            f"/projects/{assembly_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        state = load_state(assembly_project)
+        assert Path(state["document"]["output_path"]).exists()
+
+    def test_assemble_rejects_wrong_phase(self, client, created_project):
+        """Assembly from a non-allowed phase should return 409."""
+        response = client.post(
+            f"/projects/{created_project}/final-assembly/assemble",
+            follow_redirects=False,
+        )
+        assert response.status_code == 409
 
 
 class TestCompletePage:
