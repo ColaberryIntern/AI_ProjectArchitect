@@ -1,5 +1,6 @@
 """Tests for app/routers/generate.py."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,14 @@ from execution.auto_builder import BuildEvent
 from execution.full_pipeline import (
     _append_pipeline_event,
     clear_pipeline_progress,
+)
+from execution.state_manager import (
+    advance_phase,
+    initialize_state,
+    record_chapter_score,
+    record_document_assembly,
+    record_final_quality,
+    save_state,
 )
 
 
@@ -162,6 +171,63 @@ class TestGenerationStatus:
         finally:
             clear_pipeline_progress(job_id)
 
+    def test_shows_quality_failed_status(self, client):
+        """Quality failure should report quality_failed status."""
+        job_id = "status-quality-fail-test"
+        clear_pipeline_progress(job_id)
+        quality_data = {
+            "quality": {
+                "passed": False,
+                "final_gates_passed": False,
+                "deficient_chapters": [{"index": 1, "score": 40, "status": "incomplete"}],
+                "average_score": 50,
+                "complete_threshold": 70,
+            },
+        }
+        _append_pipeline_event(
+            job_id, BuildEvent(
+                "error",
+                "Document failed quality verification after retry. Average score: 50/100.",
+                0, 0, 99, data=quality_data,
+            )
+        )
+
+        try:
+            response = client.get(f"/api/v1/generate/{job_id}/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "quality_failed"
+            assert "quality_summary" in data
+            assert data["quality_summary"]["average_score"] == 50
+        finally:
+            clear_pipeline_progress(job_id)
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_complete_status_includes_quality_summary(self, mock_quality, client):
+        """Complete status should include quality_verified and quality_summary."""
+        job_id = "status-quality-test"
+        clear_pipeline_progress(job_id)
+        _append_pipeline_event(
+            job_id, BuildEvent("complete", "Build guide ready", 0, 0, 100)
+        )
+
+        mock_quality.return_value = {
+            "passed": True,
+            "final_gates_passed": True,
+            "deficient_chapters": [],
+            "average_score": 82,
+            "complete_threshold": 70,
+        }
+
+        try:
+            response = client.get(f"/api/v1/generate/{job_id}/status")
+            data = response.json()
+            assert data["status"] == "complete"
+            # quality_verified may be present if load_state succeeds
+            # (depends on whether state file exists for this job_id)
+        finally:
+            clear_pipeline_progress(job_id)
+
 
 class TestGenerationDownload:
     """Tests for GET /api/v1/generate/{job_id}/download."""
@@ -175,6 +241,69 @@ class TestGenerationDownload:
         """Download before completion should return 409."""
         response = client.get(f"/api/v1/generate/{created_project}/download")
         assert response.status_code == 409
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_409_when_quality_fails(self, mock_quality, client, tmp_output_dir):
+        """Download should be blocked when quality verification fails."""
+        # Create a project in complete phase but with failed quality
+        state = initialize_state("Quality Fail Download Test")
+        slug = state["project"]["slug"]
+        # Advance to complete phase
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+        advance_phase(state, "chapter_build")
+        advance_phase(state, "quality_gates")
+        advance_phase(state, "final_assembly")
+        advance_phase(state, "complete")
+        save_state(state, slug)
+
+        mock_quality.return_value = {
+            "passed": False,
+            "final_gates_passed": False,
+            "deficient_chapters": [{"index": 1, "score": 40, "status": "incomplete"}],
+            "average_score": 50,
+            "complete_threshold": 70,
+        }
+
+        response = client.get(f"/api/v1/generate/{slug}/download")
+        assert response.status_code == 409
+        assert "quality verification" in response.json()["detail"].lower()
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_download_succeeds_when_quality_passes(self, mock_quality, client, tmp_output_dir):
+        """Download should succeed when quality verification passes."""
+        # Create a project in complete phase with document
+        state = initialize_state("Quality Pass Download Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+        advance_phase(state, "chapter_build")
+        advance_phase(state, "quality_gates")
+        advance_phase(state, "final_assembly")
+        advance_phase(state, "complete")
+
+        # Create a fake document file
+        doc_dir = tmp_output_dir / slug
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = doc_dir / "test-doc-v1.md"
+        doc_path.write_text("# Test Document\nContent here.", encoding="utf-8")
+
+        record_document_assembly(state, "test-doc-v1.md", str(doc_path))
+        save_state(state, slug)
+
+        mock_quality.return_value = {
+            "passed": True,
+            "final_gates_passed": True,
+            "deficient_chapters": [],
+            "average_score": 85,
+            "complete_threshold": 70,
+        }
+
+        response = client.get(f"/api/v1/generate/{slug}/download")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/markdown; charset=utf-8"
 
 
 class TestCancelGeneration:

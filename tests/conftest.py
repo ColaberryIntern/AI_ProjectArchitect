@@ -23,10 +23,12 @@ def tmp_output_dir(monkeypatch, tmp_path):
     import config.settings as settings
 
     monkeypatch.setattr(settings, "OUTPUT_DIR", tmp_path)
-    # Also patch it in state_manager which imports it at module level
+    # Also patch it in modules that import OUTPUT_DIR at module level
     import execution.state_manager as sm
+    import execution.full_pipeline as fp
 
     monkeypatch.setattr(sm, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(fp, "OUTPUT_DIR", tmp_path)
     return tmp_path
 
 

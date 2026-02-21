@@ -18,13 +18,19 @@ Phases:
 import logging
 import re
 import threading
+import time
+from pathlib import Path
 from typing import Generator
 
+from config.settings import OUTPUT_DIR
 from execution.auto_builder import BuildEvent, run_auto_build
-from execution.build_depth import resolve_depth_mode
+from execution.build_depth import get_depth_config, get_scoring_thresholds, resolve_depth_mode
+from execution.chapter_writer import generate_chapter_enterprise_with_retry_and_usage
+from execution.document_assembler import assemble_full_document
 from execution.feature_catalog import generate_catalog, generate_catalog_from_profile
 from execution.outline_generator import generate_outline_from_profile
 from execution.profile_generator import generate_profile
+from execution.quality_gate_runner import run_final_gates, score_chapter
 from execution.state_manager import (
     PROFILE_REQUIRED_FIELDS,
     add_feature,
@@ -36,6 +42,9 @@ from execution.state_manager import (
     is_profile_complete,
     load_state,
     lock_outline,
+    record_chapter_score,
+    record_document_assembly,
+    record_final_quality,
     record_idea,
     save_state,
     set_build_depth_mode,
@@ -43,6 +52,7 @@ from execution.state_manager import (
     set_profile_derived,
     set_profile_field,
 )
+from execution.template_renderer import render_chapter_enterprise
 
 logger = logging.getLogger(__name__)
 
@@ -234,15 +244,239 @@ def run_full_pipeline(
         # ── Phase 5-8: Delegate to auto_builder ─────────────────
         yield BuildEvent("phase", "Starting chapter auto-build...", 0, 0, 28)
 
+        # Intercept auto_build events — hold the "complete" event for verification
+        last_complete_event = None
         for event in run_auto_build(state, slug):
             # Remap auto-build 0-100% → pipeline 28-100%
             adjusted_percent = 28 + int(event.percent * 0.72)
             event.percent = min(adjusted_percent, 100)
-            yield event
+            if event.event_type == "complete":
+                last_complete_event = event  # Hold — verify before yielding
+            else:
+                yield event
+
+        # ── Post-build verification + retry ───────────────────
+        if last_complete_event:
+            yield from _verify_and_retry(slug, resolved_depth, last_complete_event)
+        else:
+            yield BuildEvent("error", "Auto-build did not produce a completion event", 0, 0, 0)
 
     except Exception as e:
         logger.exception("Full pipeline failed: %s", e)
         yield BuildEvent("error", f"Pipeline failed: {e}", 0, 0, 0)
+
+
+# ---------------------------------------------------------------------------
+# Post-build verification + retry
+# ---------------------------------------------------------------------------
+
+
+def _check_document_quality(state: dict, depth_mode: str) -> dict:
+    """Check whether the document meets quality thresholds.
+
+    Returns:
+        Dict with 'passed', 'final_gates_passed', 'deficient_chapters',
+        'average_score', and 'details'.
+    """
+    thresholds = get_scoring_thresholds(depth_mode)
+    complete_threshold = thresholds["complete_threshold"]
+
+    # Check final quality gates
+    final_report = state.get("quality", {}).get("final_report", {})
+    final_gates_passed = final_report.get("all_passed", False)
+
+    # Check individual chapter scores
+    deficient = []
+    scores = []
+    for ch in state.get("chapters", []):
+        ch_score = ch.get("chapter_score", {})
+        total = ch_score.get("total_score", 0)
+        scores.append(total)
+        if total < complete_threshold:
+            deficient.append({
+                "index": ch["index"],
+                "score": total,
+                "status": ch_score.get("status", "unknown"),
+            })
+
+    avg_score = sum(scores) // max(len(scores), 1) if scores else 0
+    passed = final_gates_passed and len(deficient) == 0
+
+    return {
+        "passed": passed,
+        "final_gates_passed": final_gates_passed,
+        "deficient_chapters": deficient,
+        "average_score": avg_score,
+        "complete_threshold": complete_threshold,
+    }
+
+
+def _verify_and_retry(
+    slug: str,
+    depth_mode: str,
+    complete_event: BuildEvent,
+) -> Generator[BuildEvent, None, None]:
+    """Verify document quality and retry deficient chapters if needed.
+
+    Intercepts the auto_builder "complete" event. If quality verification
+    passes, yields the complete event. Otherwise, retries deficient chapters
+    once and re-verifies.
+
+    Args:
+        slug: Project slug.
+        depth_mode: Resolved depth mode.
+        complete_event: The "complete" event from auto_builder.
+
+    Yields:
+        BuildEvent for verification progress, ending with "complete" or "error".
+    """
+    yield BuildEvent("verification", "Verifying document quality...", 0, 0, 96)
+
+    state = load_state(slug)
+    quality = _check_document_quality(state, depth_mode)
+
+    if quality["passed"]:
+        logger.info("Document quality verified for %s (avg score: %d)", slug, quality["average_score"])
+        yield BuildEvent("verification", "Quality verification passed", 0, 0, 98,
+                         data={"quality": quality})
+        yield complete_event
+        return
+
+    # Quality failed — attempt retry pass on deficient chapters
+    deficient = quality["deficient_chapters"]
+    logger.warning(
+        "Document quality verification failed for %s: %d deficient chapters, final_gates=%s",
+        slug, len(deficient), quality["final_gates_passed"],
+    )
+
+    yield BuildEvent(
+        "verification",
+        f"Quality below threshold — retrying {len(deficient)} deficient chapter(s)...",
+        0, 0, 96,
+        data={"quality": quality},
+    )
+
+    # Retry each deficient chapter
+    profile = get_project_profile(state)
+    features = state.get("features", {}).get("core", [])
+    sections = state.get("outline", {}).get("sections", [])
+    section_by_index = {s["index"]: s for s in sections}
+    N = len(state["chapters"])
+
+    # Build previous summaries for context (from existing chapter files)
+    prev_summaries = []
+    for ch in state["chapters"]:
+        content_path = ch.get("content_path")
+        if content_path and Path(content_path).exists():
+            text = Path(content_path).read_text(encoding="utf-8")
+            prev_summaries.append(text[:300])
+        else:
+            prev_summaries.append("")
+
+    for deficient_ch in deficient:
+        chapter_idx = deficient_ch["index"]
+        section = section_by_index.get(chapter_idx, {})
+        title = section.get("title", f"Chapter {chapter_idx}")
+        summary = section.get("summary", "")
+
+        # Find the chapter's current score for retry context
+        ch_obj = next((c for c in state["chapters"] if c["index"] == chapter_idx), None)
+        ch_score = ch_obj.get("chapter_score", {}) if ch_obj else {}
+
+        yield BuildEvent(
+            "regenerating",
+            f"Verification retry: chapter {chapter_idx} ({title}) — score {deficient_ch['score']}/{quality['complete_threshold']}",
+            chapter_idx, N, 97,
+        )
+
+        t0 = time.monotonic()
+        content_dict, usage = generate_chapter_enterprise_with_retry_and_usage(
+            profile, features, title, summary,
+            chapter_idx, N, prev_summaries, depth_mode,
+            score_result=ch_score,
+        )
+        rendered = render_chapter_enterprise(chapter_idx, title, content_dict["content"])
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        # Write to disk
+        chapter_path = OUTPUT_DIR / slug / "chapters" / f"ch{chapter_idx}.md"
+        chapter_path.parent.mkdir(parents=True, exist_ok=True)
+        chapter_path.write_text(rendered, encoding="utf-8")
+
+        # Re-score
+        new_score = score_chapter(rendered, title, depth_mode)
+        record_chapter_score(state, chapter_idx, new_score)
+
+        yield BuildEvent(
+            "scoring",
+            f"Verification retry: chapter {chapter_idx} now {new_score['total_score']}/100 ({new_score['status']})",
+            chapter_idx, N, 97,
+            data={
+                "score": new_score["total_score"],
+                "word_count": new_score["word_count"],
+                "status": new_score["status"],
+                "latency_ms": latency_ms,
+            },
+        )
+
+    save_state(state, slug)
+
+    # Re-assemble the document with updated chapters
+    yield BuildEvent("phase", "Re-assembling document after verification retry...", 0, N, 98)
+
+    chapter_paths = []
+    chapter_titles = []
+    for ch in state["chapters"]:
+        chapter_paths.append(ch["content_path"])
+        sec = section_by_index.get(ch["index"], {})
+        chapter_titles.append(sec.get("title", f"Chapter {ch['index']}"))
+
+    result = assemble_full_document(
+        chapter_paths=chapter_paths,
+        chapter_titles=chapter_titles,
+        project_name=state["project"]["name"],
+        project_slug=slug,
+        version=state["document"]["version"],
+    )
+    record_document_assembly(state, result["filename"], result["output_path"])
+
+    # Re-run final quality gates
+    all_text = ""
+    for ch in state["chapters"]:
+        content_path = ch.get("content_path")
+        if content_path and Path(content_path).exists():
+            all_text += Path(content_path).read_text(encoding="utf-8") + "\n\n"
+
+    final_results = run_final_gates(all_text)
+    record_final_quality(state, final_results)
+    save_state(state, slug)
+
+    # Re-verify
+    quality_after = _check_document_quality(state, depth_mode)
+
+    if quality_after["passed"]:
+        logger.info("Document quality verified after retry for %s (avg score: %d)",
+                     slug, quality_after["average_score"])
+        yield BuildEvent("verification", "Quality verification passed after retry", 0, 0, 99,
+                         data={"quality": quality_after})
+        # Update complete event data with retry info
+        complete_event.data["verification_retried"] = True
+        complete_event.data["average_score"] = quality_after["average_score"]
+        yield complete_event
+    else:
+        # Still failing after retry — report error with details
+        still_deficient = quality_after["deficient_chapters"]
+        ch_list = ", ".join(f"ch{d['index']}({d['score']})" for d in still_deficient)
+        msg = (
+            f"Document failed quality verification after retry. "
+            f"Average score: {quality_after['average_score']}/100. "
+            f"Final gates: {'passed' if quality_after['final_gates_passed'] else 'failed'}. "
+        )
+        if still_deficient:
+            msg += f"Deficient chapters: {ch_list}."
+
+        logger.error("Quality verification failed after retry for %s: %s", slug, msg)
+        yield BuildEvent("error", msg, 0, 0, 99, data={"quality": quality_after})
 
 
 # ---------------------------------------------------------------------------

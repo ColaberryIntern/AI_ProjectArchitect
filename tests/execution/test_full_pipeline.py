@@ -8,12 +8,22 @@ import pytest
 from execution.auto_builder import BuildEvent
 from execution.full_pipeline import (
     _append_pipeline_event,
+    _check_document_quality,
     _slugify,
     clear_pipeline_progress,
     get_pipeline_progress,
     is_pipeline_running,
     run_full_pipeline,
 )
+
+# Quality check result that always passes — used by tests that only test pipeline flow
+_QUALITY_PASSED = {
+    "passed": True,
+    "final_gates_passed": True,
+    "deficient_chapters": [],
+    "average_score": 85,
+    "complete_threshold": 70,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -157,13 +167,14 @@ class TestSlugify:
 class TestRunFullPipeline:
     """Tests for run_full_pipeline() generator."""
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_complete_pipeline_yields_events(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Full pipeline should yield phase events and end with complete."""
         mock_profile.return_value = _fake_profile()
@@ -180,13 +191,14 @@ class TestRunFullPipeline:
         assert "phase" in event_types
         assert events[-1].event_type == "complete"
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_profile_is_populated_from_llm(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Profile should be generated from the raw idea via LLM."""
         mock_profile.return_value = _fake_profile()
@@ -200,13 +212,14 @@ class TestRunFullPipeline:
 
         mock_profile.assert_called_once_with("Build an AI marketing platform")
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_features_auto_selected_from_catalog(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """All features from catalog should be auto-selected."""
         mock_profile.return_value = _fake_profile()
@@ -226,13 +239,14 @@ class TestRunFullPipeline:
         assert len(feature_events) == 1
         assert "3 features selected" in feature_events[0].message
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_outline_generated_from_profile(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Outline should be generated using profile and features."""
         mock_profile.return_value = _fake_profile()
@@ -249,13 +263,14 @@ class TestRunFullPipeline:
         call_kwargs = mock_outline.call_args
         assert call_kwargs.kwargs.get("depth_mode") == "professional"
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_depth_mode_passed_through(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Custom depth mode should be passed to outline and build."""
         mock_profile.return_value = _fake_profile()
@@ -276,13 +291,14 @@ class TestRunFullPipeline:
         assert events[-1].event_type == "error"
         assert "depth mode" in events[-1].message.lower() or "Invalid" in events[-1].message
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_percent_increases_monotonically(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Progress percentage should never decrease."""
         mock_profile.return_value = _fake_profile()
@@ -304,13 +320,14 @@ class TestRunFullPipeline:
                 f"at event {i}: {events[i].message}"
             )
 
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
     def test_auto_build_events_are_remapped(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
         """Auto-build event percentages should be remapped to 28-100 range."""
         mock_profile.return_value = _fake_profile()
@@ -339,3 +356,222 @@ class TestRunFullPipeline:
         events = list(run_full_pipeline("Test Error", "Build something"))
         assert events[-1].event_type == "error"
         assert "LLM exploded" in events[-1].message
+
+
+# ---------------------------------------------------------------------------
+# Verification + retry tests
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationAndRetry:
+    """Tests for the post-build quality verification and retry logic."""
+
+    @patch("execution.full_pipeline._check_document_quality", return_value=_QUALITY_PASSED)
+    @patch("execution.full_pipeline.run_auto_build")
+    @patch("execution.full_pipeline.generate_outline_from_profile")
+    @patch("execution.full_pipeline.generate_catalog_from_profile")
+    @patch("execution.full_pipeline.generate_profile")
+    def test_verification_passes_directly(
+        self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
+        mock_quality, tmp_output_dir,
+    ):
+        """When quality passes on first check, pipeline yields complete without retry."""
+        mock_profile.return_value = _fake_profile()
+        mock_catalog.return_value = _fake_catalog()
+        mock_outline.return_value = _fake_sections()
+        mock_auto_build.return_value = iter([
+            BuildEvent("complete", "Done", 0, 3, 100),
+        ])
+
+        events = list(run_full_pipeline("Test Verify Pass", "Build an AI tool"))
+
+        assert events[-1].event_type == "complete"
+        # Should have a verification event
+        verification_events = [e for e in events if e.event_type == "verification"]
+        assert len(verification_events) >= 1
+        # Should NOT have regenerating events (no retry needed)
+        regen_events = [e for e in events if e.event_type == "regenerating"]
+        assert len(regen_events) == 0
+
+    @patch("execution.full_pipeline.run_final_gates")
+    @patch("execution.full_pipeline.assemble_full_document")
+    @patch("execution.full_pipeline.render_chapter_enterprise")
+    @patch("execution.full_pipeline.generate_chapter_enterprise_with_retry_and_usage")
+    @patch("execution.full_pipeline._check_document_quality")
+    @patch("execution.full_pipeline.run_auto_build")
+    @patch("execution.full_pipeline.generate_outline_from_profile")
+    @patch("execution.full_pipeline.generate_catalog_from_profile")
+    @patch("execution.full_pipeline.generate_profile")
+    def test_verification_triggers_retry_on_failure(
+        self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
+        mock_quality, mock_chapter_gen, mock_render, mock_assemble,
+        mock_final_gates, tmp_output_dir,
+    ):
+        """When quality check fails, pipeline retries deficient chapters."""
+        mock_profile.return_value = _fake_profile()
+        mock_catalog.return_value = _fake_catalog()
+        mock_outline.return_value = _fake_sections()
+        mock_auto_build.return_value = iter([
+            BuildEvent("complete", "Done", 0, 3, 100),
+        ])
+
+        # First check fails with one deficient chapter, second check passes
+        quality_fail = {
+            "passed": False,
+            "final_gates_passed": True,
+            "deficient_chapters": [{"index": 2, "score": 55, "status": "needs_expansion"}],
+            "average_score": 65,
+            "complete_threshold": 70,
+        }
+        quality_pass = {
+            "passed": True,
+            "final_gates_passed": True,
+            "deficient_chapters": [],
+            "average_score": 80,
+            "complete_threshold": 70,
+        }
+        mock_quality.side_effect = [quality_fail, quality_pass]
+
+        # Mock chapter regeneration
+        mock_chapter_gen.return_value = ({"content": "Improved chapter content"}, {})
+        mock_render.return_value = "# Chapter 2\nImproved content"
+        mock_assemble.return_value = {
+            "filename": "test-doc-v1.md",
+            "output_path": str(tmp_output_dir / "test-verify-retry" / "test-doc-v1.md"),
+        }
+        mock_final_gates.return_value = {"all_passed": True}
+
+        events = list(run_full_pipeline("Test Verify Retry", "Build an AI tool"))
+
+        assert events[-1].event_type == "complete"
+        # Should have regenerating events (retry happened)
+        regen_events = [e for e in events if e.event_type == "regenerating"]
+        assert len(regen_events) >= 1
+        # Chapter gen should have been called for the deficient chapter
+        mock_chapter_gen.assert_called_once()
+
+    @patch("execution.full_pipeline.run_final_gates")
+    @patch("execution.full_pipeline.assemble_full_document")
+    @patch("execution.full_pipeline.render_chapter_enterprise")
+    @patch("execution.full_pipeline.generate_chapter_enterprise_with_retry_and_usage")
+    @patch("execution.full_pipeline._check_document_quality")
+    @patch("execution.full_pipeline.run_auto_build")
+    @patch("execution.full_pipeline.generate_outline_from_profile")
+    @patch("execution.full_pipeline.generate_catalog_from_profile")
+    @patch("execution.full_pipeline.generate_profile")
+    def test_verification_yields_error_when_retry_also_fails(
+        self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
+        mock_quality, mock_chapter_gen, mock_render, mock_assemble,
+        mock_final_gates, tmp_output_dir,
+    ):
+        """When quality fails even after retry, pipeline yields error."""
+        mock_profile.return_value = _fake_profile()
+        mock_catalog.return_value = _fake_catalog()
+        mock_outline.return_value = _fake_sections()
+        mock_auto_build.return_value = iter([
+            BuildEvent("complete", "Done", 0, 3, 100),
+        ])
+
+        # Both checks fail
+        quality_fail = {
+            "passed": False,
+            "final_gates_passed": False,
+            "deficient_chapters": [{"index": 1, "score": 40, "status": "incomplete"}],
+            "average_score": 50,
+            "complete_threshold": 70,
+        }
+        mock_quality.side_effect = [quality_fail, quality_fail]
+
+        mock_chapter_gen.return_value = ({"content": "Still bad content"}, {})
+        mock_render.return_value = "# Chapter 1\nStill bad"
+        mock_assemble.return_value = {
+            "filename": "test-doc-v1.md",
+            "output_path": str(tmp_output_dir / "test-verify-fail" / "test-doc-v1.md"),
+        }
+        mock_final_gates.return_value = {"all_passed": False}
+
+        events = list(run_full_pipeline("Test Verify Fail", "Build an AI tool"))
+
+        assert events[-1].event_type == "error"
+        assert "quality verification" in events[-1].message.lower()
+
+    @patch("execution.full_pipeline.run_auto_build")
+    @patch("execution.full_pipeline.generate_outline_from_profile")
+    @patch("execution.full_pipeline.generate_catalog_from_profile")
+    @patch("execution.full_pipeline.generate_profile")
+    def test_auto_build_without_complete_event_yields_error(
+        self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
+        tmp_output_dir,
+    ):
+        """If auto_build produces no complete event, pipeline yields error."""
+        mock_profile.return_value = _fake_profile()
+        mock_catalog.return_value = _fake_catalog()
+        mock_outline.return_value = _fake_sections()
+        # auto_build only yields non-complete events
+        mock_auto_build.return_value = iter([
+            BuildEvent("phase", "Starting...", 0, 3, 0),
+            BuildEvent("error", "Something went wrong", 0, 3, 50),
+        ])
+
+        events = list(run_full_pipeline("Test No Complete", "Build an AI tool"))
+
+        assert events[-1].event_type == "error"
+        assert "completion event" in events[-1].message.lower()
+
+
+# ---------------------------------------------------------------------------
+# _check_document_quality tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckDocumentQuality:
+    """Tests for the _check_document_quality function."""
+
+    def test_passes_when_all_gates_and_scores_pass(self):
+        state = {
+            "quality": {
+                "final_report": {"all_passed": True},
+            },
+            "chapters": [
+                {"index": 1, "chapter_score": {"total_score": 80, "status": "complete"}},
+                {"index": 2, "chapter_score": {"total_score": 75, "status": "complete"}},
+            ],
+        }
+        result = _check_document_quality(state, "professional")
+        assert result["passed"] is True
+        assert result["deficient_chapters"] == []
+        assert result["average_score"] == 77
+
+    def test_fails_when_final_gates_fail(self):
+        state = {
+            "quality": {
+                "final_report": {"all_passed": False},
+            },
+            "chapters": [
+                {"index": 1, "chapter_score": {"total_score": 80, "status": "complete"}},
+            ],
+        }
+        result = _check_document_quality(state, "professional")
+        assert result["passed"] is False
+        assert result["final_gates_passed"] is False
+
+    def test_fails_when_chapter_below_threshold(self):
+        state = {
+            "quality": {
+                "final_report": {"all_passed": True},
+            },
+            "chapters": [
+                {"index": 1, "chapter_score": {"total_score": 80, "status": "complete"}},
+                {"index": 2, "chapter_score": {"total_score": 55, "status": "needs_expansion"}},
+            ],
+        }
+        result = _check_document_quality(state, "professional")
+        assert result["passed"] is False
+        assert len(result["deficient_chapters"]) == 1
+        assert result["deficient_chapters"][0]["index"] == 2
+
+    def test_handles_missing_quality_data(self):
+        state = {"quality": {}, "chapters": []}
+        result = _check_document_quality(state, "professional")
+        assert result["passed"] is False
+        assert result["final_gates_passed"] is False

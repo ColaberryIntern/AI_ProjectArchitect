@@ -18,14 +18,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from execution.build_depth import resolve_depth_mode
+from execution.build_depth import get_scoring_thresholds, resolve_depth_mode
 from execution.full_pipeline import (
+    _check_document_quality,
     clear_pipeline_progress,
     get_pipeline_progress,
     is_pipeline_running,
     run_full_pipeline_sync,
 )
-from execution.state_manager import load_state
+from execution.state_manager import get_build_depth_mode, load_state
 
 router = APIRouter(prefix="/api/v1", tags=["generate"])
 
@@ -146,7 +147,11 @@ async def generation_status(job_id: str):
     if latest.event_type == "complete":
         status = "complete"
     elif latest.event_type == "error":
-        status = "error"
+        # Distinguish quality failures from generic pipeline errors
+        if "quality verification" in latest.message.lower():
+            status = "quality_failed"
+        else:
+            status = "error"
     else:
         status = "running"
 
@@ -159,7 +164,7 @@ async def generation_status(job_id: str):
         "event_count": len(events),
     }
 
-    # Include download URL and document metadata when complete
+    # Include quality summary and download URL when complete
     if status == "complete":
         response["download_url"] = f"/api/v1/generate/{job_id}/download"
         try:
@@ -168,15 +173,37 @@ async def generation_status(job_id: str):
                 "filename": state["document"].get("filename"),
                 "assembled_at": state["document"].get("assembled_at"),
             }
+            depth_mode = get_build_depth_mode(state)
+            quality = _check_document_quality(state, depth_mode)
+            response["quality_verified"] = quality["passed"]
+            response["quality_summary"] = {
+                "final_gates_passed": quality["final_gates_passed"],
+                "chapters_below_threshold": quality["deficient_chapters"],
+                "average_score": quality["average_score"],
+                "complete_threshold": quality["complete_threshold"],
+            }
         except FileNotFoundError:
             pass
+
+    # Include quality details on quality_failed so caller knows what went wrong
+    if status == "quality_failed" and latest.data.get("quality"):
+        quality = latest.data["quality"]
+        response["quality_summary"] = {
+            "final_gates_passed": quality.get("final_gates_passed", False),
+            "chapters_below_threshold": quality.get("deficient_chapters", []),
+            "average_score": quality.get("average_score", 0),
+            "complete_threshold": quality.get("complete_threshold", 0),
+        }
 
     return JSONResponse(content=response)
 
 
 @router.get("/generate/{job_id}/download")
 async def download_generated_document(job_id: str):
-    """Download the completed document as a markdown file."""
+    """Download the completed document as a markdown file.
+
+    Only serves the document when quality verification has passed.
+    """
     try:
         state = load_state(job_id)
     except FileNotFoundError:
@@ -190,6 +217,22 @@ async def download_generated_document(job_id: str):
             status_code=409,
             detail=f"Document not yet ready. Current phase: {state['current_phase']}",
         )
+
+    # Quality verification gate — do not serve documents that failed quality checks
+    depth_mode = get_build_depth_mode(state)
+    quality = _check_document_quality(state, depth_mode)
+    if not quality["passed"]:
+        deficient = quality["deficient_chapters"]
+        ch_list = ", ".join(f"ch{d['index']}({d['score']})" for d in deficient)
+        detail = (
+            f"Document generated but did not pass quality verification. "
+            f"Average score: {quality['average_score']}/100 "
+            f"(threshold: {quality['complete_threshold']}). "
+            f"Final gates: {'passed' if quality['final_gates_passed'] else 'failed'}."
+        )
+        if deficient:
+            detail += f" Chapters below threshold: {ch_list}."
+        raise HTTPException(status_code=409, detail=detail)
 
     output_path = state["document"].get("output_path")
     if not output_path:
