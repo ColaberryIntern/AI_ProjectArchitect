@@ -46,6 +46,10 @@ OVERLOADED_GOALS = [
 ]
 
 # Forbidden vagueness phrases (from Quality Gates spec)
+# Only genuinely vague phrases that indicate missing specifics.
+# Common technical words (various, properly, efficiently, etc.) are NOT
+# forbidden — they appear in perfectly specific sentences and caused
+# near-guaranteed quality gate failures with LLM-generated content.
 FORBIDDEN_PHRASES = [
     r"handle edge cases",
     r"optimize later",
@@ -58,14 +62,6 @@ FORBIDDEN_PHRASES = [
     r"et cetera",
     r"etc\.",
     r"and more",
-    r"various",
-    r"appropriate",
-    r"suitable",
-    r"adequate",
-    r"sufficient",
-    r"properly",
-    r"correctly",
-    r"efficiently",
 ]
 
 

@@ -7,10 +7,12 @@ import pytest
 
 from execution.chapter_writer import (
     CHAPTER_SYSTEM_PROMPT,
+    CHAPTER_TEMPERATURE,
     CHAPTER_USER_PROMPT,
     ENTERPRISE_SYSTEM_PROMPT,
     _build_enterprise_prompt,
     _build_prompt,
+    _build_quality_gate_section,
     _convert_legacy_to_markdown,
     _fallback_chapter,
     _fallback_chapter_enterprise,
@@ -354,6 +356,79 @@ class TestBuildPrompt:
         )
         assert "Not specified" in prompt
 
+    def test_includes_quality_gate_requirements(self, sample_profile, sample_features):
+        prompt = _build_prompt(
+            sample_profile, sample_features, "Executive Summary", "Overview",
+            1, 10,
+        )
+        assert "QUALITY GATE REQUIREMENTS" in prompt
+        assert "Anti-Vagueness" in prompt
+        assert "handle edge cases" in prompt
+        assert "Completeness Gate" in prompt
+        assert "Build Readiness Gate" in prompt
+
+
+class TestChapterTemperature:
+    """Tests for CHAPTER_TEMPERATURE constant."""
+
+    def test_temperature_is_low(self):
+        assert CHAPTER_TEMPERATURE == 0.2
+
+    @patch("execution.chapter_writer.is_available", return_value=True)
+    @patch("execution.chapter_writer.chat")
+    def test_generate_chapter_uses_low_temperature(self, mock_chat, mock_avail, sample_profile, sample_features):
+        mock_chat.return_value.content = _make_valid_llm_response()
+        generate_chapter(
+            sample_profile, sample_features, "Executive Summary", "Overview", 1, 10,
+        )
+        call_args = mock_chat.call_args
+        assert call_args[1]["temperature"] == 0.2
+
+    @patch("execution.chapter_writer.is_available", return_value=True)
+    @patch("execution.chapter_writer.chat")
+    def test_generate_chapter_enterprise_uses_low_temperature(self, mock_chat, mock_avail, sample_profile, sample_features):
+        mock_chat.return_value.content = _make_valid_enterprise_response()
+        generate_chapter_enterprise(
+            sample_profile, sample_features, "Executive Summary", "Overview", 1, 10,
+        )
+        call_args = mock_chat.call_args
+        assert call_args[1]["temperature"] == 0.2
+
+
+class TestQualityGateSection:
+    """Tests for _build_quality_gate_section()."""
+
+    def test_includes_completeness_gate(self):
+        section = _build_quality_gate_section()
+        assert "Completeness Gate" in section
+        assert "purpose" in section
+        assert "design intent" in section
+
+    def test_includes_anti_vagueness_gate(self):
+        section = _build_quality_gate_section()
+        assert "Anti-Vagueness" in section
+        assert "handle edge cases" in section
+        assert "use best practices" in section
+
+    def test_includes_build_readiness_gate(self):
+        section = _build_quality_gate_section()
+        assert "Build Readiness" in section
+        assert "first" in section
+        assert "then" in section
+
+    def test_includes_clarity_gate(self):
+        section = _build_quality_gate_section()
+        assert "Clarity Gate" in section
+        assert "this chapter" in section
+
+    def test_dynamically_reads_forbidden_phrases(self):
+        from execution.ambiguity_detector import FORBIDDEN_PHRASES
+        section = _build_quality_gate_section()
+        for pattern in FORBIDDEN_PHRASES:
+            # Check that each forbidden phrase appears in the section
+            clean = pattern.replace(r"\.", ".").replace(r"\b", "")
+            assert clean in section, f"Missing forbidden phrase: {clean}"
+
 
 # ---------------------------------------------------------------------------
 # Enterprise Chapter Generation
@@ -557,6 +632,15 @@ class TestBuildEnterprisePrompt:
     def test_vs_code_claude_code_in_enterprise_system_prompt(self):
         assert "VS Code" in ENTERPRISE_SYSTEM_PROMPT
         assert "Claude Code" in ENTERPRISE_SYSTEM_PROMPT
+
+    def test_includes_quality_gate_requirements(self, sample_profile, sample_features):
+        prompt = _build_enterprise_prompt(
+            sample_profile, sample_features, "Executive Summary", "Overview",
+            1, 10,
+        )
+        assert "QUALITY GATE REQUIREMENTS" in prompt
+        assert "Anti-Vagueness" in prompt
+        assert "handle edge cases" in prompt
 
 
 class TestParseEnterpriseResponse:

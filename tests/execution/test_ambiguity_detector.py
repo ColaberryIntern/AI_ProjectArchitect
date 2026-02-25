@@ -106,6 +106,24 @@ class TestDetectForbiddenPhrases:
         )
         assert len(findings) == 0
 
+    def test_allows_various_in_specific_context(self):
+        findings = detect_forbidden_phrases(
+            "The system supports various authentication providers: OAuth2, SAML, and LDAP."
+        )
+        assert len(findings) == 0
+
+    def test_allows_efficiently_in_specific_context(self):
+        findings = detect_forbidden_phrases(
+            "Configure the database to efficiently process batch queries using connection pooling."
+        )
+        assert len(findings) == 0
+
+    def test_allows_appropriate_in_specific_context(self):
+        findings = detect_forbidden_phrases(
+            "Return the appropriate HTTP status code: 201 for created, 400 for bad input."
+        )
+        assert len(findings) == 0
+
 
 class TestDetectMissingCriteria:
     def test_criteria_present(self):

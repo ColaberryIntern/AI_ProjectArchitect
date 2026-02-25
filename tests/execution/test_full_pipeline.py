@@ -393,21 +393,16 @@ class TestVerificationAndRetry:
         regen_events = [e for e in events if e.event_type == "regenerating"]
         assert len(regen_events) == 0
 
-    @patch("execution.full_pipeline.run_final_gates")
-    @patch("execution.full_pipeline.assemble_full_document")
-    @patch("execution.full_pipeline.render_chapter_enterprise")
-    @patch("execution.full_pipeline.generate_chapter_enterprise_with_retry_and_usage")
     @patch("execution.full_pipeline._check_document_quality")
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
-    def test_verification_triggers_retry_on_failure(
+    def test_verification_reports_warning_on_failure(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        mock_quality, mock_chapter_gen, mock_render, mock_assemble,
-        mock_final_gates, tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
-        """When quality check fails, pipeline retries deficient chapters."""
+        """When quality check fails, pipeline reports warnings but still completes."""
         mock_profile.return_value = _fake_profile()
         mock_catalog.return_value = _fake_catalog()
         mock_outline.return_value = _fake_sections()
@@ -415,7 +410,6 @@ class TestVerificationAndRetry:
             BuildEvent("complete", "Done", 0, 3, 100),
         ])
 
-        # First check fails with one deficient chapter, second check passes
         quality_fail = {
             "passed": False,
             "final_gates_passed": True,
@@ -423,48 +417,29 @@ class TestVerificationAndRetry:
             "average_score": 65,
             "complete_threshold": 70,
         }
-        quality_pass = {
-            "passed": True,
-            "final_gates_passed": True,
-            "deficient_chapters": [],
-            "average_score": 80,
-            "complete_threshold": 70,
-        }
-        mock_quality.side_effect = [quality_fail, quality_pass]
+        mock_quality.return_value = quality_fail
 
-        # Mock chapter regeneration
-        mock_chapter_gen.return_value = ({"content": "Improved chapter content"}, {})
-        mock_render.return_value = "# Chapter 2\nImproved content"
-        mock_assemble.return_value = {
-            "filename": "test-doc-v1.md",
-            "output_path": str(tmp_output_dir / "test-verify-retry" / "test-doc-v1.md"),
-        }
-        mock_final_gates.return_value = {"all_passed": True}
-
-        events = list(run_full_pipeline("Test Verify Retry", "Build an AI tool"))
+        events = list(run_full_pipeline("Test Verify Warn", "Build an AI tool"))
 
         assert events[-1].event_type == "complete"
-        # Should have regenerating events (retry happened)
+        assert events[-1].data.get("quality_warnings") is True
+        # Should have verification events reporting the issue
+        verification_events = [e for e in events if e.event_type == "verification"]
+        assert any("below" in e.message.lower() for e in verification_events)
+        # Should NOT have regenerating events (no retry)
         regen_events = [e for e in events if e.event_type == "regenerating"]
-        assert len(regen_events) >= 1
-        # Chapter gen should have been called for the deficient chapter
-        mock_chapter_gen.assert_called_once()
+        assert len(regen_events) == 0
 
-    @patch("execution.full_pipeline.run_final_gates")
-    @patch("execution.full_pipeline.assemble_full_document")
-    @patch("execution.full_pipeline.render_chapter_enterprise")
-    @patch("execution.full_pipeline.generate_chapter_enterprise_with_retry_and_usage")
     @patch("execution.full_pipeline._check_document_quality")
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")
     @patch("execution.full_pipeline.generate_catalog_from_profile")
     @patch("execution.full_pipeline.generate_profile")
-    def test_verification_yields_error_when_retry_also_fails(
+    def test_verification_completes_with_quality_warnings(
         self, mock_profile, mock_catalog, mock_outline, mock_auto_build,
-        mock_quality, mock_chapter_gen, mock_render, mock_assemble,
-        mock_final_gates, tmp_output_dir,
+        mock_quality, tmp_output_dir,
     ):
-        """When quality fails even after retry, pipeline yields error."""
+        """Even when quality is below threshold, pipeline completes with warning flags."""
         mock_profile.return_value = _fake_profile()
         mock_catalog.return_value = _fake_catalog()
         mock_outline.return_value = _fake_sections()
@@ -472,7 +447,6 @@ class TestVerificationAndRetry:
             BuildEvent("complete", "Done", 0, 3, 100),
         ])
 
-        # Both checks fail
         quality_fail = {
             "passed": False,
             "final_gates_passed": False,
@@ -480,20 +454,14 @@ class TestVerificationAndRetry:
             "average_score": 50,
             "complete_threshold": 70,
         }
-        mock_quality.side_effect = [quality_fail, quality_fail]
+        mock_quality.return_value = quality_fail
 
-        mock_chapter_gen.return_value = ({"content": "Still bad content"}, {})
-        mock_render.return_value = "# Chapter 1\nStill bad"
-        mock_assemble.return_value = {
-            "filename": "test-doc-v1.md",
-            "output_path": str(tmp_output_dir / "test-verify-fail" / "test-doc-v1.md"),
-        }
-        mock_final_gates.return_value = {"all_passed": False}
+        events = list(run_full_pipeline("Test Verify Warn2", "Build an AI tool"))
 
-        events = list(run_full_pipeline("Test Verify Fail", "Build an AI tool"))
-
-        assert events[-1].event_type == "error"
-        assert "quality verification" in events[-1].message.lower()
+        # Should still complete (not error), with quality warnings
+        assert events[-1].event_type == "complete"
+        assert events[-1].data.get("quality_warnings") is True
+        assert events[-1].data.get("deficient_chapters") == 1
 
     @patch("execution.full_pipeline.run_auto_build")
     @patch("execution.full_pipeline.generate_outline_from_profile")

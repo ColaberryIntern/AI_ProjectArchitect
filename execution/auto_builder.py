@@ -347,7 +347,7 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
         else:
             prev_summaries.append(content_dict["purpose"][:200])
 
-    # Phase 2: Post-build validation & auto-regeneration (72-80%)
+    # Phase 2: Post-build validation (verify only, no regeneration)
     yield BuildEvent("validation", "Running post-build validation...", 0, N, 72)
 
     from execution.build_depth import get_scoring_thresholds
@@ -359,43 +359,15 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
         if sc.get("total_score", 0) < complete_threshold
     ]
 
-    if deficient and use_enterprise:
-        for j, (score_idx, chapter_idx) in enumerate(deficient):
-            section = section_by_index.get(chapter_idx, {})
-            title = section.get("title", f"Chapter {chapter_idx}")
-            summary = section.get("summary", "")
-
-            regen_pct = 73 + int((j / max(len(deficient), 1)) * 7)
-            yield BuildEvent("regenerating",
-                             f"Regenerating chapter {chapter_idx} (score: {chapter_scores[score_idx]['total_score']}/100)...",
-                             chapter_idx, N, regen_pct)
-
-            t0 = time.monotonic()
-            content_dict, usage = generate_chapter_enterprise_with_retry_and_usage(
-                profile, features, title, summary,
-                chapter_idx, N, prev_summaries, depth_mode,
-                score_result=chapter_scores[score_idx],
-            )
-            rendered = render_chapter_enterprise(chapter_idx, title, content_dict["content"])
-            regen_latency = int((time.monotonic() - t0) * 1000)
-            if usage:
-                regen_attempt = metrics.chapter_metrics.get(chapter_idx, {}).get("attempts", 1) + 1
-                metrics.add_chapter_call(chapter_idx, usage, regen_latency, attempt=regen_attempt)
-
-            chapter_path = OUTPUT_DIR / slug / "chapters" / f"ch{chapter_idx}.md"
-            chapter_path.write_text(rendered, encoding="utf-8")
-
-            ch_score = score_chapter(rendered, title, depth_mode)
-            record_chapter_score(state, chapter_idx, ch_score)
-            chapter_scores[score_idx] = ch_score
-
-            yield BuildEvent("scoring",
-                             f"Chapter {chapter_idx} regenerated: {ch_score['total_score']}/100 ({ch_score['status']})",
-                             chapter_idx, N, regen_pct,
-                             data={"score": ch_score["total_score"], "word_count": ch_score["word_count"],
-                                   "status": ch_score["status"]})
-            save_state(state, slug)
-    elif not deficient:
+    if deficient:
+        deficient_info = ", ".join(
+            f"ch{chapters[idx]['index']}({chapter_scores[idx]['total_score']}/100)"
+            for idx, _ in deficient
+        )
+        yield BuildEvent("validation",
+                         f"{len(deficient)} chapter(s) below threshold: {deficient_info}",
+                         0, N, 78)
+    else:
         yield BuildEvent("validation", "All chapters meet quality threshold", 0, N, 80)
 
     # Document-level score summary

@@ -11,11 +11,15 @@ Falls back to structured template content if LLM is unavailable.
 import json
 import logging
 
+from execution.ambiguity_detector import FORBIDDEN_PHRASES
 from execution.build_depth import get_chapter_subsections, get_depth_config
 from execution.intelligence_goals import build_intelligence_goals_prompt_section
 from execution.llm_client import LLMClientError, LLMUnavailableError, chat, is_available
 
 logger = logging.getLogger(__name__)
+
+# Temperature for chapter generation — low for consistent gate compliance
+CHAPTER_TEMPERATURE = 0.2
 
 CHAPTER_SYSTEM_PROMPT = (
     "You are a senior software architect writing a detailed build guide chapter. "
@@ -52,6 +56,8 @@ CHAPTER_USER_PROMPT = """Write Chapter {chapter_index} of {total_chapters}: "{se
 ## Previous Chapters Context
 {previous_context}
 
+{quality_gate_section}
+
 Return ONLY valid JSON:
 {{
   "purpose": "3-5 paragraphs explaining WHY this chapter exists...",
@@ -65,8 +71,6 @@ Rules for each field:
 - **implementation_guidance**: Practical, step-by-step instructions. Reference specific file names, component patterns, API endpoints, data models. Assume the developer uses VS Code with Claude Code. Include execution order (first, then, next), input/output definitions, and dependency notes. Detailed enough for an intern to act without guesswork.
 
 Each field must be at least 200 words. Total response must be at least 800 words.
-Do NOT use placeholder language (TBD, TODO, handle edge cases, optimize later, best practices).
-Do NOT say "use best practices" — specify WHICH practices.
 Return ONLY the JSON object."""
 
 CHAPTER_RETRY_PROMPT = """Your previous attempt for Chapter {chapter_index}: "{section_title}" failed quality gates.
@@ -76,7 +80,45 @@ Issues found:
 
 Please rewrite the chapter content, fixing ALL of the above issues.
 The same rules apply as before — return ONLY valid JSON with purpose, design_intent, and implementation_guidance fields.
-Each field must be at least 200 words. Be specific, avoid vague language, include execution order signals."""
+Each field must be at least 200 words. Be specific, avoid vague language, include execution order signals.
+
+{quality_gate_section}"""
+
+
+def _build_quality_gate_section() -> str:
+    """Build prompt section listing all quality gate criteria.
+
+    Dynamically reads FORBIDDEN_PHRASES from ambiguity_detector so the
+    prompt always matches the actual gate checks — single source of truth.
+    """
+    # Build the forbidden phrases bullet list from the actual gate data
+    phrases = []
+    for pattern in FORBIDDEN_PHRASES:
+        # Strip regex escapes for human-readable display
+        clean = pattern.replace(r"\.", ".").replace(r"\b", "")
+        phrases.append(f'  - "{clean}"')
+    forbidden_list = "\n".join(phrases)
+
+    return f"""## QUALITY GATE REQUIREMENTS (Your output WILL be checked against these)
+
+### Completeness Gate
+- Your rendered text MUST contain the literal phrases "purpose", "design intent", and "implementation guidance"
+- No placeholder language: TBD, TBA, TBC, TODO, FIXME, "to be determined", "placeholder"
+- Must produce at least 10 non-heading content lines
+
+### Clarity Gate
+- Include at least one outcome phrase: "this chapter", "the goal", "the purpose", "this section", or "the objective"
+- Use at least 2 heading levels for structure
+
+### Build Readiness Gate
+- Include execution order signals: "first", "then", "next", "after", "before", "step 1"
+- Include input/output signals: "input", "output", "produce", "accept", "return", "receive"
+- Include dependency signals: "depend", "require", "prerequisite"
+
+### Anti-Vagueness Gate (CRITICAL — zero tolerance)
+Do NOT use ANY of these phrases anywhere in your response:
+{forbidden_list}
+Instead of these phrases, specify WHAT to handle, WHICH practices, and WHEN to apply them."""
 
 
 def generate_chapter(
@@ -117,7 +159,7 @@ def generate_chapter(
             system_prompt=CHAPTER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4096,
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_chapter_response(response.content, section_title)
@@ -164,6 +206,7 @@ def generate_chapter_with_retry(
         chapter_index=chapter_index,
         section_title=section_title,
         gate_failures=failure_text or "- No specific issues listed",
+        quality_gate_section=_build_quality_gate_section(),
     )
 
     try:
@@ -175,7 +218,7 @@ def generate_chapter_with_retry(
                 {"role": "user", "content": retry_prompt},
             ],
             max_tokens=4096,
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_chapter_response(response.content, section_title)
@@ -216,7 +259,7 @@ def generate_chapter_with_usage(
             system_prompt=CHAPTER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4096,
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_chapter_response(response.content, section_title), response.usage
@@ -256,6 +299,7 @@ def generate_chapter_with_retry_and_usage(
         chapter_index=chapter_index,
         section_title=section_title,
         gate_failures=failure_text or "- No specific issues listed",
+        quality_gate_section=_build_quality_gate_section(),
     )
 
     try:
@@ -267,7 +311,7 @@ def generate_chapter_with_retry_and_usage(
                 {"role": "user", "content": retry_prompt},
             ],
             max_tokens=4096,
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_chapter_response(response.content, section_title), response.usage
@@ -334,6 +378,7 @@ def _build_prompt(
         technical_constraints=", ".join(tc) if tc else "None specified",
         nfrs=", ".join(nfrs) if nfrs else "None specified",
         use_cases=", ".join(ucs) if ucs else "None specified",
+        quality_gate_section=_build_quality_gate_section(),
         **fields,
     )
 
@@ -504,9 +549,9 @@ You MUST include ALL of the following subsections as ## headings in your content
 - Include error handling strategies and testing approaches
 - Include deployment and production considerations
 - Reference VS Code with Claude Code for implementation
-- No placeholder language (TBD, TODO, handle edge cases, optimize later)
-- Do NOT say "use best practices" — specify WHICH practices
-- Include tables, code blocks, and structured lists where appropriate
+- Include tables, code blocks, and structured lists
+
+{quality_gate_section}
 
 Return ONLY valid JSON:
 {{"content": "<full chapter markdown body with ## subsection headings>"}}"""
@@ -525,6 +570,9 @@ Please rewrite the chapter content, fixing ALL of the above issues.
 - Each subsection must be 200+ words with substantive detail
 - Total chapter MUST be at least {min_words} words
 - Include code blocks, file paths, CLI commands, environment variables, and tables
+
+{quality_gate_section}
+
 Return ONLY valid JSON: {{"content": "<full chapter markdown body>"}}"""
 
 
@@ -573,7 +621,7 @@ def generate_chapter_enterprise(
             system_prompt=ENTERPRISE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=config["max_tokens"],
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_enterprise_response(response.content, section_title, depth_mode)
@@ -635,6 +683,7 @@ def generate_chapter_enterprise_with_retry(
         missing_subsections=", ".join(sr.get("subsections_missing", [])) or "None",
         word_count=sr.get("word_count", 0),
         min_words=config["min_words"],
+        quality_gate_section=_build_quality_gate_section(),
     )
 
     try:
@@ -646,7 +695,7 @@ def generate_chapter_enterprise_with_retry(
                 {"role": "user", "content": retry_prompt},
             ],
             max_tokens=config["max_tokens"],
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_enterprise_response(response.content, section_title, depth_mode)
@@ -688,7 +737,7 @@ def generate_chapter_enterprise_with_usage(
             system_prompt=ENTERPRISE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=config["max_tokens"],
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_enterprise_response(response.content, section_title, depth_mode), response.usage
@@ -745,6 +794,7 @@ def generate_chapter_enterprise_with_retry_and_usage(
         missing_subsections=", ".join(sr.get("subsections_missing", [])) or "None",
         word_count=sr.get("word_count", 0),
         min_words=config["min_words"],
+        quality_gate_section=_build_quality_gate_section(),
     )
 
     try:
@@ -756,7 +806,7 @@ def generate_chapter_enterprise_with_retry_and_usage(
                 {"role": "user", "content": retry_prompt},
             ],
             max_tokens=config["max_tokens"],
-            temperature=0.7,
+            temperature=CHAPTER_TEMPERATURE,
             response_format={"type": "json_object"},
         )
         return _parse_enterprise_response(response.content, section_title, depth_mode), response.usage
@@ -838,6 +888,7 @@ def _build_enterprise_prompt(
         risks=", ".join(risks) if risks else "None specified",
         required_subsections=required_subsections,
         min_words=config["min_words"],
+        quality_gate_section=_build_quality_gate_section(),
         **fields,
     )
 
