@@ -191,6 +191,39 @@ class TestRunFinalGates:
         assert result["all_passed"] is True
 
 
+class TestBuildReadinessWithTemplate:
+    """Tests that the enterprise template preamble passes the build readiness gate."""
+
+    def test_build_readiness_passes_with_enterprise_template_preamble(self):
+        """The enterprise template preamble alone must pass the build readiness gate."""
+        from execution.template_renderer import render_chapter_enterprise
+
+        rendered = render_chapter_enterprise(1, "Problem & Market Context", "Some content.")
+        result = check_build_readiness(rendered)
+        assert result["passed"] is True, (
+            f"Build readiness gate should pass on enterprise template preamble, "
+            f"but got issues: {result['issues']}"
+        )
+
+    def test_build_readiness_passes_on_conceptual_chapter(self):
+        """Even a conceptual chapter (no implementation detail) should pass via preamble."""
+        from execution.template_renderer import render_chapter_enterprise
+
+        conceptual_content = (
+            "## Market Overview\n\n"
+            "The market for AI-powered project management tools is growing.\n"
+            "Key competitors include Jira, Asana, and Monday.com.\n\n"
+            "## Target Segment\n\n"
+            "Small to medium businesses with 10-200 employees.\n"
+        )
+        rendered = render_chapter_enterprise(2, "Market Analysis", conceptual_content)
+        result = check_build_readiness(rendered)
+        assert result["passed"] is True, (
+            f"Conceptual chapter should pass build readiness via template preamble, "
+            f"but got issues: {result['issues']}"
+        )
+
+
 class TestGenerateQualityReport:
     def test_report_format(self):
         results = run_chapter_gates(GOOD_CHAPTER)

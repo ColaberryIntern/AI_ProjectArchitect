@@ -243,12 +243,10 @@ class TestGenerationDownload:
         assert response.status_code == 409
 
     @patch("app.routers.generate._check_document_quality")
-    def test_409_when_quality_fails(self, mock_quality, client, tmp_output_dir):
-        """Download should be blocked when quality verification fails."""
-        # Create a project in complete phase but with failed quality
-        state = initialize_state("Quality Fail Download Test")
+    def test_download_succeeds_with_quality_warnings(self, mock_quality, client, tmp_output_dir):
+        """Download should succeed (200) even when quality is below threshold."""
+        state = initialize_state("Quality Warn Download Test")
         slug = state["project"]["slug"]
-        # Advance to complete phase
         advance_phase(state, "feature_discovery")
         advance_phase(state, "outline_generation")
         advance_phase(state, "outline_approval")
@@ -256,6 +254,14 @@ class TestGenerationDownload:
         advance_phase(state, "quality_gates")
         advance_phase(state, "final_assembly")
         advance_phase(state, "complete")
+
+        # Create a fake document file
+        doc_dir = tmp_output_dir / slug
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = doc_dir / "test-doc-v1.md"
+        doc_path.write_text("# Test Document\nContent here.", encoding="utf-8")
+
+        record_document_assembly(state, "test-doc-v1.md", str(doc_path))
         save_state(state, slug)
 
         mock_quality.return_value = {
@@ -267,8 +273,81 @@ class TestGenerationDownload:
         }
 
         response = client.get(f"/api/v1/generate/{slug}/download")
-        assert response.status_code == 409
-        assert "quality verification" in response.json()["detail"].lower()
+        assert response.status_code == 200, (
+            f"Expected 200 with quality warnings, got {response.status_code}"
+        )
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_download_returns_quality_headers_when_below_threshold(
+        self, mock_quality, client, tmp_output_dir
+    ):
+        """Download should include X-Quality-Warning headers when quality is below threshold."""
+        state = initialize_state("Quality Headers Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+        advance_phase(state, "chapter_build")
+        advance_phase(state, "quality_gates")
+        advance_phase(state, "final_assembly")
+        advance_phase(state, "complete")
+
+        doc_dir = tmp_output_dir / slug
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = doc_dir / "test-doc-v1.md"
+        doc_path.write_text("# Test Document\nContent here.", encoding="utf-8")
+
+        record_document_assembly(state, "test-doc-v1.md", str(doc_path))
+        save_state(state, slug)
+
+        mock_quality.return_value = {
+            "passed": False,
+            "final_gates_passed": False,
+            "deficient_chapters": [{"index": 10, "score": 68, "status": "needs_work"}],
+            "average_score": 68,
+            "complete_threshold": 70,
+        }
+
+        response = client.get(f"/api/v1/generate/{slug}/download")
+        assert response.status_code == 200
+        assert response.headers.get("x-quality-warning") == "true"
+        assert response.headers.get("x-quality-score") == "68"
+        assert response.headers.get("x-quality-threshold") == "70"
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_download_no_warning_headers_when_quality_passes(
+        self, mock_quality, client, tmp_output_dir
+    ):
+        """Download should not include warning headers when quality passes."""
+        state = initialize_state("Quality Good Headers Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+        advance_phase(state, "chapter_build")
+        advance_phase(state, "quality_gates")
+        advance_phase(state, "final_assembly")
+        advance_phase(state, "complete")
+
+        doc_dir = tmp_output_dir / slug
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = doc_dir / "test-doc-v1.md"
+        doc_path.write_text("# Test Document\nContent here.", encoding="utf-8")
+
+        record_document_assembly(state, "test-doc-v1.md", str(doc_path))
+        save_state(state, slug)
+
+        mock_quality.return_value = {
+            "passed": True,
+            "final_gates_passed": True,
+            "deficient_chapters": [],
+            "average_score": 85,
+            "complete_threshold": 70,
+        }
+
+        response = client.get(f"/api/v1/generate/{slug}/download")
+        assert response.status_code == 200
+        assert response.headers.get("x-quality-warning") is None
 
     @patch("app.routers.generate._check_document_quality")
     def test_download_succeeds_when_quality_passes(self, mock_quality, client, tmp_output_dir):

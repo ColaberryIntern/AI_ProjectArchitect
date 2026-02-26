@@ -530,3 +530,98 @@ class TestBuildMetrics:
         m.add_chapter_call(1, {"prompt_tokens": 100, "completion_tokens": 50}, 1000, attempt=1)
         m.add_chapter_call(1, {"prompt_tokens": 100, "completion_tokens": 50}, 2000, attempt=2)
         assert m.chapter_metrics[1]["latency_ms"] == 3000
+
+
+class TestScoreBasedApproval:
+    """Tests for score-based chapter approval (gates OR score threshold)."""
+
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
+    def test_chapter_approved_when_score_above_threshold_despite_gate_failure(
+        self, mock_retry, mock_gen, tmp_output_dir
+    ):
+        """A chapter scoring above the threshold should be approved even if gates fail."""
+        # Enterprise content that scores well but has a gate failure (e.g. missing dependency signals)
+        high_score_content = {
+            "content": (
+                "## Vision & Strategy\n\n"
+                "This chapter defines the purpose and design intent for the system.\n"
+                "The implementation guidance focuses on building a scalable platform.\n\n"
+                "## Detailed Requirements\n\n"
+                "The system must process user requests within 200ms.\n"
+                "All API endpoints require authentication tokens.\n"
+                "Database connections use connection pooling with max 50 connections.\n\n"
+                "## Technical Specifications\n\n"
+                "```python\nclass RequestHandler:\n    def process(self, request):\n        return validate(request)\n```\n\n"
+                "File path: `src/handlers/request.py`\n"
+                "Environment variable: `MAX_CONNECTIONS=50`\n\n"
+                "| Component | Technology | Purpose |\n"
+                "| --- | --- | --- |\n"
+                "| API | FastAPI | Request handling |\n"
+                "| DB | PostgreSQL | Data storage |\n"
+                "| Cache | Redis | Session management |\n\n"
+                "## Deployment Configuration\n\n"
+                "Step 1: Configure the database schema.\n"
+                "Step 2: Deploy the API service.\n"
+                "The input is a raw HTTP request. The output is a JSON response.\n"
+                "This depends on the authentication service being available.\n\n"
+            ) * 3  # Repeat to hit word count
+        }
+
+        mock_gen.side_effect = lambda *a, **kw: (high_score_content, {})
+        mock_retry.side_effect = lambda *a, **kw: (high_score_content, {})
+
+        state, slug = _setup_ready_state(tmp_output_dir)
+        events = list(run_auto_build(state, slug))
+
+        # No retry events should have been emitted (all chapters approved first try)
+        retry_events = [e for e in events if e.event_type == "retry"]
+        assert len(retry_events) == 0, (
+            f"Expected 0 retries but got {len(retry_events)}: "
+            f"{[e.message for e in retry_events]}"
+        )
+
+        # All chapters should be approved
+        for chapter in state["chapters"]:
+            assert chapter["status"] == "approved"
+
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
+    def test_chapter_retried_when_score_below_threshold(
+        self, mock_retry, mock_gen, tmp_output_dir
+    ):
+        """A chapter scoring below the threshold with failed gates should trigger retries."""
+        bad_content = {
+            "content": "Handle edge cases and optimize later. Use best practices."
+        }
+
+        mock_gen.return_value = (bad_content, {})
+        mock_retry.return_value = (bad_content, {})
+
+        state, slug = _setup_ready_state(tmp_output_dir)
+        events = list(run_auto_build(state, slug))
+
+        retry_events = [e for e in events if e.event_type == "retry"]
+        assert len(retry_events) >= 1, "Expected retries for below-threshold chapters"
+        assert mock_retry.called
+
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
+    @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
+    def test_chapter_approved_when_gates_pass_regardless_of_score(
+        self, mock_retry, mock_gen, tmp_output_dir
+    ):
+        """If all gates pass, the chapter should be approved even with a low score."""
+        # Use the known-good enterprise content that passes all gates
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+
+        state, slug = _setup_ready_state(tmp_output_dir)
+        events = list(run_auto_build(state, slug))
+
+        # All chapters should be approved (gates pass)
+        for chapter in state["chapters"]:
+            assert chapter["status"] == "approved"
+
+        # No retries needed when gates pass
+        retry_events = [e for e in events if e.event_type == "retry"]
+        assert len(retry_events) == 0

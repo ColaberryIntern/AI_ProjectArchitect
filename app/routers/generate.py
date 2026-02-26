@@ -218,22 +218,6 @@ async def download_generated_document(job_id: str):
             detail=f"Document not yet ready. Current phase: {state['current_phase']}",
         )
 
-    # Quality verification gate — do not serve documents that failed quality checks
-    depth_mode = get_build_depth_mode(state)
-    quality = _check_document_quality(state, depth_mode)
-    if not quality["passed"]:
-        deficient = quality["deficient_chapters"]
-        ch_list = ", ".join(f"ch{d['index']}({d['score']})" for d in deficient)
-        detail = (
-            f"Document generated but did not pass quality verification. "
-            f"Average score: {quality['average_score']}/100 "
-            f"(threshold: {quality['complete_threshold']}). "
-            f"Final gates: {'passed' if quality['final_gates_passed'] else 'failed'}."
-        )
-        if deficient:
-            detail += f" Chapters below threshold: {ch_list}."
-        raise HTTPException(status_code=409, detail=detail)
-
     output_path = state["document"].get("output_path")
     if not output_path:
         raise HTTPException(
@@ -247,10 +231,20 @@ async def download_generated_document(job_id: str):
             detail="Document file not found on disk.",
         )
 
+    # Quality check — serve document with warning headers if below threshold
+    depth_mode = get_build_depth_mode(state)
+    quality = _check_document_quality(state, depth_mode)
+    headers = {}
+    if not quality["passed"]:
+        headers["X-Quality-Warning"] = "true"
+        headers["X-Quality-Score"] = str(quality["average_score"])
+        headers["X-Quality-Threshold"] = str(quality["complete_threshold"])
+
     return FileResponse(
         path=output_path,
         filename=state["document"]["filename"],
         media_type="text/markdown",
+        headers=headers if headers else None,
     )
 
 

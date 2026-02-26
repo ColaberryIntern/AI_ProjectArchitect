@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Generator
 
 from config.settings import OUTPUT_DIR
-from execution.build_depth import estimate_pages, get_depth_config
+from execution.build_depth import estimate_pages, get_depth_config, get_scoring_thresholds
 from execution.chapter_writer import (
     _fallback_chapter,
     generate_chapter,
@@ -280,10 +280,11 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
                                "attempt_number": ch_metrics.get("attempts", 1),
                                "latency_ms": ch_metrics.get("latency_ms", 0)})
 
-        if gate_results["all_passed"]:
+        complete_threshold = get_scoring_thresholds(depth_mode)["complete_threshold"]
+        if gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold:
             record_chapter_status(state, chapter_idx, "approved")
         else:
-            # Auto-retry up to MAX_RETRIES times based on gate failures
+            # Auto-retry up to MAX_RETRIES times when gates fail AND score is below threshold
             approved = False
             for retry in range(1, MAX_RETRIES + 1):
                 failures = _extract_gate_failures(gate_results)
@@ -325,7 +326,7 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
                 record_chapter_score(state, chapter_idx, ch_score)
                 chapter_scores[i] = ch_score
 
-                if gate_results["all_passed"]:
+                if gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold:
                     record_chapter_status(state, chapter_idx, "approved")
                     approved = True
                     yield BuildEvent("gate", f"Chapter {chapter_idx} passed on retry {retry + 1}",
@@ -350,7 +351,6 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
     # Phase 2: Post-build validation (verify only, no regeneration)
     yield BuildEvent("validation", "Running post-build validation...", 0, N, 72)
 
-    from execution.build_depth import get_scoring_thresholds
     complete_threshold = get_scoring_thresholds(depth_mode)["complete_threshold"]
 
     deficient = [

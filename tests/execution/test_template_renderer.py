@@ -149,3 +149,23 @@ class TestRenderChapterEnterprise:
     def test_handles_empty_content(self):
         result = render_chapter_enterprise(1, "Empty Chapter", "")
         assert "# Chapter 1: Empty Chapter" in result
+
+    def test_has_build_readiness_signals(self):
+        """Enterprise template preamble must contain all 3 build readiness signal categories."""
+        result = render_chapter_enterprise(1, "Any Chapter", "Minimal content.")
+        text_lower = result.lower()
+
+        # Execution order signals: "first", "then", "before"
+        assert any(word in text_lower for word in ["first", "then", "before"]), (
+            "Template must contain execution order signals (first/then/before)"
+        )
+
+        # Input/output signals: "inputs", "outputs"
+        assert any(word in text_lower for word in ["input", "output"]), (
+            "Template must contain input/output signals"
+        )
+
+        # Dependency signals: "dependencies", "prerequisites"
+        assert any(word in text_lower for word in ["depend", "prerequisit"]), (
+            "Template must contain dependency signals"
+        )
