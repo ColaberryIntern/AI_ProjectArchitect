@@ -134,6 +134,12 @@ class TestRenderChapterEnterprise:
         assert "## Vision & Strategy" in result
         assert "Detailed vision content here." in result
 
+    def test_includes_completeness_preamble(self):
+        result = render_chapter_enterprise(3, "User Personas", "Some content.")
+        assert "purpose" in result.lower()
+        assert "design intent" in result.lower()
+        assert "implementation guidance" in result.lower()
+
     def test_preserves_markdown_formatting(self):
         content = "## Sub1\n\n- item1\n- item2\n\n```python\nprint('hello')\n```"
         result = render_chapter_enterprise(3, "Architecture", content)

@@ -401,8 +401,15 @@ class TestQualityGateSection:
     def test_includes_completeness_gate(self):
         section = _build_quality_gate_section()
         assert "Completeness Gate" in section
-        assert "purpose" in section
-        assert "design intent" in section
+        assert "placeholder" in section.lower()
+
+    def test_includes_scoring_dimensions(self):
+        section = _build_quality_gate_section()
+        assert "SCORING DIMENSIONS" in section
+        assert "Word Count" in section
+        assert "Technical Density" in section
+        assert "Implementation Specificity" in section
+        assert "Subsection Coverage" in section
 
     def test_includes_anti_vagueness_gate(self):
         section = _build_quality_gate_section()

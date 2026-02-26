@@ -102,7 +102,6 @@ def _build_quality_gate_section() -> str:
     return f"""## QUALITY GATE REQUIREMENTS (Your output WILL be checked against these)
 
 ### Completeness Gate
-- Your rendered text MUST contain the literal phrases "purpose", "design intent", and "implementation guidance"
 - No placeholder language: TBD, TBA, TBC, TODO, FIXME, "to be determined", "placeholder"
 - Must produce at least 10 non-heading content lines
 
@@ -118,7 +117,14 @@ def _build_quality_gate_section() -> str:
 ### Anti-Vagueness Gate (CRITICAL — zero tolerance)
 Do NOT use ANY of these phrases anywhere in your response:
 {forbidden_list}
-Instead of these phrases, specify WHAT to handle, WHICH practices, and WHEN to apply them."""
+Instead of these phrases, specify WHAT to handle, WHICH practices, and WHEN to apply them.
+
+### SCORING DIMENSIONS (0-100 total, you need 65+ to pass)
+Your chapter is scored on 4 equal dimensions (25 points each):
+1. **Word Count (25 pts)**: You MUST write the full minimum word count requested. 900 words scores ~15/25. 1500+ words scores 25/25. WRITE MORE, NOT LESS.
+2. **Subsection Coverage (25 pts)**: Include ALL required subsections as ## headings.
+3. **Technical Density (25 pts)**: You MUST include code blocks (```), file paths, CLI commands, markdown tables, and environment variables. Aim for 10+ technical artifacts to score 15+.
+4. **Implementation Specificity (25 pts)**: Cover execution order (step 1, step 2...), input/output definitions, dependencies, environment configuration, testing strategy, and deployment. Cover 4+ of these 6 categories."""
 
 
 def generate_chapter(
