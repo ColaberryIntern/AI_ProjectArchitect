@@ -13,10 +13,12 @@ from execution.full_pipeline import (
 from execution.state_manager import (
     advance_phase,
     initialize_state,
+    lock_outline,
     record_chapter_score,
     record_document_assembly,
     record_final_quality,
     save_state,
+    set_outline_sections,
 )
 
 
@@ -227,6 +229,108 @@ class TestGenerationStatus:
             # (depends on whether state file exists for this job_id)
         finally:
             clear_pipeline_progress(job_id)
+
+
+class TestStatusDiskFallback:
+    """Tests for status endpoint falling back to disk state after server restart."""
+
+    def test_404_when_no_events_and_no_state_file(self, client):
+        """When neither in-memory events nor disk state exist, return 404."""
+        response = client.get("/api/v1/generate/totally-unknown/status")
+        assert response.status_code == 404
+
+    @patch("app.routers.generate._check_document_quality")
+    def test_returns_complete_from_disk_when_events_lost(
+        self, mock_quality, client, tmp_output_dir
+    ):
+        """After server restart, if state is complete on disk, return complete status."""
+        state = initialize_state("Disk Fallback Complete Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+        advance_phase(state, "chapter_build")
+        advance_phase(state, "quality_gates")
+        advance_phase(state, "final_assembly")
+        advance_phase(state, "complete")
+
+        doc_dir = tmp_output_dir / slug
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = doc_dir / "test-doc-v1.md"
+        doc_path.write_text("# Test Document", encoding="utf-8")
+        record_document_assembly(state, "test-doc-v1.md", str(doc_path))
+        save_state(state, slug)
+
+        mock_quality.return_value = {
+            "passed": True,
+            "final_gates_passed": True,
+            "deficient_chapters": [],
+            "average_score": 85,
+            "complete_threshold": 70,
+        }
+
+        # No in-memory events — simulates server restart
+        response = client.get(f"/api/v1/generate/{slug}/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "complete"
+        assert data["percent"] == 100
+        assert "download_url" in data
+        assert data["quality_verified"] is True
+
+    def test_returns_stalled_when_build_was_interrupted(self, client, tmp_output_dir):
+        """After server restart mid-build, return stalled status with progress info."""
+        state = initialize_state("Disk Fallback Stalled Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+
+        # Set up outline and create chapters
+        sections = [
+            {"index": i, "title": f"Chapter {i}", "type": "required",
+             "summary": f"Summary for chapter {i}"}
+            for i in range(1, 11)
+        ]
+        set_outline_sections(state, sections)
+        lock_outline(state)
+        advance_phase(state, "chapter_build")
+
+        # Simulate partial build: 4 of 10 chapters approved
+        for ch in state["chapters"][:4]:
+            ch["status"] = "approved"
+
+        save_state(state, slug)
+
+        # No in-memory events — simulates server restart
+        response = client.get(f"/api/v1/generate/{slug}/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "stalled"
+        assert data["chapters_completed"] == 4
+        assert data["chapters_total"] == 10
+        assert "interrupted" in data["latest_message"].lower()
+
+    def test_stalled_status_does_not_return_download_url(self, client, tmp_output_dir):
+        """Stalled status should not include a download_url."""
+        state = initialize_state("Stalled No Download Test")
+        slug = state["project"]["slug"]
+        advance_phase(state, "feature_discovery")
+        advance_phase(state, "outline_generation")
+        advance_phase(state, "outline_approval")
+
+        sections = [
+            {"index": 1, "title": "Chapter 1", "type": "required", "summary": "Summary"}
+        ]
+        set_outline_sections(state, sections)
+        lock_outline(state)
+        advance_phase(state, "chapter_build")
+        save_state(state, slug)
+
+        response = client.get(f"/api/v1/generate/{slug}/status")
+        data = response.json()
+        assert data["status"] == "stalled"
+        assert "download_url" not in data
 
 
 class TestGenerationDownload:

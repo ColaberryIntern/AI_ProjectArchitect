@@ -73,6 +73,71 @@ def _slugify(name: str) -> str:
     return slug.strip("-")
 
 
+def _status_from_disk(job_id: str) -> JSONResponse:
+    """Build status response from on-disk state when in-memory events are gone.
+
+    Handles server restarts, pipeline crashes, and cleared progress.
+    Returns a JSONResponse with the last known state, or raises 404.
+    """
+    try:
+        state = load_state(job_id)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No pipeline found for job '{job_id}'.",
+        )
+
+    phase = state["current_phase"]
+
+    if phase == "complete":
+        # Pipeline finished before events were lost
+        response = {
+            "job_id": job_id,
+            "phase": "complete",
+            "status": "complete",
+            "percent": 100,
+            "latest_message": "Build complete (recovered from disk state)",
+            "event_count": 0,
+            "download_url": f"/api/v1/generate/{job_id}/download",
+        }
+        # Add document and quality info
+        response["document"] = {
+            "filename": state["document"].get("filename"),
+            "assembled_at": state["document"].get("assembled_at"),
+        }
+        depth_mode = get_build_depth_mode(state)
+        quality = _check_document_quality(state, depth_mode)
+        response["quality_verified"] = quality["passed"]
+        response["quality_summary"] = {
+            "final_gates_passed": quality["final_gates_passed"],
+            "chapters_below_threshold": quality["deficient_chapters"],
+            "average_score": quality["average_score"],
+            "complete_threshold": quality["complete_threshold"],
+        }
+        return JSONResponse(content=response)
+
+    # Pipeline was interrupted mid-build
+    chapters = state.get("chapters", [])
+    total = len(chapters)
+    approved = sum(1 for c in chapters if c.get("status") == "approved")
+    percent = int(28 + (approved / max(total, 1)) * 72) if total else 0
+
+    response = {
+        "job_id": job_id,
+        "phase": phase,
+        "status": "stalled",
+        "percent": percent,
+        "latest_message": (
+            f"Pipeline interrupted during {phase}. "
+            f"{approved}/{total} chapters completed."
+        ),
+        "event_count": 0,
+        "chapters_completed": approved,
+        "chapters_total": total,
+    }
+    return JSONResponse(content=response)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -136,10 +201,7 @@ async def generation_status(job_id: str):
     """
     events = get_pipeline_progress(job_id)
     if not events:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No pipeline found for job '{job_id}'.",
-        )
+        return _status_from_disk(job_id)
 
     latest = events[-1]
 
