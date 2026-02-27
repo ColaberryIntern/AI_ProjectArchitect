@@ -29,15 +29,15 @@ DEPTH_MODES = {
     "professional": {
         "label": "Professional",
         "target_pages": "80-120",
-        "max_tokens": 8192,
-        "min_words": 2500,
+        "max_tokens": 12288,
+        "min_words": 5000,
         "min_subsections": 6,
     },
     "enterprise": {
         "label": "Enterprise",
         "target_pages": "120-150+",
-        "max_tokens": 12288,
-        "min_words": 3500,
+        "max_tokens": 16384,
+        "min_words": 7000,
         "min_subsections": 8,
     },
 }
@@ -74,7 +74,7 @@ BUILD_PROFILES = {
     "professional": {
         "section_count": 10,
         "subsections_range": (5, 7),
-        "word_target_per_chapter": 2500,
+        "word_target_per_chapter": 5000,
         "total_page_range": (80, 120),
         "intelligence_expansion_depth": "detailed",
         "architecture_expansion_depth": "detailed",
@@ -82,7 +82,7 @@ BUILD_PROFILES = {
     "enterprise": {
         "section_count": 10,
         "subsections_range": (7, 10),
-        "word_target_per_chapter": 3500,
+        "word_target_per_chapter": 7000,
         "total_page_range": (120, 150),
         "intelligence_expansion_depth": "comprehensive",
         "architecture_expansion_depth": "comprehensive",

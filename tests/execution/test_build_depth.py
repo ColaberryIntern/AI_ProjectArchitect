@@ -268,7 +268,7 @@ class TestGetChapterSubsections:
 class TestGetScoringThresholds:
     def test_returns_thresholds_professional(self):
         thresholds = get_scoring_thresholds("professional")
-        assert thresholds["min_words"] == 2500
+        assert thresholds["min_words"] == 5000
         assert thresholds["min_subsections"] == 6
         assert thresholds["incomplete_threshold"] == 40
         assert thresholds["complete_threshold"] == 70

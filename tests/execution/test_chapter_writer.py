@@ -502,7 +502,7 @@ class TestGenerateChapterEnterprise:
             1, 10, depth_mode="architect",
         )
         call_args = mock_chat.call_args
-        assert call_args[1]["max_tokens"] == 12288
+        assert call_args[1]["max_tokens"] == 16384
 
     @patch("execution.chapter_writer.is_available", return_value=True)
     @patch("execution.chapter_writer.chat")
@@ -607,7 +607,7 @@ class TestBuildEnterprisePrompt:
             sample_profile, sample_features, "Executive Summary", "Overview",
             1, 10, depth_mode="enterprise",
         )
-        assert "3500" in prompt  # enterprise min_words
+        assert "7000" in prompt  # enterprise min_words
 
     def test_lite_mode_has_fewer_subsections(self, sample_profile, sample_features):
         enterprise = _build_enterprise_prompt(

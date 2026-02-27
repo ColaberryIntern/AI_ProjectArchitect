@@ -85,11 +85,14 @@ Each field must be at least 200 words. Be specific, avoid vague language, includ
 {quality_gate_section}"""
 
 
-def _build_quality_gate_section() -> str:
+def _build_quality_gate_section(min_words: int = 2500) -> str:
     """Build prompt section listing all quality gate criteria.
 
     Dynamically reads FORBIDDEN_PHRASES from ambiguity_detector so the
     prompt always matches the actual gate checks — single source of truth.
+
+    Args:
+        min_words: Minimum word count for the depth mode (used in scoring guidance).
     """
     # Build the forbidden phrases bullet list from the actual gate data
     phrases = []
@@ -98,6 +101,8 @@ def _build_quality_gate_section() -> str:
         clean = pattern.replace(r"\.", ".").replace(r"\b", "")
         phrases.append(f'  - "{clean}"')
     forbidden_list = "\n".join(phrases)
+
+    half_words = min_words // 2
 
     return f"""## QUALITY GATE REQUIREMENTS (Your output WILL be checked against these)
 
@@ -121,9 +126,9 @@ Instead of these phrases, specify WHAT to handle, WHICH practices, and WHEN to a
 
 ### SCORING DIMENSIONS (0-100 total, you need 65+ to pass)
 Your chapter is scored on 4 equal dimensions (25 points each):
-1. **Word Count (25 pts)**: You MUST write the full minimum word count requested. 900 words scores ~15/25. 1500+ words scores 25/25. WRITE MORE, NOT LESS.
+1. **Word Count (25 pts)**: You MUST write at least {min_words} words. Writing less than {min_words} words WILL reduce your score. {min_words} words = 25/25. {half_words} words = ~12/25. WRITE MORE, NOT LESS.
 2. **Subsection Coverage (25 pts)**: Include ALL required subsections as ## headings.
-3. **Technical Density (25 pts)**: You MUST include code blocks (```), file paths, CLI commands, markdown tables, and environment variables. Aim for 10+ technical artifacts to score 15+.
+3. **Technical Density (25 pts)**: You MUST include code blocks, file paths, CLI commands, markdown tables, and environment variables. Aim for 10+ technical artifacts to score 15+.
 4. **Implementation Specificity (25 pts)**: Cover execution order (step 1, step 2...), input/output definitions, dependencies, environment configuration, testing strategy, and deployment. Cover 4+ of these 6 categories."""
 
 
@@ -548,7 +553,7 @@ You MUST include ALL of the following subsections as ## headings in your content
 
 ## CONTENT REQUIREMENTS
 - Minimum {min_words} words total
-- Each subsection must be substantive (200+ words)
+- Each subsection must be substantive (400+ words)
 - Include specific file names, component patterns, API endpoints
 - Include folder structures using tree format and CLI commands
 - Include environment variables and configuration examples
@@ -573,7 +578,7 @@ Missing subsections: {missing_subsections}
 
 Please rewrite the chapter content, fixing ALL of the above issues.
 - Include ALL required subsections as ## headings
-- Each subsection must be 200+ words with substantive detail
+- Each subsection must be 400+ words with substantive detail
 - Total chapter MUST be at least {min_words} words
 - Include code blocks, file paths, CLI commands, environment variables, and tables
 
@@ -689,7 +694,7 @@ def generate_chapter_enterprise_with_retry(
         missing_subsections=", ".join(sr.get("subsections_missing", [])) or "None",
         word_count=sr.get("word_count", 0),
         min_words=config["min_words"],
-        quality_gate_section=_build_quality_gate_section(),
+        quality_gate_section=_build_quality_gate_section(config["min_words"]),
     )
 
     try:
@@ -800,7 +805,7 @@ def generate_chapter_enterprise_with_retry_and_usage(
         missing_subsections=", ".join(sr.get("subsections_missing", [])) or "None",
         word_count=sr.get("word_count", 0),
         min_words=config["min_words"],
-        quality_gate_section=_build_quality_gate_section(),
+        quality_gate_section=_build_quality_gate_section(config["min_words"]),
     )
 
     try:
@@ -894,7 +899,7 @@ def _build_enterprise_prompt(
         risks=", ".join(risks) if risks else "None specified",
         required_subsections=required_subsections,
         min_words=config["min_words"],
-        quality_gate_section=_build_quality_gate_section(),
+        quality_gate_section=_build_quality_gate_section(config["min_words"]),
         **fields,
     )
 
