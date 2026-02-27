@@ -15,5 +15,6 @@ RUN mkdir -p output tmp
 # Expose the FastAPI port
 EXPOSE 8000
 
-# Run with uvicorn (production settings)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Run with single worker — pipeline uses in-memory progress tracking
+# that cannot be shared across worker processes
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
