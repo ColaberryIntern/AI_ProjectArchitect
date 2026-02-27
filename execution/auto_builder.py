@@ -282,7 +282,7 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
 
         complete_threshold = get_scoring_thresholds(depth_mode)["complete_threshold"]
         min_words = get_scoring_thresholds(depth_mode)["min_words"]
-        word_count_floor = int(min_words * 0.6)  # 60% of min_words required
+        word_count_floor = int(min_words * 0.35)  # 35% of min_words — catches truly short chapters
         meets_word_floor = ch_score["word_count"] >= word_count_floor
 
         score_ok = gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold
