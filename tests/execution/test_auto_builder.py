@@ -107,9 +107,16 @@ def _setup_ready_state(tmp_output_dir) -> tuple[dict, str]:
 
 
 def _make_enterprise_content(section_title: str) -> dict:
-    """Create enterprise chapter content that passes quality gates."""
+    """Create enterprise chapter content that passes quality gates and word count floor."""
     from execution.chapter_writer import _fallback_chapter_enterprise
-    return _fallback_chapter_enterprise(section_title, f"Details about {section_title}", 1, "enterprise")
+    content = _fallback_chapter_enterprise(section_title, f"Details about {section_title}", 1, "enterprise")
+    # Repeat content body to exceed the word count floor (60% of min_words)
+    # Professional min_words=5000, floor=3000; enterprise min_words=7000, floor=4200
+    body = content["content"]
+    while len(body.split()) < 4500:
+        body += "\n\n" + content["content"]
+    content["content"] = body
+    return content
 
 
 def _make_fallback_content(section_title: str) -> dict:
@@ -565,7 +572,7 @@ class TestScoreBasedApproval:
                 "Step 2: Deploy the API service.\n"
                 "The input is a raw HTTP request. The output is a JSON response.\n"
                 "This depends on the authentication service being available.\n\n"
-            ) * 3  # Repeat to hit word count
+            ) * 22  # Repeat to exceed word count floor (60% of min_words)
         }
 
         mock_gen.side_effect = lambda *a, **kw: (high_score_content, {})

@@ -281,15 +281,25 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
                                "latency_ms": ch_metrics.get("latency_ms", 0)})
 
         complete_threshold = get_scoring_thresholds(depth_mode)["complete_threshold"]
-        if gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold:
+        min_words = get_scoring_thresholds(depth_mode)["min_words"]
+        word_count_floor = int(min_words * 0.6)  # 60% of min_words required
+        meets_word_floor = ch_score["word_count"] >= word_count_floor
+
+        score_ok = gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold
+        if score_ok and meets_word_floor:
             record_chapter_status(state, chapter_idx, "approved")
         else:
-            # Auto-retry up to MAX_RETRIES times when gates fail AND score is below threshold
+            # Auto-retry: score below threshold OR word count below floor
+            retry_reason = []
+            if not score_ok:
+                retry_reason.append(f"score {ch_score['total_score']}<{complete_threshold}")
+            if not meets_word_floor:
+                retry_reason.append(f"words {ch_score['word_count']}<{word_count_floor}")
             approved = False
             for retry in range(1, MAX_RETRIES + 1):
                 failures = _extract_gate_failures(gate_results)
                 yield BuildEvent("retry",
-                                 f"Retrying chapter {chapter_idx} (attempt {retry + 1}/{MAX_RETRIES + 1})...",
+                                 f"Retrying chapter {chapter_idx} ({', '.join(retry_reason)})...",
                                  chapter_idx, N, score_pct)
 
                 t0 = time.monotonic()
@@ -326,7 +336,9 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
                 record_chapter_score(state, chapter_idx, ch_score)
                 chapter_scores[i] = ch_score
 
-                if gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold:
+                retry_score_ok = gate_results["all_passed"] or ch_score["total_score"] >= complete_threshold
+                retry_meets_floor = ch_score["word_count"] >= word_count_floor
+                if retry_score_ok and retry_meets_floor:
                     record_chapter_status(state, chapter_idx, "approved")
                     approved = True
                     yield BuildEvent("gate", f"Chapter {chapter_idx} passed on retry {retry + 1}",
