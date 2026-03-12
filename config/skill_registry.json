@@ -1,0 +1,1578 @@
+{
+  "version": 1,
+  "last_updated": "2026-03-12T00:00:00Z",
+  "last_scan_status": "seed",
+  "sources_scanned": 0,
+  "skills": [
+    {
+      "id": "mcp_filesystem",
+      "name": "MCP Filesystem Server",
+      "description": "Read, write, and manage local files via Model Context Protocol",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "tags": ["file-io", "mcp", "local", "filesystem"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_github",
+      "name": "MCP GitHub Server",
+      "description": "Interact with GitHub repos, issues, PRs, and actions via MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+      "tags": ["github", "mcp", "vcs", "issues", "pull-requests"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_slack",
+      "name": "MCP Slack Server",
+      "description": "Send messages, read channels, and manage Slack workspaces via MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+      "tags": ["slack", "mcp", "messaging", "collaboration"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_postgres",
+      "name": "MCP PostgreSQL Server",
+      "description": "Query and manage PostgreSQL databases via Model Context Protocol",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+      "tags": ["database", "mcp", "sql", "postgres"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_sqlite",
+      "name": "MCP SQLite Server",
+      "description": "Read and query SQLite databases via MCP for local data access",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
+      "tags": ["database", "mcp", "sql", "sqlite", "local"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_browser",
+      "name": "MCP Browser Automation",
+      "description": "Control web browsers for scraping, testing, and automation via MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+      "tags": ["browser", "mcp", "automation", "scraping", "puppeteer"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_google_drive",
+      "name": "MCP Google Drive Server",
+      "description": "Access and manage Google Drive files and folders via MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/gdrive",
+      "tags": ["google-drive", "mcp", "cloud-storage", "documents"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_memory",
+      "name": "MCP Memory Server",
+      "description": "Persistent knowledge graph memory for Claude conversations via MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "tags": ["memory", "mcp", "knowledge-graph", "persistence"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_brave_search",
+      "name": "MCP Brave Search Server",
+      "description": "Web and local search capabilities via Brave Search API and MCP",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+      "tags": ["search", "mcp", "web", "brave"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_stripe",
+      "name": "MCP Stripe Server",
+      "description": "Manage Stripe payments, subscriptions, and customers via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["stripe", "mcp", "payments", "billing"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_notion",
+      "name": "MCP Notion Server",
+      "description": "Read and write Notion pages, databases, and blocks via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["notion", "mcp", "knowledge-base", "documents"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_linear",
+      "name": "MCP Linear Server",
+      "description": "Create and manage Linear issues, projects, and cycles via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["linear", "mcp", "project-management", "issues"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_terminal",
+      "name": "MCP Terminal Server",
+      "description": "Execute shell commands and scripts in a sandboxed terminal via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["terminal", "mcp", "shell", "execution"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_redis",
+      "name": "MCP Redis Server",
+      "description": "Read and write Redis key-value data and pub/sub via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["redis", "mcp", "cache", "key-value"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_docker",
+      "name": "MCP Docker Server",
+      "description": "Manage Docker containers, images, and volumes via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["docker", "mcp", "containers", "devops"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "autogpt_agent",
+      "name": "AutoGPT Agent Framework",
+      "description": "Autonomous AI agent framework with goal-driven task decomposition",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/Significant-Gravitas/AutoGPT",
+      "tags": ["agent", "autonomous", "task-planning", "goal-driven"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "crewai_framework",
+      "name": "CrewAI Multi-Agent Framework",
+      "description": "Orchestrate role-playing AI agents working together on complex tasks",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/joaomdmoura/crewAI",
+      "tags": ["multi-agent", "roles", "collaboration", "orchestration"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_agents",
+      "name": "LangChain Agent Executor",
+      "description": "Build reasoning agents with tool access using LangChain's agent framework",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "agent", "reasoning", "tool-use"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langgraph_workflow",
+      "name": "LangGraph Workflow Engine",
+      "description": "Build stateful multi-actor AI applications with graph-based workflows",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langgraph",
+      "tags": ["workflow", "graph", "stateful", "multi-agent"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "semantic_kernel_framework",
+      "name": "Microsoft Semantic Kernel",
+      "description": "Integrate AI models into apps with plugins, planners, and memory",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/microsoft/semantic-kernel",
+      "tags": ["semantic-kernel", "plugins", "planner", "microsoft"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "haystack_pipeline",
+      "name": "Haystack AI Pipeline",
+      "description": "Build composable AI pipelines for search, QA, and document processing",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/deepset-ai/haystack",
+      "tags": ["pipeline", "search", "qa", "documents"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "dspy_framework",
+      "name": "DSPy Programming Framework",
+      "description": "Program LLMs with optimizable modules instead of manual prompts",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/stanfordnlp/dspy",
+      "tags": ["dspy", "prompt-optimization", "modules", "programming"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "phidata_agent",
+      "name": "Phidata Agent Toolkit",
+      "description": "Build AI agents with memory, knowledge, and tool capabilities",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/phidatahq/phidata",
+      "tags": ["agent", "memory", "knowledge", "tools"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "claude_tool_use",
+      "name": "Claude Tool Use (Function Calling)",
+      "description": "Define custom functions Claude can call to interact with external systems",
+      "category": "LLM Tool Libraries",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use",
+      "tags": ["claude", "tool-use", "function-calling", "anthropic"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "claude_computer_use",
+      "name": "Claude Computer Use",
+      "description": "Let Claude control a computer by viewing screens and performing actions",
+      "category": "LLM Tool Libraries",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/computer-use",
+      "tags": ["claude", "computer-use", "desktop", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "claude_vision",
+      "name": "Claude Vision (Image Analysis)",
+      "description": "Analyze images, screenshots, and documents using Claude's multimodal vision",
+      "category": "LLM Tool Libraries",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/vision",
+      "tags": ["claude", "vision", "image", "multimodal"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "claude_prompt_caching",
+      "name": "Claude Prompt Caching",
+      "description": "Cache large prompt prefixes to reduce latency and cost on repeated calls",
+      "category": "LLM Tool Libraries",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "tags": ["claude", "caching", "performance", "cost-optimization"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "claude_batch_api",
+      "name": "Claude Message Batches API",
+      "description": "Process large volumes of messages asynchronously at reduced cost",
+      "category": "LLM Tool Libraries",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/message-batches",
+      "tags": ["claude", "batch", "async", "high-volume"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_web_search",
+      "name": "LangChain Web Search Tool",
+      "description": "Search the web via Google, Bing, or DuckDuckGo from LangChain agents",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "search", "web", "google"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_python_repl",
+      "name": "LangChain Python REPL Tool",
+      "description": "Execute Python code dynamically within LangChain agent workflows",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "python", "code-execution", "repl"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_sql_toolkit",
+      "name": "LangChain SQL Database Toolkit",
+      "description": "Query SQL databases with natural language via LangChain agents",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "sql", "database", "natural-language"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_wolfram",
+      "name": "LangChain Wolfram Alpha Tool",
+      "description": "Access computational knowledge and math via Wolfram Alpha API",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "wolfram", "math", "computation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_arxiv",
+      "name": "LangChain Arxiv Research Tool",
+      "description": "Search and retrieve academic papers from arXiv for research tasks",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "arxiv", "research", "papers"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "langchain_vectorstore",
+      "name": "LangChain Vector Store Retriever",
+      "description": "Retrieve relevant documents from vector databases for RAG pipelines",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["langchain", "vector-store", "rag", "retrieval"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sk_math_skill",
+      "name": "Semantic Kernel Math Skill",
+      "description": "Perform mathematical calculations and statistical analysis via SK plugins",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/microsoft/semantic-kernel",
+      "tags": ["semantic-kernel", "math", "calculation", "statistics"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sk_summarization",
+      "name": "Semantic Kernel Summarization Skill",
+      "description": "Summarize text, documents, and conversations using SK built-in plugins",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/microsoft/semantic-kernel",
+      "tags": ["semantic-kernel", "summarization", "text", "nlp"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sk_planner",
+      "name": "Semantic Kernel Planner",
+      "description": "Automatically compose multi-step plans from available SK plugins",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/microsoft/semantic-kernel",
+      "tags": ["semantic-kernel", "planner", "orchestration", "multi-step"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_gmail",
+      "name": "n8n Gmail Node",
+      "description": "Send, read, and manage Gmail messages and threads via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.gmail/",
+      "tags": ["n8n", "gmail", "email", "google"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_google_sheets",
+      "name": "n8n Google Sheets Node",
+      "description": "Read, write, and update Google Sheets spreadsheets via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.googlesheets/",
+      "tags": ["n8n", "google-sheets", "spreadsheet", "data"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_slack",
+      "name": "n8n Slack Node",
+      "description": "Post messages, manage channels, and handle Slack events via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.slack/",
+      "tags": ["n8n", "slack", "messaging", "notifications"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_hubspot",
+      "name": "n8n HubSpot Node",
+      "description": "Manage HubSpot contacts, deals, and marketing campaigns via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.hubspot/",
+      "tags": ["n8n", "hubspot", "crm", "marketing"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_http_request",
+      "name": "n8n HTTP Request Node",
+      "description": "Make arbitrary HTTP requests to any REST API endpoint via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/",
+      "tags": ["n8n", "http", "api", "rest"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_webhook",
+      "name": "n8n Webhook Trigger",
+      "description": "Receive and process incoming webhooks to trigger n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/",
+      "tags": ["n8n", "webhook", "trigger", "events"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_cron",
+      "name": "n8n Cron/Schedule Trigger",
+      "description": "Schedule n8n workflows to run at specific times or intervals",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.scheduletrigger/",
+      "tags": ["n8n", "cron", "schedule", "timer"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_salesforce",
+      "name": "n8n Salesforce Node",
+      "description": "Manage Salesforce records, leads, opportunities, and reports via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.salesforce/",
+      "tags": ["n8n", "salesforce", "crm", "leads"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_airtable",
+      "name": "n8n Airtable Node",
+      "description": "Read, write, and manage Airtable bases and records via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.airtable/",
+      "tags": ["n8n", "airtable", "database", "spreadsheet"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_email",
+      "name": "Zapier Send Email Action",
+      "description": "Send transactional or notification emails through Zapier automations",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/email/integrations",
+      "tags": ["zapier", "email", "notifications", "transactional"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_crm_lead",
+      "name": "Zapier Create CRM Lead",
+      "description": "Automatically create leads in CRM systems via Zapier AI Actions",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps",
+      "tags": ["zapier", "crm", "leads", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_notion_page",
+      "name": "Zapier Create Notion Page",
+      "description": "Create pages and database entries in Notion via Zapier automations",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/notion/integrations",
+      "tags": ["zapier", "notion", "pages", "knowledge-base"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_slack_post",
+      "name": "Zapier Post to Slack",
+      "description": "Post messages and notifications to Slack channels via Zapier",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/slack/integrations",
+      "tags": ["zapier", "slack", "messaging", "notifications"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_marketing_campaign",
+      "name": "Zapier Trigger Marketing Campaign",
+      "description": "Launch email marketing campaigns via Mailchimp, SendGrid, or HubSpot",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps",
+      "tags": ["zapier", "marketing", "email-campaign", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "zapier_calendar",
+      "name": "Zapier Calendar Scheduling",
+      "description": "Create and manage Google Calendar or Outlook events via Zapier",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/google-calendar/integrations",
+      "tags": ["zapier", "calendar", "scheduling", "google"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "web_search",
+      "name": "Web Search",
+      "description": "Search the internet for real-time information via Google, Bing, or Brave",
+      "category": "Data & RAG",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use",
+      "tags": ["search", "web", "real-time", "information-retrieval"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "rag_pipeline",
+      "name": "RAG Pipeline (Retrieval-Augmented Generation)",
+      "description": "Retrieve relevant documents from vector stores to ground LLM responses",
+      "category": "Data & RAG",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com/en/docs/build-with-claude/retrieval",
+      "tags": ["rag", "retrieval", "vector-store", "grounding"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "knowledge_base_retrieval",
+      "name": "Knowledge Base Retrieval",
+      "description": "Query structured knowledge bases and wikis for contextual information",
+      "category": "Data & RAG",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com",
+      "tags": ["knowledge-base", "retrieval", "wiki", "context"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "document_loader",
+      "name": "Document Loader & Parser",
+      "description": "Load and parse PDFs, Word docs, CSVs, and other file formats for AI processing",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["documents", "parsing", "pdf", "csv", "loader"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "embedding_generator",
+      "name": "Embedding Generator",
+      "description": "Generate vector embeddings from text for semantic search and similarity",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["embeddings", "vectors", "semantic-search", "similarity"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sql_query_tool",
+      "name": "SQL Database Query Tool",
+      "description": "Translate natural language to SQL and query relational databases",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["sql", "database", "query", "natural-language"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "data_analytics",
+      "name": "Data Analytics & Reporting",
+      "description": "Generate analytics reports, charts, and insights from structured data",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["analytics", "reporting", "charts", "insights"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "web_scraper",
+      "name": "Web Scraper & Data Extractor",
+      "description": "Scrape websites and extract structured data from HTML pages",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["scraping", "web", "extraction", "html"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "csv_processor",
+      "name": "CSV/Excel Data Processor",
+      "description": "Read, transform, and analyze CSV and Excel files programmatically",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["csv", "excel", "data-processing", "tabular"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "graph_database",
+      "name": "Graph Database Query Tool",
+      "description": "Query Neo4j or other graph databases for relationship-based data retrieval",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["graph", "neo4j", "relationships", "knowledge-graph"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "vector_db_pinecone",
+      "name": "Pinecone Vector Database",
+      "description": "Store and query high-dimensional vectors for similarity search at scale",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["pinecone", "vector-db", "similarity", "scale"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "vector_db_chromadb",
+      "name": "ChromaDB Vector Store",
+      "description": "Open-source embedding database for building AI apps with retrieval",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/chroma-core/chroma",
+      "tags": ["chroma", "vector-db", "embeddings", "open-source"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "trend_scanner",
+      "name": "Market Trend Scanner",
+      "description": "Monitor news, social media, and market data for emerging trends",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["trends", "market", "monitoring", "intelligence"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "code_interpreter",
+      "name": "Code Interpreter / Sandbox Execution",
+      "description": "Execute code in sandboxed environments for computation and data analysis",
+      "category": "Code & Development",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com",
+      "tags": ["code", "execution", "sandbox", "interpreter"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "github_actions",
+      "name": "GitHub Actions CI/CD",
+      "description": "Trigger and manage GitHub Actions workflows for build, test, and deploy",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/features/actions",
+      "tags": ["github", "ci-cd", "actions", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "git_operations",
+      "name": "Git Version Control Operations",
+      "description": "Perform git operations like commit, branch, merge, and PR creation",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["git", "version-control", "branches", "commits"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "code_review",
+      "name": "Automated Code Review",
+      "description": "Analyze code for bugs, style issues, and security vulnerabilities",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["code-review", "static-analysis", "bugs", "security"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "test_generator",
+      "name": "Automated Test Generator",
+      "description": "Generate unit, integration, and end-to-end tests from source code",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["testing", "test-generation", "unit-tests", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "api_connector",
+      "name": "Universal API Connector",
+      "description": "Connect to any REST or GraphQL API with configurable authentication",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["api", "rest", "graphql", "connector"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "database_migration",
+      "name": "Database Migration Tool",
+      "description": "Generate and execute database schema migrations safely",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["database", "migration", "schema", "deployment"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "dockerfile_generator",
+      "name": "Dockerfile & Container Generator",
+      "description": "Generate optimized Dockerfiles and container configurations from code",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["docker", "containers", "devops", "deployment"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "dependency_manager",
+      "name": "Dependency Analysis & Management",
+      "description": "Analyze, update, and audit project dependencies for security and compatibility",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["dependencies", "audit", "security", "packages"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "api_documentation",
+      "name": "API Documentation Generator",
+      "description": "Generate OpenAPI specs and API documentation from source code",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["api", "documentation", "openapi", "swagger"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "infrastructure_as_code",
+      "name": "Infrastructure as Code Generator",
+      "description": "Generate Terraform, CloudFormation, or Pulumi configs for cloud infrastructure",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["iac", "terraform", "cloudformation", "infrastructure"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "email_sender",
+      "name": "Email Sending Service",
+      "description": "Send transactional and notification emails via SendGrid, SES, or SMTP",
+      "category": "Communication & Collaboration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/email/integrations",
+      "tags": ["email", "sendgrid", "ses", "notifications"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sms_messaging",
+      "name": "SMS/Text Messaging",
+      "description": "Send SMS notifications and alerts via Twilio or similar providers",
+      "category": "Communication & Collaboration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/twilio/integrations",
+      "tags": ["sms", "twilio", "messaging", "notifications"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "calendar_scheduling",
+      "name": "Calendar & Scheduling",
+      "description": "Create, update, and manage calendar events across Google and Outlook",
+      "category": "Communication & Collaboration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/google-calendar/integrations",
+      "tags": ["calendar", "scheduling", "google", "outlook"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "video_conferencing",
+      "name": "Video Conference Manager",
+      "description": "Schedule and manage Zoom, Teams, or Google Meet calls programmatically",
+      "category": "Communication & Collaboration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/zoom/integrations",
+      "tags": ["video", "zoom", "teams", "meetings"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "ticket_creation",
+      "name": "Issue/Ticket Creation",
+      "description": "Create and manage tickets in Jira, Linear, GitHub Issues, or Asana",
+      "category": "Communication & Collaboration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["tickets", "jira", "linear", "project-management"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "discord_bot",
+      "name": "Discord Bot Integration",
+      "description": "Send messages, manage channels, and respond to events in Discord servers",
+      "category": "Communication & Collaboration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["discord", "bot", "messaging", "community"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "notification_hub",
+      "name": "Multi-Channel Notification Hub",
+      "description": "Route notifications to email, Slack, SMS, push, or webhook channels",
+      "category": "Communication & Collaboration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["notifications", "multi-channel", "push", "routing"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "content_generator",
+      "name": "Content Generation Engine",
+      "description": "Generate blog posts, social media content, and marketing copy with AI",
+      "category": "Communication & Collaboration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["content", "marketing", "copywriting", "social-media"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "social_posting",
+      "name": "Social Media Posting",
+      "description": "Publish and schedule posts to Twitter, LinkedIn, Facebook, and Instagram",
+      "category": "Communication & Collaboration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps",
+      "tags": ["social-media", "posting", "scheduling", "marketing"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "prometheus_monitoring",
+      "name": "Prometheus Metrics Collection",
+      "description": "Collect, store, and query application metrics with Prometheus",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["prometheus", "metrics", "monitoring", "alerting"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "grafana_dashboards",
+      "name": "Grafana Dashboard Builder",
+      "description": "Create and manage Grafana dashboards for system observability",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["grafana", "dashboards", "visualization", "monitoring"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "log_aggregator",
+      "name": "Log Aggregation & Analysis",
+      "description": "Collect and analyze application logs with ELK, Loki, or CloudWatch",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["logging", "elk", "loki", "analysis"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "error_tracker",
+      "name": "Error Tracking (Sentry)",
+      "description": "Capture, track, and alert on application errors with Sentry integration",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["sentry", "errors", "tracking", "alerting"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "uptime_monitor",
+      "name": "Uptime & Health Check Monitor",
+      "description": "Monitor service uptime, latency, and health endpoints with alerts",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["uptime", "health-check", "monitoring", "alerts"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "apm_tool",
+      "name": "Application Performance Monitoring",
+      "description": "Track request traces, latency distributions, and performance bottlenecks",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["apm", "tracing", "performance", "latency"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "cost_monitor",
+      "name": "Cloud Cost Monitor",
+      "description": "Track and alert on cloud infrastructure spending across AWS, GCP, Azure",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["cost", "cloud", "budget", "optimization"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "oauth_provider",
+      "name": "OAuth 2.0 / OIDC Provider",
+      "description": "Implement OAuth 2.0 and OpenID Connect authentication flows",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["oauth", "oidc", "authentication", "sso"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "api_key_management",
+      "name": "API Key Management",
+      "description": "Generate, rotate, and validate API keys with rate limiting and scoping",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["api-keys", "management", "rate-limiting", "security"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "secrets_manager",
+      "name": "Secrets Manager (Vault/AWS)",
+      "description": "Store and retrieve secrets securely via HashiCorp Vault or AWS Secrets Manager",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["secrets", "vault", "aws", "security"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "rbac_engine",
+      "name": "Role-Based Access Control Engine",
+      "description": "Enforce fine-grained permissions based on user roles and resource ownership",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["rbac", "permissions", "roles", "authorization"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "vulnerability_scanner",
+      "name": "Security Vulnerability Scanner",
+      "description": "Scan code and dependencies for known security vulnerabilities (CVEs)",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["security", "vulnerabilities", "cve", "scanning"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "encryption_toolkit",
+      "name": "Encryption & Data Protection Toolkit",
+      "description": "Encrypt data at rest and in transit with AES, RSA, and TLS management",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["encryption", "tls", "data-protection", "security"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "audit_logger",
+      "name": "Security Audit Logger",
+      "description": "Log all security-relevant events for compliance and forensic analysis",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["audit", "logging", "compliance", "security"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mfa_integration",
+      "name": "Multi-Factor Authentication",
+      "description": "Add TOTP, SMS, or WebAuthn second-factor authentication to applications",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["mfa", "2fa", "totp", "webauthn"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "task_planner",
+      "name": "AI Task Planner",
+      "description": "Decompose complex goals into ordered task sequences with dependencies",
+      "category": "AI Agent Frameworks",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com",
+      "tags": ["planner", "task-decomposition", "goals", "dependencies"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "memory_system",
+      "name": "Agent Memory System",
+      "description": "Provide short-term and long-term memory for AI agent conversations",
+      "category": "AI Agent Frameworks",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com",
+      "tags": ["memory", "context", "persistence", "conversation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "multi_agent_orchestrator",
+      "name": "Multi-Agent Orchestrator",
+      "description": "Coordinate multiple specialized AI agents working on shared tasks",
+      "category": "AI Agent Frameworks",
+      "source": "docs.anthropic.com",
+      "source_url": "https://docs.anthropic.com",
+      "tags": ["multi-agent", "orchestration", "coordination", "delegation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "ad_campaign_creator",
+      "name": "Ad Campaign Creator",
+      "description": "Generate and manage digital advertising campaigns across platforms",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps",
+      "tags": ["advertising", "campaigns", "marketing", "automation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "pdf_generator",
+      "name": "PDF Report Generator",
+      "description": "Generate formatted PDF reports and documents from templates and data",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["pdf", "reports", "documents", "generation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "image_generator",
+      "name": "AI Image Generator (DALL-E/Stable Diffusion)",
+      "description": "Generate images from text descriptions using DALL-E or Stable Diffusion",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["image-generation", "dall-e", "stable-diffusion", "creative"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "text_to_speech",
+      "name": "Text-to-Speech Service",
+      "description": "Convert text to natural speech audio using ElevenLabs or Azure TTS",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["tts", "speech", "audio", "voice"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "speech_to_text",
+      "name": "Speech-to-Text Transcription",
+      "description": "Transcribe audio and video to text using Whisper or cloud STT services",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["stt", "transcription", "audio", "whisper"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "translation_service",
+      "name": "Multi-Language Translation",
+      "description": "Translate text between languages using DeepL, Google, or LLM-based translation",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["translation", "multilingual", "localization", "nlp"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "sentiment_analyzer",
+      "name": "Sentiment Analysis Tool",
+      "description": "Analyze text sentiment, emotion, and opinion for reviews, feedback, and social data",
+      "category": "LLM Tool Libraries",
+      "source": "github.com",
+      "source_url": "https://github.com/langchain-ai/langchain",
+      "tags": ["sentiment", "analysis", "nlp", "opinions"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_stripe",
+      "name": "n8n Stripe Node",
+      "description": "Process payments, manage subscriptions, and handle Stripe webhooks via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.stripe/",
+      "tags": ["n8n", "stripe", "payments", "subscriptions"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_mysql",
+      "name": "n8n MySQL Node",
+      "description": "Execute MySQL queries and manage database records via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.mysql/",
+      "tags": ["n8n", "mysql", "database", "sql"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_mongodb",
+      "name": "n8n MongoDB Node",
+      "description": "Read, write, and query MongoDB collections via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.mongodb/",
+      "tags": ["n8n", "mongodb", "nosql", "database"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_s3",
+      "name": "n8n AWS S3 Node",
+      "description": "Upload, download, and manage files in AWS S3 buckets via n8n",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.awsS3/",
+      "tags": ["n8n", "aws", "s3", "cloud-storage"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_jira",
+      "name": "n8n Jira Node",
+      "description": "Create and manage Jira issues, sprints, and boards via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.jira/",
+      "tags": ["n8n", "jira", "project-management", "issues"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "n8n_telegram",
+      "name": "n8n Telegram Bot Node",
+      "description": "Send messages and manage Telegram bot interactions via n8n workflows",
+      "category": "Automation & Integration",
+      "source": "n8n.io",
+      "source_url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.telegram/",
+      "tags": ["n8n", "telegram", "bot", "messaging"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "playwright_testing",
+      "name": "Playwright Browser Testing",
+      "description": "Automate browser testing across Chromium, Firefox, and WebKit with Playwright",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/microsoft/playwright",
+      "tags": ["playwright", "testing", "browser", "e2e"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "cypress_testing",
+      "name": "Cypress E2E Testing",
+      "description": "Write and run end-to-end tests for web applications with Cypress",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/cypress-io/cypress",
+      "tags": ["cypress", "testing", "e2e", "web"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "k8s_management",
+      "name": "Kubernetes Cluster Management",
+      "description": "Deploy, scale, and manage Kubernetes workloads and configurations",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["kubernetes", "k8s", "deployment", "orchestration"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "ci_cd_pipeline",
+      "name": "CI/CD Pipeline Builder",
+      "description": "Generate and manage CI/CD pipelines for GitHub Actions, GitLab CI, or Jenkins",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["ci-cd", "pipeline", "jenkins", "gitlab"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "opentelemetry",
+      "name": "OpenTelemetry Instrumentation",
+      "description": "Add distributed tracing, metrics, and logging with OpenTelemetry SDKs",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/open-telemetry/opentelemetry-python",
+      "tags": ["opentelemetry", "tracing", "metrics", "instrumentation"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "feature_flags",
+      "name": "Feature Flag Management",
+      "description": "Control feature rollouts with LaunchDarkly, Unleash, or custom flag systems",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["feature-flags", "rollouts", "experimentation", "toggles"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "load_testing",
+      "name": "Load & Performance Testing",
+      "description": "Run load tests with k6, Locust, or Artillery to validate system performance",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["load-testing", "performance", "k6", "locust"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "queue_processor",
+      "name": "Message Queue Processor",
+      "description": "Process async tasks via RabbitMQ, SQS, Redis queues, or Kafka topics",
+      "category": "Automation & Integration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["queue", "rabbitmq", "sqs", "kafka", "async"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "event_bus",
+      "name": "Event Bus / Pub-Sub System",
+      "description": "Publish and subscribe to events across services for decoupled architectures",
+      "category": "Automation & Integration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["events", "pub-sub", "event-bus", "decoupled"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "etl_pipeline",
+      "name": "ETL Data Pipeline",
+      "description": "Extract, transform, and load data between systems and databases",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["etl", "data-pipeline", "transformation", "loading"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "realtime_websocket",
+      "name": "Real-Time WebSocket Server",
+      "description": "Build real-time communication with WebSocket server and client management",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["websocket", "real-time", "streaming", "communication"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "caching_layer",
+      "name": "Caching Layer (Redis/Memcached)",
+      "description": "Add application-level caching with Redis or Memcached for performance",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["caching", "redis", "memcached", "performance"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "search_engine",
+      "name": "Full-Text Search Engine",
+      "description": "Add full-text search to applications with Elasticsearch, Meilisearch, or Typesense",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["search", "elasticsearch", "full-text", "indexing"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "payment_processing",
+      "name": "Payment Processing Integration",
+      "description": "Accept payments with Stripe, PayPal, or Square with subscription support",
+      "category": "Automation & Integration",
+      "source": "zapier.com",
+      "source_url": "https://zapier.com/apps/stripe/integrations",
+      "tags": ["payments", "stripe", "paypal", "subscriptions"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "file_storage",
+      "name": "Cloud File Storage (S3/GCS/Azure Blob)",
+      "description": "Upload, download, and manage files in cloud object storage services",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["storage", "s3", "gcs", "azure-blob", "files"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "rate_limiter",
+      "name": "Rate Limiter & Throttling",
+      "description": "Protect APIs with configurable rate limiting, throttling, and quota management",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["rate-limiting", "throttling", "quotas", "protection"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "webhook_manager",
+      "name": "Webhook Manager",
+      "description": "Register, dispatch, and retry webhook deliveries with signature verification",
+      "category": "Automation & Integration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["webhooks", "events", "delivery", "retry"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "data_validation",
+      "name": "Data Validation & Sanitization",
+      "description": "Validate and sanitize user inputs with schema-based validation libraries",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["validation", "sanitization", "schemas", "input"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "backup_restore",
+      "name": "Backup & Disaster Recovery",
+      "description": "Automate database backups, snapshot management, and recovery procedures",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["backup", "recovery", "snapshots", "disaster-recovery"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "ab_testing",
+      "name": "A/B Testing Framework",
+      "description": "Run controlled experiments with traffic splitting and statistical analysis",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["ab-testing", "experiments", "statistics", "optimization"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "user_analytics",
+      "name": "User Analytics & Event Tracking",
+      "description": "Track user behavior, events, and funnels with Mixpanel, Amplitude, or PostHog",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["analytics", "events", "funnels", "user-behavior"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "compliance_checker",
+      "name": "GDPR/SOC2 Compliance Checker",
+      "description": "Audit systems for GDPR, SOC2, HIPAA, and other regulatory compliance",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["compliance", "gdpr", "soc2", "hipaa", "audit"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "llm_evaluation",
+      "name": "LLM Output Evaluation",
+      "description": "Evaluate LLM outputs for quality, safety, and accuracy with automated scoring",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["evaluation", "scoring", "quality", "llm"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "prompt_management",
+      "name": "Prompt Template Management",
+      "description": "Version, test, and manage LLM prompt templates with variable substitution",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["prompts", "templates", "versioning", "management"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "guardrails",
+      "name": "AI Guardrails & Safety Filters",
+      "description": "Add content filtering, PII detection, and safety guardrails to LLM outputs",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["guardrails", "safety", "pii", "content-filtering"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "model_fine_tuning",
+      "name": "Model Fine-Tuning Pipeline",
+      "description": "Fine-tune LLMs on custom datasets with training, evaluation, and deployment",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/Hannibal046/Awesome-LLM",
+      "tags": ["fine-tuning", "training", "datasets", "deployment"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "e2b_sandbox",
+      "name": "E2B Code Sandbox",
+      "description": "Run untrusted code in secure cloud sandboxes with full OS environments",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/e2b",
+      "tags": ["sandbox", "code-execution", "security", "cloud"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_everart",
+      "name": "MCP EverArt Image Generation",
+      "description": "Generate and edit images using AI models via MCP EverArt integration",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["mcp", "image-generation", "art", "creative"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_fetch",
+      "name": "MCP Fetch/HTTP Server",
+      "description": "Fetch URLs and extract content from web pages via MCP for web research",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "tags": ["mcp", "http", "fetch", "web-content"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_sentry",
+      "name": "MCP Sentry Error Tracking",
+      "description": "Query Sentry error data and manage issues via MCP integration",
+      "category": "MCP Servers",
+      "source": "modelcontextprotocol.io",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["mcp", "sentry", "errors", "monitoring"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "mcp_cloudflare",
+      "name": "MCP Cloudflare Workers",
+      "description": "Deploy and manage Cloudflare Workers and KV storage via MCP",
+      "category": "MCP Servers",
+      "source": "community",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "tags": ["mcp", "cloudflare", "workers", "edge"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "workflow_automation",
+      "name": "Workflow Automation Engine",
+      "description": "Build multi-step automated workflows with conditional branching and retries",
+      "category": "Automation & Integration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["workflow", "automation", "branching", "orchestration"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "data_anonymizer",
+      "name": "Data Anonymization Tool",
+      "description": "Anonymize PII in datasets for privacy compliance and safe sharing",
+      "category": "Security & Auth",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["anonymization", "pii", "privacy", "compliance"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "anomaly_detection",
+      "name": "Anomaly Detection System",
+      "description": "Detect unusual patterns in metrics, logs, and user behavior with ML models",
+      "category": "Monitoring & Observability",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["anomaly", "detection", "ml", "monitoring"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "chatbot_builder",
+      "name": "Chatbot Builder Framework",
+      "description": "Build conversational AI chatbots with intent detection and dialog management",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["chatbot", "conversational", "intent", "dialog"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "ocr_processor",
+      "name": "OCR Document Processor",
+      "description": "Extract text from images and scanned documents using Tesseract or cloud OCR",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["ocr", "document", "text-extraction", "scanning"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "geo_location",
+      "name": "Geolocation & Mapping Service",
+      "description": "Geocode addresses, calculate distances, and render maps with Google Maps or Mapbox",
+      "category": "Data & RAG",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["geolocation", "maps", "geocoding", "distance"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "recommendation_engine",
+      "name": "Recommendation Engine",
+      "description": "Generate personalized recommendations using collaborative and content-based filtering",
+      "category": "AI Agent Frameworks",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["recommendations", "personalization", "filtering", "ml"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "notification_scheduler",
+      "name": "Scheduled Notification Service",
+      "description": "Schedule and deliver notifications at future times with timezone awareness",
+      "category": "Communication & Collaboration",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["notifications", "scheduling", "timezone", "delivery"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "api_gateway",
+      "name": "API Gateway (Kong/Traefik)",
+      "description": "Route, authenticate, and rate-limit API traffic with Kong or Traefik gateway",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["api-gateway", "routing", "authentication", "traffic"],
+      "last_verified": "2026-03-12"
+    },
+    {
+      "id": "service_mesh",
+      "name": "Service Mesh (Istio/Linkerd)",
+      "description": "Manage service-to-service communication with traffic policies and observability",
+      "category": "Code & Development",
+      "source": "github.com",
+      "source_url": "https://github.com/e2b-dev/awesome-ai-agents",
+      "tags": ["service-mesh", "istio", "linkerd", "microservices"],
+      "last_verified": "2026-03-12"
+    }
+  ]
+}

@@ -12,8 +12,10 @@ from execution.outline_generator import generate_outline, generate_outline_from_
 from execution.outline_validator import run_all_checks
 from execution.state_manager import (
     advance_phase,
+    get_blueprint_id,
     get_build_depth_mode,
     get_project_profile,
+    get_selected_skills,
     is_profile_complete,
     save_state,
     set_outline_sections,
@@ -33,11 +35,32 @@ async def outline_generation_page(request: Request, slug: str):
         profile = get_project_profile(state)
         features = state.get("features", {}).get("core", [])
         depth_mode = get_build_depth_mode(state)
+        blueprint_id = get_blueprint_id(state)
         if is_profile_complete(state):
-            sections = generate_outline_from_profile(profile, features, depth_mode=depth_mode)
+            sections = generate_outline_from_profile(
+                profile, features, depth_mode=depth_mode, blueprint=blueprint_id,
+            )
         else:
             idea = state.get("idea", {}).get("original_raw", "")
             sections = generate_outline(idea, features)
+
+        # Append skill chapter section if skills are selected
+        selected_skills = get_selected_skills(state)
+        if selected_skills:
+            skill_names = ", ".join(s["name"] for s in selected_skills[:10])
+            extra = f" and {len(selected_skills) - 10} more" if len(selected_skills) > 10 else ""
+            sections.append({
+                "index": len(sections) + 1,
+                "title": "Skills & Tool Integration Guide",
+                "type": "required",
+                "summary": (
+                    f"Implementation guide for {len(selected_skills)} selected Claude-compatible "
+                    f"skills and tools including {skill_names}{extra}. Describes how to install, "
+                    f"configure, and integrate each skill into the project architecture, "
+                    f"including when to use each tool during the development lifecycle."
+                ),
+            })
+
         set_outline_sections(state, sections)
         save_state(state, slug)
 

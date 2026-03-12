@@ -1,11 +1,15 @@
 """FastAPI application for AI Project Architect & Build Companion."""
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+
+logger = logging.getLogger(__name__)
 
 from app.routers import (
     auto_build,
@@ -23,7 +27,27 @@ from app.routers import (
 
 APP_DIR = Path(__file__).parent
 
-app = FastAPI(title="AI Project Architect & Build Companion")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """App lifespan: start/stop background services."""
+    try:
+        from execution.skill_scanner_scheduler import start_scheduler, stop_scheduler
+        start_scheduler()
+    except ImportError:
+        logger.info("APScheduler not installed — skill scanner disabled")
+        stop_scheduler = None
+    except Exception:
+        logger.warning("Failed to start skill scanner scheduler", exc_info=True)
+        stop_scheduler = None
+
+    yield
+
+    if stop_scheduler:
+        stop_scheduler()
+
+
+app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
 
 # Templates and static files
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))

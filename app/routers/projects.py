@@ -11,6 +11,7 @@ from app.dependencies import (
     get_project_state,
     list_projects,
 )
+from config.blueprints import get_all_blueprints, resolve_blueprint
 from execution.state_manager import delete_project, initialize_state, save_state
 
 router = APIRouter()
@@ -20,15 +21,21 @@ router = APIRouter()
 async def index(request: Request):
     """Landing page: list all projects + create button."""
     projects = list_projects()
+    blueprints = get_all_blueprints()
     return request.app.state.templates.TemplateResponse(
-        request, "index.html", {"projects": projects},
+        request, "index.html", {"projects": projects, "blueprints": blueprints},
     )
 
 
 @router.post("/projects/new")
-async def create_project(request: Request, project_name: str = Form(...)):
+async def create_project(
+    request: Request,
+    project_name: str = Form(...),
+    blueprint: str = Form("standard"),
+):
     """Create a new project and redirect to idea intake."""
-    state = initialize_state(project_name)
+    resolved_blueprint = resolve_blueprint(blueprint)
+    state = initialize_state(project_name, blueprint=resolved_blueprint)
     slug = state["project"]["slug"]
     return RedirectResponse(
         url=f"/projects/{slug}/idea-intake", status_code=303

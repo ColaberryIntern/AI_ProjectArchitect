@@ -28,6 +28,10 @@
           "type": "string",
           "format": "date-time",
           "description": "ISO 8601 datetime when project was last updated"
+        },
+        "blueprint": {
+          "type": "string",
+          "description": "Blueprint ID (e.g. 'standard', 'autonomous'). Determines architecture patterns, feature seeds, and build constraints."
         }
       },
       "additionalProperties": false
@@ -151,6 +155,47 @@
             "additionalProperties": false
           },
           "description": "Features extracted during ideation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "object",
+      "description": "Claude-compatible skills/tools selected for the project",
+      "properties": {
+        "catalog": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Snapshot of available skills at time of selection"
+        },
+        "selected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of selected skill IDs"
+        },
+        "custom": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "description"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "category": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "User-defined custom skills"
+        },
+        "suggested_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When skill suggestions were generated"
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "Whether skill selection has been approved"
         }
       },
       "additionalProperties": false

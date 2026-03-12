@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import asyncio
+import functools
 import re
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+from config.blueprints import VALID_BLUEPRINT_IDS, resolve_blueprint
 from execution.build_depth import get_scoring_thresholds, resolve_depth_mode
 from execution.full_pipeline import (
     _check_document_quality,
@@ -58,6 +60,14 @@ class GenerateRequest(BaseModel):
     depth_mode: str = Field(
         default="professional",
         description="Build depth: light, standard, professional, or enterprise",
+    )
+    blueprint: str = Field(
+        default="standard",
+        description=(
+            "Project blueprint: 'standard' (default) or 'autonomous' "
+            "(self-operating platform with AI agent fleets). "
+            "When 'autonomous', depth_mode is forced to 'enterprise'."
+        ),
     )
 
 
@@ -150,6 +160,17 @@ async def start_generation(request: GenerateRequest):
     Returns immediately with a job_id (project slug) and URLs for
     polling and downloading the completed document.
     """
+    # Validate blueprint
+    resolved_blueprint = resolve_blueprint(request.blueprint)
+    if request.blueprint not in VALID_BLUEPRINT_IDS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid blueprint: {request.blueprint}. "
+                f"Must be one of {list(VALID_BLUEPRINT_IDS)}."
+            ),
+        )
+
     # Validate depth mode
     try:
         resolve_depth_mode(request.depth_mode)
@@ -171,14 +192,17 @@ async def start_generation(request: GenerateRequest):
             detail=f"A pipeline is already running for '{slug}'.",
         )
 
-    # Launch in background thread
+    # Launch in background thread (use keyword args for blueprint)
     loop = asyncio.get_event_loop()
     loop.run_in_executor(
         None,
-        run_full_pipeline_sync,
-        request.project_name,
-        request.requirements,
-        request.depth_mode,
+        functools.partial(
+            run_full_pipeline_sync,
+            request.project_name,
+            request.requirements,
+            request.depth_mode,
+            blueprint=resolved_blueprint,
+        ),
     )
 
     return JSONResponse(
@@ -186,6 +210,7 @@ async def start_generation(request: GenerateRequest):
         content={
             "job_id": slug,
             "status": "started",
+            "blueprint": resolved_blueprint,
             "poll_url": f"/api/v1/generate/{slug}/status",
             "download_url": f"/api/v1/generate/{slug}/download",
         },

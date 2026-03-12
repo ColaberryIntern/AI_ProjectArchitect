@@ -11,6 +11,8 @@ Falls back to structured template content if LLM is unavailable.
 import json
 import logging
 
+from config.blueprints import DEFAULT_BLUEPRINT_ID, get_chapter_context
+from execution.skill_catalog import build_skill_chapter_context
 from execution.ambiguity_detector import FORBIDDEN_PHRASES
 from execution.build_depth import get_chapter_subsections, get_depth_config
 from execution.intelligence_goals import build_intelligence_goals_prompt_section
@@ -334,6 +336,47 @@ def generate_chapter_with_retry_and_usage(
         return _fallback_chapter(section_title, section_summary, chapter_index), {}
 
 
+def _append_blueprint_context(prompt: str, profile: dict) -> str:
+    """Append blueprint-specific context to a chapter prompt if applicable.
+
+    Reads the blueprint ID from the profile's _blueprint key (set by the pipeline)
+    and appends the blueprint's chapter context to the prompt.
+    Also appends skill context from the _skills key if present.
+
+    Args:
+        prompt: The base prompt string.
+        profile: The project_profile dictionary (may contain _blueprint/_skills keys).
+
+    Returns:
+        The prompt with blueprint and skill context appended, or unchanged if standard.
+    """
+    blueprint_id = profile.get("_blueprint", DEFAULT_BLUEPRINT_ID)
+    chapter_ctx = get_chapter_context(blueprint_id)
+    if chapter_ctx:
+        prompt += (
+            "\n\n## Architecture Blueprint Context\n"
+            "You MUST reference the following architecture patterns in your "
+            "implementation guidance. Every code example, file path, and component "
+            "reference should align with this blueprint:\n\n"
+            f"{chapter_ctx}"
+        )
+
+    # Append skill context if skills are selected
+    selected_skills = profile.get("_skills", [])
+    if selected_skills:
+        skill_ctx = build_skill_chapter_context(selected_skills)
+        if skill_ctx:
+            prompt += (
+                "\n\n## Selected Skills & Tools\n"
+                "The following skills/tools have been selected for this project. "
+                "Reference relevant ones in your implementation guidance where "
+                "they naturally fit:\n"
+                f"{skill_ctx}"
+            )
+
+    return prompt
+
+
 def _build_prompt(
     profile: dict,
     features: list[dict],
@@ -378,7 +421,7 @@ def _build_prompt(
     else:
         previous_context = "This is the first chapter."
 
-    return CHAPTER_USER_PROMPT.format(
+    prompt = CHAPTER_USER_PROMPT.format(
         chapter_index=chapter_index,
         total_chapters=total_chapters,
         section_title=section_title,
@@ -392,6 +435,8 @@ def _build_prompt(
         quality_gate_section=_build_quality_gate_section(),
         **fields,
     )
+
+    return _append_blueprint_context(prompt, profile)
 
 
 def _fallback_chapter(
@@ -884,7 +929,7 @@ def _build_enterprise_prompt(
 
     config = get_depth_config(depth_mode)
 
-    return ENTERPRISE_CHAPTER_PROMPT.format(
+    prompt = ENTERPRISE_CHAPTER_PROMPT.format(
         chapter_index=chapter_index,
         total_chapters=total_chapters,
         section_title=section_title,
@@ -902,6 +947,8 @@ def _build_enterprise_prompt(
         quality_gate_section=_build_quality_gate_section(config["min_words"]),
         **fields,
     )
+
+    return _append_blueprint_context(prompt, profile)
 
 
 def _parse_enterprise_response(raw_json: str, section_title: str, depth_mode: str) -> dict:

@@ -20,18 +20,27 @@ import re
 import threading
 from typing import Generator
 
+from config.blueprints import (
+    get_feature_seeds,
+    get_forced_depth_mode,
+    resolve_blueprint,
+)
 from execution.auto_builder import BuildEvent, run_auto_build
 from execution.build_depth import get_scoring_thresholds, resolve_depth_mode
 from execution.feature_catalog import generate_catalog, generate_catalog_from_profile
 from execution.outline_generator import generate_outline_from_profile
 from execution.profile_generator import generate_profile
+from execution.skill_catalog import load_registry, suggest_skills
 from execution.state_manager import (
     PROFILE_REQUIRED_FIELDS,
     add_feature,
     advance_phase,
     approve_features,
+    approve_skills,
     confirm_all_profile_fields,
+    get_blueprint_id,
     get_project_profile,
+    get_selected_skills,
     initialize_state,
     is_profile_complete,
     load_state,
@@ -42,6 +51,8 @@ from execution.state_manager import (
     set_outline_sections,
     set_profile_derived,
     set_profile_field,
+    set_selected_skills,
+    set_skill_catalog,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +110,7 @@ def run_full_pipeline(
     project_name: str,
     raw_idea: str,
     depth_mode: str = "professional",
+    blueprint: str | None = None,
 ) -> Generator[BuildEvent, None, None]:
     """Run the complete pipeline from idea to assembled document.
 
@@ -109,18 +121,28 @@ def run_full_pipeline(
         project_name: Human-readable project name.
         raw_idea: Detailed idea/campaign text.
         depth_mode: Build depth (default "professional").
+        blueprint: Blueprint ID ('standard' or 'autonomous'). When 'autonomous',
+                   depth_mode is forced to 'enterprise' and blueprint-specific
+                   features/context are injected.
 
     Yields:
         BuildEvent for each pipeline step.
     """
     try:
+        # Resolve blueprint and apply forced depth mode
+        resolved_blueprint = resolve_blueprint(blueprint)
+        forced_depth = get_forced_depth_mode(resolved_blueprint)
+        if forced_depth:
+            depth_mode = forced_depth
+
         # Validate depth mode early
         resolved_depth = resolve_depth_mode(depth_mode)
 
         # ── Phase 1: Idea Intake ────────────────────────────────
-        yield BuildEvent("phase", "Initializing project...", 0, 0, 2)
+        bp_label = f" [{resolved_blueprint}]" if resolved_blueprint != "standard" else ""
+        yield BuildEvent("phase", f"Initializing project{bp_label}...", 0, 0, 2)
 
-        state = initialize_state(project_name)
+        state = initialize_state(project_name, blueprint=resolved_blueprint)
         slug = state["project"]["slug"]
         record_idea(state, raw_idea)
         save_state(state, slug)
@@ -173,6 +195,15 @@ def run_full_pipeline(
         else:
             catalog = generate_catalog(raw_idea)
 
+        # Inject blueprint feature seeds (deduplicated by ID)
+        blueprint_seeds = get_feature_seeds(resolved_blueprint)
+        if blueprint_seeds:
+            existing_ids = {f["id"] for f in catalog}
+            for seed in blueprint_seeds:
+                if seed["id"] not in existing_ids:
+                    catalog.append(seed)
+                    existing_ids.add(seed["id"])
+
         state["features"]["catalog"] = catalog
 
         # Auto-select all features from catalog
@@ -198,6 +229,24 @@ def run_full_pipeline(
             0, 0, 18,
         )
 
+        # ── Skill auto-selection ──────────────────────────────
+        try:
+            registry = load_registry()
+            suggestion = suggest_skills(profile, catalog, registry)
+            suggested_ids = suggestion.get("suggested", [])
+            available_skills = [s for s in registry if s["id"] in set(suggested_ids + suggestion.get("available", []))]
+            set_skill_catalog(state, available_skills)
+            set_selected_skills(state, suggested_ids)
+            approve_skills(state)
+            save_state(state, slug)
+            yield BuildEvent(
+                "phase",
+                f"Skills suggested: {len(suggested_ids)} selected from registry",
+                0, 0, 19,
+            )
+        except Exception:
+            logger.warning("Skill suggestion failed — continuing without skills", exc_info=True)
+
         # ── Advance: feature_discovery → outline_generation ─────
         advance_phase(state, "outline_generation")
         save_state(state, slug)
@@ -208,7 +257,25 @@ def run_full_pipeline(
         features = state["features"]["core"]
         sections = generate_outline_from_profile(
             profile, features, depth_mode=resolved_depth,
+            blueprint=resolved_blueprint,
         )
+
+        # Append skill chapter section if skills were selected
+        selected_skills = get_selected_skills(state)
+        if selected_skills:
+            skill_names = ", ".join(s["name"] for s in selected_skills[:10])
+            extra = f" and {len(selected_skills) - 10} more" if len(selected_skills) > 10 else ""
+            sections.append({
+                "index": len(sections) + 1,
+                "title": "Skills & Tool Integration Guide",
+                "type": "required",
+                "summary": (
+                    f"Implementation guide for {len(selected_skills)} selected "
+                    f"Claude-compatible skills/tools: {skill_names}{extra}. "
+                    "Covers installation, configuration, and usage patterns."
+                ),
+            })
+
         set_outline_sections(state, sections)
         save_state(state, slug)
 
@@ -364,6 +431,7 @@ def run_full_pipeline_sync(
     project_name: str,
     raw_idea: str,
     depth_mode: str = "professional",
+    blueprint: str | None = None,
 ) -> str:
     """Run the full pipeline synchronously, storing events in progress store.
 
@@ -373,6 +441,7 @@ def run_full_pipeline_sync(
         project_name: Human-readable project name.
         raw_idea: Detailed idea/campaign text.
         depth_mode: Build depth (default "professional").
+        blueprint: Blueprint ID ('standard' or 'autonomous').
 
     Returns:
         The project slug (job_id).
@@ -381,7 +450,7 @@ def run_full_pipeline_sync(
     clear_pipeline_progress(slug)
 
     try:
-        for event in run_full_pipeline(project_name, raw_idea, depth_mode):
+        for event in run_full_pipeline(project_name, raw_idea, depth_mode, blueprint=blueprint):
             _append_pipeline_event(slug, event)
             logger.info("Pipeline [%s]: %s", slug, event.message)
     except Exception as e:

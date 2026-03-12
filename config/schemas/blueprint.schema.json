@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Blueprint",
+  "description": "Schema for project blueprints that pre-configure architecture patterns, feature seeds, and build constraints",
+  "type": "object",
+  "required": ["id", "label", "description", "forced_depth_mode", "feature_seeds", "outline_context"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique blueprint identifier (e.g. 'autonomous', 'standard')"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable label shown in UI"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short description shown in UI selector"
+    },
+    "forced_depth_mode": {
+      "type": ["string", "null"],
+      "enum": ["light", "standard", "professional", "enterprise", null],
+      "description": "If set, overrides depth_mode selection. Null means user chooses."
+    },
+    "reference_doc": {
+      "type": ["string", "null"],
+      "description": "Path to the reference markdown document (relative to project root)"
+    },
+    "architecture_context": {
+      "type": "string",
+      "description": "Architecture summary injected into LLM prompts for outline and chapter generation"
+    },
+    "feature_seeds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "category"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "description": "Features automatically added to the catalog when this blueprint is selected"
+    },
+    "outline_context": {
+      "type": "string",
+      "description": "Additional context injected into the outline generation prompt"
+    },
+    "chapter_context": {
+      "type": "string",
+      "description": "Additional context injected into every chapter generation prompt"
+    }
+  },
+  "additionalProperties": false
+}

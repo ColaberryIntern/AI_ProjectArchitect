@@ -25,6 +25,9 @@
             <button type="button" class="feature-layer-tab" onclick="switchLayer('architectural')">
                 Architecture &amp; Ops <span class="layer-tab-count" id="architectural-count">0</span>
             </button>
+            <button type="button" class="feature-layer-tab" onclick="switchLayer('skills')">
+                Skills &amp; Tools <span class="layer-tab-count" id="skills-count">0</span>
+            </button>
         </div>
 
         <div class="feature-catalog-body">
@@ -126,6 +129,57 @@
                     {% endfor %}
                 </div>
                 {% endfor %}
+            </div>
+
+            <div class="layer-tab-pane" id="layer-skills" style="display:none;">
+                <p class="text-muted small mx-1 mb-2">Select Claude-compatible skills and tools to include in your project document. These will become a dedicated chapter describing how to build and use each skill.</p>
+                {% for cat_group in skills_by_category %}
+                <div class="feature-category">
+                    <div class="feature-category-header">
+                        <h6 class="feature-category-title">{{ cat_group.name }}</h6>
+                        <div class="category-toggle-btns">
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleSkillCategory(this, true)">All</button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs"
+                                    onclick="toggleSkillCategory(this, false)">Clear</button>
+                        </div>
+                    </div>
+                    {% for skill in cat_group.skills %}
+                    <label class="feature-checkbox">
+                        <input type="checkbox" name="skills" value="{{ skill.id }}"
+                               {% if skill.id in selected_skill_ids %}checked{% endif %}
+                               onchange="onSkillChange()">
+                        <div class="feature-checkbox-info">
+                            <span class="feature-checkbox-name">{{ skill.name }}</span>
+                            <span class="feature-checkbox-desc">{{ skill.description }}</span>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+
+                <div class="feature-category">
+                    <div class="feature-category-header">
+                        <h6 class="feature-category-title">Add Custom Skill</h6>
+                    </div>
+                    <div class="d-flex gap-2 align-items-end p-2">
+                        <div class="flex-grow-1">
+                            <input type="text" class="form-control form-control-sm" id="custom-skill-name"
+                                   placeholder="Skill name" maxlength="100">
+                        </div>
+                        <div class="flex-grow-1">
+                            <input type="text" class="form-control form-control-sm" id="custom-skill-desc"
+                                   placeholder="Short description" maxlength="200">
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomSkill()">Add</button>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-start px-2 mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="regenerateSkills()">
+                        Re-suggest Skills
+                    </button>
+                </div>
             </div>
 
         </div>
@@ -317,8 +371,85 @@ function saveIntelligenceGoals() {
     }).catch(function() {});
 }
 
+function onSkillChange() {
+    updateSkillCount();
+    autoSaveSkills();
+}
+
+function updateSkillCount() {
+    var skillPane = document.getElementById('layer-skills');
+    var skillCount = skillPane ? skillPane.querySelectorAll('input[name="skills"]:checked').length : 0;
+    var skillCountEl = document.getElementById('skills-count');
+    if (skillCountEl) skillCountEl.textContent = skillCount;
+}
+
+function toggleSkillCategory(btn, selectAll) {
+    var category = btn.closest('.feature-category');
+    if (!category) return;
+    var checkboxes = category.querySelectorAll('input[name="skills"]');
+    checkboxes.forEach(function(cb) { cb.checked = selectAll; });
+    onSkillChange();
+}
+
+function autoSaveSkills() {
+    var checked = document.querySelectorAll('#feature-catalog-form input[name="skills"]:checked');
+    var skillIds = Array.from(checked).map(function(cb) { return cb.value; });
+    fetch('/projects/{{ slug }}/api/skills/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({skills: skillIds})
+    }).catch(function() {});
+}
+
+function addCustomSkill() {
+    var nameEl = document.getElementById('custom-skill-name');
+    var descEl = document.getElementById('custom-skill-desc');
+    var name = nameEl ? nameEl.value.trim() : '';
+    var desc = descEl ? descEl.value.trim() : '';
+    if (!name) return;
+    var id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+    fetch('/projects/{{ slug }}/api/skills/add-custom', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id, name: name, description: desc})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.added) {
+            location.reload();
+        }
+    })
+    .catch(function() {});
+}
+
+function regenerateSkills() {
+    var btn = event.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Suggesting...';
+    fetch('/projects/{{ slug }}/api/skills/suggest')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.suggested) {
+                var allSkillCbs = document.querySelectorAll('#layer-skills input[name="skills"]');
+                var suggestedSet = new Set(data.suggested.concat(data.available || []));
+                allSkillCbs.forEach(function(cb) {
+                    cb.checked = data.suggested.indexOf(cb.value) !== -1;
+                });
+                onSkillChange();
+            }
+            btn.textContent = 'Re-suggest Skills';
+            btn.disabled = false;
+        })
+        .catch(function() {
+            btn.textContent = 'Re-suggest Skills';
+            btn.disabled = false;
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     onFeatureChange();
+    updateSkillCount();
     fetch('/projects/{{ slug }}/api/features/validate-alignment')
         .then(function(r) { return r.json(); })
         .then(function(data) {

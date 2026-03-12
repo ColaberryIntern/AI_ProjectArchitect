@@ -1,0 +1,11 @@
+{
+  "id": "standard",
+  "label": "Standard",
+  "description": "Default project architecture — no pre-configured patterns or feature seeds",
+  "forced_depth_mode": null,
+  "reference_doc": null,
+  "architecture_context": "",
+  "feature_seeds": [],
+  "outline_context": "",
+  "chapter_context": ""
+}

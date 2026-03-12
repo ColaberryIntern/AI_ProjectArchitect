@@ -7,6 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.dependencies import get_phase_info, get_project_state
+from config.blueprints import get_feature_seeds
 from execution.feature_catalog import (
     MUTUAL_EXCLUSION_GROUPS,
     generate_catalog,
@@ -28,15 +29,26 @@ from execution.intelligence_goals import (
     should_show_intelligence_goals,
 )
 from execution.profile_validator import run_all_profile_checks
+from execution.skill_catalog import (
+    get_skills_by_category,
+    load_registry,
+    suggest_skills,
+)
 from execution.state_manager import (
+    add_custom_skill,
     add_feature,
     advance_phase,
     approve_features,
+    approve_skills,
+    get_blueprint_id,
     get_intelligence_goals,
     get_project_profile,
+    get_selected_skills,
     is_profile_complete,
     save_state,
     set_intelligence_goals,
+    set_selected_skills,
+    set_skill_catalog,
 )
 
 router = APIRouter()
@@ -58,10 +70,22 @@ async def feature_discovery_page(request: Request, slug: str):
     if not state["features"].get("catalog"):
         profile = get_project_profile(state)
         if is_profile_complete(state):
-            state["features"]["catalog"] = generate_catalog_from_profile(profile)
+            catalog = generate_catalog_from_profile(profile)
         else:
             idea = state.get("idea", {}).get("original_raw", "")
-            state["features"]["catalog"] = generate_catalog(idea)
+            catalog = generate_catalog(idea)
+
+        # Merge blueprint feature seeds (deduplicated by ID)
+        blueprint_id = get_blueprint_id(state)
+        blueprint_seeds = get_feature_seeds(blueprint_id)
+        if blueprint_seeds:
+            existing_ids = {f["id"] for f in catalog}
+            for seed in blueprint_seeds:
+                if seed["id"] not in existing_ids:
+                    catalog.append(seed)
+                    existing_ids.add(seed["id"])
+
+        state["features"]["catalog"] = catalog
         save_state(state, slug)
 
     catalog = state["features"]["catalog"]
@@ -85,6 +109,21 @@ async def feature_discovery_page(request: Request, slug: str):
         save_state(state, slug)
         existing_goals = get_intelligence_goals(state)
 
+    # ── Skill Discovery ──────────────────────────────────────
+    # Load registry and auto-suggest skills on first visit
+    if not state.get("skills", {}).get("catalog"):
+        registry = load_registry()
+        set_skill_catalog(state, registry)
+        # Auto-suggest based on profile + features
+        suggestion = suggest_skills(profile, features, registry)
+        set_selected_skills(state, suggestion["suggested"])
+        save_state(state, slug)
+
+    skill_catalog = state.get("skills", {}).get("catalog", [])
+    selected_skill_ids = state.get("skills", {}).get("selected", [])
+    custom_skills = state.get("skills", {}).get("custom", [])
+    skills_by_category = get_skills_by_category(skill_catalog + custom_skills)
+
     return request.app.state.templates.TemplateResponse(
         request, "project/feature_discovery.html",
         {
@@ -97,6 +136,9 @@ async def feature_discovery_page(request: Request, slug: str):
             "existing_goals": existing_goals,
             "confidence_levels": CONFIDENCE_LEVELS,
             "confidence_goal_types": list(CONFIDENCE_GOAL_TYPES),
+            "skills_by_category": skills_by_category,
+            "selected_skill_ids": selected_skill_ids,
+            "custom_skills": custom_skills,
         },
     )
 
@@ -135,6 +177,12 @@ async def select_features_from_catalog(request: Request, slug: str):
     # Store selected feature IDs in profile
     profile = get_project_profile(state)
     profile["selected_features"] = selected_ids
+
+    # Save skill selections from form data
+    selected_skill_ids = form_data.getlist("skills")
+    if selected_skill_ids:
+        set_selected_skills(state, selected_skill_ids)
+    approve_skills(state)
 
     approve_features(state)
     advance_phase(state, "outline_generation")
@@ -268,3 +316,55 @@ async def approve_features_route(request: Request, slug: str):
     return RedirectResponse(
         url=f"/projects/{slug}/outline-generation", status_code=303
     )
+
+
+# ── Skill Discovery Endpoints ────────────────────────────────
+
+
+@router.get("/api/skills/suggest")
+async def suggest_skills_route(request: Request, slug: str):
+    """Trigger LLM-based skill re-suggestion."""
+    state = get_project_state(slug)
+    profile = get_project_profile(state)
+    features = state["features"]["core"]
+    registry = load_registry()
+
+    suggestion = suggest_skills(profile, features, registry)
+    return JSONResponse(content=suggestion)
+
+
+@router.post("/api/skills/save")
+async def save_skills_route(request: Request, slug: str):
+    """Save selected skill IDs to state."""
+    state = get_project_state(slug)
+    body = await request.json()
+    skill_ids = body.get("skills", [])
+
+    set_selected_skills(state, skill_ids)
+    save_state(state, slug)
+    return JSONResponse(content={"saved": len(skill_ids)})
+
+
+@router.post("/api/skills/add-custom")
+async def add_custom_skill_route(request: Request, slug: str):
+    """Add a user-defined custom skill."""
+    state = get_project_state(slug)
+    body = await request.json()
+    skill_id = body.get("id", "").strip()
+    name = body.get("name", "").strip()
+    description = body.get("description", "").strip()
+
+    if not skill_id or not name:
+        return JSONResponse(
+            content={"error": "Skill ID and name are required"},
+            status_code=400,
+        )
+
+    add_custom_skill(state, skill_id, name, description)
+    # Auto-select the newly added custom skill
+    selected = state.get("skills", {}).get("selected", [])
+    if skill_id not in selected:
+        selected.append(skill_id)
+        set_selected_skills(state, selected)
+    save_state(state, slug)
+    return JSONResponse(content={"added": skill_id})

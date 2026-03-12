@@ -15,6 +15,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from config.blueprints import DEFAULT_BLUEPRINT_ID, resolve_blueprint
 from config.settings import MAX_CHAPTER_REVISIONS, OUTPUT_DIR, PHASE_ORDER
 from execution.build_depth import DEFAULT_DEPTH_MODE, DEPTH_MODES, resolve_depth_mode
 
@@ -280,17 +281,19 @@ def get_intelligence_goals(state: dict) -> list[dict]:
     return [normalize_goal_data(g) for g in raw]
 
 
-def initialize_state(project_name: str) -> dict:
+def initialize_state(project_name: str, blueprint: str | None = None) -> dict:
     """Create a new blank project state with all required fields.
 
     Args:
         project_name: Human-readable project name.
+        blueprint: Blueprint ID ('standard' or 'autonomous'). Defaults to 'standard'.
 
     Returns:
         The initialized state dictionary.
     """
     now = _now()
     slug = _slugify(project_name)
+    resolved_blueprint = resolve_blueprint(blueprint)
 
     state = {
         "project": {
@@ -298,6 +301,7 @@ def initialize_state(project_name: str) -> dict:
             "slug": slug,
             "created_at": now,
             "updated_at": now,
+            "blueprint": resolved_blueprint,
         },
         "current_phase": "idea_intake",
         "idea": {
@@ -319,6 +323,13 @@ def initialize_state(project_name: str) -> dict:
             "optional": [],
             "approved": False,
             "catalog": [],
+        },
+        "skills": {
+            "catalog": [],
+            "selected": [],
+            "custom": [],
+            "suggested_at": None,
+            "approved": False,
         },
         "outline": {
             "version": 1,
@@ -1032,6 +1043,18 @@ def set_build_depth_mode(state: dict, mode: str) -> dict:
     return state
 
 
+def get_blueprint_id(state: dict) -> str:
+    """Return the blueprint ID from project state.
+
+    Args:
+        state: The project state dictionary.
+
+    Returns:
+        The blueprint ID string (defaults to 'standard' for legacy projects).
+    """
+    return state.get("project", {}).get("blueprint", DEFAULT_BLUEPRINT_ID)
+
+
 def get_build_depth_mode(state: dict) -> str:
     """Return the build depth mode, resolving legacy aliases.
 
@@ -1140,4 +1163,121 @@ def set_chat_step(state: dict, step_id: str) -> dict:
     """
     chat = _ensure_chat(state)
     chat["current_step"] = step_id
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Skills state management
+# ---------------------------------------------------------------------------
+
+
+def _ensure_skills(state: dict) -> dict:
+    """Ensure the skills key exists in state (backward compat for old states).
+
+    Args:
+        state: The project state dictionary.
+
+    Returns:
+        The skills sub-dict.
+    """
+    if "skills" not in state:
+        state["skills"] = {
+            "catalog": [],
+            "selected": [],
+            "custom": [],
+            "suggested_at": None,
+            "approved": False,
+        }
+    return state["skills"]
+
+
+def set_skill_catalog(state: dict, catalog: list[dict]) -> dict:
+    """Store the skill catalog snapshot available during selection.
+
+    Args:
+        state: The project state dictionary.
+        catalog: List of skill dicts from the registry.
+
+    Returns:
+        The updated state dictionary.
+    """
+    skills = _ensure_skills(state)
+    skills["catalog"] = catalog
+    skills["suggested_at"] = _now()
+    return state
+
+
+def set_selected_skills(state: dict, skill_ids: list[str]) -> dict:
+    """Record the user's skill selections by ID.
+
+    Args:
+        state: The project state dictionary.
+        skill_ids: List of skill ID strings the user selected.
+
+    Returns:
+        The updated state dictionary.
+    """
+    skills = _ensure_skills(state)
+    skills["selected"] = list(skill_ids)
+    return state
+
+
+def add_custom_skill(
+    state: dict, skill_id: str, name: str, description: str,
+) -> dict:
+    """Add a user-defined custom skill.
+
+    Args:
+        state: The project state dictionary.
+        skill_id: Unique identifier for the custom skill.
+        name: Display name.
+        description: Short description of the skill.
+
+    Returns:
+        The updated state dictionary.
+    """
+    skills = _ensure_skills(state)
+    # Deduplicate by ID
+    existing_ids = {s["id"] for s in skills["custom"]}
+    if skill_id not in existing_ids:
+        skills["custom"].append({
+            "id": skill_id,
+            "name": name,
+            "description": description,
+            "category": "Custom Skills",
+        })
+    return state
+
+
+def get_selected_skills(state: dict) -> list[dict]:
+    """Return full skill dicts for all selected skill IDs.
+
+    Looks up IDs from both the catalog snapshot and custom skills.
+
+    Args:
+        state: The project state dictionary.
+
+    Returns:
+        List of selected skill dicts.
+    """
+    skills = _ensure_skills(state)
+    selected_ids = set(skills.get("selected", []))
+    if not selected_ids:
+        return []
+
+    all_skills = skills.get("catalog", []) + skills.get("custom", [])
+    return [s for s in all_skills if s["id"] in selected_ids]
+
+
+def approve_skills(state: dict) -> dict:
+    """Mark skill selection as approved.
+
+    Args:
+        state: The project state dictionary.
+
+    Returns:
+        The updated state dictionary.
+    """
+    skills = _ensure_skills(state)
+    skills["approved"] = True
     return state

@@ -39,8 +39,10 @@ from execution.quality_gate_runner import (
 from execution.state_manager import (
     advance_phase,
     all_chapters_approved,
+    get_blueprint_id,
     get_build_depth_mode,
     get_project_profile,
+    get_selected_skills,
     record_chapter_quality,
     record_chapter_score,
     record_chapter_status,
@@ -204,7 +206,13 @@ def run_auto_build(state: dict, slug: str) -> Generator[BuildEvent, None, None]:
 
     depth_mode = get_build_depth_mode(state)
     depth_config = get_depth_config(depth_mode)
-    profile = get_project_profile(state)
+    # Copy profile and inject blueprint ID for chapter_writer context injection.
+    # Using a copy so the _blueprint key is never persisted to state JSON.
+    profile = {
+        **get_project_profile(state),
+        "_blueprint": get_blueprint_id(state),
+        "_skills": get_selected_skills(state),
+    }
     features = state.get("features", {}).get("core", [])
     sections = state.get("outline", {}).get("sections", [])
     section_by_index = {s["index"]: s for s in sections}

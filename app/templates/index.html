@@ -74,10 +74,47 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <label for="project_name" class="form-label">Project Name</label>
-                    <input type="text" class="form-control" id="project_name" name="project_name"
-                           placeholder="e.g., AI Task Manager" required maxlength="200">
+                    <div class="mb-3">
+                        <label for="project_name" class="form-label">Project Name</label>
+                        <input type="text" class="form-control" id="project_name" name="project_name"
+                               placeholder="e.g., AI Task Manager" required maxlength="200">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Project Blueprint</label>
+                        <div class="d-flex flex-column gap-2">
+                            {% for bp in blueprints %}
+                            <div class="form-check border rounded p-3 ps-5{% if bp.id == 'autonomous' %} border-primary{% endif %}">
+                                <input class="form-check-input" type="radio" name="blueprint"
+                                       id="bp_{{ bp.id }}" value="{{ bp.id }}"
+                                       {% if bp.id == 'standard' %}checked{% endif %}
+                                       onchange="updateDepthHint(this)">
+                                <label class="form-check-label" for="bp_{{ bp.id }}">
+                                    <strong>{{ bp.label }}</strong>
+                                    {% if bp.forced_depth_mode %}
+                                    <span class="badge bg-warning text-dark ms-1">{{ bp.forced_depth_mode }} depth</span>
+                                    {% endif %}
+                                    <br>
+                                    <small class="text-muted">{{ bp.description }}</small>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div id="autonomousHint" class="alert alert-info small d-none mb-0">
+                        Autonomous blueprint forces <strong>Enterprise</strong> depth mode (120-150+ pages, 7k+ words/chapter)
+                        and pre-seeds 24 agent fleet features from the Autonomous System Blueprint.
+                    </div>
                 </div>
+                <script>
+                function updateDepthHint(radio) {
+                    var hint = document.getElementById('autonomousHint');
+                    if (radio.value === 'autonomous') {
+                        hint.classList.remove('d-none');
+                    } else {
+                        hint.classList.add('d-none');
+                    }
+                }
+                </script>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Create Project</button>

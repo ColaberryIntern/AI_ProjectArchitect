@@ -8,6 +8,7 @@ with empty summaries if LLM is unavailable.
 import json
 import logging
 
+from config.blueprints import DEFAULT_BLUEPRINT_ID, get_outline_context
 from execution.llm_client import LLMClientError, LLMUnavailableError, chat, is_available
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ def generate_outline_from_profile(
     profile: dict,
     features: list[dict],
     depth_mode: str = "professional",
+    blueprint: str = DEFAULT_BLUEPRINT_ID,
 ) -> list[dict]:
     """Generate an outline from project_profile, scaled by depth mode.
 
@@ -191,6 +193,7 @@ def generate_outline_from_profile(
         profile: The project_profile dictionary with confirmed fields.
         features: List of selected feature dicts.
         depth_mode: Build depth mode controlling section count.
+        blueprint: Blueprint ID for injecting architecture-specific context.
 
     Returns:
         List of section dicts (count varies by depth mode).
@@ -251,6 +254,18 @@ def generate_outline_from_profile(
             feature_list=feature_list,
             intelligence_goals_section=intelligence_goals_section,
         )
+
+        # Inject blueprint-specific architecture context
+        blueprint_context = get_outline_context(blueprint)
+        if blueprint_context:
+            prompt += (
+                "\n\n## Architecture Blueprint Context\n"
+                "The following architecture blueprint MUST be reflected in every section summary. "
+                "Each section should reference the specific patterns, layers, and components "
+                "described below:\n\n"
+                f"{blueprint_context}"
+            )
+
         response = chat(
             system_prompt=OUTLINE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
