@@ -13,6 +13,36 @@ class TestIndexPage:
         response = client.get("/")
         assert "No projects yet" in response.text
 
+    def test_index_shows_stat_cards(self, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "Skills in Registry" in response.text
+        assert "Skill Categories" in response.text
+        assert "Completed" in response.text
+
+    def test_index_shows_skill_browser(self, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "Skill Registry" in response.text
+        assert "skillBrowser" in response.text
+
+    def test_dashboard_stats_api(self, client):
+        response = client.get("/api/dashboard/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "project_count" in data
+        assert "completed_count" in data
+        assert "skill_count" in data
+        assert "skills_by_category" in data
+        assert "category_count" in data
+        assert data["project_count"] == 0
+
+    def test_dashboard_stats_with_projects(self, client, created_project):
+        response = client.get("/api/dashboard/stats")
+        data = response.json()
+        assert data["project_count"] == 1
+        assert data["completed_count"] == 0
+
 
 class TestCreateProject:
     def test_create_redirects_to_idea_intake(self, client):

@@ -34,6 +34,7 @@ from execution.skill_catalog import (
     load_registry,
     suggest_skills,
 )
+from execution.smart_selector import smart_select_features, smart_select_skills
 from execution.state_manager import (
     add_custom_skill,
     add_feature,
@@ -86,6 +87,18 @@ async def feature_discovery_page(request: Request, slug: str):
                     existing_ids.add(seed["id"])
 
         state["features"]["catalog"] = catalog
+
+        # Smart auto-select features on first visit
+        idea = state.get("idea", {}).get("original_raw", "")
+        auto_ids = smart_select_features(profile, idea, catalog)
+        for i, feat_id in enumerate(auto_ids, 1):
+            feat = next((f for f in catalog if f["id"] == feat_id), None)
+            if feat:
+                add_feature(
+                    state, "core", feat["id"], feat["name"], feat["description"],
+                    "Auto-selected by smart analysis", "core problem", build_order=i,
+                )
+
         save_state(state, slug)
 
     catalog = state["features"]["catalog"]
@@ -110,13 +123,13 @@ async def feature_discovery_page(request: Request, slug: str):
         existing_goals = get_intelligence_goals(state)
 
     # ── Skill Discovery ──────────────────────────────────────
-    # Load registry and auto-suggest skills on first visit
+    # Load registry and smart-select skills on first visit
     if not state.get("skills", {}).get("catalog"):
         registry = load_registry()
         set_skill_catalog(state, registry)
-        # Auto-suggest based on profile + features
-        suggestion = suggest_skills(profile, features, registry)
-        set_selected_skills(state, suggestion["suggested"])
+        # Smart auto-select based on profile + features (no limit)
+        auto_skill_ids = smart_select_skills(profile, features, registry)
+        set_selected_skills(state, auto_skill_ids)
         save_state(state, slug)
 
     skill_catalog = state.get("skills", {}).get("catalog", [])

@@ -3,10 +3,11 @@
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.dependencies import (
     PHASE_URLS,
+    get_dashboard_stats,
     get_phase_info,
     get_project_state,
     list_projects,
@@ -19,12 +20,23 @@ router = APIRouter()
 
 @router.get("/")
 async def index(request: Request):
-    """Landing page: list all projects + create button."""
+    """Dashboard: system stats, project list, skill browser."""
     projects = list_projects()
     blueprints = get_all_blueprints()
+    stats = get_dashboard_stats()
     return request.app.state.templates.TemplateResponse(
-        request, "index.html", {"projects": projects, "blueprints": blueprints},
+        request, "index.html", {
+            "projects": projects,
+            "blueprints": blueprints,
+            "stats": stats,
+        },
     )
+
+
+@router.get("/api/dashboard/stats")
+async def dashboard_stats_api():
+    """JSON endpoint for dashboard statistics."""
+    return JSONResponse(content=get_dashboard_stats())
 
 
 @router.post("/projects/new")

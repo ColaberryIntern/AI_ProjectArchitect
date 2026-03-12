@@ -31,6 +31,7 @@ from execution.feature_catalog import generate_catalog, generate_catalog_from_pr
 from execution.outline_generator import generate_outline_from_profile
 from execution.profile_generator import generate_profile
 from execution.skill_catalog import load_registry, suggest_skills
+from execution.smart_selector import smart_select_features, smart_select_skills
 from execution.state_manager import (
     PROFILE_REQUIRED_FIELDS,
     add_feature,
@@ -206,20 +207,23 @@ def run_full_pipeline(
 
         state["features"]["catalog"] = catalog
 
-        # Auto-select all features from catalog
-        for i, feat in enumerate(catalog, 1):
-            add_feature(
-                state,
-                "core",
-                feat["id"],
-                feat["name"],
-                feat["description"],
-                "Auto-selected during one-shot generation",
-                problem_mapped_to="core problem",
-                build_order=i,
-            )
+        # Smart auto-select features (no min/max — picks all that apply)
+        auto_feature_ids = smart_select_features(profile, raw_idea, catalog)
+        for i, feat_id in enumerate(auto_feature_ids, 1):
+            feat = next((f for f in catalog if f["id"] == feat_id), None)
+            if feat:
+                add_feature(
+                    state,
+                    "core",
+                    feat["id"],
+                    feat["name"],
+                    feat["description"],
+                    "Auto-selected by smart analysis",
+                    problem_mapped_to="core problem",
+                    build_order=i,
+                )
 
-        profile["selected_features"] = [f["id"] for f in catalog]
+        profile["selected_features"] = auto_feature_ids
         approve_features(state)
         save_state(state, slug)
 
@@ -229,23 +233,22 @@ def run_full_pipeline(
             0, 0, 18,
         )
 
-        # ── Skill auto-selection ──────────────────────────────
+        # ── Skill smart auto-selection (no limit) ─────────────
         try:
             registry = load_registry()
-            suggestion = suggest_skills(profile, catalog, registry)
-            suggested_ids = suggestion.get("suggested", [])
-            available_skills = [s for s in registry if s["id"] in set(suggested_ids + suggestion.get("available", []))]
-            set_skill_catalog(state, available_skills)
-            set_selected_skills(state, suggested_ids)
+            set_skill_catalog(state, registry)
+            features = state["features"]["core"]
+            auto_skill_ids = smart_select_skills(profile, features, registry)
+            set_selected_skills(state, auto_skill_ids)
             approve_skills(state)
             save_state(state, slug)
             yield BuildEvent(
                 "phase",
-                f"Skills suggested: {len(suggested_ids)} selected from registry",
+                f"Skills smart-selected: {len(auto_skill_ids)} from registry",
                 0, 0, 19,
             )
         except Exception:
-            logger.warning("Skill suggestion failed — continuing without skills", exc_info=True)
+            logger.warning("Skill smart-selection failed — continuing without skills", exc_info=True)
 
         # ── Advance: feature_discovery → outline_generation ─────
         advance_phase(state, "outline_generation")

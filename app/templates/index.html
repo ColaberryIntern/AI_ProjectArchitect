@@ -1,20 +1,44 @@
 {% extends "base.html" %}
-{% block title %}AI Project Architect — Projects{% endblock %}
+{% block title %}AI Project Architect — Dashboard{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Projects</h2>
-    <div class="d-flex gap-2">
-        {% if projects %}
-        <form action="/projects/delete-all" method="POST"
-              onsubmit="return confirm('Delete ALL {{ projects|length }} projects? This cannot be undone.')"
-              style="display:inline">
-            <button type="submit" class="btn btn-outline-danger">Delete All</button>
-        </form>
-        {% endif %}
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newProjectModal">
-            New Project
-        </button>
+<!-- ── Stat Cards ─────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card text-center border-primary h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-primary">{{ stats.project_count }}</div>
+                <div class="text-muted small">Projects</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center border-success h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-success">{{ stats.completed_count }}</div>
+                <div class="text-muted small">Completed
+                    {% if stats.project_count > 0 %}
+                    <span class="badge bg-success-subtle text-success">{{ (stats.completed_count / stats.project_count * 100)|round|int }}%</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center border-info h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-info">{{ stats.skill_count }}</div>
+                <div class="text-muted small">Skills in Registry</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center border-warning h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-warning">{{ stats.category_count }}</div>
+                <div class="text-muted small">Skill Categories</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -25,42 +49,116 @@
 </div>
 {% endif %}
 
-{% if projects %}
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
-            <tr>
-                <th>Project Name</th>
-                <th>Current Phase</th>
-                <th>Created</th>
-                <th>Updated</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in projects %}
-            <tr>
-                <td><strong>{{ p.name }}</strong></td>
-                <td><span class="badge bg-info">{{ p.phase_label }}</span></td>
-                <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
-                <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
-                <td>
-                    <a href="/projects/{{ p.slug }}" class="btn btn-sm btn-outline-primary">Resume</a>
-                    <form action="/projects/{{ p.slug }}/delete" method="POST"
-                          onsubmit="return confirm('Delete project {{ p.name }}?')"
-                          style="display:inline">
-                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- ── Projects Table ────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Projects</h5>
+        <div class="d-flex gap-2">
+            {% if projects %}
+            <form action="/projects/delete-all" method="POST"
+                  onsubmit="return confirm('Delete ALL {{ projects|length }} projects? This cannot be undone.')"
+                  style="display:inline">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete All</button>
+            </form>
+            {% endif %}
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newProjectModal">
+                + New Project
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if projects %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Project Name</th>
+                        <th>Current Phase</th>
+                        <th>Created</th>
+                        <th>Updated</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in projects %}
+                    <tr>
+                        <td><strong>{{ p.name }}</strong></td>
+                        <td>
+                            {% set phase_colors = {
+                                "Idea Intake": "secondary",
+                                "Feature Discovery": "info",
+                                "Outline Generation": "primary",
+                                "Outline Approval": "primary",
+                                "Chapter Build": "warning",
+                                "Quality Gates": "warning",
+                                "Final Assembly": "warning",
+                                "Complete": "success"
+                            } %}
+                            <span class="badge bg-{{ phase_colors.get(p.phase_label, 'info') }}">{{ p.phase_label }}</span>
+                        </td>
+                        <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
+                        <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
+                        <td class="text-end">
+                            <a href="/projects/{{ p.slug }}" class="btn btn-sm btn-outline-primary">Resume</a>
+                            <form action="/projects/{{ p.slug }}/delete" method="POST"
+                                  onsubmit="return confirm('Delete project {{ p.name }}?')"
+                                  style="display:inline">
+                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <h5>No projects yet</h5>
+            <p class="mb-0">Create your first project to get started.</p>
+        </div>
+        {% endif %}
+    </div>
 </div>
-{% else %}
-<div class="text-center text-muted py-5">
-    <h4>No projects yet</h4>
-    <p>Create your first project to get started.</p>
+
+<!-- ── Skill Registry Browser ────────────────────────────── -->
+{% if stats.skills_by_category %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Skill Registry</h5>
+        <span class="badge bg-info">{{ stats.skill_count }} skills</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="accordion accordion-flush" id="skillBrowser">
+            {% for cat in stats.skills_by_category %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed py-2" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#skillCat{{ loop.index }}">
+                        {{ cat.name }}
+                        <span class="badge bg-secondary ms-2">{{ cat.skills|length }}</span>
+                    </button>
+                </h2>
+                <div id="skillCat{{ loop.index }}" class="accordion-collapse collapse"
+                     data-bs-parent="#skillBrowser">
+                    <div class="accordion-body p-0">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                {% for skill in cat.skills %}
+                                <tr>
+                                    <td class="ps-3" style="width:30%">
+                                        <strong>{{ skill.name }}</strong>
+                                    </td>
+                                    <td class="text-muted small">{{ skill.description }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 </div>
 {% endif %}
 

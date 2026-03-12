@@ -1,9 +1,14 @@
 """Shared dependencies for the FastAPI web layer."""
 
+import logging
+
 from fastapi import HTTPException
 
 from config.settings import OUTPUT_DIR, PHASE_ORDER
+from execution.skill_catalog import get_skills_by_category, load_registry
 from execution.state_manager import load_state
+
+logger = logging.getLogger(__name__)
 
 
 PHASE_LABELS = {
@@ -99,6 +104,38 @@ def get_phase_info(state: dict) -> dict:
         "phase_index": display_idx,
         "total_phases": len(visible_phases),
         "phases": phases,
+    }
+
+
+def get_dashboard_stats() -> dict:
+    """Compute system-wide stats for the dashboard.
+
+    Returns:
+        Dict with project_count, completed_count, projects_by_phase,
+        skill_count, skills_by_category.
+    """
+    projects = list_projects()
+    project_count = len(projects)
+    completed_count = sum(1 for p in projects if p["current_phase"] == "complete")
+
+    # Count projects per phase
+    projects_by_phase: dict[str, int] = {}
+    for p in projects:
+        label = p["phase_label"]
+        projects_by_phase[label] = projects_by_phase.get(label, 0) + 1
+
+    # Skills
+    registry = load_registry()
+    skill_count = len(registry)
+    skills_grouped = get_skills_by_category(registry)
+
+    return {
+        "project_count": project_count,
+        "completed_count": completed_count,
+        "projects_by_phase": projects_by_phase,
+        "skill_count": skill_count,
+        "skills_by_category": skills_grouped,
+        "category_count": len(skills_grouped),
     }
 
 

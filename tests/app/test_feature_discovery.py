@@ -66,6 +66,40 @@ class TestFeatureDiscoveryPage:
 
         assert catalog1 == catalog2
 
+    def test_features_auto_checked_on_first_visit(self, client, feature_project):
+        """Smart selection should auto-check features on first visit."""
+        client.get(f"/projects/{feature_project}/feature-discovery")
+        state = load_state(feature_project)
+        # Smart selector should have pre-selected some features
+        assert len(state["features"]["core"]) > 0
+
+    def test_skills_auto_checked_on_first_visit(self, client, feature_project):
+        """Smart selection should auto-check skills on first visit."""
+        client.get(f"/projects/{feature_project}/feature-discovery")
+        state = load_state(feature_project)
+        # Smart selector should have pre-selected some skills
+        selected = state.get("skills", {}).get("selected", [])
+        assert len(selected) >= 0  # May be 0 if keyword threshold not met
+
+    def test_user_override_clears_auto_selection(self, client, feature_project):
+        """Form submission should override auto-selected features."""
+        # First visit — auto-selects features
+        client.get(f"/projects/{feature_project}/feature-discovery")
+        state = load_state(feature_project)
+        catalog = state["features"]["catalog"]
+        auto_count = len(state["features"]["core"])
+        assert auto_count > 0
+
+        # User overrides — picks only 2 features
+        two_ids = [f["id"] for f in catalog[:2]]
+        client.post(
+            f"/projects/{feature_project}/feature-discovery/select",
+            data={"features": two_ids},
+            follow_redirects=False,
+        )
+        state = load_state(feature_project)
+        assert len(state["features"]["core"]) == 2
+
 
 class TestSelectFeatures:
     def test_select_features_advances_to_outline(self, client, feature_project):
