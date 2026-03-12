@@ -24,7 +24,7 @@ class TestIndexPage:
         response = client.get("/")
         assert response.status_code == 200
         assert "Skill Registry" in response.text
-        assert "skillBrowser" in response.text
+        assert "skillGrid" in response.text
 
     def test_dashboard_stats_api(self, client):
         response = client.get("/api/dashboard/stats")

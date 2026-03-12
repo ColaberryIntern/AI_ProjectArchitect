@@ -22,7 +22,7 @@ class TestFallbackSkills:
     """Validate the hardcoded fallback skill list."""
 
     def test_has_at_least_40_skills(self):
-        assert len(FALLBACK_SKILLS) >= 40
+        assert len(FALLBACK_SKILLS) >= 200
 
     def test_all_skills_have_required_fields(self):
         for skill in FALLBACK_SKILLS:
