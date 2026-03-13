@@ -14,6 +14,7 @@ from execution.feature_catalog import (
     generate_catalog_from_profile,
     get_catalog_by_category,
     get_catalog_by_layer,
+    get_feature_layer,
     get_features_by_ids,
 )
 from execution.feature_classifier import (
@@ -91,6 +92,29 @@ async def feature_discovery_page(request: Request, slug: str):
         # Smart auto-select features on first visit
         idea = state.get("idea", {}).get("original_raw", "")
         auto_ids = smart_select_features(profile, idea, catalog)
+
+        # Enforce minimum per layer: 5 functional, 10 architectural
+        auto_id_set = set(auto_ids)
+        feat_layer = {f["id"]: get_feature_layer(f.get("category", "")) for f in catalog}
+        func_count = sum(1 for fid in auto_ids if feat_layer.get(fid) == "functional")
+        arch_count = sum(1 for fid in auto_ids if feat_layer.get(fid) == "architectural")
+
+        for f in catalog:
+            if func_count >= 5:
+                break
+            if f["id"] not in auto_id_set and feat_layer.get(f["id"]) == "functional":
+                auto_ids.append(f["id"])
+                auto_id_set.add(f["id"])
+                func_count += 1
+
+        for f in catalog:
+            if arch_count >= 10:
+                break
+            if f["id"] not in auto_id_set and feat_layer.get(f["id"]) == "architectural":
+                auto_ids.append(f["id"])
+                auto_id_set.add(f["id"])
+                arch_count += 1
+
         for i, feat_id in enumerate(auto_ids, 1):
             feat = next((f for f in catalog if f["id"] == feat_id), None)
             if feat:
@@ -116,8 +140,12 @@ async def feature_discovery_page(request: Request, slug: str):
     existing_goals = get_intelligence_goals(state)
 
     # Auto-generate goals on first visit when triggered (mirrors catalog auto-gen)
+    # Also auto-select at least 3 goals on first generation
     if show_intelligence_goals and not existing_goals:
         generated = generate_intelligence_goals(idea, features, ai_depth)
+        # Pre-select first 3+ goals
+        for goal in generated[:max(3, len(generated))]:
+            goal["auto_selected"] = True
         set_intelligence_goals(state, generated)
         save_state(state, slug)
         existing_goals = get_intelligence_goals(state)
@@ -127,8 +155,16 @@ async def feature_discovery_page(request: Request, slug: str):
     if not state.get("skills", {}).get("catalog"):
         registry = load_registry()
         set_skill_catalog(state, registry)
-        # Smart auto-select based on profile + features (no limit)
+        # Smart auto-select based on profile + features (min 10)
         auto_skill_ids = smart_select_skills(profile, features, registry)
+        if len(auto_skill_ids) < 10:
+            auto_set = set(auto_skill_ids)
+            for s in registry:
+                if len(auto_skill_ids) >= 10:
+                    break
+                if s["id"] not in auto_set:
+                    auto_skill_ids.append(s["id"])
+                    auto_set.add(s["id"])
         set_selected_skills(state, auto_skill_ids)
         save_state(state, slug)
 

@@ -27,7 +27,7 @@ from config.blueprints import (
 )
 from execution.auto_builder import BuildEvent, run_auto_build
 from execution.build_depth import get_scoring_thresholds, resolve_depth_mode
-from execution.feature_catalog import generate_catalog, generate_catalog_from_profile
+from execution.feature_catalog import generate_catalog, generate_catalog_from_profile, get_feature_layer
 from execution.outline_generator import generate_outline_from_profile
 from execution.profile_generator import generate_profile
 from execution.skill_catalog import load_registry, suggest_skills
@@ -207,8 +207,27 @@ def run_full_pipeline(
 
         state["features"]["catalog"] = catalog
 
-        # Smart auto-select features (no min/max — picks all that apply)
+        # Smart auto-select features with minimum enforcement
         auto_feature_ids = smart_select_features(profile, raw_idea, catalog)
+        auto_set = set(auto_feature_ids)
+        feat_layer = {f["id"]: get_feature_layer(f.get("category", "")) for f in catalog}
+        func_count = sum(1 for fid in auto_feature_ids if feat_layer.get(fid) == "functional")
+        arch_count = sum(1 for fid in auto_feature_ids if feat_layer.get(fid) == "architectural")
+        for f in catalog:
+            if func_count >= 5:
+                break
+            if f["id"] not in auto_set and feat_layer.get(f["id"]) == "functional":
+                auto_feature_ids.append(f["id"])
+                auto_set.add(f["id"])
+                func_count += 1
+        for f in catalog:
+            if arch_count >= 10:
+                break
+            if f["id"] not in auto_set and feat_layer.get(f["id"]) == "architectural":
+                auto_feature_ids.append(f["id"])
+                auto_set.add(f["id"])
+                arch_count += 1
+
         for i, feat_id in enumerate(auto_feature_ids, 1):
             feat = next((f for f in catalog if f["id"] == feat_id), None)
             if feat:
@@ -239,6 +258,14 @@ def run_full_pipeline(
             set_skill_catalog(state, registry)
             features = state["features"]["core"]
             auto_skill_ids = smart_select_skills(profile, features, registry)
+            if len(auto_skill_ids) < 10:
+                skill_set = set(auto_skill_ids)
+                for s in registry:
+                    if len(auto_skill_ids) >= 10:
+                        break
+                    if s["id"] not in skill_set:
+                        auto_skill_ids.append(s["id"])
+                        skill_set.add(s["id"])
             set_selected_skills(state, auto_skill_ids)
             approve_skills(state)
             save_state(state, slug)

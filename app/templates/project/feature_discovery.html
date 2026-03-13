@@ -79,6 +79,7 @@
                                 <input type="checkbox" class="intelligence-goal-cb" value="{{ goal.id }}"
                                        data-user-facing-label="{{ goal.user_facing_label }}" data-description="{{ goal.description }}"
                                        data-goal-type="{{ goal.goal_type }}"
+                                       {% if goal.auto_selected %}checked{% endif %}
                                        onchange="onGoalChange()">
                                 <div class="feature-checkbox-info">
                                     <span class="feature-checkbox-name">{{ goal.user_facing_label }}</span>
@@ -622,6 +623,10 @@ function regenerateSkills() {
 document.addEventListener('DOMContentLoaded', function() {
     updateAllTallies();
     checkMinimums();
+    // Auto-save pre-selected intelligence goals
+    if (document.querySelectorAll('.intelligence-goal-cb:checked').length > 0) {
+        saveIntelligenceGoals();
+    }
     fetch('/projects/{{ slug }}/api/features/validate-alignment')
         .then(function(r) { return r.json(); })
         .then(function(data) {
