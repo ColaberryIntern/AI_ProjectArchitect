@@ -28,6 +28,10 @@ from config.blueprints import (
 from execution.auto_builder import BuildEvent, run_auto_build
 from execution.build_depth import get_scoring_thresholds, resolve_depth_mode
 from execution.feature_catalog import generate_catalog, generate_catalog_from_profile, get_feature_layer
+from execution.intelligence_goals import (
+    generate_intelligence_goals,
+    should_show_intelligence_goals,
+)
 from execution.outline_generator import generate_outline_from_profile
 from execution.profile_generator import generate_profile
 from execution.skill_catalog import load_registry, suggest_skills
@@ -52,6 +56,7 @@ from execution.state_manager import (
     set_outline_sections,
     set_profile_derived,
     set_profile_field,
+    set_intelligence_goals,
     set_selected_skills,
     set_skill_catalog,
 )
@@ -252,7 +257,25 @@ def run_full_pipeline(
             0, 0, 18,
         )
 
-        # ── Skill smart auto-selection (no limit) ─────────────
+        # ── Intelligence Goals (min 3) ─────────────────────────
+        try:
+            features = state["features"]["core"]
+            ai_depth = profile.get("ai_depth", {}).get("selected", "")
+            if should_show_intelligence_goals(raw_idea, features, ai_depth):
+                goals = generate_intelligence_goals(raw_idea, features, ai_depth)
+                for goal in goals[:max(3, len(goals))]:
+                    goal["auto_selected"] = True
+                set_intelligence_goals(state, goals)
+                save_state(state, slug)
+                yield BuildEvent(
+                    "phase",
+                    f"Intelligence goals generated: {len(goals)} goals ({sum(1 for g in goals if g.get('auto_selected'))} selected)",
+                    0, 0, 19,
+                )
+        except Exception:
+            logger.warning("Intelligence goal generation failed — continuing", exc_info=True)
+
+        # ── Skill smart auto-selection (min 10) ───────────────
         try:
             registry = load_registry()
             set_skill_catalog(state, registry)
