@@ -5,7 +5,7 @@
 <div class="feature-catalog-panel">
     <div class="feature-catalog-header">
         <h5>Select Features for Your Project</h5>
-        <p class="text-muted small mb-0">Check the features you need across product and architecture categories.</p>
+        <p class="text-muted small mb-0">Check the features you need across product, intelligence, architecture, and skills.</p>
     </div>
 
     {% if error %}
@@ -19,19 +19,25 @@
     <form id="feature-catalog-form" method="post" action="/projects/{{ slug }}/feature-discovery/select">
 
         <div class="feature-layer-tabs">
-            <button type="button" class="feature-layer-tab active" onclick="switchLayer('functional')">
+            <button type="button" class="feature-layer-tab active" onclick="switchLayer('functional', this)">
                 Product Features <span class="layer-tab-count" id="functional-count">0</span>
             </button>
-            <button type="button" class="feature-layer-tab" onclick="switchLayer('architectural')">
+            {% if show_intelligence_goals %}
+            <button type="button" class="feature-layer-tab" onclick="switchLayer('intelligence', this)">
+                Intelligence Goals <span class="layer-tab-count" id="intelligence-count">0</span>
+            </button>
+            {% endif %}
+            <button type="button" class="feature-layer-tab" onclick="switchLayer('architectural', this)">
                 Architecture &amp; Ops <span class="layer-tab-count" id="architectural-count">0</span>
             </button>
-            <button type="button" class="feature-layer-tab" onclick="switchLayer('skills')">
+            <button type="button" class="feature-layer-tab" onclick="switchLayer('skills', this)">
                 Skills &amp; Tools <span class="layer-tab-count" id="skills-count">0</span>
             </button>
         </div>
 
         <div class="feature-catalog-body">
 
+            <!-- ── Product Features Tab ─────────────────────────── -->
             <div class="layer-tab-pane" id="layer-functional">
                 {% for cat_group in catalog_by_layer.functional %}
                 <div class="feature-category">
@@ -48,6 +54,7 @@
                     <label class="feature-checkbox">
                         <input type="checkbox" name="features" value="{{ feat.id }}"
                                {% if feat.id in selected_ids %}checked{% endif %}
+                               data-layer="functional"
                                onchange="onFeatureChange()">
                         <div class="feature-checkbox-info">
                             <span class="feature-checkbox-name">{{ feat.name }}</span>
@@ -57,13 +64,13 @@
                     {% endfor %}
                 </div>
                 {% endfor %}
+            </div>
 
-                {% if show_intelligence_goals %}
+            <!-- ── Intelligence Goals Tab ───────────────────────── -->
+            {% if show_intelligence_goals %}
+            <div class="layer-tab-pane" id="layer-intelligence" style="display:none;">
+                <p class="text-muted small mx-1 mb-2">What should this system intelligently determine or adapt? Select the intelligence goals that apply to your project.</p>
                 <div class="intelligence-goals-section">
-                    <div class="intelligence-goals-header">
-                        <h6>Intelligence Goals</h6>
-                        <p class="text-muted small mb-2">What should this system intelligently determine or adapt for this project?</p>
-                    </div>
                     <div id="intelligence-goals-container">
                         {% if existing_goals %}
                         {% for goal in existing_goals %}
@@ -72,7 +79,7 @@
                                 <input type="checkbox" class="intelligence-goal-cb" value="{{ goal.id }}"
                                        data-user-facing-label="{{ goal.user_facing_label }}" data-description="{{ goal.description }}"
                                        data-goal-type="{{ goal.goal_type }}"
-                                       onchange="saveIntelligenceGoals()">
+                                       onchange="onGoalChange()">
                                 <div class="feature-checkbox-info">
                                     <span class="feature-checkbox-name">{{ goal.user_facing_label }}</span>
                                     <span class="feature-checkbox-desc">{{ goal.description }}</span>
@@ -80,7 +87,7 @@
                             </label>
                             {% if goal.goal_type in confidence_goal_types %}
                             <select class="form-select form-select-sm confidence-select mt-1"
-                                    data-goal-id="{{ goal.id }}" onchange="saveIntelligenceGoals()"
+                                    data-goal-id="{{ goal.id }}" onchange="onGoalChange()"
                                     style="max-width: 250px; margin-left: 1.75rem;">
                                 <option value="">How reliable should this be?</option>
                                 {% for level in confidence_levels %}
@@ -101,9 +108,10 @@
                         Regenerate AI Goals
                     </button>
                 </div>
-                {% endif %}
             </div>
+            {% endif %}
 
+            <!-- ── Architecture & Ops Tab ───────────────────────── -->
             <div class="layer-tab-pane" id="layer-architectural" style="display:none;">
                 {% for cat_group in catalog_by_layer.architectural %}
                 <div class="feature-category">
@@ -120,6 +128,7 @@
                     <label class="feature-checkbox">
                         <input type="checkbox" name="features" value="{{ feat.id }}"
                                {% if feat.id in selected_ids %}checked{% endif %}
+                               data-layer="architectural"
                                onchange="onFeatureChange()">
                         <div class="feature-checkbox-info">
                             <span class="feature-checkbox-name">{{ feat.name }}</span>
@@ -131,6 +140,7 @@
                 {% endfor %}
             </div>
 
+            <!-- ── Skills & Tools Tab ───────────────────────────── -->
             <div class="layer-tab-pane" id="layer-skills" style="display:none;">
                 <p class="text-muted small mx-1 mb-2">Select Claude-compatible skills and tools to include in your project document. These will become a dedicated chapter describing how to build and use each skill.</p>
                 {% for cat_group in skills_by_category %}
@@ -184,9 +194,15 @@
 
         </div>
 
+        <!-- ── Minimum Requirements Warning ─────────────────── -->
+        <div id="min-requirements-warning" class="alert alert-warning mx-3 mb-2 small" style="display:none;">
+            <strong>Minimum requirements not met:</strong>
+            <ul class="mb-0 mt-1" id="min-req-list"></ul>
+        </div>
+
         <div class="feature-catalog-actions">
             <div class="feature-catalog-actions-right">
-                <button type="submit" class="btn btn-primary">Save &amp; Continue to Outline &rarr;</button>
+                <button type="submit" class="btn btn-primary" id="save-continue-btn">Save &amp; Continue to Outline &rarr;</button>
             </div>
         </div>
     </form>
@@ -197,19 +213,62 @@
 
 {% block right_pane_content %}
 <div id="feature-tally">
-    <div class="d-flex align-items-center gap-2 mb-3">
-        <small class="text-muted fw-bold">Selected</small>
-        <span class="feature-count" id="feature-tally-count">0</span>
-    </div>
     <div id="exclusion-warnings"></div>
-    <div id="feature-tally-list"></div>
-    <p class="text-muted small" id="feature-tally-empty">No features selected yet.</p>
+
+    <!-- Product Features group -->
+    <div class="tally-group" id="tally-group-functional">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <small class="text-muted fw-bold">Product Features</small>
+            <span class="feature-count" id="tally-functional-count">0</span>
+            <small class="text-danger" id="tally-functional-min" style="display:none;">min 5</small>
+        </div>
+        <div id="tally-functional-list"></div>
+    </div>
+
+    {% if show_intelligence_goals %}
+    <!-- Intelligence Goals group -->
+    <div class="tally-group" id="tally-group-intelligence">
+        <div class="d-flex align-items-center gap-2 mb-2 mt-3">
+            <small class="text-muted fw-bold">Intelligence Goals</small>
+            <span class="feature-count" id="tally-intelligence-count">0</span>
+            <small class="text-danger" id="tally-intelligence-min" style="display:none;">min 3</small>
+        </div>
+        <div id="tally-intelligence-list"></div>
+    </div>
+    {% endif %}
+
+    <!-- Architecture & Ops group -->
+    <div class="tally-group" id="tally-group-architectural">
+        <div class="d-flex align-items-center gap-2 mb-2 mt-3">
+            <small class="text-muted fw-bold">Architecture &amp; Ops</small>
+            <span class="feature-count" id="tally-architectural-count">0</span>
+            <small class="text-danger" id="tally-architectural-min" style="display:none;">min 10</small>
+        </div>
+        <div id="tally-architectural-list"></div>
+    </div>
+
+    <!-- Skills & Tools group -->
+    <div class="tally-group" id="tally-group-skills">
+        <div class="d-flex align-items-center gap-2 mb-2 mt-3">
+            <small class="text-muted fw-bold">Skills &amp; Tools</small>
+            <span class="feature-count" id="tally-skills-count">0</span>
+            <small class="text-danger" id="tally-skills-min" style="display:none;">min 10</small>
+        </div>
+        <div id="tally-skills-list"></div>
+    </div>
+
+    <p class="text-muted small mt-3" id="feature-tally-empty">No features selected yet.</p>
 </div>
 
 <script>
 var EXCLUSION_GROUPS = {{ exclusion_groups | tojson }};
+var MIN_PRODUCT = 5;
+var MIN_GOALS = 3;
+var MIN_ARCH = 10;
+var MIN_SKILLS = 10;
+var HAS_INTELLIGENCE = {{ 'true' if show_intelligence_goals else 'false' }};
 
-function switchLayer(layer) {
+function switchLayer(layer, btn) {
     document.querySelectorAll('.layer-tab-pane').forEach(function(pane) {
         pane.style.display = 'none';
     });
@@ -219,7 +278,7 @@ function switchLayer(layer) {
     document.querySelectorAll('.feature-layer-tab').forEach(function(tab) {
         tab.classList.remove('active');
     });
-    event.currentTarget.classList.add('active');
+    if (btn) btn.classList.add('active');
 }
 
 function toggleCategory(btn, selectAll) {
@@ -231,41 +290,166 @@ function toggleCategory(btn, selectAll) {
 }
 
 function onFeatureChange() {
-    updateFeatureTally();
+    updateAllTallies();
     checkExclusions();
+    checkMinimums();
 }
 
-function updateFeatureTally() {
-    var checked = document.querySelectorAll('#feature-catalog-form input[name="features"]:checked');
-    var count = checked.length;
-    var countEl = document.getElementById('feature-tally-count');
-    var listEl = document.getElementById('feature-tally-list');
-    var emptyEl = document.getElementById('feature-tally-empty');
+function onGoalChange() {
+    saveIntelligenceGoals();
+    updateAllTallies();
+    checkMinimums();
+}
 
-    if (countEl) countEl.textContent = count;
-    if (emptyEl) emptyEl.style.display = count > 0 ? 'none' : 'block';
+function onSkillChange() {
+    updateAllTallies();
+    autoSaveSkills();
+    checkMinimums();
+}
 
-    if (listEl) {
-        listEl.innerHTML = '';
-        checked.forEach(function(cb) {
+function updateAllTallies() {
+    var funcPane = document.getElementById('layer-functional');
+    var archPane = document.getElementById('layer-architectural');
+    var skillPane = document.getElementById('layer-skills');
+
+    // Product features
+    var funcChecked = funcPane ? funcPane.querySelectorAll('input[name="features"]:checked') : [];
+    var funcCount = funcChecked.length;
+    var funcCountEl = document.getElementById('functional-count');
+    var tallyFuncCount = document.getElementById('tally-functional-count');
+    var tallyFuncList = document.getElementById('tally-functional-list');
+    if (funcCountEl) funcCountEl.textContent = funcCount;
+    if (tallyFuncCount) tallyFuncCount.textContent = funcCount;
+    if (tallyFuncList) {
+        tallyFuncList.innerHTML = '';
+        funcChecked.forEach(function(cb) {
             var label = cb.closest('.feature-checkbox');
             var nameEl = label ? label.querySelector('.feature-checkbox-name') : null;
             var name = nameEl ? nameEl.textContent : cb.value;
             var card = document.createElement('div');
             card.className = 'extracted-feature-card';
             card.innerHTML = '<div class="feature-name">' + name + '</div>';
-            listEl.appendChild(card);
+            tallyFuncList.appendChild(card);
         });
     }
 
+    // Intelligence goals
+    var goalChecked = document.querySelectorAll('.intelligence-goal-cb:checked');
+    var goalCount = goalChecked.length;
+    var goalCountEl = document.getElementById('intelligence-count');
+    var tallyGoalCount = document.getElementById('tally-intelligence-count');
+    var tallyGoalList = document.getElementById('tally-intelligence-list');
+    if (goalCountEl) goalCountEl.textContent = goalCount;
+    if (tallyGoalCount) tallyGoalCount.textContent = goalCount;
+    if (tallyGoalList) {
+        tallyGoalList.innerHTML = '';
+        goalChecked.forEach(function(cb) {
+            var name = cb.dataset.userFacingLabel || cb.value;
+            var card = document.createElement('div');
+            card.className = 'extracted-feature-card';
+            card.innerHTML = '<div class="feature-name">' + name + '</div>';
+            tallyGoalList.appendChild(card);
+        });
+    }
+
+    // Architecture & Ops
+    var archChecked = archPane ? archPane.querySelectorAll('input[name="features"]:checked') : [];
+    var archCount = archChecked.length;
+    var archCountEl = document.getElementById('architectural-count');
+    var tallyArchCount = document.getElementById('tally-architectural-count');
+    var tallyArchList = document.getElementById('tally-architectural-list');
+    if (archCountEl) archCountEl.textContent = archCount;
+    if (tallyArchCount) tallyArchCount.textContent = archCount;
+    if (tallyArchList) {
+        tallyArchList.innerHTML = '';
+        archChecked.forEach(function(cb) {
+            var label = cb.closest('.feature-checkbox');
+            var nameEl = label ? label.querySelector('.feature-checkbox-name') : null;
+            var name = nameEl ? nameEl.textContent : cb.value;
+            var card = document.createElement('div');
+            card.className = 'extracted-feature-card';
+            card.innerHTML = '<div class="feature-name">' + name + '</div>';
+            tallyArchList.appendChild(card);
+        });
+    }
+
+    // Skills & Tools
+    var skillChecked = skillPane ? skillPane.querySelectorAll('input[name="skills"]:checked') : [];
+    var skillCount = skillChecked.length;
+    var skillCountEl = document.getElementById('skills-count');
+    var tallySkillCount = document.getElementById('tally-skills-count');
+    var tallySkillList = document.getElementById('tally-skills-list');
+    if (skillCountEl) skillCountEl.textContent = skillCount;
+    if (tallySkillCount) tallySkillCount.textContent = skillCount;
+    if (tallySkillList) {
+        tallySkillList.innerHTML = '';
+        skillChecked.forEach(function(cb) {
+            var label = cb.closest('.feature-checkbox');
+            var nameEl = label ? label.querySelector('.feature-checkbox-name') : null;
+            var name = nameEl ? nameEl.textContent : cb.value;
+            var card = document.createElement('div');
+            card.className = 'extracted-feature-card';
+            card.innerHTML = '<div class="feature-name">' + name + '</div>';
+            tallySkillList.appendChild(card);
+        });
+    }
+
+    // Show/hide empty state
+    var totalCount = funcCount + goalCount + archCount + skillCount;
+    var emptyEl = document.getElementById('feature-tally-empty');
+    if (emptyEl) emptyEl.style.display = totalCount > 0 ? 'none' : 'block';
+}
+
+function checkMinimums() {
     var funcPane = document.getElementById('layer-functional');
     var archPane = document.getElementById('layer-architectural');
+    var skillPane = document.getElementById('layer-skills');
+
     var funcCount = funcPane ? funcPane.querySelectorAll('input[name="features"]:checked').length : 0;
+    var goalCount = document.querySelectorAll('.intelligence-goal-cb:checked').length;
     var archCount = archPane ? archPane.querySelectorAll('input[name="features"]:checked').length : 0;
-    var funcCountEl = document.getElementById('functional-count');
-    var archCountEl = document.getElementById('architectural-count');
-    if (funcCountEl) funcCountEl.textContent = funcCount;
-    if (archCountEl) archCountEl.textContent = archCount;
+    var skillCount = skillPane ? skillPane.querySelectorAll('input[name="skills"]:checked').length : 0;
+
+    var issues = [];
+
+    // Show/hide per-section min warnings
+    var funcMin = document.getElementById('tally-functional-min');
+    if (funcMin) funcMin.style.display = funcCount < MIN_PRODUCT ? '' : 'none';
+    if (funcCount < MIN_PRODUCT) issues.push('Product Features: ' + funcCount + '/' + MIN_PRODUCT);
+
+    if (HAS_INTELLIGENCE) {
+        var goalMin = document.getElementById('tally-intelligence-min');
+        if (goalMin) goalMin.style.display = goalCount < MIN_GOALS ? '' : 'none';
+        if (goalCount < MIN_GOALS) issues.push('Intelligence Goals: ' + goalCount + '/' + MIN_GOALS);
+    }
+
+    var archMin = document.getElementById('tally-architectural-min');
+    if (archMin) archMin.style.display = archCount < MIN_ARCH ? '' : 'none';
+    if (archCount < MIN_ARCH) issues.push('Architecture & Ops: ' + archCount + '/' + MIN_ARCH);
+
+    var skillMin = document.getElementById('tally-skills-min');
+    if (skillMin) skillMin.style.display = skillCount < MIN_SKILLS ? '' : 'none';
+    if (skillCount < MIN_SKILLS) issues.push('Skills & Tools: ' + skillCount + '/' + MIN_SKILLS);
+
+    // Show/hide warning banner and disable submit
+    var warningEl = document.getElementById('min-requirements-warning');
+    var listEl = document.getElementById('min-req-list');
+    var submitBtn = document.getElementById('save-continue-btn');
+
+    if (issues.length > 0) {
+        if (warningEl) warningEl.style.display = '';
+        if (listEl) listEl.innerHTML = issues.map(function(i) { return '<li>' + i + '</li>'; }).join('');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.title = 'Meet minimum selection requirements to continue';
+        }
+    } else {
+        if (warningEl) warningEl.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.title = '';
+        }
+    }
 }
 
 function checkExclusions() {
@@ -317,7 +501,7 @@ function generateIntelligenceGoals() {
                 var confidenceHtml = '';
                 if (needsConfidence) {
                     confidenceHtml = '<select class="form-select form-select-sm confidence-select mt-1" ' +
-                        'data-goal-id="' + goal.id + '" onchange="saveIntelligenceGoals()" ' +
+                        'data-goal-id="' + goal.id + '" onchange="onGoalChange()" ' +
                         'style="max-width: 250px; margin-left: 1.75rem;">' +
                         '<option value="">How reliable should this be?</option>';
                     CONFIDENCE_LEVELS.forEach(function(lvl) {
@@ -330,7 +514,7 @@ function generateIntelligenceGoals() {
                     '<input type="checkbox" class="intelligence-goal-cb" value="' + goal.id + '"' +
                     ' data-user-facing-label="' + label.replace(/"/g, '&quot;') + '"' +
                     ' data-description="' + goal.description.replace(/"/g, '&quot;') + '"' +
-                    ' data-goal-type="' + goalType + '" onchange="saveIntelligenceGoals()">' +
+                    ' data-goal-type="' + goalType + '" onchange="onGoalChange()">' +
                     '<div class="feature-checkbox-info">' +
                     '<span class="feature-checkbox-name">' + label + '</span>' +
                     '<span class="feature-checkbox-desc">' + goal.description + '</span>' +
@@ -339,7 +523,8 @@ function generateIntelligenceGoals() {
             });
             btn.textContent = 'Regenerate AI Goals';
             btn.disabled = false;
-            saveIntelligenceGoals();
+            updateAllTallies();
+            checkMinimums();
         })
         .catch(function(err) {
             btn.textContent = 'Regenerate AI Goals';
@@ -369,18 +554,6 @@ function saveIntelligenceGoals() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({goals: goals})
     }).catch(function() {});
-}
-
-function onSkillChange() {
-    updateSkillCount();
-    autoSaveSkills();
-}
-
-function updateSkillCount() {
-    var skillPane = document.getElementById('layer-skills');
-    var skillCount = skillPane ? skillPane.querySelectorAll('input[name="skills"]:checked').length : 0;
-    var skillCountEl = document.getElementById('skills-count');
-    if (skillCountEl) skillCountEl.textContent = skillCount;
 }
 
 function toggleSkillCategory(btn, selectAll) {
@@ -432,7 +605,6 @@ function regenerateSkills() {
         .then(function(data) {
             if (data.suggested) {
                 var allSkillCbs = document.querySelectorAll('#layer-skills input[name="skills"]');
-                var suggestedSet = new Set(data.suggested.concat(data.available || []));
                 allSkillCbs.forEach(function(cb) {
                     cb.checked = data.suggested.indexOf(cb.value) !== -1;
                 });
@@ -448,8 +620,8 @@ function regenerateSkills() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    onFeatureChange();
-    updateSkillCount();
+    updateAllTallies();
+    checkMinimums();
     fetch('/projects/{{ slug }}/api/features/validate-alignment')
         .then(function(r) { return r.json(); })
         .then(function(data) {
