@@ -218,12 +218,12 @@ _ENTITY_SIGNALS = {
 _DEPT_TO_DOMAIN = {
     "Sales": "sales",
     "Marketing": "sales",
-    "Customer Support": "customer",
+    "Customer Support": "support",
     "Operations": "operations",
     "Finance": "finance",
     "Human Resources": "hr",
     "Technology": "technology",
-    "Communication": "communication",
+    "Communication": "support",  # Communication supports CX domain
 }
 
 # Which domains are relevant for each primary goal
@@ -277,14 +277,70 @@ def _score_capability(cap: dict, problem_vector: dict) -> float:
     return sum(iv.get(dim, 0) * problem_vector.get(dim, 0) for dim in ["revenue", "cost", "cx", "ops"])
 
 
+# ── Domain Anchoring (Problem-First) ────────────────────────────────
+
+_DOMAIN_KEYWORDS = {
+    "support": ["support", "ticket", "customer issue", "response time", "help desk", "chat",
+                 "intercom", "zendesk", "churn", "customer frustration", "complaint", "nps",
+                 "satisfaction", "wait time", "sla", "escalation"],
+    "sales": ["lead", "pipeline", "deal", "conversion", "prospect", "outreach", "close",
+              "quota", "sales", "crm", "follow-up", "demo"],
+    "operations": ["logistics", "inventory", "routing", "dispatch", "supply chain", "warehouse",
+                    "fleet", "delivery", "scheduling", "workflow", "manufacturing", "capacity"],
+    "finance": ["invoice", "billing", "accounts payable", "expenses", "accounting", "forecast",
+                "reconciliation", "payroll", "cash flow"],
+    "hr": ["hiring", "onboarding", "employee", "training", "recruit", "retention", "talent",
+            "performance review"],
+}
+
+# Hard domain enforcement: which departments are ALLOWED per primary domain
+_DOMAIN_ALLOWED_DEPTS = {
+    "support": {"Customer Support": 4, "Communication": 2, "Technology": 1},
+    "sales": {"Sales": 4, "Marketing": 3, "Communication": 1, "Technology": 1},
+    "operations": {"Operations": 5, "Technology": 2, "Communication": 1},
+    "finance": {"Finance": 3, "Technology": 2, "Operations": 1},
+    "hr": {"Human Resources": 4, "Communication": 1, "Technology": 1},
+}
+
+# Domain-specific system labels
+_DOMAIN_SYSTEM_LABELS = {
+    "support": "AI Customer Support & Retention System",
+    "sales": "AI Revenue Growth System",
+    "operations": "AI Operational Efficiency System",
+    "finance": "AI Financial Intelligence System",
+    "hr": "AI People & Talent System",
+}
+
+
+def _anchor_domain(text: str) -> tuple[str, float, dict]:
+    """Deterministic domain anchoring from problem text.
+
+    Returns (primary_domain, confidence, all_scores).
+    """
+    scores = {}
+    word_count = max(len(text.split()), 1)
+
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in text)
+        scores[domain] = round(count / max(len(keywords) * 0.3, 1), 2)  # Normalize
+
+    primary = max(scores, key=scores.get)
+    confidence = scores[primary]
+
+    return primary, confidence, scores
+
+
 def map_capabilities(session: dict) -> dict:
-    """Problem-first capability selection engine.
+    """Deterministic, CEO-safe capability selection engine.
 
-    Uses vector dot-product scoring against the user's problem vector,
-    then applies hard filters: threshold, department limits, redundancy
-    elimination, and max cap.
+    PRINCIPLE: Problem context ALWAYS overrides goals.
+    STEP 1: Anchor primary domain from problem text
+    STEP 2: Hard enforce allowed departments
+    STEP 3: Score = domain match (0.5) + entity signals (0.3) + goal alignment (0.2)
+    STEP 4: Finance safety lock
+    STEP 5: QC checks
 
-    Returns dict with recommended/excluded lists, scores, and reasoning.
+    Returns dict with recommended/excluded lists, scores, justifications, and QC status.
     """
     outcomes = session.get("selected_outcomes", [])
     idea = session.get("business_idea", "").lower()
@@ -292,68 +348,76 @@ def map_capabilities(session: dict) -> dict:
         a.get("answer_text", "") for a in session.get("answers", [])
     ).lower()
     all_text = f"{idea} {answers_text}"
-
-    # 1. Build problem vector from outcomes
-    problem_vector = _build_problem_vector(outcomes)
     primary_goal = outcomes[0] if outcomes else "reduce_costs"
     primary_label = _get_outcome_label(primary_goal)
 
-    # 2. Extract entity signals from user text
+    # ═══ STEP 1: Domain Anchoring (from problem text, NOT goals) ═══
+    primary_domain, domain_confidence, domain_scores = _anchor_domain(all_text)
+    system_label = _DOMAIN_SYSTEM_LABELS.get(primary_domain, "AI System")
+
+    # ═══ STEP 2: Hard Domain Enforcement ═══════════════════════════
+    allowed_depts = _DOMAIN_ALLOWED_DEPTS.get(primary_domain, {"Operations": 3, "Technology": 2})
+
+    # ═══ STEP 3: Extract entity signals ════════════════════════════
     entity_boosts = _extract_entity_signals(all_text)
 
-    # 3. Determine relevant domains for this goal
-    goal_domains = _GOAL_DOMAINS.get(primary_goal, {"primary": ["operations"], "secondary": ["technology"]})
-    primary_domains = set(goal_domains["primary"])
-    secondary_domains = set(goal_domains["secondary"])
+    # ═══ STEP 4: Build problem vector (blended) ═══════════════════
+    problem_vector = _build_problem_vector(outcomes)
 
-    # 4. Load adaptive weights (learned from outcomes)
+    # ═══ STEP 5: Finance safety lock ══════════════════════════════
+    has_finance_keywords = any(kw in all_text for kw in _DOMAIN_KEYWORDS.get("finance", []))
+
+    # ═══ STEP 6: Score capabilities ════════════════════════════════
+    # Load adaptive weights
     try:
         from execution.advisory.outcome_tracker import get_capability_weight_adjustment
         has_learning = True
     except Exception:
         has_learning = False
 
-    # 5. Score every capability: vector + entities + domain penalty + learned adjustment
     scored = []
-    for cap in CAPABILITY_CATALOG:
-        score = _score_capability(cap, problem_vector)
+    hard_blocked = []
 
-        # Apply learned weight adjustment (multiplier ~0.85-1.15)
+    for cap in CAPABILITY_CATALOG:
+        dept = cap["department"]
+
+        # HARD BLOCK: department not in allowed list
+        if dept not in allowed_depts:
+            hard_blocked.append({"cap": cap, "reason": f"{dept} is not relevant to your {primary_domain} focus"})
+            continue
+
+        # HARD BLOCK: finance capabilities without finance keywords
+        if dept == "Finance" and not has_finance_keywords:
+            hard_blocked.append({"cap": cap, "reason": "No finance-related signals detected in your description"})
+            continue
+
+        # SCORE: domain match (0.5) + entity signals (0.3) + goal alignment (0.2)
+        cap_domain = _DEPT_TO_DOMAIN.get(dept, "other")
+        domain_match = 1.0 if cap_domain == primary_domain else 0.3
+        entity_match = min(entity_boosts.get(cap["id"], 0) * 0.5, 1.0)
+        goal_score = _score_capability(cap, problem_vector)
+
+        score = (domain_match * 0.5) + (entity_match * 0.3) + (goal_score * 0.2)
+
+        # Apply learned weight adjustment
         if has_learning:
             score *= get_capability_weight_adjustment(cap["id"])
 
-        # Entity signal boost (+0.15 per entity match, up to +0.45)
-        entity_match_count = entity_boosts.get(cap["id"], 0)
-        if entity_match_count > 0:
-            score += min(entity_match_count * 0.15, 0.45)
-
-        # Small keyword bonus (+0.05) for keyword catalog match
+        # Small keyword bonus
         for keyword, cap_ids in _KEYWORD_CAPABILITIES.items():
             if keyword in all_text and cap["id"] in cap_ids:
-                score += 0.05
+                score += 0.03
                 break
 
-        # Domain relevance penalty (CRITICAL)
-        cap_domain = _DEPT_TO_DOMAIN.get(cap["department"], "other")
-        if cap_domain in primary_domains:
-            score += 0.1  # Small boost for being in primary domain
-        elif cap_domain in secondary_domains:
-            pass  # Neutral
-        else:
-            # Penalty for irrelevant domain (unless entity-matched)
-            if entity_match_count == 0:
-                score -= 0.25
-
-        scored.append({"cap": cap, "score": round(score, 3), "entity_matches": entity_match_count})
+        scored.append({"cap": cap, "score": round(score, 3), "entity_matches": entity_boosts.get(cap["id"], 0)})
 
     scored.sort(key=lambda x: x["score"], reverse=True)
 
-    # 3. HARD FILTER 1: Min threshold
+    # ═══ STEP 7: Threshold Filter ═════════════════════════════════
     above_threshold = [s for s in scored if s["score"] >= MIN_SCORE_THRESHOLD]
     below_threshold = [s for s in scored if s["score"] < MIN_SCORE_THRESHOLD]
 
-    # 4. HARD FILTER 2: Department limits
-    dept_limits = _DEPT_LIMITS.get(primary_goal, {d: 3 for d in ["Sales", "Marketing", "Customer Support", "Operations", "Finance", "Human Resources", "Technology", "Communication"]})
+    # ═══ STEP 8: Department Limits (from domain enforcement) ══════
     dept_counts = {}
     filtered = []
     dept_excluded = []
@@ -361,18 +425,17 @@ def map_capabilities(session: dict) -> dict:
     for s in above_threshold:
         dept = s["cap"]["department"]
         dept_counts[dept] = dept_counts.get(dept, 0)
-        limit = dept_limits.get(dept, 2)
+        limit = allowed_depts.get(dept, 0)
         if dept_counts[dept] < limit:
             filtered.append(s)
             dept_counts[dept] += 1
         else:
             dept_excluded.append(s)
 
-    # 5. HARD FILTER 3: Redundancy elimination (keep top 1 per group)
+    # ═══ STEP 9: Redundancy Elimination ═══════════════════════════
     seen_groups = {}
     deduped = []
     redundancy_excluded = []
-
     for s in filtered:
         group = s["cap"].get("redundancy_group", s["cap"]["id"])
         if group not in seen_groups:
@@ -381,67 +444,95 @@ def map_capabilities(session: dict) -> dict:
         else:
             redundancy_excluded.append(s)
 
-    # 6. HARD FILTER 4: Max cap (take top N by score)
+    # ═══ STEP 10: Max Cap ══════════════════════════════════════════
     recommended_scored = deduped[:MAX_CAPABILITIES]
 
-    # Ensure minimum
-    if len(recommended_scored) < MIN_CAPABILITIES and dept_excluded:
-        for s in dept_excluded:
-            if len(recommended_scored) >= MIN_CAPABILITIES:
-                break
-            recommended_scored.append(s)
+    # ═══ STEP 11: QC Checks ═══════════════════════════════════════
+    qc_passed = True
+    qc_notes = []
 
-    # 7. Build output
+    # QC1: Every capability must have a justification
+    for s in recommended_scored:
+        if s["score"] < 0.3:
+            qc_notes.append(f"Low confidence: {s['cap']['name']} (score {s['score']:.2f})")
+
+    # QC2: No irrelevant departments (should be caught by hard block, but double-check)
+    for s in recommended_scored:
+        if s["cap"]["department"] not in allowed_depts:
+            recommended_scored.remove(s)
+            qc_notes.append(f"QC removed: {s['cap']['name']} (dept not in domain)")
+            qc_passed = False
+
+    # QC3: Fail-safe — if uncertain, select fewer
+    if domain_confidence < 0.3:
+        recommended_scored = recommended_scored[:MIN_CAPABILITIES]
+        qc_notes.append("Low domain confidence — reduced to minimum capabilities")
+
+    # ═══ BUILD OUTPUT ══════════════════════════════════════════════
     recommended = [s["cap"]["id"] for s in recommended_scored]
-    excluded_ids = set()
+    all_excluded = set()
     for s in below_threshold + dept_excluded + redundancy_excluded:
         if s["cap"]["id"] not in recommended:
-            excluded_ids.add(s["cap"]["id"])
+            all_excluded.add(s["cap"]["id"])
+    for s in hard_blocked:
+        all_excluded.add(s["cap"]["id"])
 
-    # Scores and reasoning
+    # Scores
     scores = {s["cap"]["id"]: s["score"] for s in scored}
+
+    # Reasoning (with justification for each)
     reasoning = {}
     for s in recommended_scored:
         cap = s["cap"]
-        iv = cap.get("impact_vector", {})
-        # Find the dominant dimension
-        top_dim = max(iv, key=iv.get) if iv else "ops"
-        dim_labels = {"revenue": "revenue growth", "cost": "cost reduction", "cx": "customer experience", "ops": "operational efficiency"}
-        reason = f"High impact on {dim_labels.get(top_dim, top_dim)} (score: {s['score']:.2f})"
+        reasons = []
+        # Primary reason: domain match
+        cap_domain = _DEPT_TO_DOMAIN.get(cap["department"], "other")
+        if cap_domain == primary_domain:
+            reasons.append(f"Core {primary_domain} capability (score: {s['score']:.2f})")
+        else:
+            reasons.append(f"Supporting capability (score: {s['score']:.2f})")
+        # Entity match detail
         if s.get("entity_matches", 0) > 0:
-            # Find which entities matched
-            matched_entities = [e for e, caps in _ENTITY_SIGNALS.items() if cap["id"] in caps and e in all_text]
-            if matched_entities:
-                reason += f" | Matched: {', '.join(matched_entities[:3])}"
-        reasoning[cap["id"]] = [reason]
+            matched = [e for e, caps in _ENTITY_SIGNALS.items() if cap["id"] in caps and e in all_text]
+            if matched:
+                reasons[0] += f" | Matched: {', '.join(matched[:3])}"
+        reasoning[cap["id"]] = reasons
 
-    # Confidence normalized to 0-100
+    # Exclusion reasoning
+    exclusion_reasons = {}
+    for s in hard_blocked:
+        exclusion_reasons[s["cap"]["id"]] = s["reason"]
+    for s in below_threshold:
+        exclusion_reasons[s["cap"]["id"]] = "Below score threshold"
+    for s in dept_excluded:
+        exclusion_reasons[s["cap"]["id"]] = f"Department limit reached for {s['cap']['department']}"
+    for s in redundancy_excluded:
+        exclusion_reasons[s["cap"]["id"]] = f"Similar capability already selected"
+
+    # Confidence normalized
     max_score = max(scores.values()) if scores else 1
     confidence = {
         cap_id: min(round((score / max_score) * 100), 100)
         for cap_id, score in scores.items()
     }
 
-    # Exclusion reasoning
-    exclusion_reasons = {}
-    for s in below_threshold:
-        exclusion_reasons[s["cap"]["id"]] = "Below impact threshold for your primary goal"
-    for s in dept_excluded:
-        exclusion_reasons[s["cap"]["id"]] = f"{s['cap']['department']} is not a primary focus area"
-    for s in redundancy_excluded:
-        exclusion_reasons[s["cap"]["id"]] = f"Similar capability already selected ({s['cap'].get('redundancy_group', '')})"
-
     return {
         "recommended": recommended,
-        "optional": list(excluded_ids)[:10],
+        "optional": list(all_excluded)[:10],
         "confidence_scores": confidence,
         "reasoning": reasoning,
         "exclusion_reasons": exclusion_reasons,
         "primary_goal": primary_goal,
         "primary_label": primary_label,
+        "primary_domain": primary_domain,
+        "domain_confidence": domain_confidence,
+        "system_label": system_label,
         "problem_vector": problem_vector,
         "total_scored": len(scored),
-        "total_excluded": len(excluded_ids),
+        "total_excluded": len(all_excluded),
+        "total_hard_blocked": len(hard_blocked),
+        "qc_passed": qc_passed,
+        "qc_notes": qc_notes,
     }
 
 

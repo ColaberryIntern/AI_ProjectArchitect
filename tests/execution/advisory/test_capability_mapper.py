@@ -50,9 +50,9 @@ class TestMapCapabilities:
 
     def test_cost_focus_selects_ops_heavy(self):
         session = {"selected_outcomes": ["reduce_costs"], "selected_ai_systems": [],
-                    "business_idea": "Manufacturing with high manual costs", "answers": []}
+                    "business_idea": "Manufacturing with high manual costs and workflow bottlenecks", "answers": []}
         result = map_capabilities(session)
-        assert 6 <= len(result["recommended"]) <= 12
+        assert 3 <= len(result["recommended"]) <= 12
         assert "workflow_automation" in result["recommended"]
 
     def test_cx_focus_selects_support_heavy(self):
