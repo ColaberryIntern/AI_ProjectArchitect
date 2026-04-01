@@ -1,0 +1,272 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Schedule Strategy Call | AI Workforce Designer{% endblock %}
+
+{% block head %}
+<style>
+.date-btn { transition: all 0.2s; cursor: pointer; }
+.date-btn:hover { transform: translateY(-2px); }
+.date-btn.active { background: #4361ee !important; color: white !important; border-color: #4361ee !important; }
+.slot-btn { transition: all 0.15s; cursor: pointer; font-size: 0.85rem; }
+.slot-btn:hover { background: #4361ee; color: white; border-color: #4361ee; }
+.slot-btn.active { background: #4361ee; color: white; }
+.step { display: none; }
+.step.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+
+        <div class="text-center mb-4">
+            <i class="bi bi-calendar-event display-4 text-primary mb-3 d-block"></i>
+            <h2 class="fw-bold">Schedule Your AI Strategy Call</h2>
+            <p class="text-muted">Book a 30-minute call to discuss your AI transformation plan with our team.</p>
+        </div>
+
+        <div class="card border-0 shadow">
+            <div class="card-body p-4 p-md-5">
+
+                <!-- Progress -->
+                <div class="d-flex justify-content-center gap-3 mb-4">
+                    <span class="badge rounded-pill bg-primary px-3 py-2" id="step-ind-1">1. Pick a Date</span>
+                    <span class="badge rounded-pill bg-secondary px-3 py-2" id="step-ind-2">2. Pick a Time</span>
+                    <span class="badge rounded-pill bg-secondary px-3 py-2" id="step-ind-3">3. Confirm</span>
+                </div>
+
+                <!-- Step 1: Pick Date -->
+                <div class="step active" id="step-1">
+                    <h5 class="fw-bold mb-3">Select a date</h5>
+                    <div id="date-grid" class="d-flex flex-wrap gap-2">
+                        <div class="text-center text-muted py-4 w-100">
+                            <div class="spinner-border spinner-border-sm me-2"></div>Loading availability...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Pick Time -->
+                <div class="step" id="step-2">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Select a time <small class="text-muted fw-normal" id="selected-date-label"></small></h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="goToStep(1)"><i class="bi bi-arrow-left me-1"></i>Back</button>
+                    </div>
+                    <div id="slot-grid" class="d-flex flex-wrap gap-2"></div>
+                </div>
+
+                <!-- Step 3: Confirm -->
+                <div class="step" id="step-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Confirm your details</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="goToStep(2)"><i class="bi bi-arrow-left me-1"></i>Back</button>
+                    </div>
+
+                    <div class="alert alert-primary mb-3">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        <strong id="confirm-datetime"></strong>
+                        <span class="text-muted ms-1">(30 min, Central Time)</span>
+                    </div>
+
+                    <form id="booking-form" onsubmit="submitBooking(event)">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Full Name *</label>
+                                <input type="text" class="form-control" id="book-name" required
+                                       value="{{ session.lead.name if session.lead else '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Email *</label>
+                                <input type="email" class="form-control" id="book-email" required
+                                       value="{{ session.lead.email if session.lead else '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Company</label>
+                                <input type="text" class="form-control" id="book-company"
+                                       value="{{ session.lead.company if session.lead else '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Phone</label>
+                                <input type="tel" class="form-control" id="book-phone">
+                            </div>
+                        </div>
+                        <div class="d-grid mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg" id="book-btn">
+                                <i class="bi bi-calendar-check me-2"></i>Confirm Strategy Call
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Step 4: Confirmation -->
+                <div class="step" id="step-4">
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle-fill text-success display-3 mb-3 d-block"></i>
+                        <h3 class="fw-bold">You're booked!</h3>
+                        <p class="text-muted mb-3">Check your email for the calendar invitation and Google Meet link.</p>
+                        <div class="alert alert-success">
+                            <strong id="final-datetime"></strong>
+                        </div>
+                        <div id="meet-link-container" class="mb-3" style="display:none;">
+                            <a id="meet-link" href="#" target="_blank" class="btn btn-outline-primary">
+                                <i class="bi bi-camera-video me-2"></i>Join Google Meet
+                            </a>
+                        </div>
+                        <a href="/advisory/{{ session.session_id }}/results" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>Back to Results
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var availabilityData = null;
+var selectedDate = null;
+var selectedSlot = null;
+
+// Load availability on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof trackBookingEvent === 'function') {
+        trackBookingEvent('booking_modal_opened', { source: 'advisory' });
+    }
+    fetch('/advisory/api/calendar/availability')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            availabilityData = data;
+            renderDates(data.dates || []);
+            if (typeof trackBookingEvent === 'function') {
+                trackBookingEvent('booking_dates_loaded', { dates_available: (data.dates || []).length });
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('date-grid').innerHTML =
+                '<div class="alert alert-warning w-100">Unable to load availability. Please try again later.</div>';
+        });
+});
+
+function renderDates(dates) {
+    var grid = document.getElementById('date-grid');
+    if (!dates.length) {
+        grid.innerHTML = '<div class="alert alert-info w-100">No available slots in the next 3 weeks. Please check back later.</div>';
+        return;
+    }
+    grid.innerHTML = '';
+    dates.forEach(function(d) {
+        var parts = d.date.split('-');
+        var dateObj = new Date(parts[0], parts[1]-1, parts[2]);
+        var btn = document.createElement('div');
+        btn.className = 'date-btn card border text-center p-3';
+        btn.style.minWidth = '100px';
+        btn.innerHTML =
+            '<div class="fw-bold">' + d.day_name.substring(0,3) + '</div>' +
+            '<div class="fs-4 fw-bold">' + dateObj.getDate() + '</div>' +
+            '<div class="small text-muted">' + dateObj.toLocaleDateString('en-US', {month: 'short'}) + '</div>' +
+            '<div class="badge bg-primary-subtle text-primary mt-1">' + d.slots.length + ' slots</div>';
+        btn.onclick = function() { pickDate(d); };
+        grid.appendChild(btn);
+    });
+}
+
+function pickDate(dateData) {
+    selectedDate = dateData;
+    if (typeof trackBookingEvent === 'function') {
+        trackBookingEvent('booking_date_selected', { date: dateData.date, slots: dateData.slots.length });
+    }
+    document.getElementById('selected-date-label').textContent = dateData.day_name + ', ' + dateData.date;
+
+    var grid = document.getElementById('slot-grid');
+    grid.innerHTML = '';
+    dateData.slots.forEach(function(slot) {
+        var time = new Date(slot.start);
+        var label = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago' });
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'slot-btn btn btn-outline-primary';
+        btn.textContent = label;
+        btn.onclick = function() {
+            document.querySelectorAll('.slot-btn').forEach(function(b){ b.classList.remove('active'); });
+            btn.classList.add('active');
+            selectedSlot = slot;
+            if (typeof trackBookingEvent === 'function') {
+                trackBookingEvent('booking_time_selected', { slot_start: slot.start });
+            }
+            goToStep(3);
+            document.getElementById('confirm-datetime').textContent =
+                dateData.day_name + ', ' + dateData.date + ' at ' + label;
+        };
+        grid.appendChild(btn);
+    });
+
+    goToStep(2);
+}
+
+function goToStep(n) {
+    document.querySelectorAll('.step').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById('step-' + n).classList.add('active');
+
+    for (var i = 1; i <= 4; i++) {
+        var ind = document.getElementById('step-ind-' + i);
+        if (ind) ind.className = 'badge rounded-pill px-3 py-2 ' + (i <= n ? 'bg-primary' : 'bg-secondary');
+    }
+}
+
+function submitBooking(e) {
+    e.preventDefault();
+    if (typeof trackBookingEvent === 'function') {
+        trackBookingEvent('book_strategy_call_click', { slot_start: selectedSlot ? selectedSlot.start : '' });
+    }
+    var btn = document.getElementById('book-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Booking...';
+
+    fetch('/advisory/api/calendar/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: document.getElementById('book-name').value,
+            email: document.getElementById('book-email').value,
+            company: document.getElementById('book-company').value,
+            phone: document.getElementById('book-phone').value,
+            slot_start: selectedSlot.start,
+            timezone: 'America/Chicago',
+            session_id: '{{ session.session_id }}',
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert('Booking failed: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-calendar-check me-2"></i>Confirm Strategy Call';
+            return;
+        }
+
+        // Track the booking event
+        fetch('/advisory/{{ session.session_id }}/book-strategy-call', { method: 'POST' }).catch(function(){});
+
+        // Show confirmation
+        var start = new Date(data.booking.startTime);
+        document.getElementById('final-datetime').textContent =
+            start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) +
+            ' at ' + start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+        if (data.booking.meetLink) {
+            document.getElementById('meet-link').href = data.booking.meetLink;
+            document.getElementById('meet-link-container').style.display = '';
+        }
+
+        goToStep(4);
+    })
+    .catch(function(err) {
+        alert('Booking failed. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-calendar-check me-2"></i>Confirm Strategy Call';
+    });
+}
+</script>
+{% endblock %}

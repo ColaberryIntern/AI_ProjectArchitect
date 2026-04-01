@@ -1,0 +1,162 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}AI Capabilities | AI Workforce Designer{% endblock %}
+
+{% block content %}
+<div class="text-center mb-4">
+    <h2 class="fw-bold">We've Recommended Your AI Capabilities</h2>
+    <p class="text-muted">Based on your objectives and systems, we've pre-selected the best capabilities. Adjust as needed.</p>
+</div>
+
+<form action="/advisory/{{ session.session_id }}/capabilities" method="POST" id="capabilityForm">
+<div class="row">
+    <!-- Main content: department tabs + capabilities -->
+    <div class="col-lg-9">
+        <!-- Department tabs -->
+        <ul class="nav nav-pills flex-wrap gap-2 mb-4" id="deptTabs" role="tablist">
+            {% for dept in departments %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {{ 'active' if loop.first else '' }} d-flex align-items-center gap-1"
+                        id="tab-{{ dept.id | replace(' ', '-') }}"
+                        data-bs-toggle="pill"
+                        data-bs-target="#dept-{{ dept.id | replace(' ', '-') }}"
+                        type="button" role="tab">
+                    <i class="bi {{ dept.icon }}"></i>
+                    {{ dept.id }}
+                    <span class="badge bg-{{ dept.color }} ms-1 dept-count" data-dept="{{ dept.id }}">0</span>
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Department panes -->
+        <div class="tab-content" id="deptTabContent">
+            {% for dept in departments %}
+            <div class="tab-pane fade {{ 'show active' if loop.first else '' }}"
+                 id="dept-{{ dept.id | replace(' ', '-') }}" role="tabpanel">
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0">
+                        <i class="bi {{ dept.icon }} me-1 text-{{ dept.color }}"></i>{{ dept.id }}
+                    </h5>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllDept('{{ dept.id }}')">Select All</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearDept('{{ dept.id }}')">Clear</button>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    {% for cap in dept.capabilities %}
+                    {% set is_recommended = cap.id in recommended_ids %}
+                    {% set reason = reasoning.get(cap.id, []) %}
+                    <div class="col-md-6">
+                        <label class="card h-100 border-{{ '2 border-primary' if is_recommended else '0' }} shadow-sm capability-card" style="cursor: pointer;">
+                            <div class="card-body p-3 d-flex gap-3">
+                                <div class="pt-1">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="capabilities" value="{{ cap.id }}"
+                                           data-dept="{{ dept.id }}"
+                                           {% if cap.id in selected_ids %}checked{% endif %}
+                                           onchange="updateTally()" style="width: 1.2em; height: 1.2em;">
+                                </div>
+                                <div>
+                                    <div class="fw-semibold" style="font-size: 0.9rem;">
+                                        {{ cap.name }}
+                                        {% if is_recommended %}
+                                        <span class="badge bg-primary ms-1" style="font-size: 0.6rem;">Recommended</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-muted" style="font-size: 0.8rem;">{{ cap.description }}</div>
+                                    {% if reason %}
+                                    <div class="mt-1">
+                                        <small class="text-success"><i class="bi bi-lightbulb me-1"></i>{{ reason[0] }}</small>
+                                    </div>
+                                    {% endif %}
+                                    <span class="badge bg-{{ dept.color }}-subtle text-{{ dept.color }} mt-1" style="font-size: 0.65rem;">{{ cap.category }}</span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Right sidebar: selection tally -->
+    <div class="col-lg-3">
+        <div class="card border-0 shadow-sm sticky-top" style="top: 80px;">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Selected Capabilities</h6>
+                <div class="fs-2 fw-bold text-primary mb-2" id="totalCount">0</div>
+                <div class="small text-muted mb-3">capabilities selected</div>
+
+                <div id="deptBreakdown">
+                    {% for dept in departments %}
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span><i class="bi {{ dept.icon }} me-1"></i>{{ dept.id }}</span>
+                        <span class="fw-bold dept-tally" data-dept="{{ dept.id }}">0</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <hr>
+                <div id="selectionHint" class="text-muted small mb-3"></div>
+                <button type="submit" class="btn btn-primary btn-lg w-100" id="generateBtn" disabled>
+                    <i class="bi bi-magic me-2"></i>Generate AI Organization
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+
+<script>
+function updateTally() {
+    var checkboxes = document.querySelectorAll('input[name="capabilities"]');
+    var total = 0;
+    var deptCounts = {};
+
+    checkboxes.forEach(function(cb) {
+        var dept = cb.dataset.dept;
+        if (!deptCounts[dept]) deptCounts[dept] = 0;
+        if (cb.checked) {
+            total++;
+            deptCounts[dept]++;
+        }
+    });
+
+    document.getElementById('totalCount').textContent = total;
+
+    document.querySelectorAll('.dept-tally').forEach(function(el) {
+        el.textContent = deptCounts[el.dataset.dept] || 0;
+    });
+    document.querySelectorAll('.dept-count').forEach(function(el) {
+        el.textContent = deptCounts[el.dataset.dept] || 0;
+    });
+
+    var btn = document.getElementById('generateBtn');
+    var hint = document.getElementById('selectionHint');
+    if (total >= 3) {
+        btn.disabled = false;
+        hint.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Ready to generate!</span>';
+    } else {
+        btn.disabled = true;
+        hint.textContent = 'Select at least ' + (3 - total) + ' more capabilities.';
+    }
+}
+
+function selectAllDept(dept) {
+    document.querySelectorAll('input[data-dept="' + dept + '"]').forEach(function(cb) { cb.checked = true; });
+    updateTally();
+}
+
+function clearDept(dept) {
+    document.querySelectorAll('input[data-dept="' + dept + '"]').forEach(function(cb) { cb.checked = false; });
+    updateTally();
+}
+
+document.addEventListener('DOMContentLoaded', updateTally);
+</script>
+{% endblock %}

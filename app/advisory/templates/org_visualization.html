@@ -1,0 +1,641 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Your AI Operating System | AI Workforce Designer{% endblock %}
+
+{% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+.flow-step { transition: all 0.3s ease; }
+.flow-step:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.flow-arrow { color: #dee2e6; }
+.agent-card-expand { cursor: pointer; transition: all 0.2s; }
+.agent-card-expand:hover { background: #f8f9fc !important; }
+.agent-primary { border-left: 3px solid #4361ee !important; }
+.agent-specialist { border-left: 3px solid #198754 !important; background: rgba(25,135,84,0.03) !important; }
+.insight-card { border-left: 4px solid; transition: transform 0.2s; }
+.insight-card:hover { transform: translateX(4px); }
+.timeline-phase { position: relative; padding-left: 2rem; border-left: 3px solid #4361ee; }
+.timeline-phase::before { content: ''; position: absolute; left: -8px; top: 0; width: 13px; height: 13px; border-radius: 50%; background: #4361ee; }
+.timeline-phase:last-child { border-left-color: transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="text-center mb-4">
+    <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2"><i class="bi bi-cpu me-1"></i>AI Operating System</span>
+    <h2 class="fw-bold">Your AI-Powered Organization</h2>
+    <p class="text-muted">Here's the complete system designed for your business</p>
+</div>
+
+<!-- View Toggle -->
+{% if agents %}
+<div class="d-flex justify-content-center gap-2 mb-4">
+    <button class="btn btn-primary active" id="btn-workflow" onclick="switchView('workflow')">
+        <i class="bi bi-list-task me-1"></i>Workflow View
+    </button>
+    <button class="btn btn-outline-primary" id="btn-network" onclick="switchView('network')">
+        <i class="bi bi-diagram-3 me-1"></i>Network View
+    </button>
+    <button class="btn btn-outline-primary" id="btn-executive" onclick="switchView('executive')">
+        <i class="bi bi-speedometer2 me-1"></i>Executive Dashboard
+    </button>
+</div>
+{% endif %}
+
+<!-- ═══ NETWORK VIEW ════════════════════════════════════════════════ -->
+<div id="view-network" style="display: none;">
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-3 position-relative" style="min-height: 500px;">
+            <div id="network-graph" style="width: 100%;"></div>
+        </div>
+    </div>
+    <div class="text-center text-muted small mb-4">
+        <i class="bi bi-hand-index me-1"></i>Click any node for details. Drag to rearrange. AI COO pulses at center.
+    </div>
+</div>
+
+<!-- ═══ EXECUTIVE DASHBOARD VIEW ═════════════════════════════════════ -->
+<div id="view-executive" style="display: none;">
+
+{% if session.impact_model %}
+<!-- Hero KPI Bar -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
+            <div class="card-body p-3">
+                <small class="text-muted d-block">Revenue Impact</small>
+                <span class="fs-3 fw-bold text-success">{{ format_currency(session.impact_model.revenue_impact.estimated_annual_revenue_gain) }}</span>
+                <small class="text-success d-block"><i class="bi bi-arrow-up"></i> annual</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #4361ee !important;">
+            <div class="card-body p-3">
+                <small class="text-muted d-block">Cost Savings</small>
+                <span class="fs-3 fw-bold text-primary">{{ format_currency(session.impact_model.cost_savings.total_annual) }}</span>
+                <small class="text-primary d-block"><i class="bi bi-arrow-down"></i> annual</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0dcaf0 !important;">
+            <div class="card-body p-3">
+                <small class="text-muted d-block">Time Saved</small>
+                <span class="fs-3 fw-bold text-info">{{ session.impact_model.efficiency_gains.time_saved_hours_per_week }}h</span>
+                <small class="text-info d-block">per week</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #fd7e14 !important;">
+            <div class="card-body p-3">
+                <small class="text-muted d-block">3-Year ROI</small>
+                <span class="fs-3 fw-bold" style="color: #fd7e14;">{{ session.impact_model.roi_summary.three_year_roi_percent }}%</span>
+                <small class="text-muted d-block">return</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6f42c1 !important;">
+            <div class="card-body p-3">
+                <small class="text-muted d-block">AI Agents</small>
+                <span class="fs-3 fw-bold" style="color: #6f42c1;">{{ agent_stats.total_agents }}</span>
+                <small style="color: #6f42c1;" class="d-block">active</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4 mb-4">
+    <!-- Left Column: AI COO + Operations Feed -->
+    <div class="col-lg-8">
+
+        <!-- AI COO Insights -->
+        {% if insights %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-cpu me-2"></i><strong>AI COO Insights</strong></span>
+                    <span class="badge bg-success"><i class="bi bi-circle-fill me-1" style="font-size:0.4rem"></i>Live</span>
+                </div>
+            </div>
+            <div class="card-body p-3">
+                {% for insight in insights %}
+                <div class="d-flex align-items-start gap-3 {{ 'mb-3 pb-3 border-bottom' if not loop.last else '' }}">
+                    <i class="bi {{ insight.icon }} fs-4 text-{{ insight.color }} mt-1"></i>
+                    <div>
+                        <div class="fw-semibold">{{ insight.title }} <span class="badge bg-{{ insight.color }}">{{ insight.impact }}</span></div>
+                        <small class="text-muted">{{ insight.detail }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Department Performance -->
+        {% if agents %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header"><strong><i class="bi bi-building me-2"></i>Department Performance</strong></div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0" style="font-size: 0.85rem;">
+                    <thead class="table-light">
+                        <tr><th>Department</th><th>Agents</th><th>Primary Trigger</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% set dept_agents = {} %}
+                        {% for agent in agents %}
+                        {% if not agent.get('is_cory') %}
+                        {% set dept = agent.department %}
+                        {% if dept not in dept_agents %}{% set _ = dept_agents.update({dept: []}) %}{% endif %}
+                        {% set _ = dept_agents[dept].append(agent) %}
+                        {% endif %}
+                        {% endfor %}
+                        {% for dept, dagents in dept_agents.items() %}
+                        <tr>
+                            <td><strong>{{ dept }}</strong></td>
+                            <td><span class="badge bg-primary-subtle text-primary">{{ dagents | length }}</span></td>
+                            <td class="text-muted">{{ dagents[0].trigger_type }}</td>
+                            <td><span class="badge bg-success">Active</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Before vs After -->
+        {% if session.impact_model %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header"><strong><i class="bi bi-arrow-left-right me-2"></i>Before vs After AI</strong></div>
+            <div class="card-body p-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-danger bg-opacity-10 rounded text-center">
+                            <h6 class="text-danger fw-bold mb-2">Without AI</h6>
+                            <div class="small text-muted mb-1">Manual task hours: <strong>{{ session.impact_model.efficiency_gains.time_saved_hours_per_week + 20 }}h/week</strong></div>
+                            <div class="small text-muted mb-1">Processes automated: <strong>0</strong></div>
+                            <div class="small text-muted">Monthly cost of inaction: <strong>{{ format_currency(session.impact_model.opportunity_cost.monthly_cost_of_inaction) }}</strong></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-success bg-opacity-10 rounded text-center">
+                            <h6 class="text-success fw-bold mb-2">With AI Workforce</h6>
+                            <div class="small mb-1">Manual hours reduced to: <strong>20h/week</strong></div>
+                            <div class="small mb-1">Processes automated: <strong>{{ session.impact_model.efficiency_gains.processes_automated }}</strong></div>
+                            <div class="small">Annual benefit: <strong class="text-success">{{ format_currency(session.impact_model.roi_summary.annual_benefit) }}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right Column: Workforce + Actions -->
+    <div class="col-lg-4">
+
+        <!-- AI Workforce Summary -->
+        {% if agents %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header"><strong><i class="bi bi-robot me-2"></i>AI Workforce</strong></div>
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Total Agents</span>
+                    <strong>{{ agent_stats.total_agents }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Departments</span>
+                    <strong>{{ agent_stats.departments }}</strong>
+                </div>
+                {% if agent_stats.trigger_breakdown %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Event-driven</span>
+                    <strong>{{ agent_stats.trigger_breakdown.get('event', 0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Scheduled</span>
+                    <strong>{{ agent_stats.trigger_breakdown.get('time', 0) }}</strong>
+                </div>
+                {% endif %}
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">AI COO</span>
+                    <span class="badge bg-dark">{{ 'Active' if agent_stats.get('has_cory') else 'Inactive' }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Next Best Actions -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary bg-opacity-10"><strong><i class="bi bi-lightning me-2 text-primary"></i>Next Best Actions</strong></div>
+            <div class="card-body p-3">
+                {% if insights %}
+                {% for insight in insights[:3] %}
+                <div class="d-flex align-items-start gap-2 {{ 'mb-3' if not loop.last else '' }}">
+                    <span class="badge bg-{{ insight.color }} rounded-circle p-1" style="width:24px;height:24px;line-height:16px;">{{ loop.index }}</span>
+                    <div>
+                        <div class="fw-semibold small">{{ insight.title }}</div>
+                        <small class="text-muted">{{ insight.impact }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted small mb-0">Complete the advisory flow to see recommendations.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Operations Feed -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <strong><i class="bi bi-activity me-2"></i>Live Operations</strong>
+                    <span class="badge bg-success" style="font-size:0.6rem"><i class="bi bi-circle-fill me-1" style="font-size:0.35rem"></i>Live</span>
+                </div>
+            </div>
+            <div class="card-body p-3" style="max-height: 250px; overflow-y: auto; font-size: 0.8rem;">
+                {% for agent in agents[:8] %}
+                {% if not agent.get('is_cory') %}
+                <div class="d-flex align-items-center gap-2 mb-2 pb-2 {{ 'border-bottom' if not loop.last else '' }}">
+                    <i class="bi bi-{{ 'stars text-success' if agent.get('is_specialist') else 'robot text-primary' }}" style="font-size:0.9rem;"></i>
+                    <div>
+                        <div class="fw-semibold">{{ agent.name }}</div>
+                        <small class="text-muted">{{ agent.trigger }}</small>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Quick CTA -->
+        <div class="d-grid gap-2">
+            <a href="/advisory/{{ session.session_id }}/simulation" class="btn btn-dark">
+                <i class="bi bi-play-fill me-1"></i>Run Live Simulation
+            </a>
+            <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-primary">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Get Full Report
+            </a>
+        </div>
+    </div>
+</div>
+
+</div><!-- close view-executive -->
+
+<!-- ═══ WORKFLOW VIEW (existing content) ════════════════════════════ -->
+<div id="view-workflow">
+
+<!-- ═══ AI COO (Central Intelligence) ═══════════════════════════════ -->
+{% if agents and agent_stats.get('has_cory') %}
+<div class="card border-dark border-2 shadow mb-4" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body p-4">
+        <div class="row align-items-center">
+            <div class="col-md-2 text-center">
+                <i class="bi bi-cpu display-3 opacity-75"></i>
+            </div>
+            <div class="col-md-10">
+                <h4 class="fw-bold mb-1"><i class="bi bi-stars me-2"></i>AI Chief Operating Officer</h4>
+                <p class="opacity-75 mb-2">Central intelligence layer monitoring all {{ agent_stats.departments }} departments and {{ agent_stats.total_agents }} agents</p>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge bg-light text-dark"><i class="bi bi-eye me-1"></i>Monitors all systems</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-lightbulb me-1"></i>Detects patterns</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-lightning me-1"></i>Triggers actions</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-graph-up me-1"></i>Provides insights</span>
+                </div>
+                <!-- System Status -->
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <span class="text-success small"><i class="bi bi-circle-fill" style="font-size:0.5rem"></i> All Systems Active</span>
+                    <span class="opacity-50 small"><i class="bi bi-lightning"></i> Real-time monitoring enabled</span>
+                </div>
+                <!-- Recent Actions Feed -->
+                <div class="bg-dark bg-opacity-25 rounded p-2" style="font-size: 0.75rem;">
+                    <div class="mb-1 opacity-75"><i class="bi bi-clock-history me-1"></i><strong>Recent Actions:</strong></div>
+                    <div class="d-flex flex-column gap-1" id="coo-feed">
+                        {% for agent in agents[:3] %}
+                        {% if not agent.get('is_cory') %}
+                        <div class="opacity-75"><i class="bi bi-check text-success me-1"></i>{{ agent.name }}: {{ agent.trigger }} <span class="opacity-50">just now</span></div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ AI COO Insights Panel ═══════════════════════════════════════ -->
+{% if insights %}
+<h4 class="fw-bold mb-3"><i class="bi bi-lightbulb me-2"></i>Top Opportunities Identified</h4>
+<div class="row g-3 mb-4">
+    {% for insight in insights %}
+    <div class="col-md-6">
+        <div class="card insight-card border-0 shadow-sm h-100" style="border-color: var(--bs-{{ insight.color }}) !important;">
+            <div class="card-body p-3 d-flex gap-3">
+                <div><i class="bi {{ insight.icon }} fs-3 text-{{ insight.color }}"></i></div>
+                <div>
+                    <strong>{{ insight.title }}</strong>
+                    <span class="badge bg-{{ insight.color }} ms-2">{{ insight.impact }}</span>
+                    <br><small class="text-muted">{{ insight.detail }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ System Flow Visualization ═══════════════════════════════════ -->
+{% if system_flows %}
+<h4 class="fw-bold mb-3"><i class="bi bi-diagram-3 me-2"></i>How Your AI System Works</h4>
+<div class="row g-4 mb-4">
+    {% for flow in system_flows %}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent"><strong>{{ flow.label }}</strong></div>
+            <div class="card-body p-3">
+                {% for step in flow.steps %}
+                <div class="d-flex align-items-center gap-2 mb-2 flow-step rounded p-2
+                    {{ 'bg-primary bg-opacity-10' if step.type == 'agent' else
+                       'bg-warning bg-opacity-10' if step.type == 'condition' else
+                       'bg-success bg-opacity-10' if step.type == 'outcome' else
+                       'bg-light' }}">
+                    <i class="bi {{ step.icon }}
+                        {{ 'text-primary' if step.type == 'agent' else
+                           'text-warning' if step.type == 'condition' else
+                           'text-success' if step.type == 'outcome' else
+                           'text-muted' }}"></i>
+                    <small class="{{ 'fw-bold' if step.type in ('agent', 'outcome') else 'fst-italic' if step.type == 'condition' else '' }}">{{ step.step }}</small>
+                </div>
+                {% if not loop.last %}
+                <div class="text-center flow-arrow"><i class="bi bi-arrow-down"></i></div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ AI Readiness Score ══════════════════════════════════════════ -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6 mx-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 text-center">
+                <h5 class="card-title mb-3">AI Readiness Score</h5>
+                <div class="d-flex justify-content-center align-items-center mb-3">
+                    <span class="display-3 fw-bold text-primary">{{ session.maturity_score.overall }}</span>
+                    <span class="text-muted ms-2">/5</span>
+                </div>
+                <span class="badge bg-primary fs-6 mb-3">{{ maturity_label }}</span>
+                <div class="row g-2 mt-3">
+                    {% for dim, score in session.maturity_score.dimensions.items() %}
+                    <div class="col-6">
+                        <div class="text-start">
+                            <small class="text-muted">{{ get_dimension_label(dim) }}</small>
+                            <div class="progress" style="height: 6px;">
+                                <div class="progress-bar" style="width: {{ (score / 5) * 100 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Primary Focus Area ═══════════════════════════════════════════ -->
+{% if problem_analysis and problem_analysis.primary_problem %}
+<div class="alert alert-primary d-flex align-items-center mb-4" role="alert">
+    <i class="bi bi-bullseye fs-4 me-3"></i>
+    <div>
+        <strong>Primary Focus: {{ problem_analysis.primary_label }}</strong>
+        <span class="ms-2 badge bg-primary">{{ (problem_analysis.primary_weight * 100) | round | int }}% weight</span>
+        <br><small class="text-muted">Your AI system is optimized around this area. Specialist agents have been added for deeper coverage.</small>
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ Agent Architecture (Expandable Cards) ══════════════════════ -->
+{% if agents %}
+<h4 class="fw-bold mb-3"><i class="bi bi-robot me-2"></i>AI Agent Architecture</h4>
+<p class="text-muted small mb-3">{{ agent_stats.total_agents }} agents across {{ agent_stats.departments }} departments. Click any agent to see details.</p>
+<div class="row g-2 mb-4">
+    {% for agent in agents %}
+    {% if not agent.get('is_cory') %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm agent-card-expand {{ 'agent-specialist' if agent.get('is_specialist') else 'agent-primary' if agent.get('is_primary_focus') else '' }}" data-bs-toggle="collapse" data-bs-target="#agent-{{ loop.index }}">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <i class="bi bi-robot text-{{ 'success' if agent.get('is_specialist') else 'primary' }}"></i>
+                    <strong style="font-size: 0.85rem;">{{ agent.name }}</strong>
+                    {% if agent.get('is_specialist') %}
+                    <span class="badge bg-success" style="font-size:0.55rem;">Specialist</span>
+                    {% elif agent.get('is_primary_focus') %}
+                    <span class="badge bg-primary" style="font-size:0.55rem;">Primary Focus</span>
+                    {% endif %}
+                </div>
+                <small class="text-muted d-block mb-1">{{ agent.department }}</small>
+                <div class="d-flex gap-1 flex-wrap">
+                    <span class="badge bg-{{ 'primary' if agent.trigger_type == 'event' else 'warning' if agent.trigger_type == 'time' else 'danger' }}" style="font-size: 0.6rem;">{{ agent.trigger_type }}</span>
+                    <span class="badge bg-light text-dark border" style="font-size: 0.6rem;">{{ agent.trigger }}</span>
+                </div>
+                <!-- Expandable detail -->
+                <div class="collapse mt-2 pt-2 border-top" id="agent-{{ loop.index }}">
+                    <div class="small">
+                        <div class="mb-1"><strong class="text-muted">Trigger:</strong> {{ agent.trigger }}</div>
+                        <div class="mb-1"><strong class="text-muted">Inputs:</strong> {{ agent.inputs | join(', ') }}</div>
+                        <div class="mb-1"><strong class="text-muted">Action:</strong> {{ agent.role[:100] }}</div>
+                        <div><strong class="text-muted">Outputs:</strong> {{ agent.outputs | join(', ') }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Business Impact ═════════════════════════════════════════════ -->
+{% if session.impact_model %}
+<h4 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow me-2"></i>Business Impact</h4>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <i class="bi bi-piggy-bank fs-3 text-success mb-1"></i>
+                <h6 class="text-muted small">Annual Cost Savings</h6>
+                <p class="fs-4 fw-bold text-success mb-0">{{ format_currency(session.impact_model.cost_savings.total_annual) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <i class="bi bi-graph-up fs-3 text-primary mb-1"></i>
+                <h6 class="text-muted small">Revenue Lift</h6>
+                <p class="fs-4 fw-bold text-primary mb-0">{{ format_currency(session.impact_model.revenue_impact.estimated_annual_revenue_gain) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <i class="bi bi-clock-history fs-3 text-info mb-1"></i>
+                <h6 class="text-muted small">Hours Saved / Week</h6>
+                <p class="fs-4 fw-bold text-info mb-0">{{ session.impact_model.efficiency_gains.time_saved_hours_per_week }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <i class="bi bi-calendar-check fs-3 text-warning mb-1"></i>
+                <h6 class="text-muted small">Payback Period</h6>
+                <p class="fs-4 fw-bold text-warning mb-0">{{ session.impact_model.roi_summary.payback_period_months }}mo</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ROI Breakdown (expandable) -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent" data-bs-toggle="collapse" data-bs-target="#roiBreakdown" style="cursor: pointer;">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong><i class="bi bi-calculator me-2"></i>How We Calculated This</strong>
+            <i class="bi bi-chevron-down"></i>
+        </div>
+    </div>
+    <div class="collapse" id="roiBreakdown">
+        <div class="card-body p-4">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <h6 class="fw-bold">Cost Savings</h6>
+                    {% if session.impact_model.cost_savings.breakdown %}
+                    {% for item in session.impact_model.cost_savings.breakdown[:5] %}
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">{{ item.department }}: {{ item.capability }}</span>
+                        <span class="fw-bold">{{ format_currency(item.annual_savings) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <h6 class="fw-bold">Revenue Impact</h6>
+                    {% if session.impact_model.revenue_impact.channels %}
+                    {% for ch in session.impact_model.revenue_impact.channels %}
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">{{ ch.department }} (+{{ ch.lift_percent }}%)</span>
+                        <span class="fw-bold">{{ format_currency(ch.estimated_annual_gain) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <h6 class="fw-bold">ROI Summary</h6>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Implementation Cost</span>
+                        <span class="fw-bold">{{ format_currency(session.impact_model.roi_summary.implementation_cost) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Annual Benefit</span>
+                        <span class="fw-bold text-success">{{ format_currency(session.impact_model.roi_summary.annual_benefit) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">3-Year ROI</span>
+                        <span class="fw-bold text-primary">{{ session.impact_model.roi_summary.three_year_roi_percent }}%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Personalized Cost of Inaction -->
+<div class="card border-warning border-2 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="mb-3"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Cost of Inaction</h5>
+        {% for msg in inaction_messages %}
+        <p class="mb-2"><i class="bi bi-arrow-right text-danger me-2"></i>{{ msg }}</p>
+        {% endfor %}
+        <div class="mt-2">
+            <strong>Monthly cost of delay: {{ format_currency(session.impact_model.opportunity_cost.monthly_cost_of_inaction) }}</strong>
+            <span class="badge bg-{{ 'danger' if session.impact_model.opportunity_cost.competitive_risk == 'high' else 'warning' if session.impact_model.opportunity_cost.competitive_risk == 'medium' else 'success' }} ms-2">
+                {{ session.impact_model.opportunity_cost.competitive_risk | title }} Competitive Risk
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ Implementation Timeline ═════════════════════════════════════ -->
+{% if timeline %}
+<h4 class="fw-bold mb-3"><i class="bi bi-calendar3 me-2"></i>Implementation Timeline</h4>
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        {% for phase in timeline %}
+        <div class="timeline-phase mb-4 pb-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge bg-primary">{{ phase.phase }}</span>
+                <strong>{{ phase.title }}</strong>
+            </div>
+            <div class="ms-2">
+                {% for item in phase.tasks %}
+                <div class="small text-muted mb-1"><i class="bi bi-check2 text-success me-1"></i>{{ item }}</div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ Simulation CTA ══════════════════════════════════════════════ -->
+{% if agents %}
+<div class="card border-0 shadow mb-4" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body p-4 p-md-5 text-center">
+        <i class="bi bi-play-circle display-4 mb-3 d-block opacity-75"></i>
+        <h3 class="fw-bold mb-2">Watch Your AI Organization Run</h3>
+        <p class="opacity-75 mb-4">See your {{ agent_stats.total_agents }} AI agents work together in a live simulation: handling leads, resolving issues, and optimizing operations in real time.</p>
+        <a href="/advisory/{{ session.session_id }}/simulation" class="btn btn-light btn-lg fw-semibold px-5">
+            <i class="bi bi-play-fill me-2"></i>Launch Simulation
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ Final CTA ═══════════════════════════════════════════════════ -->
+<div class="text-center mb-5">
+    <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-primary btn-lg px-5" data-track="get_full_report">
+        <i class="bi bi-file-earmark-pdf me-2"></i>Get Your Full Report
+    </a>
+</div>
+
+</div><!-- close view-workflow -->
+
+<!-- Data for JS -->
+<script id="org-data" type="application/json">{{ org_tree_json | safe }}</script>
+<script id="network-data" type="application/json">{{ agents_json | safe }}</script>
+<script src="/advisory/static/js/org_chart.js"></script>
+<script src="/advisory/static/js/network_graph.js"></script>
+
+<!-- View toggle logic -->
+<script>
+function switchView(view) {
+    ['workflow', 'network', 'executive'].forEach(function(v) {
+        var el = document.getElementById('view-' + v);
+        if (el) el.style.display = v === view ? 'block' : 'none';
+        var btn = document.getElementById('btn-' + v);
+        if (btn) btn.className = 'btn ' + (v === view ? 'btn-primary active' : 'btn-outline-primary');
+    });
+}
+</script>
+{% endblock %}

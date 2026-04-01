@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Advisory Session",
+  "type": "object",
+  "required": ["session_id", "status", "created_at"],
+  "properties": {
+    "session_id": { "type": "string", "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": ["idea_input", "questioning", "generating", "complete", "gated"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "business_idea": { "type": "string" },
+    "current_question_index": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question_id", "question_text", "answer_text", "answered_at"],
+        "properties": {
+          "question_id": { "type": "string" },
+          "question_text": { "type": "string" },
+          "answer_text": { "type": "string" },
+          "answered_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "selected_systems": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "capability_map": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "departments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "capabilities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string" },
+                        "automation_potential": { "type": "string", "enum": ["high", "medium", "low"] },
+                        "current_pain_points": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "generated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "org_structure": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "type"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "type": { "type": "string", "enum": ["executive", "department_head", "specialist", "agent"] },
+              "parent_id": { "type": ["string", "null"] },
+              "department": { "type": "string" },
+              "responsibilities": { "type": "array", "items": { "type": "string" } },
+              "ai_tools": { "type": "array", "items": { "type": "string" } },
+              "estimated_fte_equivalent": { "type": "number" }
+            }
+          }
+        }
+      ]
+    },
+    "impact_model": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "cost_savings": { "type": "object" },
+            "revenue_impact": { "type": "object" },
+            "efficiency_gains": { "type": "object" },
+            "opportunity_cost": { "type": "object" },
+            "roi_summary": { "type": "object" },
+            "calculated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "maturity_score": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "overall": { "type": "number", "minimum": 1, "maximum": 5 },
+            "dimensions": { "type": "object" },
+            "scored_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "lead": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["name", "email"],
+          "properties": {
+            "name": { "type": "string" },
+            "email": { "type": "string", "format": "email" },
+            "company": { "type": "string" },
+            "role": { "type": "string" },
+            "captured_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "pdf_path": { "type": ["string", "null"] },
+    "linked_project_slug": { "type": ["string", "null"] }
+  }
+}

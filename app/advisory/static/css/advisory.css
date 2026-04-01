@@ -1,0 +1,124 @@
+/* AI Advisory Layer Styles */
+
+.advisory-body {
+    background-color: #f8f9fc;
+    min-height: 100vh;
+}
+
+.advisory-nav {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.advisory-footer {
+    background-color: #f0f2f5;
+}
+
+/* Cards */
+.card {
+    border-radius: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+/* Org chart */
+.org-chart-container {
+    width: 100%;
+    min-height: 400px;
+    overflow-x: auto;
+}
+
+.org-chart-container svg {
+    width: 100%;
+    height: auto;
+}
+
+.org-node rect {
+    fill: #ffffff;
+    stroke: #4361ee;
+    stroke-width: 2px;
+    rx: 8;
+    ry: 8;
+}
+
+.org-node.executive rect {
+    fill: #1a1a2e;
+    stroke: #1a1a2e;
+}
+
+.org-node.executive text {
+    fill: #ffffff;
+}
+
+.org-node.department_head rect {
+    fill: #e8eaf6;
+    stroke: #3f51b5;
+}
+
+.org-node text.title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.org-node text.dept {
+    font-size: 11px;
+    fill: #666;
+}
+
+.org-link {
+    fill: none;
+    stroke: #ccc;
+    stroke-width: 1.5px;
+}
+
+/* Progress bar */
+.progress {
+    border-radius: 4px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Impact cards */
+.display-6 {
+    font-size: 2rem;
+}
+
+/* Form improvements */
+.form-control-lg {
+    border-radius: 8px;
+}
+
+.form-control:focus {
+    border-color: #4361ee;
+    box-shadow: 0 0 0 0.2rem rgba(67, 97, 238, 0.15);
+}
+
+/* Badge */
+.badge {
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .display-4 {
+        font-size: 2rem;
+    }
+
+    .display-6 {
+        font-size: 1.5rem;
+    }
+
+    .card-body.p-5 {
+        padding: 1.5rem !important;
+    }
+
+    .org-chart-container {
+        min-height: 300px;
+    }
+}

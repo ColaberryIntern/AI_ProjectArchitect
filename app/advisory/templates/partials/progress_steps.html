@@ -1,0 +1,12 @@
+<!-- Advisory flow progress indicator -->
+<div class="d-flex justify-content-center mb-4">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge rounded-pill {{ 'bg-primary' if step >= 1 else 'bg-secondary' }}">1. Idea</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+        <span class="badge rounded-pill {{ 'bg-primary' if step >= 2 else 'bg-secondary' }}">2. Questions</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+        <span class="badge rounded-pill {{ 'bg-primary' if step >= 3 else 'bg-secondary' }}">3. Results</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+        <span class="badge rounded-pill {{ 'bg-primary' if step >= 4 else 'bg-secondary' }}">4. Report</span>
+    </div>
+</div>

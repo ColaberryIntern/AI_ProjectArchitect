@@ -1,0 +1,353 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Colaberry AI Workforce Designer | Design Your AI Operating System{% endblock %}
+
+{% block head %}
+<style>
+.hero-gradient { background: linear-gradient(135deg, #f8f9fc 0%, #e8eaf6 100%); }
+.chip { cursor: pointer; transition: all 0.2s; border: 1px solid #dee2e6; }
+.chip:hover { background: #4361ee; color: white; border-color: #4361ee; transform: translateY(-1px); }
+.chip.active { background: #4361ee; color: white; border-color: #4361ee; }
+#business_idea { transition: box-shadow 0.3s ease, border-color 0.3s ease; }
+#business_idea:focus { box-shadow: 0 0 0 0.35rem rgba(67, 97, 238, 0.15); border-color: #4361ee; }
+.value-item { transition: transform 0.2s; }
+.value-item:hover { transform: translateY(-2px); }
+.fade-text { animation: fadeRotate 8s infinite; }
+@keyframes fadeRotate { 0%,30% { opacity: 1; } 33%,63% { opacity: 0; } 66%,96% { opacity: 1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="hero-gradient rounded-4 mb-5 px-3 py-5 overflow-hidden position-relative">
+    <div class="row align-items-center mx-auto" style="max-width: 1100px;">
+        <!-- Left: Copy -->
+        <div class="col-lg-6 text-center text-lg-start mb-4 mb-lg-0">
+            <span class="badge bg-primary-subtle text-primary mb-3 px-3 py-2">
+                <i class="bi bi-cpu me-1"></i>AI System Designer
+            </span>
+            <h1 class="display-4 fw-bold mb-3">Design Your AI Operating System</h1>
+            <p class="lead text-muted mb-2">
+                Describe your business challenge and we'll design a complete AI workforce with intelligent agents,
+                automated systems, and projected ROI in minutes.
+            </p>
+            <p class="text-muted mb-3" style="font-size: 0.95rem;">
+                We'll identify automation opportunities, design AI systems, and map the agents needed to run your business.
+            </p>
+            <p class="text-muted small mb-0">
+                <i class="bi bi-stars me-1"></i>Powered by an AI "Chief Operating Officer" layer that monitors your business, identifies opportunities, and triggers actions automatically.
+            </p>
+        </div>
+        <!-- Right: Dashboard Mockup -->
+        <div class="col-lg-6 d-flex justify-content-center">
+            <div class="dashboard-mockup" style="width: 100%; max-width: 460px;">
+                <!-- Window chrome -->
+                <div class="bg-dark rounded-top-3 px-3 py-2 d-flex align-items-center gap-2">
+                    <span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;"></span>
+                    <span style="width:10px;height:10px;border-radius:50%;background:#ffbd2e;"></span>
+                    <span style="width:10px;height:10px;border-radius:50%;background:#28c840;"></span>
+                    <small class="text-white-50 ms-2" style="font-size:0.65rem;">AI Operating System | Live</small>
+                </div>
+                <!-- Dashboard body -->
+                <div class="bg-white rounded-bottom-3 border border-top-0 p-3" style="font-size: 0.72rem;">
+                    <!-- Top bar -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="bg-dark text-white rounded-pill px-2 py-1" style="font-size:0.6rem;"><i class="bi bi-cpu me-1"></i>AI COO</span>
+                            <span class="text-success" style="font-size:0.6rem;"><i class="bi bi-circle-fill" style="font-size:0.4rem;"></i> Online</span>
+                        </div>
+                        <small class="text-muted">6 engines active</small>
+                    </div>
+                    <!-- Metric row -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-3"><div class="bg-primary bg-opacity-10 rounded p-2 text-center"><div class="fw-bold text-primary">$425K</div><div class="text-muted" style="font-size:0.55rem;">Savings</div></div></div>
+                        <div class="col-3"><div class="bg-success bg-opacity-10 rounded p-2 text-center"><div class="fw-bold text-success">89%</div><div class="text-muted" style="font-size:0.55rem;">Efficiency</div></div></div>
+                        <div class="col-3"><div class="bg-warning bg-opacity-10 rounded p-2 text-center"><div class="fw-bold text-warning">24/7</div><div class="text-muted" style="font-size:0.55rem;">Coverage</div></div></div>
+                        <div class="col-3"><div class="bg-info bg-opacity-10 rounded p-2 text-center"><div class="fw-bold text-info">18</div><div class="text-muted" style="font-size:0.55rem;">Agents</div></div></div>
+                    </div>
+                    <!-- Agent activity feed -->
+                    <div class="mb-2">
+                        <small class="fw-bold text-muted d-block mb-2">LIVE AGENT ACTIVITY</small>
+                        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-light rounded">
+                            <i class="bi bi-robot text-primary"></i>
+                            <div><strong>Lead Qualifier</strong><br><span class="text-muted">Scored lead #4821 at 94/100</span></div>
+                            <span class="badge bg-success ms-auto" style="font-size:0.5rem;">2s ago</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-light rounded">
+                            <i class="bi bi-robot text-success"></i>
+                            <div><strong>Support Agent</strong><br><span class="text-muted">Resolved ticket #10293</span></div>
+                            <span class="badge bg-success ms-auto" style="font-size:0.5rem;">8s ago</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 p-2 bg-dark bg-opacity-10 rounded">
+                            <i class="bi bi-cpu text-dark"></i>
+                            <div><strong>AI COO</strong><br><span class="text-muted">Revenue pattern detected +12%</span></div>
+                            <span class="badge bg-dark ms-auto" style="font-size:0.5rem;">15s ago</span>
+                        </div>
+                    </div>
+                    <!-- System status bar -->
+                    <div class="d-flex justify-content-between pt-2 border-top">
+                        <small><i class="bi bi-check-circle text-success me-1"></i>All systems operational</small>
+                        <small class="text-muted">Last sync: just now</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Input Card -->
+<div class="card border-0 shadow mx-auto mb-5" style="max-width: 760px;">
+    <div class="card-body p-4 p-md-5">
+        <form action="/advisory/start" method="POST" id="advisoryForm">
+            <!-- Label -->
+            <div class="mb-2">
+                <label for="business_idea" class="form-label fw-bold fs-5">
+                    Describe your business and the biggest operational or growth challenge you want AI to solve
+                </label>
+                <p class="text-muted small mb-3">Be specific. We'll design a complete AI-powered workforce including systems, agents, and ROI.</p>
+            </div>
+
+            <!-- Textarea -->
+            <div class="mb-3">
+                <textarea
+                    class="form-control form-control-lg"
+                    id="business_idea"
+                    name="business_idea"
+                    rows="6"
+                    required
+                    style="font-size: 1rem;"
+                    placeholder="We are a growing company with increasing lead volume, but our sales follow-ups are inconsistent and our support response times are too slow. We want to automate engagement, improve conversion rates, and reduce manual work across teams."
+                ></textarea>
+            </div>
+
+            <!-- Quick-select example chips -->
+            <div class="mb-4">
+                <small class="text-muted d-block mb-2"><i class="bi bi-lightning me-1"></i>Quick start. Click an example:</small>
+                <div class="d-flex flex-wrap gap-2">
+                    <span class="chip badge rounded-pill bg-white text-dark px-3 py-2" onclick="selectExample(this)">
+                        Increase lead conversion and automate follow-ups
+                    </span>
+                    <span class="chip badge rounded-pill bg-white text-dark px-3 py-2" onclick="selectExample(this)">
+                        Reduce manual operations and improve efficiency
+                    </span>
+                    <span class="chip badge rounded-pill bg-white text-dark px-3 py-2" onclick="selectExample(this)">
+                        Automate customer support and response times
+                    </span>
+                    <span class="chip badge rounded-pill bg-white text-dark px-3 py-2" onclick="selectExample(this)">
+                        Improve decision-making with real-time data
+                    </span>
+                    <span class="chip badge rounded-pill bg-white text-dark px-3 py-2" onclick="selectExample(this)">
+                        Scale operations without increasing headcount
+                    </span>
+                </div>
+            </div>
+
+            <!-- Speed + friction reduction -->
+            <p class="text-muted small text-center mb-2">
+                <i class="bi bi-clock me-1"></i>Takes less than 2 minutes <span class="mx-1">&#183;</span> No technical knowledge required
+            </p>
+            <!-- Wow value line -->
+            <p class="text-center small mb-2">
+                <i class="bi bi-bar-chart me-1 text-primary"></i>Most companies discover <strong>10 to 20 automation opportunities</strong> from a single input.
+            </p>
+            <!-- Trust line -->
+            <p class="text-muted small text-center mb-4">
+                Based on companies similar to yours, we prioritize the highest ROI opportunities first.
+            </p>
+
+            <!-- CTA -->
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg fw-semibold" id="start-btn" data-track="start_advisory">
+                    Design My AI Operating System <i class="bi bi-arrow-right ms-2"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Before vs After -->
+<div class="mx-auto mb-5" style="max-width: 900px;">
+    <h4 class="fw-bold text-center mb-4">Before AI vs. After AI</h4>
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card border-danger border-opacity-25 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-x-circle-fill text-danger fs-4"></i>
+                        <h6 class="fw-bold mb-0 text-danger">Without AI</h6>
+                    </div>
+                    <div class="small">
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-dash text-danger"></i><span class="text-muted">Manual lead follow-ups, inconsistent timing</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-dash text-danger"></i><span class="text-muted">Slow support responses, frustrated customers</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-dash text-danger"></i><span class="text-muted">Decisions based on gut feel, not data</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-dash text-danger"></i><span class="text-muted">Hours spent on reports and data entry</span></div>
+                        <div class="d-flex align-items-start gap-2"><i class="bi bi-dash text-danger"></i><span class="text-muted">Scaling requires proportional hiring</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-success border-opacity-25 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-check-circle-fill text-success fs-4"></i>
+                        <h6 class="fw-bold mb-0 text-success">With Your AI Workforce</h6>
+                    </div>
+                    <div class="small">
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-check text-success"></i><span>Leads scored and contacted in under 30 seconds</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-check text-success"></i><span>24/7 AI support with instant resolution</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-check text-success"></i><span>Real-time dashboards and AI-driven insights</span></div>
+                        <div class="d-flex align-items-start gap-2 mb-2"><i class="bi bi-check text-success"></i><span>Reports generated automatically every morning</span></div>
+                        <div class="d-flex align-items-start gap-2"><i class="bi bi-check text-success"></i><span>Scale 10x without proportional headcount</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- What You'll Get -->
+<div class="mx-auto mb-5" style="max-width: 900px;">
+    <h4 class="fw-bold text-center mb-4">What You'll Get in Minutes</h4>
+    <div class="row g-3">
+        <div class="col-md-3 col-6">
+            <div class="value-item text-center p-3">
+                <i class="bi bi-diagram-3 display-5 text-primary mb-2 d-block"></i>
+                <strong class="d-block mb-1" style="font-size: 0.9rem;">AI System Architecture</strong>
+                <small class="text-muted">Revenue, Operations, Customer, Intelligence engines</small>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="value-item text-center p-3">
+                <i class="bi bi-robot display-5 text-success mb-2 d-block"></i>
+                <strong class="d-block mb-1" style="font-size: 0.9rem;">AI Agents</strong>
+                <small class="text-muted">Custom agents mapped to your exact workflows</small>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="value-item text-center p-3">
+                <i class="bi bi-graph-up-arrow display-5 text-warning mb-2 d-block"></i>
+                <strong class="d-block mb-1" style="font-size: 0.9rem;">ROI & Cost Savings</strong>
+                <small class="text-muted">Projected financial impact personalized to you</small>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="value-item text-center p-3">
+                <i class="bi bi-map display-5 text-info mb-2 d-block"></i>
+                <strong class="d-block mb-1" style="font-size: 0.9rem;">Implementation Plan</strong>
+                <small class="text-muted">Step-by-step implementation plan tailored to your business</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI System Diagram -->
+<div class="mx-auto mb-5" style="max-width: 900px;">
+    <h4 class="fw-bold text-center mb-4">Your AI Operating System</h4>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+            <!-- Central AI COO node -->
+            <div class="text-center mb-4">
+                <div class="d-inline-flex align-items-center gap-2 bg-dark text-white rounded-pill px-4 py-2">
+                    <i class="bi bi-cpu"></i>
+                    <strong>AI COO | Central AI Intelligence</strong>
+                </div>
+                <div class="text-muted small mt-1">Monitors all systems, detects patterns, triggers actions</div>
+            </div>
+            <!-- Connected engines -->
+            <div class="row g-3 text-center">
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-primary bg-opacity-10">
+                        <i class="bi bi-currency-dollar text-primary d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Revenue</small>
+                    </div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-info bg-opacity-10">
+                        <i class="bi bi-people text-info d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Customer</small>
+                    </div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-warning bg-opacity-10">
+                        <i class="bi bi-gear-wide-connected text-warning d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Operations</small>
+                    </div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-danger bg-opacity-10">
+                        <i class="bi bi-cash-stack text-danger d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Finance</small>
+                    </div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-success bg-opacity-10">
+                        <i class="bi bi-chat-square-text text-success d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Comms</small>
+                    </div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <div class="p-2 rounded bg-secondary bg-opacity-10">
+                        <i class="bi bi-shield-check text-secondary d-block fs-4"></i>
+                        <small class="fw-semibold" style="font-size: 0.7rem;">Security</small>
+                    </div>
+                </div>
+            </div>
+            <p class="text-muted text-center small mt-3 mb-0">Each engine contains specialized AI agents that work together autonomously</p>
+        </div>
+    </div>
+</div>
+
+<!-- How It Works -->
+<div class="mx-auto mb-5" style="max-width: 800px;">
+    <h4 class="fw-bold text-center mb-4">How It Works</h4>
+    <div class="row g-3 align-items-center">
+        <div class="col text-center">
+            <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center mb-2" style="width: 48px; height: 48px; font-size: 1.2rem; font-weight: 700;">1</div>
+            <h6 class="fw-bold mb-1">Describe</h6>
+            <small class="text-muted">10 questions about your business</small>
+        </div>
+        <div class="col-auto d-none d-md-block"><i class="bi bi-arrow-right text-muted fs-4"></i></div>
+        <div class="col text-center">
+            <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center mb-2" style="width: 48px; height: 48px; font-size: 1.2rem; font-weight: 700;">2</div>
+            <h6 class="fw-bold mb-1">Design</h6>
+            <small class="text-muted">Select objectives and AI systems</small>
+        </div>
+        <div class="col-auto d-none d-md-block"><i class="bi bi-arrow-right text-muted fs-4"></i></div>
+        <div class="col text-center">
+            <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center mb-2" style="width: 48px; height: 48px; font-size: 1.2rem; font-weight: 700;">3</div>
+            <h6 class="fw-bold mb-1">Configure</h6>
+            <small class="text-muted">AI-recommended capabilities</small>
+        </div>
+        <div class="col-auto d-none d-md-block"><i class="bi bi-arrow-right text-muted fs-4"></i></div>
+        <div class="col text-center">
+            <div class="rounded-circle bg-success text-white d-inline-flex align-items-center justify-content-center mb-2" style="width: 48px; height: 48px; font-size: 1.2rem; font-weight: 700;">4</div>
+            <h6 class="fw-bold mb-1">See It Run</h6>
+            <small class="text-muted">Org chart, ROI, and live simulation</small>
+        </div>
+    </div>
+</div>
+
+<script>
+// Example chip selection
+function selectExample(chip) {
+    var textarea = document.getElementById('business_idea');
+    textarea.value = chip.textContent.trim();
+    textarea.focus();
+
+    // Visual feedback
+    document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+    chip.classList.add('active');
+}
+
+// Clear placeholder on chip selection to avoid conflict
+
+
+// Loading state on submit
+document.getElementById('advisoryForm').addEventListener('submit', function() {
+    var btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing your business...';
+});
+</script>
+{% endblock %}

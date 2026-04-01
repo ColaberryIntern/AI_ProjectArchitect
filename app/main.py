@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 logger = logging.getLogger(__name__)
 
+from app.advisory.routes import router as advisory_router
 from app.routers import (
     auto_build,
     chapter_build,
@@ -52,6 +53,7 @@ app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
 # Templates and static files
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+app.mount("/advisory/static", StaticFiles(directory=str(APP_DIR / "advisory" / "static")), name="advisory_static")
 
 # Store templates on app state so routers can access them
 app.state.templates = templates
@@ -68,6 +70,7 @@ app.include_router(quality_gates.router, prefix="/projects/{slug}")
 app.include_router(final_assembly.router, prefix="/projects/{slug}")
 app.include_router(chat.router, prefix="/projects/{slug}")
 app.include_router(generate.router)
+app.include_router(advisory_router)
 
 
 @app.exception_handler(ValueError)

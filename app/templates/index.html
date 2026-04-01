@@ -2,6 +2,48 @@
 {% block title %}AI Project Architect — Dashboard{% endblock %}
 
 {% block content %}
+<!-- ── AI Workforce Designer CTA ─────────────────────────── -->
+<div class="card border-0 shadow mb-4" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body p-4 p-md-5">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="fw-bold mb-2">Design Your AI Organization in 5 Minutes</h2>
+                <p class="mb-3 opacity-75">See your AI workforce, cost savings, and operational impact — before building anything. Get a personalized AI org chart and financial impact report.</p>
+                <div class="d-flex flex-wrap gap-3 mb-3">
+                    <span class="badge bg-light text-dark"><i class="bi bi-diagram-3 me-1"></i>AI Org Chart</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-graph-up me-1"></i>ROI Analysis</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-file-earmark-pdf me-1"></i>PDF Report</span>
+                    <span class="badge bg-light text-dark"><i class="bi bi-speedometer me-1"></i>Maturity Score</span>
+                </div>
+                <a href="/advisory/" class="btn btn-light btn-lg fw-semibold" onclick="trackAdvisoryClick()">
+                    <i class="bi bi-arrow-right-circle me-2"></i>Start AI Advisory
+                </a>
+            </div>
+            <div class="col-md-4 text-center d-none d-md-block">
+                <div style="font-size: 5rem; opacity: 0.3;">
+                    <i class="bi bi-diagram-3"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function trackAdvisoryClick() {
+    try {
+        var utm = {};
+        var params = new URLSearchParams(window.location.search);
+        ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function(k) {
+            if (params.get(k)) utm[k] = params.get(k);
+        });
+        fetch('/advisory/api/event', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({event_name: 'advisory_start_clicked', utm_params: utm})
+        }).catch(function(){});
+    } catch(e) {}
+}
+</script>
+
 <!-- ── Stat Cards ─────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
     <div class="col-md-3 col-6">

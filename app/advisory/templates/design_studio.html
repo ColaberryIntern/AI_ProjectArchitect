@@ -1,0 +1,237 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Design Your AI System | AI Workforce Designer{% endblock %}
+
+{% block head %}
+<style>
+.outcome-card, .system-card { transition: all 0.25s ease; cursor: pointer; }
+.outcome-card:hover, .system-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+.outcome-card.selected { border-color: #4361ee !important; background: rgba(67, 97, 238, 0.05); transform: scale(1.02); }
+.system-card.selected { border-color: #198754 !important; background: rgba(25, 135, 84, 0.05); transform: scale(1.02); }
+.system-card.cory-highlight { border-color: #1a1a2e !important; background: rgba(26, 26, 46, 0.05); box-shadow: 0 0 20px rgba(26, 26, 46, 0.15); }
+.rec-badge { font-size: 0.6rem; animation: fadeIn 0.5s ease; }
+.rec-reason { font-size: 0.7rem; color: #198754; animation: fadeIn 0.5s ease; }
+.feedback-toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; animation: slideUp 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- AI Recommendation Header -->
+<div class="card border-0 shadow-sm mb-4" style="background: linear-gradient(135deg, #f0f4ff 0%, #e8f5e9 100%);">
+    <div class="card-body p-4 text-center">
+        <i class="bi bi-stars text-primary fs-3 mb-2 d-block"></i>
+        <h4 class="fw-bold mb-1">Based on your business, here's what we recommend</h4>
+        <p class="text-muted mb-0">We've analyzed your inputs and pre-configured your AI system. You can adjust anything below.</p>
+    </div>
+</div>
+
+<form action="/advisory/{{ session.session_id }}/design" method="POST" id="designForm">
+
+<!-- Step 1: Business Outcomes -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-primary bg-opacity-10">
+        <h5 class="mb-0"><i class="bi bi-bullseye me-2 text-primary"></i>What are you trying to achieve in your business right now?</h5>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted mb-3">Select all that apply. We've highlighted what matches your business.</p>
+        <div class="row g-3">
+            {% for outcome in outcomes %}
+            {% set is_rec = outcome.id in rec_outcomes %}
+            <div class="col-md-4">
+                <label class="card h-100 border-2 outcome-card {{ 'selected' if is_rec else '' }}" id="outcome-card-{{ outcome.id }}">
+                    <div class="card-body p-3 text-center">
+                        <input class="form-check-input d-none" type="checkbox"
+                               name="outcomes" value="{{ outcome.id }}"
+                               {{ 'checked' if is_rec else '' }}
+                               onchange="updateDesign(this)" id="outcome_{{ outcome.id }}">
+                        <div class="mb-2"><i class="bi {{ outcome.icon }} display-5 text-primary"></i></div>
+                        <h6 class="fw-bold mb-1">
+                            {{ outcome.label }}
+                            {% if is_rec %}
+                            <span class="badge bg-primary rec-badge ms-1">Recommended</span>
+                            {% endif %}
+                        </h6>
+                        <small class="text-muted">{{ outcome.description }}</small>
+                        {% if is_rec %}
+                        <div class="rec-reason mt-2"><i class="bi bi-lightbulb me-1"></i>{{ rec_outcomes[outcome.id] }}</div>
+                        {% endif %}
+                    </div>
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Step 2: AI Systems -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-success bg-opacity-10">
+        <h5 class="mb-0"><i class="bi bi-cpu me-2 text-success"></i>Here's how your AI systems should be structured</h5>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted mb-3">These are the AI engines that will power your organization.</p>
+        <div class="row g-3">
+            {% for system in systems %}
+            {% set is_rec = system.id in rec_systems %}
+            {% set is_cory = system.id == "intelligence_engine" %}
+            <div class="col-md-4">
+                <label class="card h-100 border-2 system-card {{ 'selected' if is_rec else '' }} {{ 'cory-highlight' if is_rec and is_cory else '' }}" id="system-card-{{ system.id }}">
+                    <div class="card-body p-3">
+                        <input class="form-check-input d-none" type="checkbox"
+                               name="ai_systems" value="{{ system.id }}"
+                               {{ 'checked' if is_rec else '' }}
+                               onchange="updateDesign(this)" id="system_{{ system.id }}">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi {{ system.icon }} fs-4 text-{{ system.color }}"></i>
+                            <h6 class="fw-bold mb-0">
+                                {{ system.label }}
+                                {% if is_rec %}
+                                <span class="badge bg-success rec-badge ms-1">Recommended</span>
+                                {% endif %}
+                            </h6>
+                        </div>
+                        <small class="text-muted">{{ system.description }}</small>
+                        {% if is_rec %}
+                        <div class="rec-reason mt-2"><i class="bi bi-lightbulb me-1"></i>{{ rec_systems[system.id] }}</div>
+                        {% endif %}
+                        {% if is_cory %}
+                        <div class="mt-2"><span class="badge bg-dark"><i class="bi bi-stars me-1"></i>Central AI Brain</span></div>
+                        {% endif %}
+                    </div>
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- AI COO Banner (shows when intelligence_engine is selected) -->
+<div class="card border-dark border-2 shadow mb-4 d-none" id="cooBanner" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body p-4">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-cpu display-5 opacity-75"></i>
+            <div>
+                <h5 class="fw-bold mb-1"><i class="bi bi-stars me-1"></i>Your system includes a central AI intelligence layer</h5>
+                <p class="opacity-75 mb-0">The AI COO will monitor all systems, detect cross-department patterns, and trigger actions automatically.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary + Submit -->
+<div class="card border-0 shadow mb-4">
+    <div class="card-body p-4">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <p class="text-muted small mb-1" id="momentumText">You're 1 step away from seeing your AI organization</p>
+                <h5 class="fw-bold mb-1" id="summaryText"></h5>
+                <p class="text-muted small mb-0" id="summaryDetail">We'll generate your AI workforce, simulate how it operates, and estimate your business impact.</p>
+            </div>
+            <div class="col-md-4 text-end">
+                <button type="submit" class="btn btn-primary btn-lg" id="continueBtn">
+                    <i class="bi bi-magic me-2"></i>Show Me My AI Organization
+                </button>
+            </div>
+        </div>
+        <p class="text-muted small text-center mt-3 mb-0">
+            <i class="bi bi-bar-chart me-1"></i>Companies using similar AI systems see <strong>20-40% efficiency gains</strong>
+        </p>
+    </div>
+</div>
+
+</form>
+
+<!-- Micro-feedback toast -->
+<div id="feedbackToast" class="feedback-toast d-none">
+    <div class="alert alert-success alert-dismissible shadow py-2 px-3 mb-0" style="font-size: 0.85rem;">
+        <i class="bi bi-check-circle me-1"></i><span id="feedbackText"></span>
+    </div>
+</div>
+
+<script>
+var feedbackMessages = {
+    'increase_revenue': 'This will help grow your top-line revenue',
+    'reduce_costs': 'Great for reducing operational costs',
+    'improve_cx': 'This improves customer satisfaction',
+    'scale_operations': 'Enables scaling without proportional headcount',
+    'improve_decisions': 'Better data means better decisions',
+    'revenue_engine': 'Revenue Engine will drive your sales pipeline',
+    'customer_engine': 'Customer Engine delivers 24/7 support',
+    'operations_engine': 'Operations Engine automates your workflows',
+    'finance_engine': 'Finance Engine handles your financial processing',
+    'communication_engine': 'Communication Engine streamlines all messaging',
+    'intelligence_engine': 'AI COO will orchestrate everything'
+};
+
+function updateDesign(checkbox) {
+    // Update card visual state
+    var card = checkbox.closest('.outcome-card, .system-card');
+    if (card) card.classList.toggle('selected', checkbox.checked);
+
+    // Show micro-feedback
+    if (checkbox.checked) {
+        var msg = feedbackMessages[checkbox.value];
+        if (msg) showFeedback(msg);
+    }
+
+    // AI COO banner
+    var cooCheck = document.getElementById('system_intelligence_engine');
+    var cooBanner = document.getElementById('cooBanner');
+    if (cooCheck && cooBanner) {
+        cooBanner.classList.toggle('d-none', !cooCheck.checked);
+        var cooCard = document.getElementById('system-card-intelligence_engine');
+        if (cooCard) cooCard.classList.toggle('cory-highlight', cooCheck.checked);
+    }
+
+    // Count
+    var outcomes = document.querySelectorAll('input[name="outcomes"]:checked').length;
+    var systems = document.querySelectorAll('input[name="ai_systems"]:checked').length;
+    var summary = document.getElementById('summaryText');
+    var btn = document.getElementById('continueBtn');
+
+    if (outcomes >= 1 && systems >= 1) {
+        btn.disabled = false;
+        summary.textContent = outcomes + ' objective' + (outcomes > 1 ? 's' : '') + ' + ' + systems + ' AI system' + (systems > 1 ? 's' : '') + ' configured';
+    } else {
+        btn.disabled = true;
+        var needs = [];
+        if (outcomes < 1) needs.push('1 objective');
+        if (systems < 1) needs.push('1 system');
+        summary.textContent = 'Select at least ' + needs.join(' and ') + ' to continue';
+    }
+}
+
+function showFeedback(text) {
+    var toast = document.getElementById('feedbackToast');
+    var textEl = document.getElementById('feedbackText');
+    textEl.textContent = text;
+    toast.classList.remove('d-none');
+    clearTimeout(window._feedbackTimer);
+    window._feedbackTimer = setTimeout(function() { toast.classList.add('d-none'); }, 2500);
+}
+
+// Initialize on load — sync card visuals with pre-checked state
+document.addEventListener('DOMContentLoaded', function() {
+    // Sync all card visuals with their checkbox state
+    document.querySelectorAll('.outcome-card input[type="checkbox"], .system-card input[type="checkbox"]').forEach(function(cb) {
+        var card = cb.closest('.outcome-card, .system-card');
+        if (card) card.classList.toggle('selected', cb.checked);
+    });
+
+    // Show COO banner if pre-selected
+    var cooCheck = document.getElementById('system_intelligence_engine');
+    var cooBanner = document.getElementById('cooBanner');
+    if (cooCheck && cooCheck.checked && cooBanner) {
+        cooBanner.classList.remove('d-none');
+        var cooCard = document.getElementById('system-card-intelligence_engine');
+        if (cooCard) cooCard.classList.add('cory-highlight');
+    }
+
+    // Update summary counts
+    updateDesign(document.createElement('input'));
+});
+</script>
+{% endblock %}

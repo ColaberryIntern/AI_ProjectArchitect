@@ -1,0 +1,89 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Lead Management | AI Workforce Designer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold mb-0">Lead Management</h2>
+    <a href="/advisory/" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Advisory Home
+    </a>
+</div>
+
+<!-- Campaign Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-primary">{{ campaign_stats.total_enrolled }}</div>
+                <div class="text-muted small">Total Leads</div>
+            </div>
+        </div>
+    </div>
+    {% for stage, count in campaign_stats.stage_counts.items() %}
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-{{ 'success' if 'Booked' in stage else 'info' if 'Captured' in stage else 'warning' }}">{{ count }}</div>
+                <div class="text-muted small">{{ stage }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Leads Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">Campaign: {{ campaign.campaign_name }}</h5>
+    </div>
+    <div class="card-body p-0">
+        {% if leads %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Company</th>
+                        <th>Role</th>
+                        <th>Campaign Stage</th>
+                        <th>Created</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lead in leads %}
+                    {% set enrollment = enrollment_map.get(lead.email) %}
+                    <tr>
+                        <td><strong>{{ lead.name or '-' }}</strong></td>
+                        <td>{{ lead.email }}</td>
+                        <td>{{ lead.company or '-' }}</td>
+                        <td>{{ lead.role or '-' }}</td>
+                        <td>
+                            {% if enrollment %}
+                            <span class="badge bg-{{ 'success' if 'Booked' in enrollment.current_stage else 'primary' if 'Captured' in enrollment.current_stage else 'info' }}">
+                                {{ enrollment.current_stage }}
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">Not enrolled</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ lead.created_at[:10] }}</small></td>
+                        <td class="text-end">
+                            <a href="/advisory/admin/leads/{{ lead.lead_id }}" class="btn btn-sm btn-outline-primary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <h5>No leads captured yet</h5>
+            <p class="mb-0">Leads will appear here as users complete the advisory flow.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

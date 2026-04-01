@@ -1,0 +1,248 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}{{ lead.name or lead.email }} | Lead Detail{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/advisory/admin/leads" class="text-muted text-decoration-none">
+        <i class="bi bi-arrow-left me-1"></i>Back to Leads
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Lead Info Card -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h4 class="fw-bold mb-3">{{ lead.name or 'Unknown' }}</h4>
+                <dl class="mb-0">
+                    <dt class="text-muted small">Email</dt>
+                    <dd>{{ lead.email }}</dd>
+                    <dt class="text-muted small">Company</dt>
+                    <dd>{{ lead.company or '-' }}</dd>
+                    <dt class="text-muted small">Role</dt>
+                    <dd>{{ lead.role or '-' }}</dd>
+                    <dt class="text-muted small">Industry</dt>
+                    <dd>{{ lead.industry or '-' }}</dd>
+                    <dt class="text-muted small">Source</dt>
+                    <dd><span class="badge bg-primary">{{ lead.source }}</span></dd>
+                    <dt class="text-muted small">Created</dt>
+                    <dd>{{ lead.created_at[:19] }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Lead Score + Offer -->
+        {% if lead.lead_score %}
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-body p-4 text-center">
+                <div class="fs-1 fw-bold text-{{ 'danger' if lead.lead_score.tier == 'hot' else 'warning' if lead.lead_score.tier == 'warm' else 'info' if lead.lead_score.tier == 'qualified' else 'secondary' }}">
+                    {{ lead.lead_score.lead_score }}
+                </div>
+                <div class="mb-2">
+                    <span class="badge bg-{{ 'danger' if lead.lead_score.tier == 'hot' else 'warning' if lead.lead_score.tier == 'warm' else 'info' if lead.lead_score.tier == 'qualified' else 'secondary' }} fs-6">
+                        {{ lead.lead_score.tier | upper }}
+                    </span>
+                </div>
+                <small class="text-muted">Lead Score</small>
+                <div class="mt-2 text-start small">
+                    {% for key, val in lead.lead_score.breakdown.items() %}
+                    <div class="d-flex justify-content-between">
+                        <span>{{ key | replace("_", " ") | title }}</span>
+                        <span class="fw-bold">{{ val }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if lead.recommended_offer %}
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-2">Recommended Offer</h6>
+                <div class="fs-5 fw-bold text-primary mb-1">{{ lead.recommended_offer.offer_label }}</div>
+                <p class="text-muted small mb-2">{{ lead.recommended_offer.offer_description }}</p>
+                <div class="mb-2">
+                    <span class="badge bg-success">{{ lead.recommended_offer.typical_value }}</span>
+                    <span class="badge bg-info">{{ lead.recommended_offer.confidence }} confidence</span>
+                </div>
+                {% if lead.recommended_offer.reasoning %}
+                <div class="small">
+                    <strong>Why:</strong>
+                    <ul class="mb-0 ps-3">
+                        {% for reason in lead.recommended_offer.reasoning %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Campaign Enrollment -->
+        {% if enrollments %}
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Campaign Progress</h6>
+                {% for enrollment in enrollments %}
+                <div class="mb-2">
+                    <span class="badge bg-primary">{{ enrollment.current_stage }}</span>
+                </div>
+                <div class="small text-muted">
+                    {% for step in enrollment.stage_history %}
+                    <div class="d-flex justify-content-between">
+                        <span>{{ step.stage }}</span>
+                        <span>{{ step.entered_at[:16] }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sales Intelligence -->
+    <div class="col-md-8">
+        {% if lead.metadata %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header"><h5 class="mb-0">Sales Intelligence</h5></div>
+            <div class="card-body p-4">
+                {% if lead.metadata.idea_input %}
+                <div class="mb-3">
+                    <strong>Business Idea:</strong>
+                    <p class="text-muted">{{ lead.metadata.idea_input }}</p>
+                </div>
+                {% endif %}
+
+                <div class="row g-3 mb-3">
+                    {% if lead.metadata.maturity_score %}
+                    <div class="col-md-3 text-center">
+                        <div class="fs-3 fw-bold text-primary">{{ lead.metadata.maturity_score }}/5</div>
+                        <small class="text-muted">AI Readiness</small>
+                    </div>
+                    {% endif %}
+                    {% if lead.metadata.estimated_annual_savings %}
+                    <div class="col-md-3 text-center">
+                        <div class="fs-5 fw-bold text-success">{{ format_currency(lead.metadata.estimated_annual_savings) }}</div>
+                        <small class="text-muted">Annual Savings</small>
+                    </div>
+                    {% endif %}
+                    {% if lead.metadata.estimated_revenue_lift %}
+                    <div class="col-md-3 text-center">
+                        <div class="fs-5 fw-bold text-info">{{ format_currency(lead.metadata.estimated_revenue_lift) }}</div>
+                        <small class="text-muted">Revenue Lift</small>
+                    </div>
+                    {% endif %}
+                    {% if lead.metadata.estimated_roi_3yr %}
+                    <div class="col-md-3 text-center">
+                        <div class="fs-5 fw-bold text-warning">{{ lead.metadata.estimated_roi_3yr }}%</div>
+                        <small class="text-muted">3-Year ROI</small>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if lead.metadata.key_departments %}
+                <div class="mb-2">
+                    <strong>Key Departments:</strong>
+                    {% for dept in lead.metadata.key_departments %}
+                    <span class="badge bg-light text-dark border me-1">{{ dept }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if lead.metadata.total_ai_roles %}
+                <div><strong>AI Roles Designed:</strong> {{ lead.metadata.total_ai_roles }} ({{ lead.metadata.total_fte_equivalent }} FTE equivalent)</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Sales Playbook (How to Close) -->
+        {% if lead.sales_intelligence %}
+        {% set si = lead.sales_intelligence %}
+        <div class="card border-0 shadow mb-3" style="border-left: 4px solid #198754 !important;">
+            <div class="card-header bg-success bg-opacity-10"><h5 class="mb-0 text-success"><i class="bi bi-bullseye me-2"></i>How to Close This Deal</h5></div>
+            <div class="card-body p-4">
+                <div class="mb-3">
+                    <strong>Summary:</strong>
+                    <p class="mb-0">{{ si.summary }}</p>
+                </div>
+
+                {% if si.pain_points %}
+                <div class="mb-3">
+                    <strong>Key Pain Points:</strong>
+                    <ul class="mb-0">
+                        {% for point in si.pain_points %}
+                        <li>{{ point }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <strong>Recommended Angle:</strong>
+                    <p class="mb-0 fst-italic">{{ si.recommended_angle }}</p>
+                </div>
+
+                {% if si.likely_objections %}
+                <div class="mb-3">
+                    <strong>Likely Objections & Responses:</strong>
+                    {% for obj in si.likely_objections %}
+                    <div class="card bg-light border-0 mb-2">
+                        <div class="card-body py-2 px-3">
+                            <div class="fw-bold text-danger small"><i class="bi bi-exclamation-circle me-1"></i>"{{ obj.objection }}"</div>
+                            <div class="small text-muted">{{ obj.response }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="alert alert-success mb-0">
+                    <strong><i class="bi bi-trophy me-2"></i>Close Strategy:</strong><br>
+                    {{ si.close_strategy }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Advisory Sessions -->
+        {% if sessions %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header"><h5 class="mb-0">Advisory Sessions</h5></div>
+            <div class="card-body p-4">
+                {% for session in sessions %}
+                <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2">
+                    <div>
+                        <strong>{{ session.business_idea[:80] }}{% if session.business_idea|length > 80 %}...{% endif %}</strong>
+                        <br><small class="text-muted">{{ session.created_at[:16] }} | Status: {{ session.status }}</small>
+                    </div>
+                    <a href="/advisory/{{ session.session_id }}/results" class="btn btn-sm btn-outline-primary">View Results</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Recent Events -->
+        {% if events %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header"><h5 class="mb-0">Activity Log</h5></div>
+            <div class="card-body p-4">
+                {% for event in events[:20] %}
+                <div class="d-flex justify-content-between small border-bottom py-1">
+                    <span>
+                        <span class="badge bg-light text-dark border">{{ event.event_name }}</span>
+                    </span>
+                    <span class="text-muted">{{ event.timestamp[:16] }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

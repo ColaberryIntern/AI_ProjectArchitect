@@ -1,0 +1,95 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Question {{ progress.current_index + 1 }} of {{ progress.total }} | AI Workforce Designer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Progress bar -->
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted small">Question {{ progress.current_index + 1 }} of {{ progress.total }}</span>
+                <span class="text-muted small">{{ progress.percent }}% complete</span>
+            </div>
+            <div class="progress" style="height: 8px;">
+                <div class="progress-bar bg-primary" role="progressbar"
+                     style="width: {{ progress.percent }}%"
+                     aria-valuenow="{{ progress.percent }}" aria-valuemin="0" aria-valuemax="100">
+                </div>
+            </div>
+        </div>
+
+        <!-- Question card -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-5">
+                <div class="mb-1">
+                    <span class="badge bg-primary-subtle text-primary">{{ question.category | replace("_", " ") | title }}</span>
+                </div>
+                <h3 class="card-title mb-3">{{ question.text }}</h3>
+                <p class="text-muted mb-4">{{ question.help_text }}</p>
+
+                <form action="/advisory/{{ session.session_id }}/answer" method="POST">
+                    <div class="mb-4">
+                        <textarea
+                            class="form-control form-control-lg"
+                            name="answer_text"
+                            rows="5"
+                            placeholder="Share your thoughts..."
+                            required
+                            autofocus
+                        ></textarea>
+                    </div>
+
+                    {% if show_email_capture %}
+                    <div class="mb-4 p-3 bg-light rounded">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-envelope me-1"></i>Want us to send your AI Organization to your inbox?
+                        </label>
+                        <input type="email" class="form-control" name="email"
+                               placeholder="your@email.com (optional)">
+                        <small class="text-muted">Optional. We'll email your results when they're ready.</small>
+                    </div>
+                    {% endif %}
+
+                    {% if question.id == "q6_current_tools" %}
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Which of these system categories do you currently use?</label>
+                        <div class="row g-2">
+                            {% for option in system_options %}
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="selected_systems" value="{{ option }}"
+                                           id="sys_{{ loop.index }}">
+                                    <label class="form-check-label small" for="sys_{{ loop.index }}">{{ option }}</label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="d-flex justify-content-between">
+                        {% if progress.current_index > 0 %}
+                        <a href="/advisory/{{ session.session_id }}/questions"
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i> Previous
+                        </a>
+                        {% else %}
+                        <div></div>
+                        {% endif %}
+
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            {% if progress.current_index == progress.total - 1 %}
+                                Choose AI Capabilities <i class="bi bi-arrow-right ms-1"></i>
+                            {% else %}
+                                Next <i class="bi bi-arrow-right ms-1"></i>
+                            {% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
