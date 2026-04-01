@@ -152,85 +152,186 @@ _KEYWORD_CAPABILITIES = {
 }
 
 
+# ── Problem Vector Profiles ─────────────────────────────────────────
+# Each outcome maps to a weighted problem vector (sums to 1.0)
+
+_OUTCOME_VECTORS = {
+    "increase_revenue":  {"revenue": 0.7, "cost": 0.1, "cx": 0.1, "ops": 0.1},
+    "reduce_costs":      {"revenue": 0.1, "cost": 0.6, "cx": 0.1, "ops": 0.2},
+    "improve_cx":        {"revenue": 0.1, "cost": 0.1, "cx": 0.7, "ops": 0.1},
+    "scale_operations":  {"revenue": 0.1, "cost": 0.2, "cx": 0.1, "ops": 0.6},
+    "improve_decisions": {"revenue": 0.2, "cost": 0.2, "cx": 0.2, "ops": 0.4},
+}
+
+# Department limits per primary goal (caps per department)
+_DEPT_LIMITS = {
+    "increase_revenue":  {"Sales": 5, "Marketing": 4, "Communication": 2, "Technology": 2, "Customer Support": 1, "Operations": 1, "Finance": 1, "Human Resources": 0},
+    "reduce_costs":      {"Operations": 5, "Finance": 3, "Technology": 3, "Communication": 2, "Sales": 1, "Marketing": 1, "Customer Support": 1, "Human Resources": 1},
+    "improve_cx":        {"Customer Support": 5, "Communication": 3, "Sales": 2, "Technology": 2, "Marketing": 1, "Operations": 1, "Finance": 0, "Human Resources": 0},
+    "scale_operations":  {"Operations": 5, "Technology": 3, "Communication": 2, "Finance": 2, "Sales": 1, "Marketing": 1, "Customer Support": 1, "Human Resources": 1},
+    "improve_decisions": {"Technology": 4, "Operations": 3, "Finance": 2, "Sales": 2, "Marketing": 1, "Communication": 1, "Customer Support": 1, "Human Resources": 0},
+}
+
+MIN_SCORE_THRESHOLD = 0.35
+MAX_CAPABILITIES = 12
+MIN_CAPABILITIES = 6
+
+
+def _build_problem_vector(outcomes: list[str]) -> dict:
+    """Build a unified problem vector from selected outcomes.
+
+    First outcome gets 60% weight, remaining split 40%.
+    """
+    if not outcomes:
+        return {"revenue": 0.25, "cost": 0.25, "cx": 0.25, "ops": 0.25}
+
+    primary_vec = _OUTCOME_VECTORS.get(outcomes[0], {"revenue": 0.25, "cost": 0.25, "cx": 0.25, "ops": 0.25})
+
+    if len(outcomes) == 1:
+        return primary_vec
+
+    # Weighted blend: primary=0.6, secondary=0.4/n
+    secondary_weight = 0.4 / (len(outcomes) - 1)
+    result = {dim: primary_vec[dim] * 0.6 for dim in primary_vec}
+
+    for outcome_id in outcomes[1:]:
+        vec = _OUTCOME_VECTORS.get(outcome_id, {"revenue": 0.25, "cost": 0.25, "cx": 0.25, "ops": 0.25})
+        for dim in result:
+            result[dim] += vec[dim] * secondary_weight
+
+    return result
+
+
+def _score_capability(cap: dict, problem_vector: dict) -> float:
+    """Vector dot product: capability impact vs problem vector."""
+    iv = cap.get("impact_vector", {"revenue": 0.2, "cost": 0.2, "cx": 0.2, "ops": 0.2})
+    return sum(iv.get(dim, 0) * problem_vector.get(dim, 0) for dim in ["revenue", "cost", "cx", "ops"])
+
+
 def map_capabilities(session: dict) -> dict:
-    """Compute capability recommendations from session context.
+    """Problem-first capability selection engine.
 
-    Combines:
-    1. Outcome-based mapping (selected business outcomes)
-    2. System-based mapping (selected AI systems)
-    3. Keyword-based mapping (from answers + idea text)
+    Uses vector dot-product scoring against the user's problem vector,
+    then applies hard filters: threshold, department limits, redundancy
+    elimination, and max cap.
 
-    Returns dict with recommended/optional lists, confidence scores, and reasoning.
+    Returns dict with recommended/excluded lists, scores, and reasoning.
     """
     outcomes = session.get("selected_outcomes", [])
-    systems = session.get("selected_ai_systems", [])
     idea = session.get("business_idea", "").lower()
     answers_text = " ".join(
         a.get("answer_text", "") for a in session.get("answers", [])
     ).lower()
-
     all_text = f"{idea} {answers_text}"
 
-    # Collect capability IDs with scores
-    scores = {}  # cap_id -> score
-    reasons = {}  # cap_id -> list of reasons
+    # 1. Build problem vector from outcomes
+    problem_vector = _build_problem_vector(outcomes)
+    primary_goal = outcomes[0] if outcomes else "reduce_costs"
+    primary_label = _get_outcome_label(primary_goal)
 
-    # 1. Outcome-based (strong signal — +30 per match)
-    for outcome_id in outcomes:
-        cap_ids = _OUTCOME_CAPABILITIES.get(outcome_id, [])
-        outcome_label = _get_outcome_label(outcome_id)
-        for cap_id in cap_ids:
-            scores[cap_id] = scores.get(cap_id, 0) + 30
-            reasons.setdefault(cap_id, []).append(f"Supports your goal: {outcome_label}")
+    # 2. Score every capability via vector dot product
+    scored = []
+    for cap in CAPABILITY_CATALOG:
+        score = _score_capability(cap, problem_vector)
 
-    # 2. System-based (strong signal — +25 per match)
-    for system_id in systems:
-        cap_ids = _SYSTEM_CAPABILITIES.get(system_id, [])
-        system_label = _get_system_label(system_id)
-        for cap_id in cap_ids:
-            scores[cap_id] = scores.get(cap_id, 0) + 25
-            reasons.setdefault(cap_id, []).append(f"Part of {system_label}")
+        # Small keyword bonus (+0.05) for direct mention in answers
+        for keyword, cap_ids in _KEYWORD_CAPABILITIES.items():
+            if keyword in all_text and cap["id"] in cap_ids:
+                score += 0.05
+                break
 
-    # 3. Keyword-based (moderate signal — +15 per match)
-    for keyword, cap_ids in _KEYWORD_CAPABILITIES.items():
-        if keyword in all_text:
-            for cap_id in cap_ids:
-                scores[cap_id] = scores.get(cap_id, 0) + 15
-                if not any("mentioned in your" in r for r in reasons.get(cap_id, [])):
-                    reasons.setdefault(cap_id, []).append(
-                        "Matches what you described about your business"
-                    )
+        scored.append({"cap": cap, "score": round(score, 3)})
 
-    # Separate into recommended (score >= 25) and optional
-    all_cap_ids = {c["id"] for c in CAPABILITY_CATALOG}
-    recommended = []
-    optional = []
+    scored.sort(key=lambda x: x["score"], reverse=True)
 
-    for cap_id in sorted(scores, key=lambda x: scores[x], reverse=True):
-        if cap_id not in all_cap_ids:
-            continue
-        if scores[cap_id] >= 25:
-            recommended.append(cap_id)
+    # 3. HARD FILTER 1: Min threshold
+    above_threshold = [s for s in scored if s["score"] >= MIN_SCORE_THRESHOLD]
+    below_threshold = [s for s in scored if s["score"] < MIN_SCORE_THRESHOLD]
+
+    # 4. HARD FILTER 2: Department limits
+    dept_limits = _DEPT_LIMITS.get(primary_goal, {d: 3 for d in ["Sales", "Marketing", "Customer Support", "Operations", "Finance", "Human Resources", "Technology", "Communication"]})
+    dept_counts = {}
+    filtered = []
+    dept_excluded = []
+
+    for s in above_threshold:
+        dept = s["cap"]["department"]
+        dept_counts[dept] = dept_counts.get(dept, 0)
+        limit = dept_limits.get(dept, 2)
+        if dept_counts[dept] < limit:
+            filtered.append(s)
+            dept_counts[dept] += 1
         else:
-            optional.append(cap_id)
+            dept_excluded.append(s)
 
-    # Cap recommended at 20 to avoid overwhelming
-    if len(recommended) > 20:
-        optional = recommended[20:] + optional
-        recommended = recommended[:20]
+    # 5. HARD FILTER 3: Redundancy elimination (keep top 1 per group)
+    seen_groups = {}
+    deduped = []
+    redundancy_excluded = []
 
-    # Confidence scores normalized to 0-100
+    for s in filtered:
+        group = s["cap"].get("redundancy_group", s["cap"]["id"])
+        if group not in seen_groups:
+            seen_groups[group] = True
+            deduped.append(s)
+        else:
+            redundancy_excluded.append(s)
+
+    # 6. HARD FILTER 4: Max cap (take top N by score)
+    recommended_scored = deduped[:MAX_CAPABILITIES]
+
+    # Ensure minimum
+    if len(recommended_scored) < MIN_CAPABILITIES and dept_excluded:
+        for s in dept_excluded:
+            if len(recommended_scored) >= MIN_CAPABILITIES:
+                break
+            recommended_scored.append(s)
+
+    # 7. Build output
+    recommended = [s["cap"]["id"] for s in recommended_scored]
+    excluded_ids = set()
+    for s in below_threshold + dept_excluded + redundancy_excluded:
+        if s["cap"]["id"] not in recommended:
+            excluded_ids.add(s["cap"]["id"])
+
+    # Scores and reasoning
+    scores = {s["cap"]["id"]: s["score"] for s in scored}
+    reasoning = {}
+    for s in recommended_scored:
+        cap = s["cap"]
+        iv = cap.get("impact_vector", {})
+        # Find the dominant dimension
+        top_dim = max(iv, key=iv.get) if iv else "ops"
+        dim_labels = {"revenue": "revenue growth", "cost": "cost reduction", "cx": "customer experience", "ops": "operational efficiency"}
+        reasoning[cap["id"]] = [f"High impact on {dim_labels.get(top_dim, top_dim)} (score: {s['score']:.2f})"]
+
+    # Confidence normalized to 0-100
     max_score = max(scores.values()) if scores else 1
     confidence = {
         cap_id: min(round((score / max_score) * 100), 100)
         for cap_id, score in scores.items()
     }
 
+    # Exclusion reasoning
+    exclusion_reasons = {}
+    for s in below_threshold:
+        exclusion_reasons[s["cap"]["id"]] = "Below impact threshold for your primary goal"
+    for s in dept_excluded:
+        exclusion_reasons[s["cap"]["id"]] = f"{s['cap']['department']} is not a primary focus area"
+    for s in redundancy_excluded:
+        exclusion_reasons[s["cap"]["id"]] = f"Similar capability already selected ({s['cap'].get('redundancy_group', '')})"
+
     return {
         "recommended": recommended,
-        "optional": optional,
+        "optional": list(excluded_ids)[:10],
         "confidence_scores": confidence,
-        "reasoning": reasons,
+        "reasoning": reasoning,
+        "exclusion_reasons": exclusion_reasons,
+        "primary_goal": primary_goal,
+        "primary_label": primary_label,
+        "problem_vector": problem_vector,
+        "total_scored": len(scored),
+        "total_excluded": len(excluded_ids),
     }
 
 

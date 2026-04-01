@@ -243,6 +243,7 @@ def normalize_goal_data(goal: dict) -> dict:
         "goal_type": goal.get("goal_type") or goal.get("type", "recommendation"),
         "confidence_required": goal.get("confidence_required") or goal.get("confidence_level") or None,
         "impact_level": goal.get("impact_level") or None,
+        "auto_selected": goal.get("auto_selected", False),
     }
 
 

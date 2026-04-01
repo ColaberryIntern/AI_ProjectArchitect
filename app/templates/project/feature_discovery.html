@@ -623,10 +623,6 @@ function regenerateSkills() {
 document.addEventListener('DOMContentLoaded', function() {
     updateAllTallies();
     checkMinimums();
-    // Auto-save pre-selected intelligence goals
-    if (document.querySelectorAll('.intelligence-goal-cb:checked').length > 0) {
-        saveIntelligenceGoals();
-    }
     fetch('/projects/{{ slug }}/api/features/validate-alignment')
         .then(function(r) { return r.json(); })
         .then(function(data) {

@@ -469,6 +469,65 @@ CAPABILITY_CATALOG = [
 
 # ── Department metadata ─────────────────────────────────────────────
 
+# ── Impact Vectors + Metadata ───────────────────────────────────────
+# Enriches each capability with scoring data for the vector dot-product engine.
+# impact_vector: {revenue, cost, cx, ops} each 0.0-1.0
+# redundancy_group: caps in same group compete (top 1 kept)
+# complexity: affects implementation cost estimates
+# time_to_value: affects ROI timeline
+
+_ENRICHMENTS = {
+    "auto_lead_scoring":       {"impact_vector": {"revenue": 0.9, "cost": 0.1, "cx": 0.2, "ops": 0.1}, "redundancy_group": "lead_management", "complexity": "low", "time_to_value": "fast"},
+    "sales_pipeline_forecast": {"impact_vector": {"revenue": 0.8, "cost": 0.1, "cx": 0.1, "ops": 0.2}, "redundancy_group": "revenue_intelligence", "complexity": "medium", "time_to_value": "medium"},
+    "outreach_automation":     {"impact_vector": {"revenue": 0.9, "cost": 0.3, "cx": 0.3, "ops": 0.1}, "redundancy_group": "lead_management", "complexity": "low", "time_to_value": "fast"},
+    "deal_intelligence":       {"impact_vector": {"revenue": 0.8, "cost": 0.1, "cx": 0.2, "ops": 0.1}, "redundancy_group": "revenue_intelligence", "complexity": "medium", "time_to_value": "medium"},
+    "proposal_generator":      {"impact_vector": {"revenue": 0.7, "cost": 0.3, "cx": 0.2, "ops": 0.1}, "redundancy_group": "sales_ops", "complexity": "low", "time_to_value": "fast"},
+    "ai_chat_support":         {"impact_vector": {"revenue": 0.2, "cost": 0.5, "cx": 0.9, "ops": 0.2}, "redundancy_group": "support_automation", "complexity": "medium", "time_to_value": "fast"},
+    "ticket_auto_triage":      {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.8, "ops": 0.3}, "redundancy_group": "support_automation", "complexity": "low", "time_to_value": "fast"},
+    "sentiment_monitoring":    {"impact_vector": {"revenue": 0.3, "cost": 0.1, "cx": 0.7, "ops": 0.1}, "redundancy_group": "customer_intelligence", "complexity": "medium", "time_to_value": "medium"},
+    "knowledge_base_qa":       {"impact_vector": {"revenue": 0.1, "cost": 0.4, "cx": 0.7, "ops": 0.2}, "redundancy_group": "knowledge_management", "complexity": "medium", "time_to_value": "medium"},
+    "churn_prediction":        {"impact_vector": {"revenue": 0.6, "cost": 0.2, "cx": 0.8, "ops": 0.1}, "redundancy_group": "customer_intelligence", "complexity": "high", "time_to_value": "slow"},
+    "content_generation":      {"impact_vector": {"revenue": 0.6, "cost": 0.4, "cx": 0.2, "ops": 0.1}, "redundancy_group": "content_ops", "complexity": "low", "time_to_value": "fast"},
+    "campaign_optimization":   {"impact_vector": {"revenue": 0.8, "cost": 0.3, "cx": 0.2, "ops": 0.1}, "redundancy_group": "campaign_management", "complexity": "medium", "time_to_value": "medium"},
+    "audience_segmentation":   {"impact_vector": {"revenue": 0.7, "cost": 0.2, "cx": 0.3, "ops": 0.1}, "redundancy_group": "campaign_management", "complexity": "medium", "time_to_value": "medium"},
+    "social_media_management": {"impact_vector": {"revenue": 0.5, "cost": 0.3, "cx": 0.3, "ops": 0.1}, "redundancy_group": "content_ops", "complexity": "low", "time_to_value": "fast"},
+    "seo_optimization":        {"impact_vector": {"revenue": 0.5, "cost": 0.2, "cx": 0.1, "ops": 0.1}, "redundancy_group": "content_ops", "complexity": "medium", "time_to_value": "slow"},
+    "workflow_automation":     {"impact_vector": {"revenue": 0.1, "cost": 0.7, "cx": 0.2, "ops": 0.9}, "redundancy_group": "process_automation", "complexity": "medium", "time_to_value": "medium"},
+    "resource_scheduling":     {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.2, "ops": 0.8}, "redundancy_group": "resource_management", "complexity": "medium", "time_to_value": "medium"},
+    "inventory_optimization":  {"impact_vector": {"revenue": 0.2, "cost": 0.6, "cx": 0.3, "ops": 0.9}, "redundancy_group": "supply_chain", "complexity": "high", "time_to_value": "slow"},
+    "quality_monitoring":      {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.4, "ops": 0.7}, "redundancy_group": "process_automation", "complexity": "medium", "time_to_value": "medium"},
+    "route_optimization":      {"impact_vector": {"revenue": 0.2, "cost": 0.7, "cx": 0.3, "ops": 0.9}, "redundancy_group": "supply_chain", "complexity": "high", "time_to_value": "medium"},
+    "project_management":      {"impact_vector": {"revenue": 0.1, "cost": 0.4, "cx": 0.1, "ops": 0.6}, "redundancy_group": "resource_management", "complexity": "low", "time_to_value": "fast"},
+    "invoice_processing":      {"impact_vector": {"revenue": 0.1, "cost": 0.8, "cx": 0.1, "ops": 0.5}, "redundancy_group": "financial_automation", "complexity": "low", "time_to_value": "fast"},
+    "expense_categorization":  {"impact_vector": {"revenue": 0.1, "cost": 0.7, "cx": 0.1, "ops": 0.4}, "redundancy_group": "financial_automation", "complexity": "low", "time_to_value": "fast"},
+    "financial_forecasting":   {"impact_vector": {"revenue": 0.3, "cost": 0.4, "cx": 0.1, "ops": 0.3}, "redundancy_group": "financial_intelligence", "complexity": "medium", "time_to_value": "medium"},
+    "fraud_detection":         {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.2, "ops": 0.3}, "redundancy_group": "financial_intelligence", "complexity": "high", "time_to_value": "slow"},
+    "resume_screening":        {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.1, "ops": 0.4}, "redundancy_group": "talent_management", "complexity": "low", "time_to_value": "fast"},
+    "onboarding_automation":   {"impact_vector": {"revenue": 0.1, "cost": 0.5, "cx": 0.2, "ops": 0.5}, "redundancy_group": "employee_lifecycle", "complexity": "medium", "time_to_value": "medium"},
+    "performance_analytics":   {"impact_vector": {"revenue": 0.2, "cost": 0.3, "cx": 0.1, "ops": 0.3}, "redundancy_group": "people_analytics", "complexity": "medium", "time_to_value": "slow"},
+    "training_delivery":       {"impact_vector": {"revenue": 0.1, "cost": 0.3, "cx": 0.1, "ops": 0.3}, "redundancy_group": "employee_lifecycle", "complexity": "medium", "time_to_value": "slow"},
+    "data_pipeline_automation":{"impact_vector": {"revenue": 0.2, "cost": 0.5, "cx": 0.1, "ops": 0.6}, "redundancy_group": "data_infrastructure", "complexity": "high", "time_to_value": "medium"},
+    "system_integration":      {"impact_vector": {"revenue": 0.2, "cost": 0.5, "cx": 0.2, "ops": 0.7}, "redundancy_group": "data_infrastructure", "complexity": "high", "time_to_value": "medium"},
+    "auto_reporting":          {"impact_vector": {"revenue": 0.3, "cost": 0.5, "cx": 0.1, "ops": 0.4}, "redundancy_group": "business_intelligence", "complexity": "low", "time_to_value": "fast"},
+    "security_monitoring":     {"impact_vector": {"revenue": 0.1, "cost": 0.3, "cx": 0.1, "ops": 0.4}, "redundancy_group": "security_ops", "complexity": "medium", "time_to_value": "medium"},
+    "compliance_automation":   {"impact_vector": {"revenue": 0.1, "cost": 0.4, "cx": 0.1, "ops": 0.4}, "redundancy_group": "security_ops", "complexity": "medium", "time_to_value": "medium"},
+    "system_health_monitoring":{"impact_vector": {"revenue": 0.1, "cost": 0.3, "cx": 0.1, "ops": 0.5}, "redundancy_group": "infrastructure", "complexity": "medium", "time_to_value": "medium"},
+    "email_drafting":          {"impact_vector": {"revenue": 0.4, "cost": 0.4, "cx": 0.3, "ops": 0.2}, "redundancy_group": "communication_automation", "complexity": "low", "time_to_value": "fast"},
+    "meeting_summarization":   {"impact_vector": {"revenue": 0.2, "cost": 0.4, "cx": 0.1, "ops": 0.3}, "redundancy_group": "productivity", "complexity": "low", "time_to_value": "fast"},
+    "notification_routing":    {"impact_vector": {"revenue": 0.1, "cost": 0.3, "cx": 0.2, "ops": 0.4}, "redundancy_group": "communication_automation", "complexity": "low", "time_to_value": "fast"},
+    "document_qa":             {"impact_vector": {"revenue": 0.1, "cost": 0.4, "cx": 0.3, "ops": 0.3}, "redundancy_group": "knowledge_management", "complexity": "medium", "time_to_value": "medium"},
+    "internal_chatbot":        {"impact_vector": {"revenue": 0.1, "cost": 0.4, "cx": 0.3, "ops": 0.3}, "redundancy_group": "knowledge_management", "complexity": "medium", "time_to_value": "medium"},
+}
+
+# Apply enrichments to catalog
+for cap in CAPABILITY_CATALOG:
+    enrichment = _ENRICHMENTS.get(cap["id"], {})
+    cap["impact_vector"] = enrichment.get("impact_vector", {"revenue": 0.2, "cost": 0.2, "cx": 0.2, "ops": 0.2})
+    cap["redundancy_group"] = enrichment.get("redundancy_group", cap["id"])
+    cap["complexity"] = enrichment.get("complexity", "medium")
+    cap["time_to_value"] = enrichment.get("time_to_value", "medium")
+
+
 DEPARTMENTS = [
     {"id": "Sales", "icon": "bi-graph-up", "color": "primary"},
     {"id": "Customer Support", "icon": "bi-headset", "color": "info"},

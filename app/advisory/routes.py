@@ -256,6 +256,9 @@ async def capability_selector(request: Request, session_id: str):
     recs = session.get("capability_recommendations") or {}
     recommended_ids = set(recs.get("recommended", []))
     reasoning = recs.get("reasoning", {})
+    confidence = recs.get("confidence_scores", {})
+    exclusion_reasons = recs.get("exclusion_reasons", {})
+    primary_label = recs.get("primary_label", "")
 
     # Pre-select recommended capabilities (user can override)
     selected_ids = session.get("selected_capabilities") or list(recommended_ids)
@@ -267,6 +270,9 @@ async def capability_selector(request: Request, session_id: str):
         "selected_ids": selected_ids,
         "recommended_ids": recommended_ids,
         "reasoning": reasoning,
+        "confidence": confidence,
+        "exclusion_reasons": exclusion_reasons,
+        "primary_label": primary_label,
     })
 
 

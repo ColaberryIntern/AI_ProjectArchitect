@@ -3,12 +3,17 @@
 Profile-driven catalog generation with alignment validation.
 """
 
+import logging
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.dependencies import get_phase_info, get_project_state
 from config.blueprints import get_feature_seeds
+from execution.build_readiness_service import compute_build_readiness
 from execution.feature_catalog import (
+    CATEGORY_LAYERS,
     MUTUAL_EXCLUSION_GROUPS,
     generate_catalog,
     generate_catalog_from_profile,
@@ -16,6 +21,10 @@ from execution.feature_catalog import (
     get_catalog_by_layer,
     get_feature_layer,
     get_features_by_ids,
+)
+from execution.feature_validation_service import (
+    derive_mcp_servers,
+    run_all_feature_validation,
 )
 from execution.feature_classifier import (
     check_feature_problem_mapping,
@@ -93,8 +102,27 @@ async def feature_discovery_page(request: Request, slug: str):
         idea = state.get("idea", {}).get("original_raw", "")
         auto_ids = smart_select_features(profile, idea, catalog)
 
-        # Enforce minimum per layer: 5 functional, 10 architectural
+        # Remove mutual-exclusion conflicts from auto-selection (keep first match)
+        excluded_ids: set[str] = set()
+        for group in MUTUAL_EXCLUSION_GROUPS:
+            conflicting = [fid for fid in auto_ids if fid in group["feature_ids"]]
+            if len(conflicting) > 1:
+                excluded_ids.update(conflicting[1:])
+        if excluded_ids:
+            auto_ids = [fid for fid in auto_ids if fid not in excluded_ids]
+
+        # Build lookup for exclusion-blocked IDs (all members of any group
+        # where one member is already selected)
+        exclusion_blocked: set[str] = set()
         auto_id_set = set(auto_ids)
+        for group in MUTUAL_EXCLUSION_GROUPS:
+            selected_in_group = [fid for fid in group["feature_ids"] if fid in auto_id_set]
+            if selected_in_group:
+                exclusion_blocked.update(
+                    fid for fid in group["feature_ids"] if fid not in auto_id_set
+                )
+
+        # Enforce minimum per layer: 5 functional, 10 architectural
         feat_layer = {f["id"]: get_feature_layer(f.get("category", "")) for f in catalog}
         func_count = sum(1 for fid in auto_ids if feat_layer.get(fid) == "functional")
         arch_count = sum(1 for fid in auto_ids if feat_layer.get(fid) == "architectural")
@@ -102,7 +130,7 @@ async def feature_discovery_page(request: Request, slug: str):
         for f in catalog:
             if func_count >= 5:
                 break
-            if f["id"] not in auto_id_set and feat_layer.get(f["id"]) == "functional":
+            if f["id"] not in auto_id_set and f["id"] not in exclusion_blocked and feat_layer.get(f["id"]) == "functional":
                 auto_ids.append(f["id"])
                 auto_id_set.add(f["id"])
                 func_count += 1
@@ -110,7 +138,7 @@ async def feature_discovery_page(request: Request, slug: str):
         for f in catalog:
             if arch_count >= 10:
                 break
-            if f["id"] not in auto_id_set and feat_layer.get(f["id"]) == "architectural":
+            if f["id"] not in auto_id_set and f["id"] not in exclusion_blocked and feat_layer.get(f["id"]) == "architectural":
                 auto_ids.append(f["id"])
                 auto_id_set.add(f["id"])
                 arch_count += 1
@@ -417,3 +445,104 @@ async def add_custom_skill_route(request: Request, slug: str):
         set_selected_skills(state, selected)
     save_state(state, slug)
     return JSONResponse(content={"added": skill_id})
+
+
+# ---------------------------------------------------------------------------
+# System Design Contract
+# ---------------------------------------------------------------------------
+
+_contract_logger = logging.getLogger(__name__)
+
+
+@router.get("/api/system-design-contract")
+async def get_system_design_contract(request: Request, slug: str):
+    """Assemble and validate the full System Design Contract.
+
+    Read-only: loads the current project state, runs deterministic
+    validation and build-readiness checks, and returns the complete
+    contract as JSON.
+    """
+    state = get_project_state(slug)
+    profile = get_project_profile(state)
+    features = state.get("features", {}).get("core", [])
+    selected_feature_ids = [f.get("id", "") for f in features]
+    selected_skills = get_selected_skills(state)
+    intelligence_goals = get_intelligence_goals(state)
+
+    # Enrich features with layer information
+    enriched_features = []
+    for f in features:
+        layer = CATEGORY_LAYERS.get(f.get("category", ""), "functional")
+        enriched_features.append({
+            "id": f.get("id", ""),
+            "name": f.get("name", ""),
+            "description": f.get("description", ""),
+            "category": f.get("category", ""),
+            "layer": layer,
+            "build_order": f.get("build_order"),
+        })
+
+    # Architecture summary from profile
+    architecture = {
+        "style": (
+            "microservices" if "microservices" in selected_feature_ids
+            else (
+                "modular_monolith"
+                if "modular_monolith" in selected_feature_ids
+                else None
+            )
+        ),
+        "deployment_type": profile.get("deployment_type", {}).get("selected"),
+        "ai_depth": profile.get("ai_depth", {}).get("selected"),
+        "mvp_scope": profile.get("mvp_scope", {}).get("selected"),
+    }
+
+    # MCP servers derived from skills + features
+    mcp_servers = derive_mcp_servers(selected_skills, selected_feature_ids)
+
+    # Validation
+    validation = run_all_feature_validation(
+        features, selected_feature_ids, selected_skills,
+    )
+
+    # Build readiness
+    build_readiness = compute_build_readiness(
+        features, selected_skills, profile,
+    )
+
+    # Log issues
+    if validation["issues"]:
+        _contract_logger.warning(
+            "Contract validation errors for '%s': %s",
+            slug,
+            [i["message"] for i in validation["issues"]],
+        )
+    if not build_readiness["ready"]:
+        _contract_logger.warning(
+            "Build not ready for '%s': missing %s",
+            slug,
+            build_readiness["missing_components"],
+        )
+
+    contract = {
+        "project": state.get("project", {}),
+        "features": enriched_features,
+        "skills": [
+            {
+                "id": s.get("id", ""),
+                "name": s.get("name", ""),
+                "description": s.get("description", ""),
+                "category": s.get("category", ""),
+                "tags": s.get("tags", []),
+            }
+            for s in selected_skills
+        ],
+        "architecture": architecture,
+        "mcp_servers": mcp_servers,
+        "intelligence_goals": intelligence_goals,
+        "validation": validation,
+        "build_readiness": build_readiness,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return JSONResponse(content=contract)

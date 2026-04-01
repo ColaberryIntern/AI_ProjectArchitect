@@ -790,10 +790,19 @@ class TestIntelligenceGoals:
         new = {
             "id": "g1", "user_facing_label": "My Goal", "goal_type": "recommendation",
             "confidence_required": "critical_accuracy", "impact_level": "high",
-            "description": "Desc",
+            "description": "Desc", "auto_selected": False,
         }
         result = normalize_goal_data(new)
         assert result == new
+
+    def test_normalize_goal_data_preserves_auto_selected(self):
+        from execution.state_manager import normalize_goal_data
+        goal = {
+            "id": "g1", "user_facing_label": "My Goal", "goal_type": "recommendation",
+            "description": "Desc", "auto_selected": True,
+        }
+        result = normalize_goal_data(goal)
+        assert result["auto_selected"] is True
 
     def test_normalize_goal_data_handles_non_dict(self):
         from execution.state_manager import normalize_goal_data

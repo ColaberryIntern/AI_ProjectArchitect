@@ -4,8 +4,11 @@
 
 {% block content %}
 <div class="text-center mb-4">
-    <h2 class="fw-bold">We've Recommended Your AI Capabilities</h2>
-    <p class="text-muted">Based on your objectives and systems, we've pre-selected the best capabilities. Adjust as needed.</p>
+    {% if primary_label %}
+    <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">Optimized for: {{ primary_label }}</span>
+    {% endif %}
+    <h2 class="fw-bold">Your AI Capabilities (Focused Selection)</h2>
+    <p class="text-muted">We selected {{ recommended_ids | length }} high-impact capabilities aligned with your primary goal. You can adjust below.</p>
 </div>
 
 <form action="/advisory/{{ session.session_id }}/capabilities" method="POST" id="capabilityForm">
