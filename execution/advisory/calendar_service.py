@@ -66,7 +66,11 @@ def get_available_slots(days: int = 21) -> dict:
         return _generate_static_slots(days)
 
     try:
-        return _fetch_real_slots(service, days)
+        result = _fetch_real_slots(service, days)
+        if result.get("dates"):
+            return result
+        logger.info("Google Calendar returned no available slots, using static fallback")
+        return _generate_static_slots(days)
     except Exception:
         logger.warning("Google Calendar fetch failed, using static slots", exc_info=True)
         return _generate_static_slots(days)
