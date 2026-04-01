@@ -23,6 +23,27 @@
     <p class="text-muted">Watch your {{ agent_stats.total_agents }} AI agents work together across {{ agent_stats.departments }} departments</p>
 </div>
 
+<!-- Narration Strip -->
+<div class="card border-0 shadow-sm mb-3" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body py-2 px-4 d-flex align-items-center gap-2">
+        <i class="bi bi-cpu"></i>
+        <small id="simNarration">Press "Run Simulation" to watch your AI system operate</small>
+    </div>
+</div>
+
+<!-- Mode Selector -->
+<div class="d-flex justify-content-center gap-2 mb-3">
+    <button class="btn btn-sm btn-primary active" id="mode-guided" onclick="setSimMode('guided')">
+        <i class="bi bi-signpost me-1"></i>Guided
+    </button>
+    <button class="btn btn-sm btn-outline-primary" id="mode-live" onclick="setSimMode('live')">
+        <i class="bi bi-lightning me-1"></i>Live
+    </button>
+    <button class="btn btn-sm btn-outline-primary" id="mode-executive" onclick="setSimMode('executive')">
+        <i class="bi bi-speedometer2 me-1"></i>Executive
+    </button>
+</div>
+
 <div class="row g-4">
     <!-- Left: Live Timeline -->
     <div class="col-lg-8">
@@ -210,5 +231,45 @@ function onSimulationComplete(summary) {
         });
     }
 }
+
+// ── Mode selector ──────────────────────────────────────────────
+var simMode = 'guided';
+function setSimMode(mode) {
+    simMode = mode;
+    ['guided', 'live', 'executive'].forEach(function(m) {
+        var btn = document.getElementById('mode-' + m);
+        if (btn) btn.className = 'btn btn-sm ' + (m === mode ? 'btn-primary active' : 'btn-outline-primary');
+    });
+}
+
+// ── Narration update (called from addEvent) ────────────────────
+function updateNarration(data) {
+    var el = document.getElementById('simNarration');
+    if (!el) return;
+    var narrations = {
+        'agent_action': 'AI agent executing: ' + data.action,
+        'specialist_action': 'Specialist deployed: ' + data.agent,
+        'cory_intelligence': 'AI COO detected pattern: ' + data.event,
+    };
+    el.textContent = narrations[data.type] || data.action || 'Processing...';
+}
+
+// Patch addEvent to include narration
+var _origAddEvent = addEvent;
+addEvent = function(data) {
+    // Skip detailed events in executive mode
+    if (simMode === 'executive' && data.type === 'agent_action') {
+        agentActions++;
+        document.getElementById('eventCounter').textContent = agentActions + coryActions;
+        return;
+    }
+    _origAddEvent(data);
+    updateNarration(data);
+
+    // Try to highlight network node if available
+    if (typeof window.highlightNetworkNode === 'function') {
+        window.highlightNetworkNode(data.agent);
+    }
+};
 </script>
 {% endblock %}
