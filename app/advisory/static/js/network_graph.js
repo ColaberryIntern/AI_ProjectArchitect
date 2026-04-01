@@ -34,8 +34,16 @@
         deptMap[dept].push(a);
     });
 
-    var width = container.clientWidth || 800;
-    var height = Math.max(550, Math.round(window.innerHeight * 0.65));
+    // Force container to explicit size so D3 reads it correctly
+    var parentCard = container.closest('.card-body');
+    if (parentCard) parentCard.style.minHeight = '70vh';
+    var width = container.clientWidth || 900;
+    var height = Math.round(window.innerHeight * 0.65);
+    container.style.width = width + 'px';
+    container.style.height = height + 'px';
+
+    // ── Graph dimensions (updated on each render) ──────────────────
+    var curW = width, curH = height;
 
     // ── State ──────────────────────────────────────────────────────
     var zoomLevel = 'system'; // system | department | agent
@@ -79,12 +87,12 @@
         var edges = [];
 
         if (cooAgent) {
-            nodes.push({ id: 'cory', label: 'AI COO', type: 'cory', r: 38, color: '#1a1a2e' });
+            nodes.push({ id: 'cory', label: 'AI COO', type: 'cory', r: 50, color: '#1a1a2e' });
         }
         Object.keys(deptMap).forEach(function(dept) {
             var id = 'dept_' + dept.replace(/\s/g, '_');
             var count = deptMap[dept].length;
-            nodes.push({ id: id, label: dept, type: 'system', r: 20 + count * 3, color: deptColors[dept] || '#4361ee', dept: dept, agentCount: count });
+            nodes.push({ id: id, label: dept, type: 'system', r: 30 + count * 4, color: deptColors[dept] || '#4361ee', dept: dept, agentCount: count });
             if (cooAgent) edges.push({ source: id, target: 'cory' });
         });
 
@@ -182,10 +190,12 @@
         d3.select(svgContainer).selectAll('svg').remove();
         detailPanel.style.display = 'none';
 
-        var svgW = detailPanel.style.display === 'none' ? width : width - 290;
+        // Re-read actual container size each render
+        curW = svgContainer.clientWidth || width;
+        curH = parseInt(container.style.height) || height;
         var svg = d3.select(svgContainer).insert('svg', ':first-child')
-            .attr('width', width).attr('height', height)
-            .attr('viewBox', '0 0 ' + width + ' ' + height);
+            .attr('width', curW).attr('height', curH)
+            .attr('viewBox', '0 0 ' + curW + ' ' + curH);
 
         // Glow filter
         var defs = svg.append('defs');
@@ -199,7 +209,7 @@
         var sim = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(edges).id(function(d){return d.id}).distance(120))
             .force('charge', d3.forceManyBody().strength(-450))
-            .force('center', d3.forceCenter(width/2, height/2))
+            .force('center', d3.forceCenter(curW/2, curH/2))
             .force('collision', d3.forceCollide().radius(function(d){return d.r + 12}));
 
         var link = svg.append('g').selectAll('line')
@@ -264,8 +274,8 @@
             link.attr('x1',function(d){return d.source.x}).attr('y1',function(d){return d.source.y})
                 .attr('x2',function(d){return d.target.x}).attr('y2',function(d){return d.target.y});
             nodeG.attr('transform', function(d){
-                d.x = Math.max(d.r, Math.min(width-d.r, d.x));
-                d.y = Math.max(d.r, Math.min(height-d.r, d.y));
+                d.x = Math.max(d.r, Math.min(curW-d.r, d.x));
+                d.y = Math.max(d.r, Math.min(curH-d.r, d.y));
                 return 'translate('+d.x+','+d.y+')';
             });
         });

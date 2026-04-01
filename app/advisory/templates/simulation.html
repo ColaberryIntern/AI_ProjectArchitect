@@ -129,15 +129,18 @@ var graphNodes = [], graphNodeMap = {};
     if (!raw || !raw.length) return;
 
     var container = document.getElementById('simGraph');
+    // Force container to fill viewport
+    var targetH = Math.round(window.innerHeight * 0.7);
+    container.style.height = targetH + 'px';
     var w = container.clientWidth || 700;
-    var h = Math.max(550, Math.round(window.innerHeight * 0.72));
+    var h = targetH;
     var deptColors = {'Executive':'#1a1a2e','Sales':'#4361ee','Customer Support':'#6f42c1','Marketing':'#198754','Operations':'#fd7e14','Finance':'#dc3545','Human Resources':'#6c757d','Technology':'#0dcaf0','Communication':'#20c997'};
 
     var nodes = [], edges = [], deptSet = {};
     var coo = null;
     raw.forEach(function(a) { if (a.is_cory) coo = a; });
 
-    if (coo) nodes.push({id:'cory',label:'AI COO',type:'cory',r:35,color:'#1a1a2e',dept:'Executive'});
+    if (coo) nodes.push({id:'cory',label:'AI COO',type:'cory',r:50,color:'#1a1a2e',dept:'Executive'});
 
     raw.forEach(function(a) {
         if (a.is_cory) return;
@@ -145,11 +148,11 @@ var graphNodes = [], graphNodeMap = {};
         if (!deptSet[dept]) {
             deptSet[dept] = true;
             var sid = 'sys_'+dept.replace(/\s/g,'_');
-            nodes.push({id:sid,label:dept,type:'system',r:22,color:deptColors[dept]||'#4361ee',dept:dept});
+            nodes.push({id:sid,label:dept,type:'system',r:32,color:deptColors[dept]||'#4361ee',dept:dept});
             if (coo) edges.push({source:sid,target:'cory'});
         }
         var nid = 'ag_'+nodes.length;
-        nodes.push({id:nid,label:a.name.replace('AI ',''),type:'agent',r:12,color:deptColors[dept]||'#4361ee',dept:dept,agentName:a.name});
+        nodes.push({id:nid,label:a.name.replace('AI ',''),type:'agent',r:18,color:deptColors[dept]||'#4361ee',dept:dept,agentName:a.name});
         edges.push({source:nid,target:'sys_'+dept.replace(/\s/g,'_')});
     });
 
@@ -165,8 +168,8 @@ var graphNodes = [], graphNodeMap = {};
     defs.append('style').text('@keyframes simDash{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}.sim-edge{stroke-dasharray:5,5;animation:simDash 1.2s linear infinite}');
 
     var sim = d3.forceSimulation(nodes)
-        .force('link',d3.forceLink(edges).id(function(d){return d.id}).distance(function(d){return d.source.type==='cory'||d.target.type==='cory'?100:60}))
-        .force('charge',d3.forceManyBody().strength(-250))
+        .force('link',d3.forceLink(edges).id(function(d){return d.id}).distance(function(d){return d.source.type==='cory'||d.target.type==='cory'?160:100}))
+        .force('charge',d3.forceManyBody().strength(-500))
         .force('center',d3.forceCenter(w/2,h/2))
         .force('collision',d3.forceCollide().radius(function(d){return d.r+10}));
 
