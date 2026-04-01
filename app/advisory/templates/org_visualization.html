@@ -87,12 +87,12 @@
             <div class="d-flex flex-wrap justify-content-center gap-3 mt-0">
                 {% for dept, dagents in dept_agents.items() %}
                 {% set dcolor = '#4361ee' if dept == 'Sales' else '#fd7e14' if dept == 'Operations' else '#6f42c1' if dept == 'Customer Support' else '#198754' if dept == 'Marketing' else '#dc3545' if dept == 'Finance' else '#0dcaf0' if dept == 'Technology' else '#20c997' if dept == 'Communication' else '#6c757d' %}
-                <div class="text-center" style="min-width: 190px; max-width: 230px;">
+                <div class="text-center org-dept-col" style="min-width: 190px; max-width: 230px;">
                     <!-- Vertical connector from horizontal bar to department -->
                     <div style="width: 3px; height: 25px; background: #cbd5e1; margin: 0 auto;"></div>
 
                     <!-- Department box -->
-                    <div class="p-3 rounded-3 shadow-sm mb-0" style="background: white; border: 2px solid {{ dcolor }};">
+                    <div class="p-3 rounded-3 shadow-sm mb-0 org-dept-box" style="background: white; border: 2px solid {{ dcolor }}; transition: box-shadow 0.3s;">
                         <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
                             <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ dcolor }};"></div>
                             <strong style="font-size: 0.9rem;">{{ dept }}</strong>
@@ -109,7 +109,7 @@
                     <!-- Connector between agents -->
                     <div style="width: 1px; height: 6px; background: {{ dcolor }}; margin: 0 auto; opacity: 0.3;"></div>
                     {% endif %}
-                    <div class="p-2 rounded border bg-white shadow-sm mb-0" style="font-size: 0.75rem; border-left: 3px solid {{ dcolor }} !important;">
+                    <div class="p-2 rounded border bg-white shadow-sm mb-0 org-agent-card" style="font-size: 0.75rem; border-left: 3px solid {{ dcolor }} !important; position: relative;">
                         <div class="fw-semibold">{{ agent.name }}</div>
                         <div class="d-flex gap-1 mt-1">
                             <span class="badge bg-{{ 'primary' if agent.trigger_type == 'event' else 'warning' if agent.trigger_type == 'time' else 'danger' }}" style="font-size: 0.55rem;">{{ agent.trigger_type }}</span>
@@ -129,6 +129,100 @@
         </div>
     </div>
 </div>
+
+<style>
+.org-signal {
+    position: absolute;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ffc107;
+    box-shadow: 0 0 8px #ffc107;
+    pointer-events: none;
+    z-index: 10;
+}
+.org-connector { position: relative; }
+.org-dept-col { position: relative; }
+.org-agent-card { position: relative; transition: box-shadow 0.3s, transform 0.3s; }
+.org-agent-card.active { box-shadow: 0 0 12px rgba(67,97,238,0.4); transform: scale(1.03); }
+@keyframes orgPulseDown {
+    0% { top: 0; opacity: 1; }
+    100% { top: 100%; opacity: 0.3; }
+}
+</style>
+
+<script>
+// Auto-play org chart signal animation
+(function() {
+    var orgView = document.getElementById('view-orgchart');
+    if (!orgView) return;
+
+    var deptCols = orgView.querySelectorAll('.org-dept-col');
+    if (!deptCols.length) return;
+
+    var loopInterval = null;
+    var currentDept = 0;
+
+    function animateDept(deptEl) {
+        var agents = deptEl.querySelectorAll('.org-agent-card');
+        if (!agents.length) return;
+
+        // Flash the department box
+        var deptBox = deptEl.querySelector('.org-dept-box');
+        if (deptBox) {
+            deptBox.style.boxShadow = '0 0 15px rgba(255,193,7,0.5)';
+            setTimeout(function() { deptBox.style.boxShadow = ''; }, 800);
+        }
+
+        // Animate each agent with stagger
+        agents.forEach(function(agent, i) {
+            setTimeout(function() {
+                agent.classList.add('active');
+                // Create signal dot
+                var dot = document.createElement('div');
+                dot.className = 'org-signal';
+                dot.style.left = '50%';
+                dot.style.marginLeft = '-5px';
+                dot.style.top = '-10px';
+                agent.appendChild(dot);
+                // Animate dot
+                dot.animate([
+                    { top: '-10px', opacity: 1, transform: 'scale(1)' },
+                    { top: '50%', opacity: 0.5, transform: 'scale(0.6)' }
+                ], { duration: 400, easing: 'ease-in' });
+                setTimeout(function() {
+                    dot.remove();
+                    agent.classList.remove('active');
+                }, 600);
+            }, i * 300);
+        });
+    }
+
+    function runLoop() {
+        if (orgView.style.display === 'none') return;
+        if (deptCols.length === 0) return;
+
+        animateDept(deptCols[currentDept]);
+        currentDept = (currentDept + 1) % deptCols.length;
+    }
+
+    // Start when org chart becomes visible
+    var observer = new MutationObserver(function() {
+        if (orgView.style.display !== 'none') {
+            if (!loopInterval) {
+                runLoop();
+                loopInterval = setInterval(runLoop, 3000);
+            }
+        } else {
+            if (loopInterval) { clearInterval(loopInterval); loopInterval = null; }
+        }
+    });
+    observer.observe(orgView, { attributes: true, attributeFilter: ['style'] });
+
+    // Also start if already visible
+    if (orgView.style.display !== 'none') {
+        setTimeout(function() { runLoop(); loopInterval = setInterval(runLoop, 3000); }, 500);
+    }
+})();
+</script>
 
 <!-- ═══ NETWORK VIEW ════════════════════════════════════════════════ -->
 <div id="view-network" style="display: none;">
