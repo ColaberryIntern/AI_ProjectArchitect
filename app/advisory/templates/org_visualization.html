@@ -58,46 +58,68 @@
 <div id="view-orgchart" style="display: none;">
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-4" style="overflow-x: auto;">
-            <!-- AI Control Tower (root) -->
             {% if agents %}
-            <div class="text-center mb-4">
-                <div class="d-inline-block p-3 rounded-3 text-white" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-width: 220px;">
-                    <i class="bi bi-cpu fs-4 d-block mb-1"></i>
-                    <strong>AI Control Tower</strong>
-                    <div class="small opacity-75">Central Intelligence</div>
+            {% set dept_agents = {} %}
+            {% for agent in agents %}
+                {% if not agent.get('is_cory') %}
+                    {% set dept = agent.department %}
+                    {% if dept not in dept_agents %}{% set _ = dept_agents.update({dept: []}) %}{% endif %}
+                    {% set _ = dept_agents[dept].append(agent) %}
+                {% endif %}
+            {% endfor %}
+
+            <!-- AI Control Tower (root) -->
+            <div class="text-center">
+                <div class="d-inline-block p-3 rounded-3 text-white shadow" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-width: 240px;">
+                    <i class="bi bi-cpu fs-3 d-block mb-1"></i>
+                    <strong style="font-size: 1.1rem;">AI Control Tower</strong>
+                    <div class="small opacity-75">Central Intelligence | Monitors {{ dept_agents | length }} departments</div>
                 </div>
             </div>
-            <!-- Vertical line from Control Tower -->
-            <div class="text-center"><div style="width:2px;height:30px;background:#1a1a2e;margin:0 auto;"></div></div>
-            <!-- Horizontal connector bar -->
-            <div style="height:2px;background:#dee2e6;margin:0 10% 0 10%;"></div>
-            <!-- Department boxes -->
-            <div class="d-flex flex-wrap justify-content-center gap-4 mt-0">
-                {% set dept_agents = {} %}
-                {% for agent in agents %}
-                    {% if not agent.get('is_cory') %}
-                        {% set dept = agent.department %}
-                        {% if dept not in dept_agents %}{% set _ = dept_agents.update({dept: []}) %}{% endif %}
-                        {% set _ = dept_agents[dept].append(agent) %}
-                    {% endif %}
-                {% endfor %}
+
+            <!-- Vertical trunk line -->
+            <div style="width: 3px; height: 35px; background: #1a1a2e; margin: 0 auto;"></div>
+
+            <!-- Horizontal connector spanning all departments -->
+            <div style="height: 3px; background: linear-gradient(90deg, transparent 5%, #cbd5e1 15%, #cbd5e1 85%, transparent 95%); margin: 0 5%;"></div>
+
+            <!-- Departments row -->
+            <div class="d-flex flex-wrap justify-content-center gap-3 mt-0">
                 {% for dept, dagents in dept_agents.items() %}
-                <div class="text-center" style="min-width: 180px; max-width: 220px;">
-                    <!-- Vertical line down to department -->
-                    <div style="width:2px;height:20px;background:#dee2e6;margin:0 auto;"></div>
-                    <!-- Department header -->
-                    <div class="p-2 rounded-3 border-2 mb-2" style="background: {{ 'rgba(67,97,238,0.1)' if dept == 'Sales' else 'rgba(253,126,20,0.1)' if dept == 'Operations' else 'rgba(111,66,193,0.1)' if dept == 'Customer Support' else 'rgba(25,135,84,0.1)' if dept == 'Marketing' else 'rgba(220,53,69,0.1)' if dept == 'Finance' else 'rgba(13,202,240,0.1)' if dept == 'Technology' else 'rgba(108,117,125,0.1)' }}; border: 2px solid {{ '#4361ee' if dept == 'Sales' else '#fd7e14' if dept == 'Operations' else '#6f42c1' if dept == 'Customer Support' else '#198754' if dept == 'Marketing' else '#dc3545' if dept == 'Finance' else '#0dcaf0' if dept == 'Technology' else '#6c757d' }};">
-                        <strong style="font-size: 0.85rem;">{{ dept }}</strong>
-                        <div class="text-muted" style="font-size: 0.7rem;">{{ dagents | length }} agent{{ 's' if dagents | length > 1 else '' }}</div>
+                {% set dcolor = '#4361ee' if dept == 'Sales' else '#fd7e14' if dept == 'Operations' else '#6f42c1' if dept == 'Customer Support' else '#198754' if dept == 'Marketing' else '#dc3545' if dept == 'Finance' else '#0dcaf0' if dept == 'Technology' else '#20c997' if dept == 'Communication' else '#6c757d' %}
+                <div class="text-center" style="min-width: 190px; max-width: 230px;">
+                    <!-- Vertical connector from horizontal bar to department -->
+                    <div style="width: 3px; height: 25px; background: #cbd5e1; margin: 0 auto;"></div>
+
+                    <!-- Department box -->
+                    <div class="p-3 rounded-3 shadow-sm mb-0" style="background: white; border: 2px solid {{ dcolor }};">
+                        <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
+                            <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ dcolor }};"></div>
+                            <strong style="font-size: 0.9rem;">{{ dept }}</strong>
+                        </div>
+                        <div class="text-muted" style="font-size: 0.7rem;">{{ dagents | length }} AI agent{{ 's' if dagents | length > 1 else '' }}</div>
                     </div>
-                    <!-- Agent boxes under department -->
+
+                    <!-- Vertical connector from department to agents -->
+                    <div style="width: 2px; height: 15px; background: {{ dcolor }}; margin: 0 auto; opacity: 0.5;"></div>
+
+                    <!-- Agent cards -->
                     {% for agent in dagents %}
-                    <div class="p-2 mb-1 rounded border bg-white" style="font-size: 0.75rem;">
+                    {% if not loop.first %}
+                    <!-- Connector between agents -->
+                    <div style="width: 1px; height: 6px; background: {{ dcolor }}; margin: 0 auto; opacity: 0.3;"></div>
+                    {% endif %}
+                    <div class="p-2 rounded border bg-white shadow-sm mb-0" style="font-size: 0.75rem; border-left: 3px solid {{ dcolor }} !important;">
                         <div class="fw-semibold">{{ agent.name }}</div>
-                        <div class="text-muted" style="font-size: 0.65rem;">{{ agent.trigger_type }}</div>
-                        {% if agent.get('is_specialist') %}
-                        <span class="badge bg-success" style="font-size: 0.55rem;">Specialist</span>
-                        {% endif %}
+                        <div class="d-flex gap-1 mt-1">
+                            <span class="badge bg-{{ 'primary' if agent.trigger_type == 'event' else 'warning' if agent.trigger_type == 'time' else 'danger' }}" style="font-size: 0.55rem;">{{ agent.trigger_type }}</span>
+                            {% if agent.get('is_specialist') %}
+                            <span class="badge bg-success" style="font-size: 0.55rem;">Specialist</span>
+                            {% endif %}
+                            {% if agent.get('is_primary_focus') %}
+                            <span class="badge bg-primary" style="font-size: 0.55rem;">Primary</span>
+                            {% endif %}
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
