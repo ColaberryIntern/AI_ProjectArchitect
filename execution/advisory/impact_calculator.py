@@ -137,13 +137,19 @@ def _estimate_cost_savings(departments: list[dict], maturity_score: dict, budget
 
     for dept in departments:
         dept_id = dept.get("id", "unknown")
+        caps = dept.get("capabilities", [])
+
+        # Skip departments with no real capabilities
+        if not caps:
+            continue
+
         base_ftes = _DEFAULT_DEPT_FTES.get(dept_id, 3)
         dept_ftes = max(1, base_ftes * size_scale)
 
-        for cap in dept.get("capabilities", []):
+        for cap in caps:
             potential = cap.get("automation_potential", "medium")
             auto_mult = _AUTOMATION_MULTIPLIERS.get(potential, 0.35)
-            affected_ftes = dept_ftes / max(len(dept.get("capabilities", [1])), 1)
+            affected_ftes = dept_ftes / max(len(caps), 1)
             savings = affected_ftes * _DEFAULT_FTE_COST * auto_mult * maturity_multiplier
 
             breakdown.append({
@@ -165,8 +171,7 @@ def _estimate_cost_savings(departments: list[dict], maturity_score: dict, budget
 def _estimate_revenue_impact(
     departments: list[dict], answers: list[dict], budget: float
 ) -> dict:
-    """Estimate revenue lift from AI-enhanced departments."""
-    # Use budget as a rough proxy for company size/revenue
+    """Estimate revenue lift ONLY from departments with real capability investment."""
     estimated_revenue = budget * 20  # Assume tech budget is ~5% of revenue
 
     channels = []
@@ -174,13 +179,24 @@ def _estimate_revenue_impact(
 
     for dept in departments:
         dept_id = dept.get("id", "unknown")
-        lift_pct = _REVENUE_LIFT_BY_DEPT.get(dept_id, 0.01)
-        lift_amount = estimated_revenue * lift_pct
+        cap_count = len(dept.get("capabilities", []))
 
-        if lift_pct > 0:
+        # Only calculate revenue lift for departments with 2+ capabilities
+        # (indicates real investment, not a token/auto-added selection)
+        if cap_count < 2:
+            continue
+
+        lift_pct = _REVENUE_LIFT_BY_DEPT.get(dept_id, 0.01)
+
+        # Scale lift by capability density (more caps = higher confidence in lift)
+        density_mult = min(cap_count / 3, 1.0)  # 3+ caps = full lift
+        effective_lift = lift_pct * density_mult
+        lift_amount = estimated_revenue * effective_lift
+
+        if effective_lift > 0:
             channels.append({
                 "department": dept.get("name", dept_id),
-                "lift_percent": round(lift_pct * 100, 1),
+                "lift_percent": round(effective_lift * 100, 1),
                 "estimated_annual_gain": round(lift_amount),
             })
             total_lift += lift_amount

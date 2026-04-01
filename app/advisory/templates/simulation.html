@@ -98,16 +98,27 @@
                     </div>
                 </div>
                 <hr>
+                <!-- Live Event Feed (scrolls during simulation) -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="fw-bold"><i class="bi bi-activity me-1"></i>Live Activity</small>
+                        <span class="badge bg-success" style="font-size:0.55rem" id="feedStatus">Waiting</span>
+                    </div>
+                    <div class="event-log" id="sideEventLog" style="max-height: 220px; overflow-y: auto; font-size: 0.72rem;">
+                        <div class="text-muted text-center small py-3" id="feedEmpty">Events will appear here during simulation</div>
+                    </div>
+                </div>
+                <hr>
                 <div id="donePanel" class="d-none">
                     <div class="text-success fw-bold small mb-2"><i class="bi bi-check-circle me-1"></i>Complete</div>
                     <div id="highlights" class="small mb-3"></div>
-                    <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary btn-sm w-100 mb-2" data-track="book_strategy_call">
-                        <i class="bi bi-calendar-event me-1"></i>Schedule Call
-                    </a>
-                    <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-outline-primary btn-sm w-100">
-                        <i class="bi bi-file-earmark-pdf me-1"></i>Get Report
-                    </a>
                 </div>
+                <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary btn-sm w-100 mb-2" data-track="book_strategy_call">
+                    <i class="bi bi-calendar-event me-1"></i>Schedule Call
+                </a>
+                <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-file-earmark-pdf me-1"></i>Get Report
+                </a>
             </div>
         </div>
     </div>
@@ -314,12 +325,24 @@ function processEvent(data) {
     document.getElementById('narration').textContent = narr;
 
     // 5. Event log (collapsed)
+    // Bottom collapsed log
     var log = document.getElementById('eventLog');
     var logEl = document.createElement('div');
     logEl.className = 'event-log-item ' + (isCory ? 'cory' : isSpec ? 'specialist' : '');
     logEl.innerHTML = '<strong>' + data.agent + '</strong> ' + data.action.substring(0, 60);
     log.appendChild(logEl);
     log.scrollTop = log.scrollHeight;
+
+    // Side panel live feed (visible, auto-scrolling)
+    var sideFeed = document.getElementById('sideEventLog');
+    var feedEmpty = document.getElementById('feedEmpty');
+    if (feedEmpty) feedEmpty.remove();
+    document.getElementById('feedStatus').textContent = 'Live';
+    var sideEl = document.createElement('div');
+    sideEl.className = 'event-log-item ' + (isCory ? 'cory' : isSpec ? 'specialist' : '') + ' mb-1';
+    sideEl.innerHTML = '<div class="d-flex justify-content-between"><strong>' + data.agent.substring(0, 20) + '</strong><span class="text-muted">' + data.timestamp + '</span></div><div class="text-muted">' + data.action.substring(0, 45) + '</div>';
+    sideFeed.appendChild(sideEl);
+    sideFeed.scrollTop = sideFeed.scrollHeight;
 
     updateCounters(count);
 }
@@ -338,6 +361,15 @@ function onComplete(summary) {
     document.getElementById('statusDot').className = 'sim-pulse idle';
     document.getElementById('narration').textContent = 'Simulation complete. Your AI system processed all scenarios successfully.';
     document.getElementById('progressBar').style.width = '100%';
+    document.getElementById('feedStatus').textContent = 'Complete';
+    document.getElementById('feedStatus').className = 'badge bg-secondary';
+    // Add completion entry to side feed
+    var sideFeed = document.getElementById('sideEventLog');
+    var doneEl = document.createElement('div');
+    doneEl.className = 'event-log-item text-success fw-bold mt-1';
+    doneEl.innerHTML = '<i class="bi bi-check-circle me-1"></i>All scenarios processed';
+    sideFeed.appendChild(doneEl);
+    sideFeed.scrollTop = sideFeed.scrollHeight;
     var btn = document.getElementById('startBtn');
     btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Replay'; btn.disabled = false;
     btn.onclick = function() { location.reload(); };
