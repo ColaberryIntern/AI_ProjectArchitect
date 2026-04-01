@@ -158,5 +158,14 @@ function clearDept(dept) {
 }
 
 document.addEventListener('DOMContentLoaded', updateTally);
+
+// Loading state on form submit
+document.getElementById('capabilityForm').addEventListener('submit', function() {
+    var btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Building your AI organization...';
+    var hint = document.getElementById('selectionHint');
+    hint.innerHTML = '<span class="text-primary"><i class="bi bi-cpu me-1"></i>Analyzing capabilities, generating agents, calculating ROI... This takes a few seconds.</span>';
+});
 </script>
 {% endblock %}
