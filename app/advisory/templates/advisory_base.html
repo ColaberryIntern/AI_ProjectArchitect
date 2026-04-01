@@ -10,17 +10,54 @@
     {% block head %}{% endblock %}
 </head>
 <body class="advisory-body">
-    <nav class="navbar navbar-expand-lg navbar-dark advisory-nav">
+    <!-- Enterprise Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
         <div class="container">
-            <div class="navbar-brand d-flex align-items-center gap-2 mb-0">
-                <a href="https://enterprise.colaberry.ai" class="d-flex align-items-center text-decoration-none">
-                    <img src="https://www.colaberry.com/wp-content/uploads/2022/06/colaberry-black-logo.png"
-                         alt="Colaberry" height="28" style="filter: brightness(0) invert(1);">
+            <a class="navbar-brand fw-bold d-flex align-items-center" href="https://enterprise.colaberry.ai/">
+                <img src="https://enterprise.colaberry.ai/colaberry-icon.png" alt="" width="30" height="30" class="me-2" />
+                Colaberry Enterprise AI
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://enterprise.colaberry.ai/">Home</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Program</a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/program">Program Overview</a></li>
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/ai-architect/instructor">Your Instructor</a></li>
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/advisory">Advisory</a></li>
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/case-studies">Case Studies</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Get Started</a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/pricing">Pricing</a></li>
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/sponsorship">Corporate Sponsorship</a></li>
+                            <li><a class="dropdown-item" href="https://enterprise.colaberry.ai/enroll">Enroll</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://enterprise.colaberry.ai/contact">Contact</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold active" href="/advisory/" style="color: #a78bfa !important;">AI Workforce Designer</a>
+                    </li>
+                </ul>
+                <a class="btn btn-outline-light btn-sm ms-lg-3 mt-2 mt-lg-0" href="https://enterprise.colaberry.ai/portal/login">Participant Login</a>
+                <a
+                    class="btn btn-sm text-white fw-semibold ms-2 d-none d-lg-inline-block"
+                    href="/advisory/"
+                    style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none; border-radius: 20px; padding: 6px 16px; font-size: 13px; white-space: nowrap;"
+                    data-track="nav_design_ai_org"
+                >
+                    Design AI Org
                 </a>
-                <span class="opacity-50 mx-1">|</span>
-                <a href="/advisory/" class="text-white text-decoration-none fw-bold">AI Workforce Designer</a>
-            </div>
-            <div class="navbar-nav ms-auto">
             </div>
         </div>
     </nav>
@@ -29,11 +66,43 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="advisory-footer text-center py-4 mt-5">
+    <!-- Enterprise Footer -->
+    <footer style="background: #1a202c; color: #a0aec0; padding: 48px 0 24px;">
         <div class="container">
-            <img src="https://www.colaberry.com/wp-content/uploads/2022/06/colaberry-black-logo.png"
-                 alt="Colaberry" height="20" class="mb-2 opacity-50">
-            <p class="text-muted mb-0 small">Colaberry AI Workforce Designer | Enterprise AI Systems for Business Transformation</p>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <h6 class="text-white fw-bold mb-3">Colaberry Enterprise AI</h6>
+                    <p style="font-size: 14px; line-height: 1.6;">
+                        Enterprise AI Leadership Accelerator - Build and deploy production AI systems in 3 weeks.
+                    </p>
+                    <p style="font-size: 13px;">
+                        <a href="mailto:info@colaberry.com" style="color: #a0aec0;">info@colaberry.com</a>
+                    </p>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <h6 class="text-white fw-bold mb-3">Quick Links</h6>
+                    <ul style="list-style: none; padding: 0; font-size: 14px; line-height: 2;">
+                        <li><a href="https://enterprise.colaberry.ai/program" style="color: #a0aec0; text-decoration: none;">Program</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/pricing" style="color: #a0aec0; text-decoration: none;">Pricing</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/sponsorship" style="color: #a0aec0; text-decoration: none;">Corporate Sponsorship</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/advisory" style="color: #a0aec0; text-decoration: none;">Enterprise AI Advisory</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/case-studies" style="color: #a0aec0; text-decoration: none;">Case Studies</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/enroll" style="color: #a0aec0; text-decoration: none;">Enroll</a></li>
+                        <li><a href="https://enterprise.colaberry.ai/contact" style="color: #a0aec0; text-decoration: none;">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <h6 class="text-white fw-bold mb-3">Connect</h6>
+                    <p style="font-size: 14px;">
+                        <a href="https://www.linkedin.com/company/colaberry-inc" style="color: #a0aec0; text-decoration: none;">LinkedIn</a>
+                        &nbsp;&middot;&nbsp;
+                        <a href="https://twitter.com/Colaberry" style="color: #a0aec0; text-decoration: none;">Twitter</a>
+                    </p>
+                </div>
+            </div>
+            <div class="text-center pt-3 mt-3" style="border-top: 1px solid #2d3748; font-size: 12px;">
+                &copy; 2026 Colaberry Inc. All rights reserved.
+            </div>
         </div>
     </footer>
 
