@@ -40,21 +40,64 @@ def generate_pdf(session: dict) -> str:
         logger.warning("reportlab not installed - generating text fallback")
         return _generate_text_fallback(session)
 
+    from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
+
     session_id = session["session_id"]
     output_dir = ADVISORY_OUTPUT_DIR / session_id
     output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = str(output_dir / "AI_Advisory_Report.pdf")
 
-    doc = SimpleDocTemplate(
-        pdf_path, pagesize=letter,
-        rightMargin=60, leftMargin=60, topMargin=60, bottomMargin=60,
-    )
+    lead = session.get("lead") or {}
+    company = lead.get("company") or "Your Organization"
+    contact_name = lead.get("name") or ""
+
+    # Header/footer callback
+    def _header_footer(canvas, doc_obj):
+        canvas.saveState()
+        w, h = letter
+        # Header line
+        canvas.setStrokeColor(colors.HexColor("#4361ee"))
+        canvas.setLineWidth(1)
+        canvas.line(60, h - 45, w - 60, h - 45)
+        # Header text
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.setFillColor(colors.HexColor("#1a1a2e"))
+        canvas.drawString(60, h - 40, "Colaberry AI Workforce Designer")
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#6c757d"))
+        canvas.drawRightString(w - 60, h - 40, f"Prepared for {company}")
+        # Footer line
+        canvas.setStrokeColor(colors.HexColor("#dee2e6"))
+        canvas.line(60, 45, w - 60, 45)
+        # Footer text
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#6c757d"))
+        canvas.drawString(60, 32, f"Confidential | {company}")
+        if contact_name:
+            canvas.drawString(60, 22, f"Prepared for {contact_name}")
+        canvas.drawRightString(w - 60, 32, f"Page {doc_obj.page}")
+        canvas.drawRightString(w - 60, 22, "colaberry.com")
+        canvas.restoreState()
+
+    def _cover_page(canvas, doc_obj):
+        """Cover page has no header/footer."""
+        pass
+
+    # Build doc with page templates
+    frame = Frame(60, 60, letter[0] - 120, letter[1] - 120, id='normal')
+    cover_frame = Frame(60, 60, letter[0] - 120, letter[1] - 120, id='cover')
+
+    doc = BaseDocTemplate(pdf_path, pagesize=letter)
+    doc.addPageTemplates([
+        PageTemplate(id='cover', frames=[cover_frame], onPage=_cover_page),
+        PageTemplate(id='content', frames=[frame], onPage=_header_footer),
+    ])
 
     styles = getSampleStyleSheet()
     # Custom styles
     S = {
-        "title": ParagraphStyle("RTitle", parent=styles["Title"], fontSize=26, spaceAfter=6, textColor=colors.HexColor("#1a1a2e")),
-        "subtitle": ParagraphStyle("RSub", parent=styles["Normal"], fontSize=12, textColor=colors.HexColor("#6c757d"), spaceAfter=20),
+        "title": ParagraphStyle("RTitle", parent=styles["Title"], fontSize=28, spaceAfter=6, textColor=colors.HexColor("#1a1a2e")),
+        "subtitle": ParagraphStyle("RSub", parent=styles["Normal"], fontSize=13, textColor=colors.HexColor("#6c757d"), spaceAfter=20),
         "h1": ParagraphStyle("RH1", parent=styles["Heading1"], fontSize=16, spaceAfter=10, spaceBefore=24, textColor=colors.HexColor("#1a1a2e")),
         "h2": ParagraphStyle("RH2", parent=styles["Heading2"], fontSize=13, spaceAfter=8, spaceBefore=16, textColor=colors.HexColor("#4361ee")),
         "body": styles["BodyText"],
@@ -66,9 +109,8 @@ def generate_pdf(session: dict) -> str:
 
     # Helper
     from execution.advisory.impact_calculator import format_currency
+    from reportlab.platypus import NextPageTemplate
 
-    lead = session.get("lead") or {}
-    company = lead.get("company") or "Your Organization"
     idea = session.get("business_idea", "")
     impact = session.get("impact_model") or {}
     maturity = session.get("maturity_score") or {}
@@ -83,18 +125,31 @@ def generate_pdf(session: dict) -> str:
     story = []
 
     # ═══════════════════════════════════════════════════════════════
-    # COVER PAGE
+    # COVER PAGE (no header/footer)
     # ═══════════════════════════════════════════════════════════════
+    # Blue accent bar at top
+    cover_bar = ParagraphStyle("CoverBar", parent=styles["Normal"], fontSize=10,
+                               textColor=colors.HexColor("#4361ee"), fontName="Helvetica-Bold")
+
+    story.append(Spacer(1, 0.5 * inch))
+    story.append(Paragraph("COLABERRY", cover_bar))
+    story.append(Paragraph("AI Workforce Designer", S["small"]))
     story.append(Spacer(1, 1.5 * inch))
     story.append(Paragraph("AI Transformation Blueprint", S["title"]))
+    story.append(Spacer(1, 0.2 * inch))
     story.append(Paragraph(f"Prepared exclusively for <b>{company}</b>", S["subtitle"]))
-    story.append(Spacer(1, 0.3 * inch))
+    if contact_name:
+        story.append(Paragraph(f"Attention: {contact_name}", S["body"]))
+    story.append(Spacer(1, 0.5 * inch))
     story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%B %d, %Y')}", S["small"]))
-    if lead.get("name"):
-        story.append(Paragraph(f"Contact: {lead['name']} ({lead.get('email', '')})", S["small"]))
-    story.append(Spacer(1, 1 * inch))
+    if lead.get("email"):
+        story.append(Paragraph(f"Contact: {lead.get('email', '')}", S["small"]))
+    story.append(Spacer(1, 1.5 * inch))
     story.append(Paragraph("Colaberry AI Workforce Designer", S["small"]))
     story.append(Paragraph("Enterprise AI Systems for Business Transformation", S["small"]))
+    story.append(Paragraph("colaberry.com", S["small"]))
+    # Switch to content template (with headers/footers) for remaining pages
+    story.append(NextPageTemplate('content'))
     story.append(PageBreak())
 
     # ═══════════════════════════════════════════════════════════════
