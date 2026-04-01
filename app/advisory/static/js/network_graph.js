@@ -35,7 +35,7 @@
     });
 
     var width = container.clientWidth || 800;
-    var height = Math.max(450, Math.min(width * 0.6, 550));
+    var height = Math.max(550, Math.round(window.innerHeight * 0.65));
 
     // ── State ──────────────────────────────────────────────────────
     var zoomLevel = 'system'; // system | department | agent
@@ -197,8 +197,8 @@
         defs.append('style').text('@keyframes dash2{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}.edge2{stroke-dasharray:5,5;animation:dash2 1.5s linear infinite}');
 
         var sim = d3.forceSimulation(nodes)
-            .force('link', d3.forceLink(edges).id(function(d){return d.id}).distance(80))
-            .force('charge', d3.forceManyBody().strength(-300))
+            .force('link', d3.forceLink(edges).id(function(d){return d.id}).distance(120))
+            .force('charge', d3.forceManyBody().strength(-450))
             .force('center', d3.forceCenter(width/2, height/2))
             .force('collision', d3.forceCollide().radius(function(d){return d.r + 12}));
 

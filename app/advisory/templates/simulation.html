@@ -5,7 +5,7 @@
 {% block head %}
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
-.sim-canvas { position: relative; min-height: 480px; background: #fafbfe; border-radius: 12px; overflow: hidden; }
+.sim-canvas { position: relative; min-height: 75vh; background: #fafbfe; border-radius: 12px; overflow: hidden; }
 .sim-pulse { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .sim-pulse.active { background: #22c55e; animation: pulse 1.5s infinite; }
 .sim-pulse.idle { background: #94a3b8; }
@@ -51,7 +51,7 @@
                 </button>
             </div>
             <div class="sim-canvas" id="simCanvas">
-                <div id="simGraph" style="width:100%;height:480px;"></div>
+                <div id="simGraph" style="width:100%;height:75vh;"></div>
                 <!-- Floating impacts appear here -->
             </div>
         </div>
@@ -130,7 +130,7 @@ var graphNodes = [], graphNodeMap = {};
 
     var container = document.getElementById('simGraph');
     var w = container.clientWidth || 700;
-    var h = 480;
+    var h = Math.max(550, Math.round(window.innerHeight * 0.72));
     var deptColors = {'Executive':'#1a1a2e','Sales':'#4361ee','Customer Support':'#6f42c1','Marketing':'#198754','Operations':'#fd7e14','Finance':'#dc3545','Human Resources':'#6c757d','Technology':'#0dcaf0','Communication':'#20c997'};
 
     var nodes = [], edges = [], deptSet = {};
