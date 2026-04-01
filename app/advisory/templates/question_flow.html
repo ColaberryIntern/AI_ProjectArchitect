@@ -19,6 +19,10 @@
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes dotBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.option-chip { transition: all 0.15s; }
+.option-chip.active { font-weight: 600; }
+.example-chip { transition: all 0.15s; }
+.example-chip:hover { border-color: #4361ee !important; background: rgba(67,97,238,0.05) !important; }
 </style>
 {% endblock %}
 
@@ -53,9 +57,36 @@
             <div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div>
             <div class="bubble">
                 <strong>{{ question.text }}</strong>
+                {% if question.help_text %}
                 <div class="text-muted small mt-1">{{ question.help_text }}</div>
+                {% endif %}
             </div>
         </div>
+
+        <!-- Clickable options (single or multi-select) -->
+        {% if question.get('options') %}
+        <div class="d-flex flex-wrap gap-2 ms-5 mb-2" id="optionChips">
+            {% for opt in question.options %}
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill option-chip" onclick="toggleOption(this, '{{ opt }}', {{ 'true' if question.get('multi_select') else 'false' }})">
+                {{ opt }}
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Clickable example responses -->
+        {% if question.get('examples') %}
+        <div class="ms-5 mb-2">
+            <small class="text-muted d-block mb-1"><i class="bi bi-lightbulb me-1"></i>Or choose an example:</small>
+            <div class="d-flex flex-wrap gap-2">
+                {% for ex in question.examples %}
+                <button type="button" class="btn btn-sm btn-light border rounded-3 text-start example-chip" onclick="useExample(this)" style="font-size: 0.78rem; max-width: 320px;">
+                    {{ ex }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -69,7 +100,7 @@
                         name="answer_text"
                         id="chatInput"
                         rows="2"
-                        placeholder="Type your answer..."
+                        placeholder="Type your answer or select from above..."
                         required
                         autofocus
                         style="resize: none; border-radius: 12px;"
@@ -93,18 +124,7 @@
             </div>
             {% endif %}
 
-            {% if question and question.id == "q6_current_tools" %}
-            <div class="mt-2 p-2 bg-light rounded-3" style="font-size: 0.8rem;">
-                <label class="form-label mb-1 fw-semibold small">Systems you use:</label>
-                <div class="d-flex flex-wrap gap-1">
-                    {% for option in system_options %}
-                    <label class="badge bg-white text-dark border" style="cursor: pointer; font-weight: normal;">
-                        <input type="checkbox" name="selected_systems" value="{{ option }}" class="me-1" style="transform: scale(0.8);">{{ option }}
-                    </label>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
+            <!-- system_options handled by generic options chips above -->
         </form>
 
         <!-- Enter to send hint -->
@@ -145,5 +165,43 @@ document.getElementById('chatForm').addEventListener('submit', function() {
 
 // Auto-focus
 document.getElementById('chatInput').focus();
+
+// --- Option chips (single or multi-select) ---
+var selectedOptions = [];
+
+function toggleOption(btn, value, isMulti) {
+    var input = document.getElementById('chatInput');
+    if (isMulti) {
+        btn.classList.toggle('active');
+        btn.classList.toggle('btn-primary');
+        btn.classList.toggle('btn-outline-primary');
+        if (btn.classList.contains('active')) {
+            selectedOptions.push(value);
+        } else {
+            selectedOptions = selectedOptions.filter(function(v) { return v !== value; });
+        }
+        input.value = selectedOptions.join(', ');
+    } else {
+        // Single select: deselect others
+        document.querySelectorAll('.option-chip').forEach(function(c) {
+            c.classList.remove('active', 'btn-primary');
+            c.classList.add('btn-outline-primary');
+        });
+        btn.classList.add('active', 'btn-primary');
+        btn.classList.remove('btn-outline-primary');
+        input.value = value;
+    }
+    input.focus();
+}
+
+// --- Example chips (click to populate) ---
+function useExample(btn) {
+    var input = document.getElementById('chatInput');
+    input.value = btn.textContent.trim();
+    // Highlight selected
+    document.querySelectorAll('.example-chip').forEach(function(c) { c.classList.remove('border-primary', 'bg-primary-subtle'); });
+    btn.classList.add('border-primary', 'bg-primary-subtle');
+    input.focus();
+}
 </script>
 {% endblock %}
