@@ -167,6 +167,7 @@ function trackAdvisoryClick() {
                         <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
                         <td class="text-end">
                             <a href="/projects/{{ p.slug }}" class="btn btn-sm btn-outline-primary">Resume</a>
+                            <a href="/projects/{{ p.slug }}/demo" class="btn btn-sm btn-outline-success ms-1" title="View Live Demo"><i class="bi bi-lightning-charge"></i> Demo</a>
                             <form action="/projects/{{ p.slug }}/delete" method="POST"
                                   onsubmit="return confirm('Delete project {{ p.name }}?')"
                                   style="display:inline">

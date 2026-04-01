@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% block title %}Live Demo — {{ demo.company }}{% endblock %}
+
+{% block content %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+.demo-header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; border-radius: 12px; }
+.kpi-card { border-radius: 12px; transition: all 0.3s; border: none; }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+.kpi-value { font-size: 2rem; font-weight: 800; line-height: 1; }
+.kpi-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.count-up { transition: all 1.5s ease; }
+.scenario-card { cursor: pointer; transition: all 0.2s; border-radius: 12px; }
+.scenario-card:hover { border-color: #3b82f6 !important; }
+.scenario-card.active { border-color: #3b82f6 !important; background: #eff6ff; }
+.activity-feed { max-height: 420px; overflow-y: auto; }
+.feed-item { animation: feedIn 0.4s ease; border-left: 3px solid #dee2e6; padding: 8px 12px; margin-bottom: 8px; border-radius: 0 8px 8px 0; background: #f8fafc; }
+.feed-item.cory { border-left-color: #1a1a2e; background: #f0f4ff; }
+.feed-item.highlight { border-left-color: #22c55e; }
+@keyframes feedIn { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
+.flow-step { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 4px; border-radius: 8px; background: #f8fafc; }
+.flow-step.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
+.flow-step.done { background: #f0fdf4; border-left: 3px solid #22c55e; }
+.flow-arrow { text-align: center; color: #94a3b8; font-size: 0.8rem; margin: 2px 0; }
+.network-container { min-height: 400px; background: #fafbfe; border-radius: 12px; position: relative; }
+.network-container svg { width: 100%; height: 400px; }
+.pulse-ring { animation: pulseRing 1.5s ease-out infinite; }
+@keyframes pulseRing { 0% { r: 8; opacity: 0.6; } 100% { r: 20; opacity: 0; } }
+.agent-tooltip { position: absolute; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); pointer-events: none; z-index: 100; }
+.sim-status { display: inline-flex; align-items: center; gap: 6px; }
+.sim-dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+.sim-dot.active { background: #22c55e; animation: dotPulse 1.2s infinite; }
+@keyframes dotPulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.impact-float { position: absolute; animation: floatImpact 2.5s ease-out forwards; pointer-events: none; font-weight: 700; font-size: 0.85rem; color: #22c55e; z-index: 50; }
+@keyframes floatImpact { 0% { opacity:1; transform:translateY(0); } 100% { opacity:0; transform:translateY(-50px); } }
+</style>
+
+<!-- Header -->
+<div class="demo-header p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h3 class="fw-bold mb-1"><i class="bi bi-lightning-charge me-2"></i>{{ demo.company }} — Live AI Demo</h3>
+            <p class="mb-0 opacity-75" style="font-size:0.9rem;">Your AI system operating in real-time across {{ demo.departments|length }} departments with {{ demo.agents|length }} intelligent agents</p>
+        </div>
+        <div class="d-flex gap-2">
+            {% if advisory_session_id %}
+            <a href="/advisory/{{ advisory_session_id }}/results" class="btn btn-outline-light btn-sm"><i class="bi bi-diagram-3 me-1"></i>View AI Design</a>
+            {% endif %}
+            <button class="btn btn-light btn-sm" onclick="copyShareLink()"><i class="bi bi-share me-1"></i>Share Demo</button>
+            <a href="/advisory/" class="btn btn-primary btn-sm"><i class="bi bi-calendar-event me-1"></i>Book Strategy Call</a>
+        </div>
+    </div>
+</div>
+
+<!-- KPI Row -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card kpi-card shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="kpi-value text-success" data-count="{{ demo.metrics.cost_savings }}">$0</div>
+                <div class="kpi-label mt-1">Annual Savings</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card kpi-card shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="kpi-value text-primary" data-count="{{ demo.metrics.revenue_impact }}">$0</div>
+                <div class="kpi-label mt-1">Revenue Impact</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card kpi-card shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="kpi-value text-warning" data-count="{{ demo.metrics.efficiency_gain }}">0%</div>
+                <div class="kpi-label mt-1">Efficiency Gain</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card kpi-card shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="kpi-value text-info" data-count="{{ demo.metrics.active_agents }}">0</div>
+                <div class="kpi-label mt-1">Active Agents</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Left: Network + Flows -->
+    <div class="col-lg-8">
+        <!-- Network Graph -->
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="sim-status">
+                    <span class="sim-dot" id="simDot"></span>
+                    <small class="text-muted" id="simStatus">Ready</small>
+                </div>
+                <button class="btn btn-primary btn-sm" id="runBtn" onclick="runScenario()">
+                    <i class="bi bi-play-fill me-1"></i>Run Simulation
+                </button>
+            </div>
+            <div class="network-container" id="networkContainer">
+                <div id="agentTooltip" class="agent-tooltip" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Flow Execution -->
+        {% if demo.flows %}
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header py-2">
+                <small class="fw-semibold"><i class="bi bi-diagram-2 me-1"></i>Execution Flows</small>
+            </div>
+            <div class="card-body p-3">
+                <ul class="nav nav-pills nav-fill mb-3" role="tablist">
+                    {% for flow in demo.flows %}
+                    <li class="nav-item">
+                        <button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="pill" data-bs-target="#flow{{ loop.index }}">{{ flow.name }}</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="tab-content">
+                    {% for flow in demo.flows %}
+                    <div class="tab-pane fade {{ 'show active' if loop.first }}" id="flow{{ loop.index }}">
+                        {% for step in flow.steps %}
+                        {% if not loop.first %}
+                        <div class="flow-arrow"><i class="bi bi-arrow-down"></i></div>
+                        {% endif %}
+                        <div class="flow-step" id="flow{{ loop.parent.loop.index }}-step{{ loop.index }}">
+                            <i class="bi {{ 'bi-cpu' if step.agent == 'AI Control Tower' else 'bi-robot' }} text-primary"></i>
+                            <div>
+                                <strong style="font-size:0.8rem;">{{ step.agent }}</strong>
+                                <div class="text-muted" style="font-size:0.75rem;">{{ step.action }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right: Scenarios + Activity Feed -->
+    <div class="col-lg-4">
+        <!-- Scenarios -->
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header py-2">
+                <small class="fw-semibold"><i class="bi bi-collection-play me-1"></i>Demo Scenarios</small>
+            </div>
+            <div class="card-body p-2">
+                {% for s in demo.scenarios %}
+                <div class="scenario-card p-2 mb-2 border rounded {{ 'active' if loop.first }}" onclick="selectScenario({{ loop.index0 }})" id="scenario{{ loop.index0 }}">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi {{ s.icon }} text-primary fs-5"></i>
+                        <div>
+                            <div class="fw-semibold" style="font-size:0.85rem;">{{ s.name }}</div>
+                            <div class="text-muted" style="font-size:0.7rem;">{{ s.description }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Live Activity Feed -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <small class="fw-semibold"><i class="bi bi-activity me-1"></i>Live Activity</small>
+                <span class="badge bg-primary-subtle text-primary" id="eventCounter">0 events</span>
+            </div>
+            <div class="card-body p-2 activity-feed" id="activityFeed">
+                <div class="text-center text-muted py-4" id="feedPlaceholder">
+                    <i class="bi bi-play-circle fs-3 d-block mb-2"></i>
+                    <small>Select a scenario and run the simulation</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Bar -->
+<div class="card border-0 shadow-sm mt-4 mb-4" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+    <div class="card-body p-4 text-center">
+        <h5 class="fw-bold mb-2">This is your AI system — ready to build</h5>
+        <p class="opacity-75 mb-3">Everything you see is derived from your advisory session. Let's make it real.</p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="/advisory/" class="btn btn-light"><i class="bi bi-calendar-event me-1"></i>Book Strategy Call</a>
+            {% if advisory_session_id %}
+            <a href="/advisory/{{ advisory_session_id }}/gate" class="btn btn-outline-light"><i class="bi bi-file-earmark-pdf me-1"></i>Download Full Blueprint</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+var demoConfig = {{ demo_json | safe }};
+var currentScenario = 0;
+var simRunning = false;
+var simTimer = null;
+var eventCount = 0;
+
+// ── Count-Up Animation ──────────────────────────────
+function countUp(el, target, prefix, suffix) {
+    prefix = prefix || '';
+    suffix = suffix || '';
+    var start = 0;
+    var duration = 1500;
+    var startTime = null;
+    function step(timestamp) {
+        if (!startTime) startTime = timestamp;
+        var progress = Math.min((timestamp - startTime) / duration, 1);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        var current = Math.floor(eased * target);
+        if (target >= 1000) {
+            el.textContent = prefix + current.toLocaleString() + suffix;
+        } else {
+            el.textContent = prefix + current + suffix;
+        }
+        if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
+document.querySelectorAll('.kpi-value').forEach(function(el) {
+    var val = parseInt(el.dataset.count) || 0;
+    var isPercent = el.textContent.indexOf('%') !== -1;
+    var isDollar = val >= 1000;
+    setTimeout(function() {
+        countUp(el, val, isDollar ? '$' : '', isPercent ? '%' : '');
+    }, 300);
+});
+
+// ── D3 Network Graph ────────────────────────────────
+var graphData = demoConfig.graph;
+var container = document.getElementById('networkContainer');
+var width = container.offsetWidth;
+var height = 400;
+
+var svg = d3.select('#networkContainer').append('svg')
+    .attr('width', width).attr('height', height);
+
+var defs = svg.append('defs');
+defs.append('marker').attr('id', 'arrowhead').attr('viewBox', '0 -5 10 10')
+    .attr('refX', 20).attr('refY', 0).attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto').append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#cbd5e1');
+
+var simulation = d3.forceSimulation(graphData.nodes)
+    .force('link', d3.forceLink(graphData.links).id(function(d) { return d.id; }).distance(100).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide(30));
+
+var link = svg.append('g').selectAll('line').data(graphData.links).enter().append('line')
+    .attr('stroke', '#cbd5e1').attr('stroke-width', 1.5).attr('marker-end', 'url(#arrowhead)');
+
+var node = svg.append('g').selectAll('g').data(graphData.nodes).enter().append('g')
+    .call(d3.drag().on('start', dragStart).on('drag', dragging).on('end', dragEnd));
+
+node.append('circle')
+    .attr('r', function(d) { return d.size; })
+    .attr('fill', function(d) { return d.color; })
+    .attr('stroke', 'white').attr('stroke-width', 2)
+    .style('cursor', 'pointer')
+    .on('mouseover', function(event, d) {
+        var tip = document.getElementById('agentTooltip');
+        tip.innerHTML = '<strong>' + d.name + '</strong><br><small class="text-muted">' + d.group + '</small>';
+        tip.style.display = 'block';
+        tip.style.left = (event.offsetX + 15) + 'px';
+        tip.style.top = (event.offsetY - 10) + 'px';
+    })
+    .on('mouseout', function() { document.getElementById('agentTooltip').style.display = 'none'; });
+
+node.append('text')
+    .text(function(d) { return d.name.substring(0, 2).toUpperCase(); })
+    .attr('text-anchor', 'middle').attr('dy', '0.35em')
+    .attr('fill', 'white').attr('font-size', '9px').attr('font-weight', '700')
+    .style('pointer-events', 'none');
+
+simulation.on('tick', function() {
+    link.attr('x1', function(d) { return d.source.x; }).attr('y1', function(d) { return d.source.y; })
+        .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
+    node.attr('transform', function(d) {
+        d.x = Math.max(20, Math.min(width - 20, d.x));
+        d.y = Math.max(20, Math.min(height - 20, d.y));
+        return 'translate(' + d.x + ',' + d.y + ')';
+    });
+});
+
+function dragStart(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+function dragging(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragEnd(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
+
+// ── Scenario Selection ──────────────────────────────
+function selectScenario(idx) {
+    currentScenario = idx;
+    document.querySelectorAll('.scenario-card').forEach(function(c, i) {
+        c.classList.toggle('active', i === idx);
+    });
+}
+
+// ── Simulation Runner ───────────────────────────────
+function runScenario() {
+    if (simRunning) return;
+    var scenario = demoConfig.scenarios[currentScenario];
+    if (!scenario || !scenario.events) return;
+
+    simRunning = true;
+    eventCount = 0;
+    document.getElementById('simDot').classList.add('active');
+    document.getElementById('simStatus').textContent = scenario.name + ' — Running';
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('runBtn').innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+    document.getElementById('feedPlaceholder').style.display = 'none';
+
+    var events = scenario.events;
+    var idx = 0;
+
+    function playNext() {
+        if (idx >= events.length) {
+            // Done
+            simRunning = false;
+            document.getElementById('simDot').classList.remove('active');
+            document.getElementById('simStatus').textContent = 'Complete — ' + events.length + ' actions executed';
+            document.getElementById('runBtn').disabled = false;
+            document.getElementById('runBtn').innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Replay';
+            return;
+        }
+
+        var ev = events[idx];
+        idx++;
+        eventCount++;
+        document.getElementById('eventCounter').textContent = eventCount + ' events';
+
+        // Update narration
+        document.getElementById('simStatus').textContent = ev.agent + ': ' + ev.action;
+
+        // Add to activity feed
+        addFeedItem(ev);
+
+        // Highlight node in graph
+        highlightAgent(ev.agent);
+
+        // Animate flow steps if visible
+        animateFlowStep(idx);
+
+        // Float impact near graph
+        if (ev.impact) floatImpact(ev.impact);
+
+        simTimer = setTimeout(playNext, ev.delay || 2000);
+    }
+
+    playNext();
+}
+
+function addFeedItem(ev) {
+    var feed = document.getElementById('activityFeed');
+    var item = document.createElement('div');
+    var isCory = ev.agent === 'AI Control Tower';
+    item.className = 'feed-item' + (isCory ? ' cory' : '');
+    item.innerHTML = '<div class="d-flex justify-content-between align-items-start">' +
+        '<div><strong style="font-size:0.8rem;">' + ev.agent + '</strong>' +
+        '<div style="font-size:0.75rem;">' + ev.event + '</div>' +
+        '<div class="text-muted" style="font-size:0.7rem;">' + ev.action + '</div></div>' +
+        '<span class="badge bg-success-subtle text-success" style="font-size:0.65rem;white-space:nowrap;">' + (ev.impact || '') + '</span></div>';
+    feed.insertBefore(item, feed.firstChild);
+}
+
+function highlightAgent(agentName) {
+    // Pulse the matching node
+    node.select('circle').transition().duration(200)
+        .attr('r', function(d) { return d.name === agentName ? d.size + 6 : d.size; })
+        .attr('stroke', function(d) { return d.name === agentName ? '#3b82f6' : 'white'; })
+        .attr('stroke-width', function(d) { return d.name === agentName ? 3 : 2; });
+
+    // Pulse connecting links
+    link.transition().duration(200)
+        .attr('stroke', function(d) {
+            return (d.source.name === agentName || d.target.name === agentName) ? '#3b82f6' : '#cbd5e1';
+        })
+        .attr('stroke-width', function(d) {
+            return (d.source.name === agentName || d.target.name === agentName) ? 3 : 1.5;
+        });
+
+    // Reset after delay
+    setTimeout(function() {
+        node.select('circle').transition().duration(400)
+            .attr('r', function(d) { return d.size; }).attr('stroke', 'white').attr('stroke-width', 2);
+        link.transition().duration(400).attr('stroke', '#cbd5e1').attr('stroke-width', 1.5);
+    }, 1200);
+}
+
+function animateFlowStep(stepIdx) {
+    // Light up flow steps sequentially
+    var active = document.querySelector('.tab-pane.show.active');
+    if (!active) return;
+    var steps = active.querySelectorAll('.flow-step');
+    steps.forEach(function(s, i) {
+        if (i < stepIdx) s.className = 'flow-step done';
+        else if (i === stepIdx) s.className = 'flow-step active';
+        else s.className = 'flow-step';
+    });
+}
+
+function floatImpact(text) {
+    var cont = document.getElementById('networkContainer');
+    var el = document.createElement('div');
+    el.className = 'impact-float';
+    el.textContent = text;
+    el.style.left = (100 + Math.random() * (cont.offsetWidth - 250)) + 'px';
+    el.style.top = (50 + Math.random() * 150) + 'px';
+    cont.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2500);
+}
+
+// ── Share Link ──────────────────────────────────────
+function copyShareLink() {
+    var url = window.location.origin + '/projects/{{ slug }}/demo?share=true';
+    navigator.clipboard.writeText(url).then(function() {
+        var btn = event.target.closest('button');
+        btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+        setTimeout(function() { btn.innerHTML = '<i class="bi bi-share me-1"></i>Share Demo'; }, 2000);
+    });
+}
+</script>
+{% endblock %}

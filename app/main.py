@@ -16,6 +16,7 @@ from app.routers import (
     auto_build,
     chapter_build,
     chat,
+    demo,
     feature_discovery,
     final_assembly,
     generate,
@@ -69,6 +70,7 @@ app.include_router(chapter_build.router, prefix="/projects/{slug}")
 app.include_router(quality_gates.router, prefix="/projects/{slug}")
 app.include_router(final_assembly.router, prefix="/projects/{slug}")
 app.include_router(chat.router, prefix="/projects/{slug}")
+app.include_router(demo.router, prefix="/projects/{slug}")
 app.include_router(generate.router)
 app.include_router(advisory_router)
 
