@@ -500,10 +500,14 @@ async def simulation_page(request: Request, session_id: str):
     from execution.advisory.agent_generator import get_agent_stats
     agent_stats = get_agent_stats(session.get("agents", []))
 
+    import json
+    agents = session.get("agents", [])
+
     return templates.TemplateResponse("simulation.html", {
         "request": request,
         "session": session,
         "agent_stats": agent_stats,
+        "agents_json": json.dumps(agents),
     })
 
 

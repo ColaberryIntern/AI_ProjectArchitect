@@ -3,273 +3,350 @@
 {% block title %}AI Simulation | AI Workforce Designer{% endblock %}
 
 {% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
-.sim-timeline { max-height: 600px; overflow-y: auto; }
-.sim-event { opacity: 0; transform: translateY(20px); transition: all 0.4s ease; }
-.sim-event.visible { opacity: 1; transform: translateY(0); }
-.sim-event.cory { border-left: 4px solid #1a1a2e; }
-.sim-event.agent { border-left: 4px solid #4361ee; }
-.sim-pulse { display: inline-block; width: 10px; height: 10px; border-radius: 50%; animation: pulse 1.5s infinite; }
-.sim-pulse.active { background: #22c55e; }
-.sim-pulse.idle { background: #94a3b8; animation: none; }
-@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }
-.counter-animate { transition: all 0.3s ease; }
+.sim-canvas { position: relative; min-height: 480px; background: #fafbfe; border-radius: 12px; overflow: hidden; }
+.sim-pulse { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.sim-pulse.active { background: #22c55e; animation: pulse 1.5s infinite; }
+.sim-pulse.idle { background: #94a3b8; }
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.3); } }
+.float-impact { position: absolute; animation: floatUp 2s ease forwards; pointer-events: none; font-weight: 700; font-size: 0.85rem; z-index: 30; }
+@keyframes floatUp { 0% { opacity:1; transform:translateY(0) scale(1); } 100% { opacity:0; transform:translateY(-40px) scale(1.1); } }
+.narration-bar { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; border-radius: 8px; }
+.event-log { max-height: 200px; overflow-y: auto; font-size: 0.75rem; }
+.event-log-item { border-left: 3px solid #dee2e6; padding: 4px 8px; margin-bottom: 4px; }
+.event-log-item.cory { border-left-color: #1a1a2e; }
+.event-log-item.specialist { border-left-color: #198754; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="text-center mb-4">
-    <h2 class="fw-bold">Your AI Organization in Motion</h2>
-    <p class="text-muted">Watch your {{ agent_stats.total_agents }} AI agents work together across {{ agent_stats.departments }} departments</p>
-</div>
-
-<!-- Narration Strip -->
-<div class="card border-0 shadow-sm mb-3" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
-    <div class="card-body py-2 px-4 d-flex align-items-center gap-2">
-        <i class="bi bi-cpu"></i>
-        <small id="simNarration">Press "Run Simulation" to watch your AI system operate</small>
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0">Your AI System in Motion</h4>
+        <small class="text-muted">{{ agent_stats.total_agents }} agents across {{ agent_stats.departments }} departments</small>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-primary active" id="mode-guided" onclick="setMode('guided')"><i class="bi bi-signpost me-1"></i>Guided</button>
+        <button class="btn btn-sm btn-outline-primary" id="mode-live" onclick="setMode('live')"><i class="bi bi-lightning me-1"></i>Live</button>
+        <button class="btn btn-sm btn-outline-primary" id="mode-exec" onclick="setMode('executive')"><i class="bi bi-speedometer2 me-1"></i>Executive</button>
     </div>
 </div>
 
-<!-- Mode Selector -->
-<div class="d-flex justify-content-center gap-2 mb-3">
-    <button class="btn btn-sm btn-primary active" id="mode-guided" onclick="setSimMode('guided')">
-        <i class="bi bi-signpost me-1"></i>Guided
-    </button>
-    <button class="btn btn-sm btn-outline-primary" id="mode-live" onclick="setSimMode('live')">
-        <i class="bi bi-lightning me-1"></i>Live
-    </button>
-    <button class="btn btn-sm btn-outline-primary" id="mode-executive" onclick="setSimMode('executive')">
-        <i class="bi bi-speedometer2 me-1"></i>Executive
-    </button>
+<!-- Narration Bar -->
+<div class="narration-bar p-3 mb-3 d-flex align-items-center gap-2">
+    <span class="sim-pulse" id="statusDot"></span>
+    <span id="narration">Click "Run Simulation" to watch your AI system operate</span>
 </div>
 
-<div class="row g-4">
-    <!-- Left: Live Timeline -->
-    <div class="col-lg-8">
+<div class="row g-3">
+    <!-- Main: Visual Canvas -->
+    <div class="col-lg-9">
         <div class="card border-0 shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <span class="sim-pulse" id="statusDot"></span>
-                    <strong class="ms-2" id="statusLabel">Ready</strong>
-                </div>
-                <button class="btn btn-primary" id="startBtn" onclick="startSimulation()">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <small class="text-muted"><i class="bi bi-diagram-3 me-1"></i>System View</small>
+                <button class="btn btn-primary btn-sm" id="startBtn" onclick="startSim()">
                     <i class="bi bi-play-fill me-1"></i>Run Simulation
                 </button>
             </div>
-            <div class="card-body p-0">
-                <div class="sim-timeline p-4" id="timeline">
-                    <div class="text-center text-muted py-5" id="emptyState">
-                        <i class="bi bi-play-circle display-3 mb-3 d-block"></i>
-                        <h5>Click "Run Simulation" to see your AI organization in action</h5>
-                        <p>Events will stream in real-time showing how your agents handle business scenarios</p>
-                    </div>
-                </div>
+            <div class="sim-canvas" id="simCanvas">
+                <div id="simGraph" style="width:100%;height:480px;"></div>
+                <!-- Floating impacts appear here -->
             </div>
         </div>
+
+        <!-- Collapsed event log -->
+        <details class="mt-2">
+            <summary class="text-muted small" style="cursor:pointer"><i class="bi bi-terminal me-1"></i>Event Log</summary>
+            <div class="event-log mt-2 p-2 bg-light rounded" id="eventLog"></div>
+        </details>
     </div>
 
-    <!-- Right: Live Stats -->
-    <div class="col-lg-4">
-        <div class="card border-0 shadow-sm sticky-top" style="top: 80px;">
-            <div class="card-body p-4">
-                <h6 class="fw-bold mb-3">Live Activity</h6>
-
-                <div class="text-center mb-4">
-                    <div class="fs-1 fw-bold text-primary counter-animate" id="eventCounter">0</div>
-                    <small class="text-muted">events processed</small>
+    <!-- Right: Metrics -->
+    <div class="col-lg-3">
+        <div class="card border-0 shadow-sm sticky-top" style="top:80px;">
+            <div class="card-body p-3">
+                <div class="text-center mb-3">
+                    <div class="fs-2 fw-bold text-primary" id="eventCount">0</div>
+                    <small class="text-muted">events</small>
                 </div>
-
-                <div class="mb-3">
+                <div class="progress mb-3" style="height:4px;">
+                    <div class="progress-bar" id="progressBar" style="width:0%;transition:width 0.5s;"></div>
+                </div>
+                <div class="d-flex justify-content-between small mb-1">
+                    <span><i class="bi bi-robot text-primary me-1"></i>Actions</span>
+                    <strong id="agentN">0</strong>
+                </div>
+                <div class="d-flex justify-content-between small mb-1">
+                    <span><i class="bi bi-cpu text-dark me-1"></i>AI COO</span>
+                    <strong id="coryN">0</strong>
+                </div>
+                <hr>
+                <div id="impactPanel">
                     <div class="d-flex justify-content-between small mb-1">
-                        <span>Progress</span>
-                        <span id="progressPct">0%</span>
+                        <span>Revenue Impact</span>
+                        <strong class="text-success" id="impRevenue">$0</strong>
                     </div>
-                    <div class="progress" style="height: 6px;">
-                        <div class="progress-bar bg-primary" id="progressBar" style="width: 0%; transition: width 0.5s;"></div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Hours Saved</span>
+                        <strong class="text-info" id="impHours">0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Actions Automated</span>
+                        <strong class="text-primary" id="impAuto">0</strong>
                     </div>
                 </div>
-
                 <hr>
-                <h6 class="fw-bold mb-2">Activity by Type</h6>
-                <div class="d-flex justify-content-between small mb-1">
-                    <span><i class="bi bi-robot text-primary me-1"></i>Agent Actions</span>
-                    <span class="fw-bold" id="agentCount">0</span>
-                </div>
-                <div class="d-flex justify-content-between small mb-1">
-                    <span><i class="bi bi-cpu text-dark me-1"></i>AI COO Insights</span>
-                    <span class="fw-bold" id="coryCount">0</span>
-                </div>
-
-                <hr>
-                <div id="summarySection" class="d-none">
-                    <h6 class="fw-bold mb-2 text-success"><i class="bi bi-check-circle me-1"></i>Simulation Complete</h6>
-                    <div id="highlights"></div>
-                    <div class="mt-3">
-                        <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary w-100 mb-2" data-track="book_strategy_call">
-                            <i class="bi bi-calendar-event me-2"></i>Schedule Strategy Call
-                        </a>
-                        <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-outline-primary w-100">
-                            <i class="bi bi-file-earmark-pdf me-2"></i>Get Full Report
-                        </a>
-                    </div>
+                <div id="donePanel" class="d-none">
+                    <div class="text-success fw-bold small mb-2"><i class="bi bi-check-circle me-1"></i>Complete</div>
+                    <div id="highlights" class="small mb-3"></div>
+                    <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary btn-sm w-100 mb-2" data-track="book_strategy_call">
+                        <i class="bi bi-calendar-event me-1"></i>Schedule Call
+                    </a>
+                    <a href="/advisory/{{ session.session_id }}/gate" class="btn btn-outline-primary btn-sm w-100">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>Get Report
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Agent data for graph -->
+<script id="sim-agents" type="application/json">{{ agents_json | safe }}</script>
+
 <script>
-var eventSource = null;
-var totalEvents = 0;
-var agentActions = 0;
-var coryActions = 0;
+var mode = 'guided';
+var totalEvts = 0, agentActs = 0, coryActs = 0;
+var impRevenue = 0, impHours = 0, impAuto = 0;
+var graphNodes = [], graphNodeMap = {};
 
-function startSimulation() {
-    var btn = document.getElementById('startBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+// ── Build simulation graph ─────────────────────────────────────
+(function() {
+    var raw;
+    try { raw = JSON.parse(document.getElementById('sim-agents').textContent); } catch(e) { return; }
+    if (!raw || !raw.length) return;
 
-    document.getElementById('statusDot').className = 'sim-pulse active';
-    document.getElementById('statusLabel').textContent = 'Simulating...';
-    document.getElementById('emptyState').style.display = 'none';
+    var container = document.getElementById('simGraph');
+    var w = container.clientWidth || 700;
+    var h = 480;
+    var deptColors = {'Executive':'#1a1a2e','Sales':'#4361ee','Customer Support':'#6f42c1','Marketing':'#198754','Operations':'#fd7e14','Finance':'#dc3545','Human Resources':'#6c757d','Technology':'#0dcaf0','Communication':'#20c997'};
 
-    eventSource = new EventSource('/advisory/{{ session.session_id }}/simulation/stream');
+    var nodes = [], edges = [], deptSet = {};
+    var coo = null;
+    raw.forEach(function(a) { if (a.is_cory) coo = a; });
 
-    eventSource.onmessage = function(e) {
-        var data = JSON.parse(e.data);
+    if (coo) nodes.push({id:'cory',label:'AI COO',type:'cory',r:35,color:'#1a1a2e',dept:'Executive'});
 
-        if (data.type === 'start') {
-            totalEvents = data.total;
-            return;
+    raw.forEach(function(a) {
+        if (a.is_cory) return;
+        var dept = a.department || 'Operations';
+        if (!deptSet[dept]) {
+            deptSet[dept] = true;
+            var sid = 'sys_'+dept.replace(/\s/g,'_');
+            nodes.push({id:sid,label:dept,type:'system',r:22,color:deptColors[dept]||'#4361ee',dept:dept});
+            if (coo) edges.push({source:sid,target:'cory'});
         }
-
-        if (data.type === 'complete') {
-            eventSource.close();
-            onSimulationComplete(data.summary);
-            return;
-        }
-
-        addEvent(data);
-    };
-
-    eventSource.onerror = function() {
-        eventSource.close();
-        document.getElementById('statusDot').className = 'sim-pulse idle';
-        document.getElementById('statusLabel').textContent = 'Finished';
-    };
-}
-
-function addEvent(data) {
-    var timeline = document.getElementById('timeline');
-    var isCory = data.type === 'cory_intelligence';
-    var isSpecialist = data.type === 'specialist_action';
-
-    if (isCory) coryActions++; else agentActions++;
-    var count = agentActions + coryActions;
-
-    var bgClass = isCory ? 'dark bg-opacity-10' : isSpecialist ? 'success bg-opacity-10' : 'light';
-    var textClass = isCory ? 'text-dark' : isSpecialist ? 'text-success' : 'text-primary';
-    var iconClass = isCory ? 'bi-cpu' : isSpecialist ? 'bi-stars' : 'bi-robot';
-    var badgeExtra = isSpecialist ? ' <span class="badge bg-success ms-1" style="font-size:0.55rem;">Specialist</span>' : '';
-
-    var el = document.createElement('div');
-    el.className = 'sim-event ' + (isCory ? 'cory' : 'agent') + ' card bg-' + bgClass + ' mb-3 p-3';
-    el.innerHTML =
-        '<div class="d-flex justify-content-between align-items-center mb-1">' +
-            '<strong class="' + textClass + '">' +
-                '<i class="bi ' + iconClass + ' me-1"></i>' +
-                data.agent + badgeExtra +
-            '</strong>' +
-            '<span class="badge bg-secondary">' + data.timestamp + '</span>' +
-        '</div>' +
-        '<div class="small mb-1"><strong>Event:</strong> ' + data.event + '</div>' +
-        '<div class="small mb-1"><strong>Action:</strong> ' + data.action + '</div>' +
-        '<div class="small text-success"><i class="bi bi-arrow-right me-1"></i>' + data.impact + '</div>';
-
-    timeline.appendChild(el);
-
-    // Trigger animation
-    requestAnimationFrame(function() {
-        el.classList.add('visible');
-        timeline.scrollTop = timeline.scrollHeight;
+        var nid = 'ag_'+nodes.length;
+        nodes.push({id:nid,label:a.name.replace('AI ',''),type:'agent',r:12,color:deptColors[dept]||'#4361ee',dept:dept,agentName:a.name});
+        edges.push({source:nid,target:'sys_'+dept.replace(/\s/g,'_')});
     });
 
-    // Update counters
-    document.getElementById('eventCounter').textContent = count;
-    document.getElementById('agentCount').textContent = agentActions;
-    document.getElementById('coryCount').textContent = coryActions;
+    // Build node lookup
+    nodes.forEach(function(n) { graphNodeMap[n.label.toLowerCase()] = n; graphNodeMap[n.id] = n; });
+    graphNodes = nodes;
 
-    if (totalEvents > 0) {
-        var pct = Math.round((count / totalEvents) * 100);
-        document.getElementById('progressBar').style.width = pct + '%';
-        document.getElementById('progressPct').textContent = pct + '%';
-    }
+    var svg = d3.select('#simGraph').append('svg').attr('width',w).attr('height',h).attr('viewBox','0 0 '+w+' '+h);
+    var defs = svg.append('defs');
+    var filt = defs.append('filter').attr('id','simGlow');
+    filt.append('feGaussianBlur').attr('stdDeviation','6').attr('result','blur');
+    var mg = filt.append('feMerge'); mg.append('feMergeNode').attr('in','blur'); mg.append('feMergeNode').attr('in','SourceGraphic');
+    defs.append('style').text('@keyframes simDash{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}.sim-edge{stroke-dasharray:5,5;animation:simDash 1.2s linear infinite}');
+
+    var sim = d3.forceSimulation(nodes)
+        .force('link',d3.forceLink(edges).id(function(d){return d.id}).distance(function(d){return d.source.type==='cory'||d.target.type==='cory'?100:60}))
+        .force('charge',d3.forceManyBody().strength(-250))
+        .force('center',d3.forceCenter(w/2,h/2))
+        .force('collision',d3.forceCollide().radius(function(d){return d.r+10}));
+
+    var link = svg.append('g').selectAll('line').data(edges).join('line').attr('class','sim-edge').attr('stroke','#e2e8f0').attr('stroke-width',1.5).attr('stroke-opacity',0.4);
+    var nodeG = svg.append('g').selectAll('g').data(nodes).join('g');
+
+    nodeG.append('circle').attr('r',function(d){return d.r})
+        .attr('fill',function(d){return d.type==='agent'?d3.color(d.color).brighter(0.6):d.color})
+        .attr('stroke',function(d){return d.type==='cory'?'#4361ee':'#fff'})
+        .attr('stroke-width',function(d){return d.type==='cory'?3:1.5})
+        .attr('filter',function(d){return d.type==='cory'?'url(#simGlow)':null});
+
+    // Cory pulse ring
+    nodeG.filter(function(d){return d.type==='cory'}).append('circle')
+        .attr('r',42).attr('fill','none').attr('stroke','#4361ee').attr('stroke-width',2).attr('opacity',0.3);
+
+    nodeG.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+        .attr('fill',function(d){return d.type==='agent'?'#333':'#fff'}).attr('font-size',function(d){return d.type==='cory'?'14px':d.type==='system'?'9px':'0'}).attr('font-weight','bold')
+        .text(function(d){return d.type==='cory'?'🧠':d.type==='system'?d.label.substring(0,3).toUpperCase():'';});
+
+    nodeG.append('text').attr('text-anchor','middle').attr('dy',function(d){return d.r+12}).attr('fill','#333').attr('font-size','8px')
+        .text(function(d){return d.label.length>16?d.label.substring(0,14)+'..':d.label;});
+
+    // Action label (hidden, shown during simulation)
+    nodeG.append('text').attr('class','action-label').attr('text-anchor','middle').attr('dy',-function(d){return d.r+8})
+        .attr('fill','#4361ee').attr('font-size','0').attr('font-weight','600');
+
+    sim.on('tick',function(){
+        link.attr('x1',function(d){return d.source.x}).attr('y1',function(d){return d.source.y})
+            .attr('x2',function(d){return d.target.x}).attr('y2',function(d){return d.target.y});
+        nodeG.attr('transform',function(d){
+            d.x=Math.max(d.r,Math.min(w-d.r,d.x)); d.y=Math.max(d.r,Math.min(h-d.r,d.y));
+            return 'translate('+d.x+','+d.y+')';
+        });
+    });
+
+    // ── Highlight API ──────────────────────────────────────────
+    window._simHighlight = function(agentName, actionLabel) {
+        var key = agentName.toLowerCase().replace('ai ','');
+        nodeG.selectAll('circle:first-of-type').transition().duration(200)
+            .attr('stroke-width',function(d){return d.label.toLowerCase().indexOf(key)>=0||d.agentName&&d.agentName.toLowerCase().indexOf(key)>=0?5:d.type==='cory'?3:1.5})
+            .attr('stroke',function(d){return d.label.toLowerCase().indexOf(key)>=0||d.agentName&&d.agentName.toLowerCase().indexOf(key)>=0?'#ffc107':d.type==='cory'?'#4361ee':'#fff'})
+            .attr('r',function(d){return d.label.toLowerCase().indexOf(key)>=0||d.agentName&&d.agentName.toLowerCase().indexOf(key)>=0?d.r*1.3:d.r});
+
+        // Show action label
+        if (actionLabel) {
+            nodeG.selectAll('.action-label').attr('font-size',function(d){
+                return d.label.toLowerCase().indexOf(key)>=0||d.agentName&&d.agentName.toLowerCase().indexOf(key)>=0?'9px':'0';
+            }).text(function(d){
+                return d.label.toLowerCase().indexOf(key)>=0||d.agentName&&d.agentName.toLowerCase().indexOf(key)>=0?actionLabel:'';
+            });
+        }
+
+        setTimeout(function(){
+            nodeG.selectAll('circle:first-of-type').transition().duration(600)
+                .attr('stroke-width',function(d){return d.type==='cory'?3:1.5})
+                .attr('stroke',function(d){return d.type==='cory'?'#4361ee':'#fff'})
+                .attr('r',function(d){return d.r});
+            nodeG.selectAll('.action-label').attr('font-size','0');
+        }, mode==='live'?800:1500);
+    };
+
+    // Cory special pulse
+    window._simCorySend = function() {
+        nodeG.filter(function(d){return d.type==='cory'}).select('circle:first-of-type')
+            .transition().duration(200).attr('r',45).attr('stroke-width',5).attr('stroke','#ffc107')
+            .transition().duration(800).attr('r',35).attr('stroke-width',3).attr('stroke','#4361ee');
+    };
+})();
+
+// ── Floating Impact ────────────────────────────────────────────
+function showFloatingImpact(text, color) {
+    var canvas = document.getElementById('simCanvas');
+    var el = document.createElement('div');
+    el.className = 'float-impact';
+    el.style.color = color || '#198754';
+    el.style.left = (100 + Math.random() * 300) + 'px';
+    el.style.top = (100 + Math.random() * 200) + 'px';
+    el.textContent = text;
+    canvas.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2200);
 }
 
-function onSimulationComplete(summary) {
-    document.getElementById('statusDot').className = 'sim-pulse idle';
-    document.getElementById('statusLabel').textContent = 'Complete';
-    document.getElementById('progressBar').style.width = '100%';
-    document.getElementById('progressPct').textContent = '100%';
+// ── Mode ───────────────────────────────────────────────────────
+function setMode(m) {
+    mode = m;
+    ['guided','live','exec'].forEach(function(k){
+        var btn = document.getElementById('mode-'+k);
+        if(btn) btn.className = 'btn btn-sm '+(k===m||k==='exec'&&m==='executive'?'btn-primary active':'btn-outline-primary');
+    });
+}
 
+// ── Simulation SSE ─────────────────────────────────────────────
+function startSim() {
     var btn = document.getElementById('startBtn');
-    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Replay';
-    btn.disabled = false;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+    document.getElementById('statusDot').className = 'sim-pulse active';
+
+    var es = new EventSource('/advisory/{{ session.session_id }}/simulation/stream');
+    es.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.type === 'start') { totalEvts = data.total; return; }
+        if (data.type === 'complete') { es.close(); onComplete(data.summary); return; }
+        processEvent(data);
+    };
+    es.onerror = function() { es.close(); document.getElementById('statusDot').className = 'sim-pulse idle'; };
+}
+
+function processEvent(data) {
+    var isCory = data.type === 'cory_intelligence';
+    var isSpec = data.type === 'specialist_action';
+
+    if (isCory) coryActs++; else agentActs++;
+    var count = agentActs + coryActs;
+
+    // Skip detail in executive mode
+    if (mode === 'executive' && !isCory) {
+        impAuto++;
+        updateCounters(count);
+        return;
+    }
+
+    // 1. Cory signal
+    if (isCory) {
+        window._simCorySend && _simCorySend();
+        showFloatingImpact('🧠 ' + data.event.substring(0, 30), '#1a1a2e');
+    }
+
+    // 2. Highlight agent node
+    var shortAction = data.action.substring(0, 25);
+    window._simHighlight && _simHighlight(data.agent, shortAction);
+
+    // 3. Floating impact
+    if (!isCory) {
+        impAuto++;
+        if (Math.random() > 0.5) { impRevenue += Math.floor(Math.random() * 8 + 2); showFloatingImpact('💰 +$' + (impRevenue) + 'K', '#198754'); }
+        if (Math.random() > 0.6) { impHours += Math.floor(Math.random() * 3 + 1); showFloatingImpact('⏱ +' + impHours + 'h saved', '#0dcaf0'); }
+    }
+
+    // 4. Update narration
+    var narr = isCory ? 'AI COO: ' + data.event.substring(0, 60) : data.agent + ': ' + data.action.substring(0, 50);
+    document.getElementById('narration').textContent = narr;
+
+    // 5. Event log (collapsed)
+    var log = document.getElementById('eventLog');
+    var logEl = document.createElement('div');
+    logEl.className = 'event-log-item ' + (isCory ? 'cory' : isSpec ? 'specialist' : '');
+    logEl.innerHTML = '<strong>' + data.agent + '</strong> ' + data.action.substring(0, 60);
+    log.appendChild(logEl);
+    log.scrollTop = log.scrollHeight;
+
+    updateCounters(count);
+}
+
+function updateCounters(count) {
+    document.getElementById('eventCount').textContent = count;
+    document.getElementById('agentN').textContent = agentActs;
+    document.getElementById('coryN').textContent = coryActs;
+    document.getElementById('impRevenue').textContent = '$' + impRevenue + 'K';
+    document.getElementById('impHours').textContent = impHours + 'h';
+    document.getElementById('impAuto').textContent = impAuto;
+    if (totalEvts > 0) document.getElementById('progressBar').style.width = Math.round(count/totalEvts*100) + '%';
+}
+
+function onComplete(summary) {
+    document.getElementById('statusDot').className = 'sim-pulse idle';
+    document.getElementById('narration').textContent = 'Simulation complete. Your AI system processed all scenarios successfully.';
+    document.getElementById('progressBar').style.width = '100%';
+    var btn = document.getElementById('startBtn');
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Replay'; btn.disabled = false;
     btn.onclick = function() { location.reload(); };
-
-    var summaryEl = document.getElementById('summarySection');
-    summaryEl.classList.remove('d-none');
-
-    var highlights = document.getElementById('highlights');
+    document.getElementById('donePanel').classList.remove('d-none');
     if (summary && summary.highlights) {
+        var hl = document.getElementById('highlights');
         summary.highlights.forEach(function(h) {
-            var div = document.createElement('div');
-            div.className = 'small mb-1';
-            div.innerHTML = '<i class="bi bi-check text-success me-1"></i>' + h;
-            highlights.appendChild(div);
+            var d = document.createElement('div');
+            d.innerHTML = '<i class="bi bi-check text-success me-1"></i>' + h;
+            hl.appendChild(d);
         });
     }
 }
-
-// ── Mode selector ──────────────────────────────────────────────
-var simMode = 'guided';
-function setSimMode(mode) {
-    simMode = mode;
-    ['guided', 'live', 'executive'].forEach(function(m) {
-        var btn = document.getElementById('mode-' + m);
-        if (btn) btn.className = 'btn btn-sm ' + (m === mode ? 'btn-primary active' : 'btn-outline-primary');
-    });
-}
-
-// ── Narration update (called from addEvent) ────────────────────
-function updateNarration(data) {
-    var el = document.getElementById('simNarration');
-    if (!el) return;
-    var narrations = {
-        'agent_action': 'AI agent executing: ' + data.action,
-        'specialist_action': 'Specialist deployed: ' + data.agent,
-        'cory_intelligence': 'AI COO detected pattern: ' + data.event,
-    };
-    el.textContent = narrations[data.type] || data.action || 'Processing...';
-}
-
-// Patch addEvent to include narration
-var _origAddEvent = addEvent;
-addEvent = function(data) {
-    // Skip detailed events in executive mode
-    if (simMode === 'executive' && data.type === 'agent_action') {
-        agentActions++;
-        document.getElementById('eventCounter').textContent = agentActions + coryActions;
-        return;
-    }
-    _origAddEvent(data);
-    updateNarration(data);
-
-    // Try to highlight network node if available
-    if (typeof window.highlightNetworkNode === 'function') {
-        window.highlightNetworkNode(data.agent);
-    }
-};
 </script>
 {% endblock %}
