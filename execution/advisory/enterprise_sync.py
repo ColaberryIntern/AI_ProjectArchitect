@@ -137,6 +137,14 @@ def build_lead_payload(session: dict) -> dict:
                 "primary_problem": problem.get("primary_problem", ""),
                 "agent_count": len(session.get("agents", [])),
                 "capabilities_selected": len(session.get("selected_capabilities", [])),
+                "questions_and_answers": [
+                    {"question": a.get("question_text", ""), "answer": a.get("answer_text", "")[:500]}
+                    for a in session.get("answers", [])
+                ],
+                "session_summary": (session.get("business_idea", "") or "")[:1000],
+                "maturity_assessment": f"{maturity_overall}/5" if maturity_overall else "",
+                "selected_outcomes": session.get("selected_outcomes", []),
+                "selected_ai_systems": session.get("selected_ai_systems", []),
             },
         },
         "metadata": {

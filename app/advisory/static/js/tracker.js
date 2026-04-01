@@ -162,7 +162,32 @@
   function onFormSubmit(e) {
     var form = e.target;
     if (form && form.tagName === 'FORM') {
-      push('form_submit', { form_action: form.action || '', form_id: form.id || '' });
+      // Capture form field values (skip passwords)
+      var formData = {};
+      var fields = form.querySelectorAll('input, textarea, select');
+      fields.forEach(function(field) {
+        var name = field.name || field.id;
+        if (!name || field.type === 'password' || field.type === 'hidden') return;
+        if (field.type === 'checkbox') { formData[name] = field.checked; return; }
+        if (field.value) formData[name] = field.value.slice(0, 500);
+      });
+      push('form_submit', {
+        form_action: form.action || '',
+        form_id: form.id || '',
+        form_data: formData
+      });
+
+      // Auto-identify visitor if email field is present
+      var emailField = form.querySelector('input[type="email"], input[name="email"]');
+      var nameField = form.querySelector('input[name="name"]');
+      var companyField = form.querySelector('input[name="company"]');
+      if (emailField && emailField.value) {
+        identifyVisitor(
+          emailField.value,
+          nameField ? nameField.value : '',
+          companyField ? companyField.value : ''
+        );
+      }
     }
   }
 
@@ -205,6 +230,25 @@
       if (document.visibilityState === 'visible') push('heartbeat');
     }, 60000);
   }
+
+  // --- Identify visitor by email (links fingerprint to enterprise lead) ---
+  function identifyVisitor(email, name, company) {
+    if (!email) return;
+    var fp = ensureFingerprint();
+    fetch(API + '/api/t/identify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: fp, email: email, name: name || '', company: company || '' }),
+      keepalive: true
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.lead_id) {
+        localStorage.setItem(LEAD_KEY, String(data.lead_id));
+        localStorage.setItem(LID_KEY, String(data.lead_id));
+      }
+    }).catch(function() {});
+  }
+
+  window.identifyVisitor = identifyVisitor;
 
   window.trackBookingEvent = function(eventType, data) {
     push(eventType, data || {});

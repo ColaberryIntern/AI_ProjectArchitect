@@ -749,6 +749,7 @@ async def calendar_book(request: Request):
                     "scheduled_at": booking.get("startTime", ""),
                     "meet_link": booking.get("meetLink", ""),
                     "event_id": booking.get("eventId", ""),
+                    "prep_notes": _build_call_prep(session),
                 }
                 asyncio.ensure_future(send_enterprise_event("strategy_call.booked", payload))
         except Exception:
@@ -797,6 +798,40 @@ async def track_event_api(request: Request):
     )
 
     return JSONResponse({"event_id": event["event_id"]})
+
+
+def _build_call_prep(session: dict) -> str:
+    """Build strategy call prep notes from session data."""
+    lines = []
+    lead = session.get("lead") or {}
+    if lead.get("company"):
+        lines.append(f"Company: {lead['company']}")
+    if session.get("business_idea"):
+        lines.append(f"Business Idea: {session['business_idea'][:300]}")
+
+    problem = session.get("problem_analysis") or {}
+    if problem.get("primary_label"):
+        lines.append(f"Primary Focus: {problem['primary_label']}")
+
+    maturity = session.get("maturity_score") or {}
+    if isinstance(maturity, dict) and maturity.get("overall"):
+        lines.append(f"AI Readiness: {maturity['overall']}/5")
+
+    impact = session.get("impact_model") or {}
+    roi = impact.get("roi_summary", {})
+    if roi.get("annual_benefit"):
+        from execution.advisory.impact_calculator import format_currency
+        lines.append(f"Projected Annual Benefit: {format_currency(roi['annual_benefit'])}")
+
+    # Key Q&A
+    for a in session.get("answers", [])[:5]:
+        q = a.get("question_text", "")
+        ans = a.get("answer_text", "")
+        if q and ans:
+            lines.append(f"Q: {q[:80]}")
+            lines.append(f"A: {ans[:200]}")
+
+    return "\n".join(lines)
 
 
 # ─── Lead Admin View ────────────────────────────────────────────────
