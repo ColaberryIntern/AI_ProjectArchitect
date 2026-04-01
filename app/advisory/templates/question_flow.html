@@ -51,8 +51,18 @@
         </div>
         {% endfor %}
 
+        <!-- Follow-up (if answer was off-topic) -->
+        {% if session.pending_follow_up %}
+        <div class="msg msg-bot" id="followUp">
+            <div class="msg-avatar bg-warning-subtle text-warning"><i class="bi bi-chat-dots"></i></div>
+            <div class="bubble" style="background: #fff9e6;">
+                {{ session.pending_follow_up }}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Current question (bot is asking) -->
-        {% if question %}
+        {% if question and not session.pending_follow_up %}
         <div class="msg msg-bot" id="currentQuestion">
             <div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div>
             <div class="bubble">
@@ -62,9 +72,16 @@
                 {% endif %}
             </div>
         </div>
+        {% elif question and session.pending_follow_up %}
+        <!-- Still show the question context but dimmed -->
+        <div class="msg msg-bot" style="opacity: 0.5;">
+            <div class="msg-avatar bg-light text-muted"><i class="bi bi-cpu"></i></div>
+            <div class="bubble bg-light"><small class="text-muted">{{ question.text }}</small></div>
+        </div>
+        {% endif %}
 
         <!-- Clickable options (single or multi-select) -->
-        {% if question.get('options') %}
+        {% if question and not session.pending_follow_up and question.get('options') %}
         <div class="d-flex flex-wrap gap-2 ms-5 mb-2" id="optionChips">
             {% for opt in question.options %}
             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill option-chip" onclick="toggleOption(this, '{{ opt }}', {{ 'true' if question.get('multi_select') else 'false' }})">
@@ -75,7 +92,7 @@
         {% endif %}
 
         <!-- Clickable example responses -->
-        {% if question.get('examples') %}
+        {% if question and not session.pending_follow_up and question.get('examples') %}
         <div class="ms-5 mb-2">
             <small class="text-muted d-block mb-1"><i class="bi bi-lightbulb me-1"></i>Or choose an example:</small>
             <div class="d-flex flex-wrap gap-2">
@@ -86,7 +103,6 @@
                 {% endfor %}
             </div>
         </div>
-        {% endif %}
         {% endif %}
     </div>
 

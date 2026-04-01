@@ -106,37 +106,90 @@ async def submit_answer(
     request: Request,
     session_id: str,
 ):
-    """Record an answer and redirect to next question or generation."""
+    """Record an answer with LLM validation. Rejects off-topic answers."""
     from execution.advisory.advisory_state_manager import (
         load_session,
         record_answer,
         save_session,
         set_selected_systems,
     )
-    from execution.advisory.question_engine import get_next_question, is_complete
+    from execution.advisory.question_engine import (
+        get_next_question,
+        get_remaining_question_ids,
+        is_complete,
+    )
 
     try:
         session = load_session(session_id)
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
 
-    # Parse form data manually to handle multi-value checkbox fields
+    # Parse form data
     form_data = await request.form()
     answer_text = str(form_data.get("answer_text", "")).strip()
     email = str(form_data.get("email", "")).strip()
     selected_systems = [str(v) for v in form_data.getlist("selected_systems")]
 
-    # Capture soft email if provided
+    # Capture soft email
     if email and not session.get("email"):
         session["email"] = email.strip()
         save_session(session)
 
+    # Clear any pending follow-up (user is responding to it)
+    if session.get("pending_follow_up"):
+        session["pending_follow_up"] = None
+        save_session(session)
+
     question = get_next_question(session)
-    if question and answer_text:
-        record_answer(session, question["id"], question["text"], answer_text)
+    if not question or not answer_text:
+        return RedirectResponse(url=f"/advisory/{session_id}/questions", status_code=303)
+
+    # ═══ LLM VALIDATION ═══════════════════════════════════════════
+    try:
+        from execution.advisory.answer_validator import validate_answer
+        remaining = get_remaining_question_ids(session)
+        validation = validate_answer(
+            question=question,
+            answer_text=answer_text,
+            previous_answers=session.get("answers", []),
+            remaining_question_ids=remaining,
+        )
+    except Exception:
+        # Fallback: accept answer as-is
+        validation = {"addresses_question": True, "quality": "complete", "follow_up": None, "already_answered": []}
+
+    # If answer is completely off-topic, don't advance — ask follow-up
+    if validation.get("quality") == "off_topic" and validation.get("follow_up"):
+        session["pending_follow_up"] = validation["follow_up"]
+        save_session(session)
+        return RedirectResponse(url=f"/advisory/{session_id}/questions", status_code=303)
+
+    # Answer is valid (complete or partial) — record it
+    record_answer(session, question["id"], question["text"], answer_text)
 
     if selected_systems:
         set_selected_systems(session, selected_systems)
+
+    # Mark any questions that were already answered in this response
+    already_answered = validation.get("already_answered", [])
+    if already_answered:
+        skipped = session.get("skipped_questions", [])
+        for qid in already_answered:
+            if qid not in skipped:
+                skipped.append(qid)
+        session["skipped_questions"] = skipped
+        save_session(session)
+
+    # Advance past any skipped questions
+    skipped = set(session.get("skipped_questions", []))
+    while session["current_question_index"] < 10:
+        from execution.advisory.question_engine import get_question
+        next_q = get_question(session["current_question_index"])
+        if next_q and next_q["id"] in skipped:
+            session["current_question_index"] += 1
+        else:
+            break
+    save_session(session)
 
     if is_complete(session):
         from execution.advisory.event_tracker import track_event

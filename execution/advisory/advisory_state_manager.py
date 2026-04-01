@@ -61,6 +61,8 @@ def initialize_session(business_idea: str) -> dict:
         "current_question_index": 0,
         "answers": [],
         "email": None,
+        "pending_follow_up": None,
+        "skipped_questions": [],
         "selected_outcomes": [],
         "selected_ai_systems": [],
         "selected_systems": [],

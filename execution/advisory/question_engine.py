@@ -141,12 +141,31 @@ def get_all_questions() -> list[dict]:
 
 
 def get_next_question(session: dict) -> dict | None:
+    """Get the next unanswered, non-skipped question."""
+    skipped = set(session.get("skipped_questions", []))
     current_index = session.get("current_question_index", 0)
-    return get_question(current_index)
+
+    while current_index < TOTAL_QUESTIONS:
+        q = ADVISORY_QUESTIONS[current_index]
+        if q["id"] not in skipped:
+            return q
+        current_index += 1
+
+    return None  # All questions answered or skipped
+
+
+def get_remaining_question_ids(session: dict) -> list[str]:
+    """Get IDs of questions not yet answered or skipped."""
+    answered_ids = {a["question_id"] for a in session.get("answers", [])}
+    skipped = set(session.get("skipped_questions", []))
+    return [q["id"] for q in ADVISORY_QUESTIONS if q["id"] not in answered_ids and q["id"] not in skipped]
 
 
 def is_complete(session: dict) -> bool:
-    return len(session.get("answers", [])) >= TOTAL_QUESTIONS
+    """Check if all questions have been answered or skipped."""
+    answered = len(session.get("answers", []))
+    skipped = len(session.get("skipped_questions", []))
+    return (answered + skipped) >= TOTAL_QUESTIONS
 
 
 def get_progress(session: dict) -> dict:
