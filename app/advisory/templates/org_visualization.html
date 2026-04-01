@@ -26,6 +26,14 @@
     <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2"><i class="bi bi-cpu me-1"></i>AI Operating System</span>
     <h2 class="fw-bold">Your AI-Powered Organization</h2>
     <p class="text-muted">Here's the complete system designed for your business</p>
+    {% if confidence %}
+    <div class="d-inline-flex align-items-center gap-2 mt-2">
+        <span class="badge bg-{{ 'success' if confidence.score >= 80 else 'primary' if confidence.score >= 60 else 'warning' }} px-3 py-2">
+            <i class="bi bi-shield-check me-1"></i>Confidence: {{ confidence.score }}%
+        </span>
+        <small class="text-muted">Based on {{ confidence.based_on }} similar system{{ 's' if confidence.based_on > 1 else '' }}</small>
+    </div>
+    {% endif %}
 </div>
 
 <!-- View Toggle -->
@@ -734,6 +742,28 @@ function playAllFlows() {
                 {% for item in phase.tasks %}
                 <div class="small text-muted mb-1"><i class="bi bi-check2 text-success me-1"></i>{{ item }}</div>
                 {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══ Optimization Suggestions ════════════════════════════════════ -->
+{% if optimization_suggestions %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-primary bg-opacity-10">
+        <strong><i class="bi bi-lightbulb me-2 text-primary"></i>Recommended Improvements</strong>
+    </div>
+    <div class="card-body p-3">
+        {% for suggestion in optimization_suggestions %}
+        <div class="d-flex align-items-start gap-3 {{ 'mb-3 pb-3 border-bottom' if not loop.last else '' }}">
+            <span class="badge bg-{{ 'danger' if suggestion.impact == 'high' else 'warning' if suggestion.impact == 'moderate' else 'info' }} rounded-circle p-2">
+                <i class="bi bi-{{ 'plus-circle' if suggestion.type == 'add_capability' else 'arrow-down-circle' if suggestion.type == 'reduce_complexity' else 'stars' }}"></i>
+            </span>
+            <div>
+                <strong class="small">{{ suggestion.title }}</strong>
+                <br><small class="text-muted">{{ suggestion.description }}</small>
             </div>
         </div>
         {% endfor %}

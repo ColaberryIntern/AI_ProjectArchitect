@@ -306,10 +306,21 @@ def map_capabilities(session: dict) -> dict:
     primary_domains = set(goal_domains["primary"])
     secondary_domains = set(goal_domains["secondary"])
 
-    # 4. Score every capability: vector + entities + domain penalty
+    # 4. Load adaptive weights (learned from outcomes)
+    try:
+        from execution.advisory.outcome_tracker import get_capability_weight_adjustment
+        has_learning = True
+    except Exception:
+        has_learning = False
+
+    # 5. Score every capability: vector + entities + domain penalty + learned adjustment
     scored = []
     for cap in CAPABILITY_CATALOG:
         score = _score_capability(cap, problem_vector)
+
+        # Apply learned weight adjustment (multiplier ~0.85-1.15)
+        if has_learning:
+            score *= get_capability_weight_adjustment(cap["id"])
 
         # Entity signal boost (+0.15 per entity match, up to +0.45)
         entity_match_count = entity_boosts.get(cap["id"], 0)

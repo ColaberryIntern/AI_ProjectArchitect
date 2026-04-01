@@ -418,6 +418,16 @@ async def show_results(request: Request, session_id: str):
             status_code=303,
         )
 
+    # Track outcome: viewed results
+    try:
+        from execution.advisory.outcome_tracker import record_outcome
+        record_outcome(session_id, "viewed_results", {
+            "capabilities": session.get("selected_capabilities", []),
+            "domain": (session.get("problem_analysis") or {}).get("primary_problem", ""),
+        })
+    except Exception:
+        pass
+
     org_tree = flatten_org_tree(session["org_structure"])
     org_stats = get_org_stats(session["org_structure"])
     maturity_label = get_maturity_label(session["maturity_score"]["overall"])
@@ -441,6 +451,15 @@ async def show_results(request: Request, session_id: str):
     problem_analysis = session.get("problem_analysis")
     architecture = session.get("architecture")
 
+    # Confidence score + optimization suggestions
+    try:
+        from execution.advisory.outcome_tracker import calculate_system_confidence, generate_optimization_suggestions
+        confidence = calculate_system_confidence(session)
+        optimization_suggestions = generate_optimization_suggestions(session)
+    except Exception:
+        confidence = {"score": 75, "based_on": 1, "factors": {}}
+        optimization_suggestions = []
+
     return templates.TemplateResponse("org_visualization.html", {
         "request": request,
         "session": session,
@@ -456,6 +475,8 @@ async def show_results(request: Request, session_id: str):
         "inaction_messages": inaction_messages,
         "problem_analysis": problem_analysis,
         "architecture": architecture,
+        "confidence": confidence,
+        "optimization_suggestions": optimization_suggestions,
         "get_dimension_label": get_dimension_label,
         "format_currency": format_currency,
     })
@@ -609,6 +630,16 @@ async def save_lead(
             }))
         except Exception:
             logger.warning("Enterprise PDF sync failed (non-blocking)", exc_info=True)
+
+    # Track outcome: downloaded PDF (strong positive signal)
+    try:
+        from execution.advisory.outcome_tracker import record_outcome
+        record_outcome(session_id, "downloaded_pdf", {
+            "capabilities": session.get("selected_capabilities", []),
+            "domain": (session.get("problem_analysis") or {}).get("primary_problem", ""),
+        })
+    except Exception:
+        pass
 
     return RedirectResponse(
         url=f"/advisory/{session_id}/gate?saved=true",
