@@ -85,6 +85,30 @@ class TestRecordAnswer:
         assert len(session["answers"]) == 3
         assert session["current_question_index"] == 3
 
+    def test_index_advances_correctly_with_skipped_questions(self, advisory_output_dir):
+        """Verify no off-by-one when questions are skipped between answers."""
+        from execution.advisory.advisory_state_manager import initialize_session, record_answer, save_session
+
+        session = initialize_session("Test idea")
+        # Answer Q1 at index 0
+        record_answer(session, "q1_business_overview", "Q1", "We are a logistics company")
+        assert session["current_question_index"] == 1
+
+        # Simulate Q2 being skipped (already answered via LLM detection)
+        session["skipped_questions"] = ["q2_company_size"]
+        session["current_question_index"] = 2  # Skip loop would advance past Q2
+        save_session(session)
+
+        # Answer Q3 at index 2 — index must advance to 3, not regress to 2
+        record_answer(session, "q3_departments", "Q3", "Sales, Operations")
+        assert session["current_question_index"] == 3
+        assert len(session["answers"]) == 2
+
+        # Answer Q4 at index 3
+        record_answer(session, "q4_bottlenecks", "Q4", "Manual data entry")
+        assert session["current_question_index"] == 4
+        assert len(session["answers"]) == 3
+
     def test_persists_answer_to_disk(self, advisory_output_dir):
         from execution.advisory.advisory_state_manager import initialize_session, load_session, record_answer
 

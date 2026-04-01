@@ -97,6 +97,15 @@ def build_lead_payload(session: dict) -> dict:
     company = lead.get("company", "")
     role = lead.get("role", "")
 
+    # Pull the original business idea with robust fallback chain
+    idea_input = session.get("business_idea", "") or ""
+    if not idea_input:
+        # Fallback: Q1 answer is "What does your business do?"
+        for a in session.get("answers", []):
+            if a.get("question_id") == "q1_business_overview":
+                idea_input = a.get("answer_text", "")
+                break
+
     # Extract departments from capability map
     departments = [d.get("name", "") for d in cap_map.get("departments", [])]
 
@@ -128,7 +137,7 @@ def build_lead_payload(session: dict) -> dict:
         "recommendation": {
             "type": "ai_workforce_design",
             "title": f"AI Workforce Design for {company or 'Organization'}",
-            "description": (session.get("business_idea", "") or "")[:500],
+            "description": idea_input[:500] if idea_input else "Advisory session completed",
             "confidence": round(confidence, 2),
             "severity": severity,
             "status": session.get("status", "complete"),
@@ -141,7 +150,7 @@ def build_lead_payload(session: dict) -> dict:
                     {"question": a.get("question_text", ""), "answer": a.get("answer_text", "")[:500]}
                     for a in session.get("answers", [])
                 ],
-                "session_summary": (session.get("business_idea", "") or "")[:1000],
+                "session_summary": idea_input[:1000] if idea_input else "",
                 "maturity_assessment": f"{maturity_overall}/5" if maturity_overall else "",
                 "selected_outcomes": session.get("selected_outcomes", []),
                 "selected_ai_systems": session.get("selected_ai_systems", []),

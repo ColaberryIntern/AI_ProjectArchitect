@@ -161,7 +161,7 @@ def record_answer(session: dict, question_id: str, question_text: str, answer_te
         "answered_at": _now(),
     }
     session["answers"].append(answer)
-    session["current_question_index"] = len(session["answers"])
+    session["current_question_index"] += 1
     save_session(session)
     return session
 
