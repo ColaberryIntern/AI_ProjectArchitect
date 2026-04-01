@@ -513,6 +513,59 @@ function playAllFlows() {
 </div>
 {% endif %}
 
+<!-- ═══ System Architecture (Engines) ═══════════════════════════════ -->
+{% if architecture and architecture.engines %}
+<h4 class="fw-bold mb-3"><i class="bi bi-layers me-2"></i>AI System Architecture</h4>
+<p class="text-muted small mb-3">{{ architecture.total_engines }} engines powering {{ architecture.total_capabilities }} capabilities</p>
+<div class="row g-3 mb-4">
+    {% for engine_id, engine in architecture.engines.items() %}
+    {% set role = architecture.engine_roles.get(engine_id, 'SECONDARY') %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm {{ 'border-start border-4' if role == 'PRIMARY DRIVER' else '' }}" style="{{ 'border-color: #4361ee !important;' if role == 'PRIMARY DRIVER' else 'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;' if role == 'INTELLIGENCE' else '' }}">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi {{ engine.icon }} fs-4 {{ 'text-' + engine.color if role != 'INTELLIGENCE' else '' }}"></i>
+                    <div>
+                        <strong style="font-size: 0.9rem;">{{ engine.name }}</strong>
+                        <span class="badge bg-{{ 'primary' if role == 'PRIMARY DRIVER' else 'dark' if role == 'INTELLIGENCE' else 'secondary' if role == 'ENABLEMENT' else 'info' }} ms-1" style="font-size: 0.55rem;">{{ role }}</span>
+                    </div>
+                </div>
+                <small class="{{ 'opacity-75' if role == 'INTELLIGENCE' else 'text-muted' }} d-block mb-2">{{ engine.purpose }}</small>
+                <div class="d-flex flex-wrap gap-1">
+                    {% for cap in engine.capabilities %}
+                    <span class="badge bg-{{ engine.color }}-subtle text-{{ engine.color if role != 'INTELLIGENCE' else 'light' }} border" style="font-size: 0.6rem;">{{ cap.name }}</span>
+                    {% endfor %}
+                </div>
+                {% if engine.agents %}
+                <div class="mt-2 small {{ 'opacity-75' if role == 'INTELLIGENCE' else 'text-muted' }}">
+                    <i class="bi bi-robot me-1"></i>{{ engine.agents | length }} agent{{ 's' if engine.agents | length > 1 else '' }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Dependency graph (simple text) -->
+{% if architecture.dependencies %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-3">
+        <strong class="small"><i class="bi bi-diagram-3 me-2"></i>System Dependencies</strong>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            {% for dep in architecture.dependencies %}
+            <span class="badge bg-light text-dark border" style="font-size: 0.65rem;">
+                {{ architecture.engines[dep.from].name if dep.from in architecture.engines else dep.from }}
+                <i class="bi bi-arrow-right mx-1"></i>
+                {{ architecture.engines[dep.to].name if dep.to in architecture.engines else dep.to }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
 <!-- ═══ Agent Architecture (Expandable Cards) ══════════════════════ -->
 {% if agents %}
 <h4 class="fw-bold mb-3"><i class="bi bi-robot me-2"></i>AI Agent Architecture</h4>

@@ -374,6 +374,13 @@ async def generate_results(request: Request, session_id: str):
     impact = calculate_impact(capability_map, maturity, answers, business_idea)
     set_impact_model(session, impact)
 
+    # Build structured architecture (engines, dependencies, flows)
+    from execution.advisory.architecture_builder import build_architecture
+    architecture = build_architecture(selected_caps, include_coo=include_cory)
+    session["architecture"] = architecture
+    from execution.advisory.advisory_state_manager import save_session
+    save_session(session)
+
     advance_status(session, "complete")
 
     track_event(
@@ -432,6 +439,7 @@ async def show_results(request: Request, session_id: str):
     timeline = generate_implementation_timeline(session)
     inaction_messages = generate_personalized_cost_of_inaction(session)
     problem_analysis = session.get("problem_analysis")
+    architecture = session.get("architecture")
 
     return templates.TemplateResponse("org_visualization.html", {
         "request": request,
@@ -447,6 +455,7 @@ async def show_results(request: Request, session_id: str):
         "timeline": timeline,
         "inaction_messages": inaction_messages,
         "problem_analysis": problem_analysis,
+        "architecture": architecture,
         "get_dimension_label": get_dimension_label,
         "format_currency": format_currency,
     })
