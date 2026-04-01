@@ -154,6 +154,7 @@ def build_lead_payload(session: dict) -> dict:
             "estimated_roi": round(estimated_roi),
             "departments": departments,
             "systems": systems,
+            "visitor_fingerprint": session.get("visitor_fingerprint", ""),
         },
     }
 

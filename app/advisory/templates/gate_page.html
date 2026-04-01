@@ -49,7 +49,8 @@
 
         <div class="card border-0 shadow">
             <div class="card-body p-5">
-                <form action="/advisory/{{ session.session_id }}/save-lead" method="POST">
+                <form action="/advisory/{{ session.session_id }}/save-lead" method="POST" id="leadForm">
+                    <input type="hidden" name="visitor_fingerprint" id="visitor_fp">
                     <div class="mb-3">
                         <label for="name" class="form-label fw-semibold">Full Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-lg" id="name" name="name" required placeholder="Jane Smith">
@@ -79,4 +80,9 @@
 
     </div>
 </div>
+<script>
+// Pass visitor fingerprint from localStorage to the form
+var fpField = document.getElementById('visitor_fp');
+if (fpField) fpField.value = localStorage.getItem('cb_visitor_fp') || '';
+</script>
 {% endblock %}

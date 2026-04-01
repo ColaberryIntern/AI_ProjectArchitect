@@ -570,16 +570,13 @@ async def gate_page(request: Request, session_id: str):
 async def save_lead(
     request: Request,
     session_id: str,
-    name: str = Form(...),
-    email: str = Form(...),
-    company: str = Form(default=""),
-    role: str = Form(default=""),
 ):
     """Capture lead info, create/update lead record, generate PDF."""
     from execution.advisory.advisory_state_manager import (
         advance_status,
         load_session,
         record_lead,
+        save_session,
         set_pdf_path,
     )
     from execution.advisory.advisory_to_lead_mapper import map_advisory_to_lead
@@ -589,6 +586,19 @@ async def save_lead(
         session = load_session(session_id)
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
+
+    # Parse form data
+    form_data = await request.form()
+    name = str(form_data.get("name", "")).strip()
+    email = str(form_data.get("email", "")).strip()
+    company = str(form_data.get("company", "")).strip()
+    role = str(form_data.get("role", "")).strip()
+    visitor_fingerprint = str(form_data.get("visitor_fingerprint", "")).strip()
+
+    # Store fingerprint on session for enterprise sync
+    if visitor_fingerprint:
+        session["visitor_fingerprint"] = visitor_fingerprint
+        save_session(session)
 
     record_lead(session, name, email, company, role)
     advance_status(session, "gated")
