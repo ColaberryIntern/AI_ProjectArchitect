@@ -176,7 +176,11 @@ var graphNodes = [], graphNodeMap = {};
     var filt = defs.append('filter').attr('id','simGlow');
     filt.append('feGaussianBlur').attr('stdDeviation','6').attr('result','blur');
     var mg = filt.append('feMerge'); mg.append('feMergeNode').attr('in','blur'); mg.append('feMergeNode').attr('in','SourceGraphic');
-    defs.append('style').text('@keyframes simDash{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}.sim-edge{stroke-dasharray:5,5;animation:simDash 1.2s linear infinite}');
+    defs.append('style').text(
+        '@keyframes simDash{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}' +
+        '.sim-edge{stroke-dasharray:8,4;animation:simDash 2s linear infinite}' +
+        '.signal-dot{fill:#ffc107;}'
+    );
 
     var sim = d3.forceSimulation(nodes)
         .force('link',d3.forceLink(edges).id(function(d){return d.id}).distance(function(d){return d.source.type==='cory'||d.target.type==='cory'?160:100}))
@@ -184,7 +188,15 @@ var graphNodes = [], graphNodeMap = {};
         .force('center',d3.forceCenter(w/2,h/2))
         .force('collision',d3.forceCollide().radius(function(d){return d.r+10}));
 
-    var link = svg.append('g').selectAll('line').data(edges).join('line').attr('class','sim-edge').attr('stroke','#e2e8f0').attr('stroke-width',1.5).attr('stroke-opacity',0.4);
+    var linkG = svg.append('g');
+    var link = linkG.selectAll('line').data(edges).join('line')
+        .attr('class','sim-edge')
+        .attr('stroke',function(d) {
+            var src = typeof d.source === 'object' ? d.source : nodes.find(function(n){return n.id===d.source});
+            return src && src.type === 'cory' ? '#4361ee' : '#94a3b8';
+        })
+        .attr('stroke-width', 2.5)
+        .attr('stroke-opacity', 0.35);
     var nodeG = svg.append('g').selectAll('g').data(nodes).join('g');
 
     nodeG.append('circle').attr('r',function(d){return d.r})
@@ -246,8 +258,76 @@ var graphNodes = [], graphNodeMap = {};
     // Cory special pulse
     window._simCorySend = function() {
         nodeG.filter(function(d){return d.type==='cory'}).select('circle:first-of-type')
-            .transition().duration(200).attr('r',45).attr('stroke-width',5).attr('stroke','#ffc107')
-            .transition().duration(800).attr('r',35).attr('stroke-width',3).attr('stroke','#4361ee');
+            .transition().duration(200).attr('r',55).attr('stroke-width',6).attr('stroke','#ffc107')
+            .transition().duration(800).attr('r',50).attr('stroke-width',3).attr('stroke','#4361ee');
+
+        // Send signal pulses from Cory to all connected system nodes
+        link.each(function(d) {
+            var src = typeof d.source === 'object' ? d.source : null;
+            var tgt = typeof d.target === 'object' ? d.target : null;
+            if (src && tgt && (src.type === 'cory' || tgt.type === 'cory')) {
+                _animateSignal(src, tgt);
+            }
+        });
+    };
+
+    // ── Signal animation: dot traveling along a connection line ────
+    function _animateSignal(fromNode, toNode) {
+        if (!fromNode || !toNode || !fromNode.x || !toNode.x) return;
+        var dot = svg.append('circle')
+            .attr('class', 'signal-dot')
+            .attr('r', 5)
+            .attr('cx', fromNode.x)
+            .attr('cy', fromNode.y)
+            .attr('fill', '#ffc107')
+            .attr('opacity', 0.9);
+
+        dot.transition()
+            .duration(600)
+            .ease(d3.easeQuadInOut)
+            .attr('cx', toNode.x)
+            .attr('cy', toNode.y)
+            .attr('r', 3)
+            .attr('opacity', 0.4)
+            .on('end', function() { dot.remove(); });
+
+        // Also flash the edge
+        link.filter(function(d) {
+            var s = typeof d.source === 'object' ? d.source : null;
+            var t = typeof d.target === 'object' ? d.target : null;
+            return (s === fromNode && t === toNode) || (s === toNode && t === fromNode);
+        })
+        .transition().duration(200).attr('stroke', '#ffc107').attr('stroke-width', 4).attr('stroke-opacity', 0.8)
+        .transition().duration(600).attr('stroke', '#94a3b8').attr('stroke-width', 2.5).attr('stroke-opacity', 0.35);
+    }
+
+    // ── Send signal from agent to its department, or department to Cory ──
+    window._simSignalToAgent = function(agentName) {
+        var key = agentName.toLowerCase().replace('ai ', '');
+        var agentNode = null;
+        var deptNode = null;
+        var coryNode = null;
+
+        nodes.forEach(function(n) {
+            if (n.type === 'cory') coryNode = n;
+            if ((n.label || '').toLowerCase().indexOf(key) >= 0 || (n.agentName && n.agentName.toLowerCase().indexOf(key) >= 0)) agentNode = n;
+        });
+
+        if (agentNode) {
+            // Find the department node for this agent
+            var deptId = 'sys_' + (agentNode.dept || '').replace(/\s/g, '_');
+            nodes.forEach(function(n) { if (n.id === deptId) deptNode = n; });
+
+            // Animate: Cory → Department → Agent (cascaded)
+            if (coryNode && deptNode) {
+                _animateSignal(coryNode, deptNode);
+                setTimeout(function() {
+                    _animateSignal(deptNode, agentNode);
+                }, 400);
+            } else if (deptNode) {
+                _animateSignal(deptNode, agentNode);
+            }
+        }
     };
 })();
 
@@ -312,6 +392,9 @@ function processEvent(data) {
     // 2. Highlight agent node
     var shortAction = data.action.substring(0, 25);
     window._simHighlight && _simHighlight(data.agent, shortAction);
+
+    // 2b. Animate signal along connection lines (Cory → Dept → Agent)
+    window._simSignalToAgent && _simSignalToAgent(data.agent);
 
     // 3. Floating impact
     if (!isCory) {
