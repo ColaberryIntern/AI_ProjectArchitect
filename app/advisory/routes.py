@@ -442,6 +442,13 @@ async def generate_results(request: Request, session_id: str):
         email=session.get("email", ""),
     )
 
+    # Auto-create Project Builder project (non-blocking)
+    try:
+        from execution.advisory.advisory_to_project_mapper import create_project_from_advisory
+        create_project_from_advisory(session_id)
+    except Exception:
+        logger.warning("Advisory-to-project creation failed (non-blocking)", exc_info=True)
+
     return RedirectResponse(
         url=f"/advisory/{session_id}/results",
         status_code=303,
@@ -707,6 +714,13 @@ async def save_lead(
         })
     except Exception:
         pass
+
+    # Update linked project with lead contact info (non-blocking)
+    try:
+        from execution.advisory.advisory_to_project_mapper import create_project_from_advisory
+        create_project_from_advisory(session_id)
+    except Exception:
+        logger.warning("Advisory-to-project update failed (non-blocking)", exc_info=True)
 
     return RedirectResponse(
         url=f"/advisory/{session_id}/gate?saved=true",

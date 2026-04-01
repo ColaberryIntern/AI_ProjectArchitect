@@ -9,13 +9,25 @@
     </div>
 
     {% if state.current_phase == 'idea_intake' and not state.idea.original_raw %}
+    {% if state.advisory %}
+    <div class="alert alert-info small mb-3 d-flex align-items-center">
+        <i class="bi bi-magic me-2 fs-5"></i>
+        <div>
+            <strong>Pre-filled from your AI Advisory session.</strong>
+            Review and edit below, then continue. Your advisory analysis has been converted into a structured project brief.
+            {% if state.advisory.advisory_session_id %}
+            <a href="/advisory/{{ state.advisory.advisory_session_id }}/results" class="ms-1">View Original AI Design <i class="bi bi-box-arrow-up-right"></i></a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     <form action="/projects/{{ slug }}/idea-intake" method="POST" class="idea-intake-form"
           onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.innerHTML='<span class=\'spinner-border spinner-border-sm me-2\'></span>Analyzing your idea...';return true;">
         <div class="mb-3">
-            <textarea class="form-control" id="raw_idea" name="raw_idea" rows="8"
-                      placeholder="e.g., Build an AI-powered task manager for remote teams that..." required></textarea>
+            <textarea class="form-control" id="raw_idea" name="raw_idea" rows="{{ 16 if advisory_prefill else 8 }}"
+                      placeholder="e.g., Build an AI-powered task manager for remote teams that..." required>{{ advisory_prefill or '' }}</textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Capture Idea &amp; Continue</button>
+        <button type="submit" class="btn btn-primary">{{ 'Analyze Advisory Brief & Continue' if advisory_prefill else 'Capture Idea & Continue' }}</button>
     </form>
     {% elif state.current_phase == 'idea_intake' %}
     <div class="card mt-3">

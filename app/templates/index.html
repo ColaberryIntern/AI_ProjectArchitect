@@ -115,16 +115,42 @@ function trackAdvisoryClick() {
                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                     <tr>
                         <th>Project Name</th>
+                        <th>Source</th>
+                        <th>Company</th>
+                        <th>Contact</th>
                         <th>Current Phase</th>
                         <th>Created</th>
-                        <th>Updated</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for p in projects %}
                     <tr>
-                        <td><strong>{{ p.name }}</strong></td>
+                        <td>
+                            <strong>{{ p.name }}</strong>
+                            {% if p.advisory_session_id %}
+                            <a href="/advisory/{{ p.advisory_session_id }}/results" class="ms-1" title="View Original AI Design" style="font-size: 0.75rem;">
+                                <i class="bi bi-diagram-3"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.source == 'advisory' %}
+                            <span class="badge bg-purple-subtle text-purple" style="background-color: #ede9fe !important; color: #7c3aed !important;">
+                                <i class="bi bi-magic me-1"></i>Advisory
+                            </span>
+                            {% else %}
+                            <span class="badge bg-light text-muted border">Manual</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ p.company_name or '-' }}</small></td>
+                        <td>
+                            {% if p.contact_email %}
+                            <small title="{{ p.contact_email }}">{{ p.contact_name or p.contact_email }}</small>
+                            {% else %}
+                            <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
                         <td>
                             {% set phase_colors = {
                                 "Idea Intake": "secondary",
@@ -139,7 +165,6 @@ function trackAdvisoryClick() {
                             <span class="badge bg-{{ phase_colors.get(p.phase_label, 'info') }}">{{ p.phase_label }}</span>
                         </td>
                         <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
-                        <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
                         <td class="text-end">
                             <a href="/projects/{{ p.slug }}" class="btn btn-sm btn-outline-primary">Resume</a>
                             <form action="/projects/{{ p.slug }}/delete" method="POST"

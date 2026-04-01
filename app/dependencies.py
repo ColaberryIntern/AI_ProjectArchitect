@@ -140,7 +140,7 @@ def get_dashboard_stats() -> dict:
 
 
 def list_projects() -> list[dict]:
-    """Scan OUTPUT_DIR for projects with state files."""
+    """Scan OUTPUT_DIR for projects with state files, sorted newest first."""
     projects = []
     if not OUTPUT_DIR.exists():
         return projects
@@ -151,6 +151,7 @@ def list_projects() -> list[dict]:
         if state_file.exists():
             try:
                 state = load_state(project_dir.name)
+                advisory = state.get("advisory") or {}
                 projects.append({
                     "name": state["project"]["name"],
                     "slug": state["project"]["slug"],
@@ -158,7 +159,14 @@ def list_projects() -> list[dict]:
                     "phase_label": PHASE_LABELS.get(state["current_phase"], state["current_phase"]),
                     "created_at": state["project"]["created_at"],
                     "updated_at": state["project"]["updated_at"],
+                    "source": advisory.get("source", "manual"),
+                    "company_name": advisory.get("company_name", ""),
+                    "contact_name": advisory.get("contact_name", ""),
+                    "contact_email": advisory.get("contact_email", ""),
+                    "advisory_session_id": advisory.get("advisory_session_id", ""),
                 })
             except Exception:
                 continue
+    # Sort by created_at descending (newest first)
+    projects.sort(key=lambda p: p["created_at"], reverse=True)
     return projects

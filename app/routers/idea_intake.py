@@ -40,9 +40,26 @@ async def idea_intake_page(request: Request, slug: str):
         )
 
     error = request.query_params.get("error")
+
+    # Pre-fill idea text for advisory-sourced projects
+    advisory_prefill = ""
+    if state.get("advisory") and not state["idea"].get("original_raw"):
+        advisory_prefill = state["idea"].get("original_raw", "")
+        if not advisory_prefill:
+            # Regenerate from advisory session if the idea wasn't recorded yet
+            try:
+                from execution.advisory.advisory_to_project_mapper import map_advisory_to_project_text
+                from execution.advisory.advisory_state_manager import load_session
+                adv_session_id = state["advisory"].get("advisory_session_id", "")
+                if adv_session_id:
+                    adv_session = load_session(adv_session_id)
+                    advisory_prefill = map_advisory_to_project_text(adv_session)
+            except Exception:
+                pass
+
     return request.app.state.templates.TemplateResponse(
         request, "project/idea_intake.html",
-        {"state": state, "slug": slug, "phase_info": phase_info, "error": error},
+        {"state": state, "slug": slug, "phase_info": phase_info, "error": error, "advisory_prefill": advisory_prefill},
     )
 
 
