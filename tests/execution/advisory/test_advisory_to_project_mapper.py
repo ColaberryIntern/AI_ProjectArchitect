@@ -155,9 +155,10 @@ class TestCreateProjectFromAdvisory:
         assert result["advisory"]["advisory_session_id"] == "test-session-001"
         assert result["advisory"]["contact_email"] == "jane@xyzlogistics.com"
 
-        # Verify idea was recorded
-        assert result["idea"]["original_raw"] != ""
-        assert "COMPANY OVERVIEW" in result["idea"]["original_raw"]
+        # Verify advisory prefill is stored (not yet recorded as idea)
+        assert result["idea"]["original_raw"] == ""
+        assert result["advisory_prefill"] != ""
+        assert "COMPANY OVERVIEW" in result["advisory_prefill"]
 
     def test_duplicate_protection(self):
         session = _sample_session()

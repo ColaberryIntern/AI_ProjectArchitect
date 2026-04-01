@@ -268,13 +268,14 @@ def create_project_from_advisory(session_id: str) -> dict | None:
         return None
 
     try:
-        # Create the project
-        from execution.state_manager import initialize_state, record_idea, save_state
+        # Create the project (idea is NOT recorded here — it's pre-filled
+        # on the idea intake page so the user can review/edit before submitting)
+        from execution.state_manager import initialize_state, save_state
 
         state = initialize_state(project_name)
 
-        # Record the advisory idea text
-        record_idea(state, idea_text)
+        # Store the advisory idea text for pre-fill (not yet "captured")
+        state["advisory_prefill"] = idea_text
 
         # Store advisory metadata on the project
         state["advisory"] = {
