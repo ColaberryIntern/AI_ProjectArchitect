@@ -145,7 +145,7 @@ Output ONLY valid JSON as an array of org nodes:
 ]
 
 Rules:
-- Start with ONE root node: an AI executive (e.g., "AI Chief Operating Officer")
+- Start with ONE root node: an AI executive (e.g., "AI Control Tower")
 - Each department gets a department_head reporting to the root
 - Add 1-3 specialists or agents per department based on capabilities
 - Use clear, executive-friendly role titles (no technical jargon)
@@ -181,7 +181,7 @@ def _fallback_org_structure(capability_map: dict) -> list[dict]:
     root_id = f"node_{node_counter}"
     nodes.append({
         "id": root_id,
-        "title": "AI Chief Operating Officer",
+        "title": "AI Control Tower",
         "type": "executive",
         "parent_id": None,
         "department": "Executive",

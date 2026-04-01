@@ -62,11 +62,11 @@ def generate_agents(
     """Generate agent architecture from selected capabilities.
 
     When problem_analysis is provided, adds specialized agents for the
-    dominant problem domain and focuses the AI COO on that domain.
+    dominant problem domain and focuses the AI Control Tower on that domain.
 
     Args:
         selected_capability_ids: List of capability IDs.
-        include_cory: Whether to include the AI COO intelligence layer.
+        include_cory: Whether to include the AI Control Tower intelligence layer.
         problem_analysis: Output from problem_analyzer.analyze_problems().
 
     Returns:
@@ -243,7 +243,7 @@ def _get_domain_specialists(domain: str) -> list[dict]:
 
 
 def _build_cory_agent(existing_agents: list[dict], problem_analysis: dict | None = None) -> dict:
-    """Build the AI COO central intelligence agent, focused on primary problem."""
+    """Build the AI Control Tower central intelligence agent, focused on primary problem."""
     monitored_depts = sorted(set(a["department"] for a in existing_agents))
     monitored_agents = [a["name"] for a in existing_agents[:10]]
 
@@ -288,7 +288,7 @@ def _build_cory_agent(existing_agents: list[dict], problem_analysis: dict | None
 
     return {
         "id": "agent_cory_intelligence",
-        "name": "AI COO | Central Intelligence",
+        "name": "AI Control Tower",
         "capability_id": "cory_intelligence",
         "capability_name": "Central AI Brain",
         "department": "Executive",

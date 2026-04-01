@@ -52,7 +52,7 @@ AI_SYSTEMS = [
      "description": "AI-powered email, meetings, notifications, and knowledge management",
      "departments": ["Communication"],
      "color": "success"},
-    {"id": "intelligence_engine", "label": "Intelligence Engine (AI COO)", "icon": "bi-cpu",
+    {"id": "intelligence_engine", "label": "Intelligence Engine (AI Control Tower)", "icon": "bi-cpu",
      "description": "Central AI brain that monitors all systems, detects patterns, and triggers actions",
      "departments": ["Technology"],
      "color": "dark"},

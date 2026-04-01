@@ -35,7 +35,7 @@ class TestGenerateAgents:
         agents = generate_agents(["auto_lead_scoring"], include_cory=True)
         cory = [a for a in agents if a.get("is_cory")]
         assert len(cory) == 1
-        assert "AI COO" in cory[0]["name"]
+        assert "AI Control Tower" in cory[0]["name"]
 
     def test_cory_not_included_by_default(self):
         agents = generate_agents(["auto_lead_scoring"])

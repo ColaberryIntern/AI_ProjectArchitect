@@ -68,7 +68,7 @@ _ENGINE_CONFIG = {
         "outputs": ["Screened candidates", "Onboarding tasks", "Performance insights"],
     },
     "intelligence_engine": {
-        "name": "AI COO (Central Intelligence)",
+        "name": "AI Control Tower",
         "purpose": "Monitor all systems, detect patterns, and trigger proactive actions",
         "departments": ["Executive"],
         "icon": "bi-stars",
@@ -241,7 +241,7 @@ def _validate_architecture(engines: dict, include_coo: bool) -> dict:
             "auto_added": True,
         }
 
-    # Rule 2: If >1 engine, include AI COO
+    # Rule 2: If >1 engine, include AI Control Tower
     if include_coo and len(engines) > 1 and "intelligence_engine" not in engines:
         config = _ENGINE_CONFIG["intelligence_engine"]
         engines["intelligence_engine"] = {
@@ -253,7 +253,7 @@ def _validate_architecture(engines: dict, include_coo: bool) -> dict:
             "inputs": [f"Output from {e['name']}" for e in engines.values()],
             "outputs": config["outputs"],
             "capabilities": [{"id": "ai_coo", "name": "Central Intelligence", "description": "Cross-system orchestration"}],
-            "agents": ["AI COO"],
+            "agents": ["AI Control Tower"],
             "auto_added": True,
         }
 

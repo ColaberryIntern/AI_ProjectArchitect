@@ -79,7 +79,7 @@
                     <strong id="agentN">0</strong>
                 </div>
                 <div class="d-flex justify-content-between small mb-1">
-                    <span><i class="bi bi-cpu text-dark me-1"></i>AI COO</span>
+                    <span><i class="bi bi-cpu text-dark me-1"></i>AI Control Tower</span>
                     <strong id="coryN">0</strong>
                 </div>
                 <hr>
@@ -140,7 +140,7 @@ var graphNodes = [], graphNodeMap = {};
     var coo = null;
     raw.forEach(function(a) { if (a.is_cory) coo = a; });
 
-    if (coo) nodes.push({id:'cory',label:'AI COO',type:'cory',r:50,color:'#1a1a2e',dept:'Executive'});
+    if (coo) nodes.push({id:'cory',label:'AI Control Tower',type:'cory',r:50,color:'#1a1a2e',dept:'Executive'});
 
     raw.forEach(function(a) {
         if (a.is_cory) return;
@@ -310,7 +310,7 @@ function processEvent(data) {
     }
 
     // 4. Update narration
-    var narr = isCory ? 'AI COO: ' + data.event.substring(0, 60) : data.agent + ': ' + data.action.substring(0, 50);
+    var narr = isCory ? 'AI Control Tower: ' + data.event.substring(0, 60) : data.agent + ': ' + data.action.substring(0, 50);
     document.getElementById('narration').textContent = narr;
 
     // 5. Event log (collapsed)

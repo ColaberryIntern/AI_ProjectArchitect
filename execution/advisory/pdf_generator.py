@@ -165,7 +165,7 @@ def generate_pdf(session: dict) -> str:
         f"This document presents a comprehensive AI transformation strategy for {company}. "
         f"Based on a detailed analysis of your business operations, challenges, and goals, "
         f"we have designed an AI Operating System consisting of <b>{agent_count} specialized AI agents</b> "
-        f"across <b>{dept_count} departments</b>, coordinated by a central AI Chief Operating Officer.",
+        f"across <b>{dept_count} departments</b>, coordinated by a central AI Control Tower.",
         S["body"],
     ))
     story.append(Paragraph(
@@ -243,7 +243,7 @@ def generate_pdf(session: dict) -> str:
         S["body"],
     ))
     story.append(Paragraph(
-        f"At the center sits the <b>AI Chief Operating Officer</b>, a central intelligence layer that monitors "
+        f"At the center sits the <b>AI Control Tower</b>, a central intelligence layer that monitors "
         f"all systems simultaneously. It detects cross-department patterns, identifies optimization opportunities, "
         f"and triggers proactive actions before problems escalate. Think of it as an always-on executive "
         f"that never sleeps, never misses a signal, and continuously improves.",
@@ -280,7 +280,7 @@ def generate_pdf(session: dict) -> str:
     # AI COO
     coo = next((a for a in agents if a.get("is_cory")), None)
     if coo:
-        story.append(Paragraph("AI Chief Operating Officer", S["h2"]))
+        story.append(Paragraph("AI Control Tower", S["h2"]))
         story.append(Paragraph(coo.get("role", "Central intelligence monitoring all systems."), S["body"]))
     story.append(Spacer(1, 0.2 * inch))
 
@@ -381,13 +381,13 @@ def generate_pdf(session: dict) -> str:
 
     story.append(Paragraph("<b>Phase 2: Expansion (Days 30-60)</b>", S["bold"]))
     story.append(Paragraph("- Roll out AI agents to additional departments", S["bullet"]))
-    story.append(Paragraph("- Activate cross-department intelligence (AI COO)", S["bullet"]))
+    story.append(Paragraph("- Activate cross-department intelligence (AI Control Tower)", S["bullet"]))
     story.append(Paragraph("- Train team on AI collaboration workflows", S["bullet"]))
     story.append(Spacer(1, 0.1 * inch))
 
     story.append(Paragraph("<b>Phase 3: Optimization (Days 60-90)</b>", S["bold"]))
     story.append(Paragraph("- All agents operational across all departments", S["bullet"]))
-    story.append(Paragraph("- AI COO detecting patterns and triggering proactive actions", S["bullet"]))
+    story.append(Paragraph("- AI Control Tower detecting patterns and triggering proactive actions", S["bullet"]))
     story.append(Paragraph("- Full ROI realization begins, continuous improvement cycle active", S["bullet"]))
     story.append(Spacer(1, 0.3 * inch))
 

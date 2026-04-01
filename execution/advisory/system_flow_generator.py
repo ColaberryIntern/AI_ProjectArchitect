@@ -208,7 +208,7 @@ def generate_implementation_timeline(session: dict) -> list[dict]:
         {"phase": "Month 2-3", "title": "Core Build",
          "tasks": ["Roll out department-specific agents", "Integrate cross-system workflows", "Train team on AI collaboration"]},
         {"phase": "Month 4-6", "title": "Full Scale",
-         "tasks": ["All agents operational", "AI COO monitoring all systems", "Full ROI realized"]},
+         "tasks": ["All agents operational", "AI Control Tower monitoring all systems", "Full ROI realized"]},
         {"phase": "Month 6+", "title": "Continuous Growth",
          "tasks": ["AI learns and improves", "Expand to new capabilities", "Compound efficiency gains"]},
     ]

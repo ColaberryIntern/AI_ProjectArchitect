@@ -59,7 +59,7 @@
         </div>
     </div>
     <div class="text-center text-muted small mb-4">
-        <i class="bi bi-hand-index me-1"></i>Click any node for details. Drag to rearrange. AI COO pulses at center.
+        <i class="bi bi-hand-index me-1"></i>Click any node for details. Drag to rearrange. AI Control Tower pulses at center.
     </div>
 </div>
 
@@ -121,12 +121,12 @@
     <!-- Left Column: AI COO + Operations Feed -->
     <div class="col-lg-8">
 
-        <!-- AI COO Insights -->
+        <!-- AI Control Tower Insights -->
         {% if insights %}
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-dark text-white">
                 <div class="d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-cpu me-2"></i><strong>AI COO Insights</strong></span>
+                    <span><i class="bi bi-cpu me-2"></i><strong>AI Control Tower Insights</strong></span>
                     <span class="badge bg-success"><i class="bi bi-circle-fill me-1" style="font-size:0.4rem"></i>Live</span>
                 </div>
             </div>
@@ -231,7 +231,7 @@
                 </div>
                 {% endif %}
                 <div class="d-flex justify-content-between">
-                    <span class="text-muted">AI COO</span>
+                    <span class="text-muted">AI Control Tower</span>
                     <span class="badge bg-dark">{{ 'Active' if agent_stats.get('has_cory') else 'Inactive' }}</span>
                 </div>
             </div>
@@ -298,7 +298,7 @@
 <!-- ═══ WORKFLOW VIEW (existing content) ════════════════════════════ -->
 <div id="view-workflow">
 
-<!-- ═══ AI COO (Central Intelligence) ═══════════════════════════════ -->
+<!-- ═══ AI Control Tower ═══════════════════════════════ -->
 {% if agents and agent_stats.get('has_cory') %}
 <div class="card border-dark border-2 shadow mb-4" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
     <div class="card-body p-4">
@@ -307,7 +307,7 @@
                 <i class="bi bi-cpu display-3 opacity-75"></i>
             </div>
             <div class="col-md-10">
-                <h4 class="fw-bold mb-1"><i class="bi bi-stars me-2"></i>AI Chief Operating Officer</h4>
+                <h4 class="fw-bold mb-1"><i class="bi bi-stars me-2"></i>AI Control Tower</h4>
                 <p class="opacity-75 mb-2">Central intelligence layer monitoring all {{ agent_stats.departments }} departments and {{ agent_stats.total_agents }} agents</p>
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     <span class="badge bg-light text-dark"><i class="bi bi-eye me-1"></i>Monitors all systems</span>
@@ -337,7 +337,7 @@
 </div>
 {% endif %}
 
-<!-- ═══ AI COO Insights Panel ═══════════════════════════════════════ -->
+<!-- ═══ AI Control Tower Insights Panel ═══════════════════════════════════════ -->
 {% if insights %}
 <h4 class="fw-bold mb-3"><i class="bi bi-lightbulb me-2"></i>Top Opportunities Identified</h4>
 <div class="row g-3 mb-4">

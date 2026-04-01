@@ -94,7 +94,7 @@ class TestBuildOrgStructure:
 
     def test_uses_llm_when_available(self, mocker):
         mock_nodes = [
-            {"id": "1", "title": "AI COO", "type": "executive", "parent_id": None,
+            {"id": "1", "title": "AI Control Tower", "type": "executive", "parent_id": None,
              "department": "Executive", "responsibilities": ["Lead"], "ai_tools": [], "estimated_fte_equivalent": 1.0},
         ]
         mocker.patch(
@@ -108,7 +108,7 @@ class TestBuildOrgStructure:
 class TestFlattenOrgTree:
     def test_builds_nested_tree(self):
         nodes = [
-            {"id": "root", "title": "AI COO", "type": "executive", "parent_id": None, "department": "Exec"},
+            {"id": "root", "title": "AI Control Tower", "type": "executive", "parent_id": None, "department": "Exec"},
             {"id": "ops", "title": "AI Ops", "type": "department_head", "parent_id": "root", "department": "Ops"},
             {"id": "spec", "title": "AI Agent", "type": "specialist", "parent_id": "ops", "department": "Ops"},
         ]

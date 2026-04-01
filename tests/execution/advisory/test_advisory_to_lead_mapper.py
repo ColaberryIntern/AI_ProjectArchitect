@@ -54,7 +54,7 @@ def _make_session(email="alice@example.com"):
             ],
         },
         "org_structure": [
-            {"id": "1", "title": "AI COO", "estimated_fte_equivalent": 1.0},
+            {"id": "1", "title": "AI Control Tower", "estimated_fte_equivalent": 1.0},
             {"id": "2", "title": "AI Ops Manager", "estimated_fte_equivalent": 2.0},
         ],
         "pdf_path": "/output/advisory/test/report.pdf",

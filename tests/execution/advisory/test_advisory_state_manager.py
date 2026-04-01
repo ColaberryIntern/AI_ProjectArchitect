@@ -107,7 +107,7 @@ class TestSetters:
         from execution.advisory.advisory_state_manager import initialize_session, set_org_structure
 
         session = initialize_session("Test")
-        nodes = [{"id": "root", "title": "AI COO", "type": "executive"}]
+        nodes = [{"id": "root", "title": "AI Control Tower", "type": "executive"}]
         updated = set_org_structure(session, nodes)
         assert updated["org_structure"] == nodes
 

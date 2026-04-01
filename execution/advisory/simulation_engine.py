@@ -228,7 +228,7 @@ def _generate_events(agents: list[dict], capabilities: list[str], has_cory: bool
             events.append({
                 "timestamp": f"T+{insert_time}s",
                 "time_offset": insert_time,
-                "agent": "AI COO | Central Intelligence",
+                "agent": "AI Control Tower",
                 "department": "Executive",
                 "event": _fill_template(template["event"]),
                 "action": _fill_template(template["action"]),
@@ -277,7 +277,7 @@ def _compute_summary(events: list[dict]) -> dict:
         "departments_active": len(departments),
         "highlights": [
             f"{len(agent_events)} autonomous actions taken across {len(departments)} departments",
-            f"{len(cory_events)} strategic interventions by AI COO",
+            f"{len(cory_events)} strategic interventions by AI Control Tower",
             "All actions executed in under {duration} seconds".format(
                 duration=events[-1]["time_offset"] if events else 0
             ),
