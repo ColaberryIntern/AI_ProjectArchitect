@@ -129,6 +129,9 @@
 
             <!-- CTAs -->
             <div class="text-center mt-4 pt-3 border-top">
+                <a href="/advisory/{{ session.session_id }}/simulation" class="btn btn-dark me-2">
+                    <i class="bi bi-play-fill me-1"></i>Run Simulation
+                </a>
                 <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary me-2" data-track="book_strategy_call">
                     <i class="bi bi-calendar-event me-1"></i>Schedule Strategy Call
                 </a>
@@ -245,6 +248,9 @@
         <i class="bi bi-hand-index me-1"></i>Click any node for details. Drag to rearrange.
     </div>
     <div class="text-center mb-4">
+        <a href="/advisory/{{ session.session_id }}/simulation" class="btn btn-dark me-2">
+            <i class="bi bi-play-fill me-1"></i>Run Simulation
+        </a>
         <a href="/advisory/{{ session.session_id }}/book" class="btn btn-primary me-2" data-track="book_strategy_call">
             <i class="bi bi-calendar-event me-1"></i>Schedule Strategy Call
         </a>
