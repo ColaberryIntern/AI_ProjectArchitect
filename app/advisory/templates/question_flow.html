@@ -1,95 +1,149 @@
 {% extends "advisory_base.html" %}
 
-{% block title %}Question {{ progress.current_index + 1 }} of {{ progress.total }} | AI Workforce Designer{% endblock %}
+{% block title %}AI Advisor | AI Workforce Designer{% endblock %}
+
+{% block head %}
+<style>
+.chat-container { max-width: 720px; margin: 0 auto; }
+.chat-messages { min-height: 300px; max-height: 60vh; overflow-y: auto; padding-bottom: 20px; }
+.msg { animation: msgIn 0.3s ease; margin-bottom: 12px; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.msg-bot { display: flex; gap: 10px; align-items: flex-start; }
+.msg-bot .bubble { background: #f0f4ff; border-radius: 12px 12px 12px 0; padding: 12px 16px; max-width: 85%; }
+.msg-user { display: flex; gap: 10px; justify-content: flex-end; }
+.msg-user .bubble { background: #4361ee; color: white; border-radius: 12px 12px 0 12px; padding: 12px 16px; max-width: 85%; }
+.msg-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.chat-input { border-top: 1px solid #e9ecef; padding-top: 12px; }
+.typing-dots { display: inline-flex; gap: 4px; }
+.typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: #4361ee; animation: dotBounce 1.2s infinite; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-lg-8">
-        <!-- Progress bar -->
-        <div class="mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="text-muted small">Question {{ progress.current_index + 1 }} of {{ progress.total }}</span>
-                <span class="text-muted small">{{ progress.percent }}% complete</span>
-            </div>
-            <div class="progress" style="height: 8px;">
-                <div class="progress-bar bg-primary" role="progressbar"
-                     style="width: {{ progress.percent }}%"
-                     aria-valuenow="{{ progress.percent }}" aria-valuemin="0" aria-valuemax="100">
-                </div>
+<div class="chat-container">
+    <!-- Progress -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <small class="text-muted">Question <span id="qNum">{{ progress.current_index + 1 }}</span> of {{ progress.total }}</small>
+        <small class="text-muted">{{ progress.percent }}%</small>
+    </div>
+    <div class="progress mb-4" style="height: 4px;">
+        <div class="progress-bar bg-primary" id="chatProgress" style="width: {{ progress.percent }}%; transition: width 0.5s;"></div>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-messages" id="chatMessages">
+        <!-- Previous Q&A pairs -->
+        {% for answer in session.answers %}
+        <div class="msg msg-bot">
+            <div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div>
+            <div class="bubble"><strong>{{ answer.question_text }}</strong></div>
+        </div>
+        <div class="msg msg-user">
+            <div class="bubble">{{ answer.answer_text }}</div>
+            <div class="msg-avatar bg-primary text-white"><i class="bi bi-person"></i></div>
+        </div>
+        {% endfor %}
+
+        <!-- Current question (bot is asking) -->
+        {% if question %}
+        <div class="msg msg-bot" id="currentQuestion">
+            <div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div>
+            <div class="bubble">
+                <strong>{{ question.text }}</strong>
+                <div class="text-muted small mt-1">{{ question.help_text }}</div>
             </div>
         </div>
+        {% endif %}
+    </div>
 
-        <!-- Question card -->
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-5">
-                <div class="mb-1">
-                    <span class="badge bg-primary-subtle text-primary">{{ question.category | replace("_", " ") | title }}</span>
+    <!-- Input Area -->
+    <div class="chat-input">
+        <form action="/advisory/{{ session.session_id }}/answer" method="POST" id="chatForm">
+            <div class="d-flex gap-2">
+                <div class="flex-grow-1">
+                    <textarea
+                        class="form-control"
+                        name="answer_text"
+                        id="chatInput"
+                        rows="2"
+                        placeholder="Type your answer..."
+                        required
+                        autofocus
+                        style="resize: none; border-radius: 12px;"
+                    ></textarea>
                 </div>
-                <h3 class="card-title mb-3">{{ question.text }}</h3>
-                <p class="text-muted mb-4">{{ question.help_text }}</p>
-
-                <form action="/advisory/{{ session.session_id }}/answer" method="POST">
-                    <div class="mb-4">
-                        <textarea
-                            class="form-control form-control-lg"
-                            name="answer_text"
-                            rows="5"
-                            placeholder="Share your thoughts..."
-                            required
-                            autofocus
-                        ></textarea>
-                    </div>
-
-                    {% if show_email_capture %}
-                    <div class="mb-4 p-3 bg-light rounded">
-                        <label class="form-label fw-semibold">
-                            <i class="bi bi-envelope me-1"></i>Want us to send your AI Organization to your inbox?
-                        </label>
-                        <input type="email" class="form-control" name="email"
-                               placeholder="your@email.com (optional)">
-                        <small class="text-muted">Optional. We'll email your results when they're ready.</small>
-                    </div>
+                <button type="submit" class="btn btn-primary align-self-end" id="sendBtn" style="border-radius: 12px; padding: 8px 16px;">
+                    {% if progress.current_index == progress.total - 1 %}
+                    <i class="bi bi-magic me-1"></i>Done
+                    {% else %}
+                    <i class="bi bi-send"></i>
                     {% endif %}
-
-                    {% if question.id == "q6_current_tools" %}
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">Which of these system categories do you currently use?</label>
-                        <div class="row g-2">
-                            {% for option in system_options %}
-                            <div class="col-6 col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox"
-                                           name="selected_systems" value="{{ option }}"
-                                           id="sys_{{ loop.index }}">
-                                    <label class="form-check-label small" for="sys_{{ loop.index }}">{{ option }}</label>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <div class="d-flex justify-content-between">
-                        {% if progress.current_index > 0 %}
-                        <a href="/advisory/{{ session.session_id }}/questions"
-                           class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-left me-1"></i> Previous
-                        </a>
-                        {% else %}
-                        <div></div>
-                        {% endif %}
-
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            {% if progress.current_index == progress.total - 1 %}
-                                Choose AI Capabilities <i class="bi bi-arrow-right ms-1"></i>
-                            {% else %}
-                                Next <i class="bi bi-arrow-right ms-1"></i>
-                            {% endif %}
-                        </button>
-                    </div>
-                </form>
+                </button>
             </div>
+
+            {% if show_email_capture %}
+            <div class="mt-2 p-2 bg-light rounded-3" style="font-size: 0.85rem;">
+                <label class="form-label mb-1 fw-semibold small">
+                    <i class="bi bi-envelope me-1"></i>Want your results emailed?
+                </label>
+                <input type="email" class="form-control form-control-sm" name="email" placeholder="your@email.com (optional)" style="border-radius: 8px;">
+            </div>
+            {% endif %}
+
+            {% if question and question.id == "q6_current_tools" %}
+            <div class="mt-2 p-2 bg-light rounded-3" style="font-size: 0.8rem;">
+                <label class="form-label mb-1 fw-semibold small">Systems you use:</label>
+                <div class="d-flex flex-wrap gap-1">
+                    {% for option in system_options %}
+                    <label class="badge bg-white text-dark border" style="cursor: pointer; font-weight: normal;">
+                        <input type="checkbox" name="selected_systems" value="{{ option }}" class="me-1" style="transform: scale(0.8);">{{ option }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </form>
+
+        <!-- Enter to send hint -->
+        <div class="text-muted text-center mt-2" style="font-size: 0.7rem;">
+            Press Enter to send <span class="mx-1">|</span> Shift+Enter for new line
         </div>
     </div>
 </div>
+
+<script>
+// Scroll to bottom on load
+var msgs = document.getElementById('chatMessages');
+msgs.scrollTop = msgs.scrollHeight;
+
+// Enter to send (Shift+Enter for newline)
+document.getElementById('chatInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (this.value.trim()) {
+            document.getElementById('chatForm').submit();
+        }
+    }
+});
+
+// Loading state on submit
+document.getElementById('chatForm').addEventListener('submit', function() {
+    var btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    // Show typing indicator
+    var typing = document.createElement('div');
+    typing.className = 'msg msg-bot';
+    typing.innerHTML = '<div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div><div class="bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+    msgs.appendChild(typing);
+    msgs.scrollTop = msgs.scrollHeight;
+});
+
+// Auto-focus
+document.getElementById('chatInput').focus();
+</script>
 {% endblock %}
