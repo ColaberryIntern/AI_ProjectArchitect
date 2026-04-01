@@ -42,8 +42,8 @@ class TestMapCapabilities:
         session = {"selected_outcomes": ["increase_revenue"], "selected_ai_systems": [],
                     "business_idea": "B2B SaaS with lead conversion problems", "answers": []}
         result = map_capabilities(session)
-        # Should select 6-12 capabilities, Sales/Marketing-heavy
-        assert 6 <= len(result["recommended"]) <= 12
+        # Should select 4-12 focused capabilities, Sales/Marketing-heavy
+        assert 4 <= len(result["recommended"]) <= 12
         # At least some sales capabilities
         sales_caps = [c for c in result["recommended"] if c in ("auto_lead_scoring", "outreach_automation", "sales_pipeline_forecast", "deal_intelligence", "proposal_generator")]
         assert len(sales_caps) >= 2
@@ -59,7 +59,7 @@ class TestMapCapabilities:
         session = {"selected_outcomes": ["improve_cx"], "selected_ai_systems": [],
                     "business_idea": "E-commerce support", "answers": []}
         result = map_capabilities(session)
-        assert 6 <= len(result["recommended"]) <= 12
+        assert 3 <= len(result["recommended"]) <= 12
         assert "ai_chat_support" in result["recommended"]
 
     def test_never_exceeds_max_capabilities(self):

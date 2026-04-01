@@ -165,16 +165,85 @@ _OUTCOME_VECTORS = {
 
 # Department limits per primary goal (caps per department)
 _DEPT_LIMITS = {
-    "increase_revenue":  {"Sales": 5, "Marketing": 4, "Communication": 2, "Technology": 2, "Customer Support": 1, "Operations": 1, "Finance": 1, "Human Resources": 0},
-    "reduce_costs":      {"Operations": 5, "Finance": 3, "Technology": 3, "Communication": 2, "Sales": 1, "Marketing": 1, "Customer Support": 1, "Human Resources": 1},
-    "improve_cx":        {"Customer Support": 5, "Communication": 3, "Sales": 2, "Technology": 2, "Marketing": 1, "Operations": 1, "Finance": 0, "Human Resources": 0},
-    "scale_operations":  {"Operations": 5, "Technology": 3, "Communication": 2, "Finance": 2, "Sales": 1, "Marketing": 1, "Customer Support": 1, "Human Resources": 1},
-    "improve_decisions": {"Technology": 4, "Operations": 3, "Finance": 2, "Sales": 2, "Marketing": 1, "Communication": 1, "Customer Support": 1, "Human Resources": 0},
+    "increase_revenue":  {"Sales": 4, "Marketing": 3, "Communication": 1, "Technology": 1, "Customer Support": 0, "Operations": 0, "Finance": 0, "Human Resources": 0},
+    "reduce_costs":      {"Operations": 5, "Technology": 2, "Finance": 1, "Communication": 1, "Sales": 0, "Marketing": 0, "Customer Support": 0, "Human Resources": 0},
+    "improve_cx":        {"Customer Support": 4, "Communication": 2, "Technology": 1, "Sales": 1, "Marketing": 0, "Operations": 0, "Finance": 0, "Human Resources": 0},
+    "scale_operations":  {"Operations": 5, "Technology": 2, "Finance": 1, "Communication": 1, "Sales": 0, "Marketing": 0, "Customer Support": 0, "Human Resources": 0},
+    "improve_decisions": {"Technology": 4, "Operations": 2, "Finance": 1, "Sales": 1, "Marketing": 0, "Communication": 0, "Customer Support": 0, "Human Resources": 0},
 }
 
-MIN_SCORE_THRESHOLD = 0.35
+MIN_SCORE_THRESHOLD = 0.40
 MAX_CAPABILITIES = 12
-MIN_CAPABILITIES = 6
+MIN_CAPABILITIES = 5
+
+# ── Entity Signal Mapping ───────────────────────────────────────────
+# Maps keywords found in answers to specific capability IDs for strong boosting
+
+_ENTITY_SIGNALS = {
+    # Logistics/supply chain
+    "routing": ["route_optimization", "workflow_automation"],
+    "delivery": ["route_optimization", "quality_monitoring"],
+    "dispatch": ["route_optimization", "resource_scheduling"],
+    "fleet": ["route_optimization", "resource_scheduling"],
+    "shipping": ["route_optimization", "inventory_optimization"],
+    "warehouse": ["inventory_optimization", "quality_monitoring"],
+    "inventory": ["inventory_optimization"],
+    "supply chain": ["inventory_optimization", "route_optimization"],
+    "last-mile": ["route_optimization"],
+    # Scheduling/resource
+    "scheduling": ["resource_scheduling"],
+    "staffing": ["resource_scheduling", "resume_screening"],
+    "capacity": ["resource_scheduling", "workflow_automation"],
+    # Sales-specific
+    "pipeline": ["sales_pipeline_forecast", "auto_lead_scoring"],
+    "conversion": ["auto_lead_scoring", "outreach_automation"],
+    "leads": ["auto_lead_scoring", "outreach_automation"],
+    "outreach": ["outreach_automation", "email_drafting"],
+    "follow-up": ["outreach_automation"],
+    # Support-specific
+    "tickets": ["ticket_auto_triage", "ai_chat_support"],
+    "response time": ["ai_chat_support", "ticket_auto_triage"],
+    "customer complaints": ["sentiment_monitoring", "ai_chat_support"],
+    # Finance-specific
+    "invoicing": ["invoice_processing"],
+    "billing": ["invoice_processing", "expense_categorization"],
+    "forecasting": ["financial_forecasting", "sales_pipeline_forecast"],
+    # General
+    "reporting": ["auto_reporting"],
+    "data entry": ["workflow_automation"],
+    "manual process": ["workflow_automation"],
+}
+
+# Domain mapping for each department
+_DEPT_TO_DOMAIN = {
+    "Sales": "sales",
+    "Marketing": "sales",
+    "Customer Support": "customer",
+    "Operations": "operations",
+    "Finance": "finance",
+    "Human Resources": "hr",
+    "Technology": "technology",
+    "Communication": "communication",
+}
+
+# Which domains are relevant for each primary goal
+_GOAL_DOMAINS = {
+    "increase_revenue":  {"primary": ["sales"], "secondary": ["communication", "technology"]},
+    "reduce_costs":      {"primary": ["operations", "finance"], "secondary": ["technology"]},
+    "improve_cx":        {"primary": ["customer", "communication"], "secondary": ["technology"]},
+    "scale_operations":  {"primary": ["operations", "technology"], "secondary": ["communication"]},
+    "improve_decisions": {"primary": ["technology", "operations"], "secondary": ["finance"]},
+}
+
+
+def _extract_entity_signals(text: str) -> dict:
+    """Extract entity signals from text. Returns {cap_id: boost_count}."""
+    boosts = {}
+    for entity, cap_ids in _ENTITY_SIGNALS.items():
+        if entity in text:
+            for cap_id in cap_ids:
+                boosts[cap_id] = boosts.get(cap_id, 0) + 1
+    return boosts
 
 
 def _build_problem_vector(outcomes: list[str]) -> dict:
@@ -229,18 +298,42 @@ def map_capabilities(session: dict) -> dict:
     primary_goal = outcomes[0] if outcomes else "reduce_costs"
     primary_label = _get_outcome_label(primary_goal)
 
-    # 2. Score every capability via vector dot product
+    # 2. Extract entity signals from user text
+    entity_boosts = _extract_entity_signals(all_text)
+
+    # 3. Determine relevant domains for this goal
+    goal_domains = _GOAL_DOMAINS.get(primary_goal, {"primary": ["operations"], "secondary": ["technology"]})
+    primary_domains = set(goal_domains["primary"])
+    secondary_domains = set(goal_domains["secondary"])
+
+    # 4. Score every capability: vector + entities + domain penalty
     scored = []
     for cap in CAPABILITY_CATALOG:
         score = _score_capability(cap, problem_vector)
 
-        # Small keyword bonus (+0.05) for direct mention in answers
+        # Entity signal boost (+0.15 per entity match, up to +0.45)
+        entity_match_count = entity_boosts.get(cap["id"], 0)
+        if entity_match_count > 0:
+            score += min(entity_match_count * 0.15, 0.45)
+
+        # Small keyword bonus (+0.05) for keyword catalog match
         for keyword, cap_ids in _KEYWORD_CAPABILITIES.items():
             if keyword in all_text and cap["id"] in cap_ids:
                 score += 0.05
                 break
 
-        scored.append({"cap": cap, "score": round(score, 3)})
+        # Domain relevance penalty (CRITICAL)
+        cap_domain = _DEPT_TO_DOMAIN.get(cap["department"], "other")
+        if cap_domain in primary_domains:
+            score += 0.1  # Small boost for being in primary domain
+        elif cap_domain in secondary_domains:
+            pass  # Neutral
+        else:
+            # Penalty for irrelevant domain (unless entity-matched)
+            if entity_match_count == 0:
+                score -= 0.25
+
+        scored.append({"cap": cap, "score": round(score, 3), "entity_matches": entity_match_count})
 
     scored.sort(key=lambda x: x["score"], reverse=True)
 
@@ -303,7 +396,13 @@ def map_capabilities(session: dict) -> dict:
         # Find the dominant dimension
         top_dim = max(iv, key=iv.get) if iv else "ops"
         dim_labels = {"revenue": "revenue growth", "cost": "cost reduction", "cx": "customer experience", "ops": "operational efficiency"}
-        reasoning[cap["id"]] = [f"High impact on {dim_labels.get(top_dim, top_dim)} (score: {s['score']:.2f})"]
+        reason = f"High impact on {dim_labels.get(top_dim, top_dim)} (score: {s['score']:.2f})"
+        if s.get("entity_matches", 0) > 0:
+            # Find which entities matched
+            matched_entities = [e for e, caps in _ENTITY_SIGNALS.items() if cap["id"] in caps and e in all_text]
+            if matched_entities:
+                reason += f" | Matched: {', '.join(matched_entities[:3])}"
+        reasoning[cap["id"]] = [reason]
 
     # Confidence normalized to 0-100
     max_score = max(scores.values()) if scores else 1
