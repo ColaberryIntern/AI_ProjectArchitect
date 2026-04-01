@@ -64,6 +64,17 @@ def get_available_slots(days: int = 21) -> dict:
     except Exception:
         logger.warning("Google Calendar auth failed, using static slots", exc_info=True)
         return _generate_static_slots(days)
+
+    try:
+        return _fetch_real_slots(service, days)
+    except Exception:
+        logger.warning("Google Calendar fetch failed, using static slots", exc_info=True)
+        return _generate_static_slots(days)
+
+
+def _fetch_real_slots(service, days: int) -> dict:
+    """Fetch real availability from Google Calendar."""
+    import pytz
     tz = pytz.timezone(BUSINESS_TZ)
     now = datetime.now(tz)
 
