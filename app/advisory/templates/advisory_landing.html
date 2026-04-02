@@ -402,56 +402,54 @@ var _idTimers = [];
 var _idCancelled = 0;
 var _idGraphAPI = null;
 
-var ID_DATA = {
-    idea: "We are a regional logistics company with 200+ drivers and 15 warehouses. Our biggest challenges are manual route planning, no real-time tracking for customers, and slow dispatch. We want to automate operations and optimize delivery routes.",
-    questions: [
-        { q: "What industry is your business in?", chips: ["Technology","Healthcare","Logistics","Financial Services"], a: "Logistics", method: "chip" },
-        { q: "How large is your organization?", chips: ["1-10","11-50","51-200","201-1000","1000+"], a: "201-1000", method: "chip" },
-        { q: "What's your biggest bottleneck?", a: "Dispatchers spend 3 hours each morning manually assigning routes to 200+ drivers using spreadsheets.", method: "type" },
-        { q: "Which departments need AI most?", chips: ["Sales","Operations","Customer Support","Finance","Logistics"], a: "Operations, Customer Support, Logistics", method: "chip", multi: true }
-    ],
-    design: {
-        outcomes: [
-            { id:"costs", label:"Reduce Costs", icon:"bi-piggy-bank", sel:true },
-            { id:"scale", label:"Scale Operations", icon:"bi-graph-up-arrow", sel:true },
-            { id:"cx", label:"Improve CX", icon:"bi-people", sel:true },
-            { id:"rev", label:"Increase Revenue", icon:"bi-currency-dollar", sel:false }
-        ],
-        systems: [
-            { id:"ops", label:"Operations Engine", icon:"bi-gear-wide-connected", color:"warning", sel:true },
-            { id:"cust", label:"Customer Engine", icon:"bi-people", color:"info", sel:true },
-            { id:"tower", label:"AI Control Tower", icon:"bi-cpu", color:"dark", sel:true },
-            { id:"rev", label:"Revenue Engine", icon:"bi-currency-dollar", color:"primary", sel:false }
-        ]
-    },
-    agents: [
-        { name:"AI Control Tower", dept:"Executive", cory:true },
-        { name:"Route Optimizer", dept:"Operations", cory:false, primary:true },
-        { name:"Dispatch Agent", dept:"Operations", cory:false },
-        { name:"Warehouse Monitor", dept:"Operations", cory:false },
-        { name:"Tracking Bot", dept:"Customer Support", cory:false, primary:true },
-        { name:"Complaint Resolver", dept:"Customer Support", cory:false },
-        { name:"Lead Qualifier", dept:"Sales", cory:false },
-        { name:"Invoice Processor", dept:"Finance", cory:false },
-        { name:"Cost Analyzer", dept:"Finance", cory:false },
-        { name:"Report Generator", dept:"Executive", cory:false }
-    ],
-    sim: [
-        { agent:"AI Control Tower", action:"Morning scan: 847 deliveries, 3 risk zones flagged", narr:"The AI Control Tower scans all deliveries and flags risks before drivers leave." },
-        { agent:"Route Optimizer", action:"Optimized 212 routes, saving 1,840 miles", narr:"Routes recalculated using real-time traffic and weather data." },
-        { agent:"Dispatch Agent", action:"Auto-assigned 212 drivers in 8 seconds", narr:"What took 3 hours now happens in seconds." },
-        { agent:"Tracking Bot", action:"Answered 34 tracking inquiries simultaneously", narr:"Customers get instant updates without waiting." },
-        { agent:"AI Control Tower", action:"Rerouting 8 deliveries around weather zone", narr:"The Control Tower connects dots across departments." },
-        { agent:"Cost Analyzer", action:"Weekly savings: $12,400 from route optimization", narr:"Finance AI tracks exactly how much every optimization saves." }
-    ],
-    narr: {
-        idea: "Imagine you run a logistics company with 200 drivers...",
-        questions: "The AI advisor asks a few targeted questions...",
-        design: "The system recommends objectives and AI engines...",
-        results: "Your AI organization: 10 agents, $485K savings, 340% ROI.",
-        sim: "Watch your AI workforce operate autonomously."
-    }
-};
+var ID_SCENARIOS = [
+  { id:"logistics", industry:"Logistics", idea:"We are a regional logistics company with 200+ drivers and 15 warehouses. Our biggest challenges are manual route planning, no real-time tracking for customers, and slow dispatch. We want to automate operations and optimize delivery routes.",
+    questions:[{q:"What does your business do?",a:"Regional logistics and freight company specializing in last-mile delivery for e-commerce. 50,000+ packages per month.",method:"type"},{q:"How large is your organization?",chips:["1-10","11-50","51-200","201-1000","1000+"],a:"201-1000",method:"chip"},{q:"What's your biggest bottleneck?",a:"Dispatchers spend 3 hours each morning manually assigning routes to 200+ drivers using spreadsheets.",method:"type"},{q:"Which departments need AI most?",chips:["Sales","Operations","Customer Support","Finance","Logistics"],a:"Operations, Customer Support, Logistics",method:"chip",multi:true}],
+    design:{outcomes:[{id:"costs",label:"Reduce Costs",icon:"bi-piggy-bank",sel:true},{id:"scale",label:"Scale Operations",icon:"bi-graph-up-arrow",sel:true},{id:"cx",label:"Improve CX",icon:"bi-people",sel:true},{id:"rev",label:"Increase Revenue",icon:"bi-currency-dollar",sel:false}],systems:[{id:"ops",label:"Operations Engine",icon:"bi-gear-wide-connected",color:"warning",sel:true},{id:"cust",label:"Customer Engine",icon:"bi-people",color:"info",sel:true},{id:"tower",label:"AI Control Tower",icon:"bi-cpu",color:"dark",sel:true},{id:"rev",label:"Revenue Engine",icon:"bi-currency-dollar",color:"primary",sel:false}]},
+    agents:[{name:"AI Control Tower",dept:"Executive",cory:true},{name:"Route Optimizer",dept:"Operations",primary:true},{name:"Dispatch Agent",dept:"Operations"},{name:"Warehouse Monitor",dept:"Operations"},{name:"Tracking Bot",dept:"Customer Support",primary:true},{name:"Complaint Resolver",dept:"Customer Support"},{name:"Lead Qualifier",dept:"Sales"},{name:"Invoice Processor",dept:"Finance"},{name:"Cost Analyzer",dept:"Finance"},{name:"Report Generator",dept:"Executive"}],
+    kpis:{savings:485,savings_suf:"K",revenue:1.2,revenue_suf:"M",roi:340,agents:10},
+    sim:[{agent:"AI Control Tower",action:"Morning scan: 847 deliveries, 3 risk zones flagged",narr:"The AI Control Tower scans all deliveries and flags risks before drivers leave."},{agent:"Route Optimizer",action:"Optimized 212 routes, saving 1,840 miles",narr:"Routes recalculated using real-time traffic and weather data."},{agent:"Dispatch Agent",action:"Auto-assigned 212 drivers in 8 seconds",narr:"What took 3 hours now happens in seconds."},{agent:"Tracking Bot",action:"Answered 34 tracking inquiries simultaneously",narr:"Customers get instant updates without waiting."},{agent:"AI Control Tower",action:"Rerouting 8 deliveries around weather zone",narr:"The Control Tower connects dots across departments."},{agent:"Cost Analyzer",action:"Weekly savings: $12,400 from route optimization",narr:"Finance AI tracks exactly how much every optimization saves."}],
+    narr:{idea:"Imagine you run a logistics company with 200 drivers...",questions:"The AI advisor asks a few targeted questions...",design:"The system recommends objectives and AI engines...",results:"Your AI organization: 10 agents, $485K savings, 340% ROI.",sim:"Watch your AI workforce operate autonomously."}
+  },
+  { id:"healthcare", industry:"Healthcare Staffing", idea:"We are a healthcare staffing agency placing nurses and CNAs across 45 facilities in 3 states. Our biggest pain points are credential verification taking days, last-minute shift scrambles, and compliance paperwork burying our team.",
+    questions:[{q:"What does your business do?",a:"Healthcare staffing agency placing nurses, CNAs, and allied health across 45 facilities in 3 states. 2,000+ active workers.",method:"type"},{q:"How large is your organization?",chips:["1-10","11-50","51-200","201-1000","1000+"],a:"51-200",method:"chip"},{q:"What's your biggest bottleneck?",a:"Credential verification takes 3-5 days per candidate. Emergency shift coverage means manually calling through lists. Compliance paperwork consumes 40% of back-office time.",method:"type"},{q:"Which departments need AI most?",chips:["Sales","Operations","Customer Support","HR","Finance","Compliance"],a:"Operations, HR, Compliance",method:"chip",multi:true}],
+    design:{outcomes:[{id:"speed",label:"Faster Placements",icon:"bi-lightning",sel:true},{id:"compliance",label:"Automate Compliance",icon:"bi-shield-check",sel:true},{id:"scale",label:"Scale Operations",icon:"bi-graph-up-arrow",sel:true},{id:"rev",label:"Increase Revenue",icon:"bi-currency-dollar",sel:false}],systems:[{id:"ops",label:"Staffing Engine",icon:"bi-people",color:"primary",sel:true},{id:"comp",label:"Compliance Engine",icon:"bi-shield-check",color:"success",sel:true},{id:"tower",label:"AI Control Tower",icon:"bi-cpu",color:"dark",sel:true},{id:"comms",label:"Communication Engine",icon:"bi-chat-square-text",color:"info",sel:false}]},
+    agents:[{name:"AI Control Tower",dept:"Executive",cory:true},{name:"Credential Verifier",dept:"Operations",primary:true},{name:"Shift Matcher",dept:"Operations",primary:true},{name:"Availability Scanner",dept:"Operations"},{name:"Compliance Monitor",dept:"Compliance"},{name:"License Tracker",dept:"Compliance"},{name:"Candidate Screener",dept:"HR"},{name:"Onboarding Guide",dept:"HR"},{name:"Invoice Generator",dept:"Finance"},{name:"Facility Liaison",dept:"Sales"}],
+    kpis:{savings:320,savings_suf:"K",revenue:890,revenue_suf:"K",roi:280,agents:10},
+    sim:[{agent:"AI Control Tower",action:"Morning scan: 12 open shifts across 6 facilities",narr:"The AI Control Tower identifies all staffing gaps before they become emergencies."},{agent:"Shift Matcher",action:"Matched 9 of 12 open shifts in 14 seconds",narr:"AI matches worker availability, credentials, and facility preferences instantly."},{agent:"Credential Verifier",action:"Verified 3 nurse licenses in 45 seconds (was 3 days)",narr:"Automated credential checks against state databases in real-time."},{agent:"Compliance Monitor",action:"Flagged 2 expiring certifications due next week",narr:"Proactive compliance alerts prevent costly violations."},{agent:"AI Control Tower",action:"Cross-facility: rebalancing 4 nurses for optimal coverage",narr:"The Control Tower optimizes staffing across all 45 facilities."},{agent:"Invoice Generator",action:"Generated 23 facility invoices with zero errors",narr:"Billing automated with correct rates, hours, and compliance docs."}],
+    narr:{idea:"Imagine you run a healthcare staffing agency across 3 states...",questions:"The AI advisor learns about your staffing operations...",design:"AI recommends staffing, compliance, and control engines...",results:"Your AI organization: 10 agents, $320K savings, 280% ROI.",sim:"Watch your AI workforce handle staffing and compliance."}
+  },
+  { id:"saas", industry:"B2B SaaS", idea:"We are a B2B SaaS platform for project management with 2,400 customers and $8M ARR. Our sales team can't keep up with leads, churn is climbing because we don't catch at-risk accounts early, and support spends hours on repetitive tickets.",
+    questions:[{q:"What does your business do?",a:"B2B SaaS platform for project management with 2,400 paying customers and $8M ARR. Mid-market companies with 50-500 employees.",method:"type"},{q:"How large is your organization?",chips:["1-10","11-50","51-200","201-1000","1000+"],a:"51-200",method:"chip"},{q:"What's your biggest bottleneck?",a:"Inbound leads sit 6+ hours before first contact. Churn hit 4.2% last month and we can't identify at-risk accounts until they cancel.",method:"type"},{q:"Which departments need AI most?",chips:["Sales","Operations","Customer Support","Marketing","Finance","Engineering"],a:"Sales, Customer Support, Marketing",method:"chip",multi:true}],
+    design:{outcomes:[{id:"rev",label:"Grow Revenue",icon:"bi-currency-dollar",sel:true},{id:"churn",label:"Reduce Churn",icon:"bi-arrow-down-circle",sel:true},{id:"cx",label:"Improve CX",icon:"bi-people",sel:true},{id:"costs",label:"Reduce Costs",icon:"bi-piggy-bank",sel:false}],systems:[{id:"rev",label:"Revenue Engine",icon:"bi-currency-dollar",color:"primary",sel:true},{id:"cust",label:"Customer Engine",icon:"bi-people",color:"info",sel:true},{id:"tower",label:"AI Control Tower",icon:"bi-cpu",color:"dark",sel:true},{id:"mktg",label:"Marketing Engine",icon:"bi-megaphone",color:"success",sel:false}]},
+    agents:[{name:"AI Control Tower",dept:"Executive",cory:true},{name:"Lead Scorer",dept:"Sales",primary:true},{name:"Pipeline Manager",dept:"Sales"},{name:"Outreach Agent",dept:"Sales"},{name:"Churn Predictor",dept:"Customer Support",primary:true},{name:"Support Bot",dept:"Customer Support"},{name:"Onboarding Guide",dept:"Customer Support"},{name:"Campaign Optimizer",dept:"Marketing"},{name:"Revenue Forecaster",dept:"Finance"},{name:"Usage Analyzer",dept:"Engineering"}],
+    kpis:{savings:290,savings_suf:"K",revenue:1.8,revenue_suf:"M",roi:420,agents:10},
+    sim:[{agent:"AI Control Tower",action:"Daily pipeline scan: 47 new leads, 3 at-risk accounts",narr:"The AI Control Tower monitors your entire revenue pipeline in real-time."},{agent:"Lead Scorer",action:"Scored 47 leads in 3 seconds. 8 marked high-intent.",narr:"AI scores every lead instantly so sales focuses on the best opportunities."},{agent:"Outreach Agent",action:"Sent personalized emails to 8 high-intent leads",narr:"First touch in under 30 seconds. Competitors can't match that speed."},{agent:"Churn Predictor",action:"Flagged 3 accounts showing disengagement patterns",narr:"AI catches churn signals weeks before the customer thinks about leaving."},{agent:"Support Bot",action:"Resolved 23 tier-1 tickets autonomously",narr:"Repetitive support questions handled instantly without human involvement."},{agent:"AI Control Tower",action:"Revenue insight: trial-to-paid conversion up 18%",narr:"The Control Tower connects marketing, sales, and support data for insights."}],
+    narr:{idea:"Imagine you run a B2B SaaS platform with 2,400 customers...",questions:"The AI advisor understands your SaaS business...",design:"AI recommends revenue, customer, and intelligence engines...",results:"Your AI organization: 10 agents, $1.8M revenue impact, 420% ROI.",sim:"Watch your AI workforce drive revenue and reduce churn."}
+  },
+  { id:"ecommerce", industry:"E-Commerce", idea:"We are an online fashion retailer doing $12M annually with 180,000 customers. Our biggest problems are 68% cart abandonment, slow weekend support, and inventory running out of trending items too late.",
+    questions:[{q:"What does your business do?",a:"Online fashion retailer doing $12M annually with 180,000 customers. Direct-to-consumer through website and social channels.",method:"type"},{q:"How large is your organization?",chips:["1-10","11-50","51-200","201-1000","1000+"],a:"11-50",method:"chip"},{q:"What's your biggest bottleneck?",a:"68% cart abandonment rate is killing revenue. 3-person support team can't handle weekend volume. We keep running out of trending items.",method:"type"},{q:"Which departments need AI most?",chips:["Sales","Operations","Customer Support","Marketing","Finance","Logistics"],a:"Marketing, Customer Support, Operations",method:"chip",multi:true}],
+    design:{outcomes:[{id:"rev",label:"Recover Revenue",icon:"bi-cart-check",sel:true},{id:"cx",label:"24/7 Support",icon:"bi-headset",sel:true},{id:"inv",label:"Optimize Inventory",icon:"bi-box-seam",sel:true},{id:"costs",label:"Reduce Costs",icon:"bi-piggy-bank",sel:false}],systems:[{id:"rev",label:"Revenue Engine",icon:"bi-currency-dollar",color:"primary",sel:true},{id:"cust",label:"Customer Engine",icon:"bi-people",color:"info",sel:true},{id:"tower",label:"AI Control Tower",icon:"bi-cpu",color:"dark",sel:true},{id:"ops",label:"Operations Engine",icon:"bi-gear-wide-connected",color:"warning",sel:false}]},
+    agents:[{name:"AI Control Tower",dept:"Executive",cory:true},{name:"Cart Recovery Agent",dept:"Marketing",primary:true},{name:"Personalization Engine",dept:"Marketing"},{name:"Campaign Optimizer",dept:"Marketing"},{name:"Shopping Assistant",dept:"Customer Support",primary:true},{name:"Returns Handler",dept:"Customer Support"},{name:"Demand Forecaster",dept:"Operations"},{name:"Inventory Monitor",dept:"Operations"},{name:"Fraud Detector",dept:"Finance"},{name:"Revenue Tracker",dept:"Finance"}],
+    kpis:{savings:180,savings_suf:"K",revenue:2.1,revenue_suf:"M",roi:510,agents:10},
+    sim:[{agent:"AI Control Tower",action:"Real-time: 342 active shoppers, 28 abandoned carts in last hour",narr:"The AI Control Tower monitors your entire store in real-time."},{agent:"Cart Recovery Agent",action:"Sent 28 personalized recovery emails with dynamic discounts",narr:"AI recovers abandoned carts within minutes with personalized incentives."},{agent:"Personalization Engine",action:"Updated recommendations for 12,000 returning visitors",narr:"Every customer sees products matched to their browsing history."},{agent:"Shopping Assistant",action:"Handled 47 inquiries simultaneously (sizing, shipping, returns)",narr:"24/7 support without weekend staffing issues."},{agent:"Demand Forecaster",action:"Alert: 'Oversized Blazer' trending on TikTok, +400% demand projected",narr:"AI spots trends before they hit so you never run out of stock."},{agent:"AI Control Tower",action:"Revenue insight: cart recovery driving $8,200/day in recovered sales",narr:"The Control Tower connects marketing, support, and ops into one revenue picture."}],
+    narr:{idea:"Imagine you run a $12M online fashion retailer...",questions:"The AI advisor learns about your e-commerce challenges...",design:"AI recommends revenue, customer, and intelligence engines...",results:"Your AI organization: 10 agents, $2.1M revenue impact, 510% ROI.",sim:"Watch your AI workforce recover carts and boost sales."}
+  },
+  { id:"consulting", industry:"Professional Services", idea:"We are a management consulting firm with 150 consultants across 4 offices. Proposals take 2-3 weeks to write, knowledge is trapped in individual partners' heads, and utilization reports are always 2 weeks behind.",
+    questions:[{q:"What does your business do?",a:"Management consulting firm with 150 consultants across 4 offices, serving Fortune 500 in digital transformation and strategy.",method:"type"},{q:"How large is your organization?",chips:["1-10","11-50","51-200","201-1000","1000+"],a:"51-200",method:"chip"},{q:"What's your biggest bottleneck?",a:"Proposals take 2-3 weeks. Best knowledge locked in senior partners' heads. Utilization reports always 2 weeks behind.",method:"type"},{q:"Which departments need AI most?",chips:["Sales","Operations","Customer Support","Marketing","Finance","HR"],a:"Sales, Operations, Finance",method:"chip",multi:true}],
+    design:{outcomes:[{id:"speed",label:"Faster Proposals",icon:"bi-lightning",sel:true},{id:"knowledge",label:"Centralize Knowledge",icon:"bi-book",sel:true},{id:"util",label:"Optimize Utilization",icon:"bi-speedometer2",sel:true},{id:"rev",label:"Grow Revenue",icon:"bi-currency-dollar",sel:false}],systems:[{id:"rev",label:"Revenue Engine",icon:"bi-currency-dollar",color:"primary",sel:true},{id:"ops",label:"Operations Engine",icon:"bi-gear-wide-connected",color:"warning",sel:true},{id:"tower",label:"AI Control Tower",icon:"bi-cpu",color:"dark",sel:true},{id:"know",label:"Knowledge Engine",icon:"bi-book",color:"success",sel:false}]},
+    agents:[{name:"AI Control Tower",dept:"Executive",cory:true},{name:"Proposal Writer",dept:"Sales",primary:true},{name:"RFP Analyzer",dept:"Sales"},{name:"Knowledge Search",dept:"Operations",primary:true},{name:"Utilization Tracker",dept:"Operations"},{name:"Staffing Optimizer",dept:"Operations"},{name:"Client Reporter",dept:"Finance"},{name:"Time Entry Agent",dept:"Finance"},{name:"Talent Matcher",dept:"HR"},{name:"Meeting Summarizer",dept:"Executive"}],
+    kpis:{savings:410,savings_suf:"K",revenue:1.5,revenue_suf:"M",roi:360,agents:10},
+    sim:[{agent:"AI Control Tower",action:"Weekly: 6 active proposals, 3 understaffed projects, 12 deadlines",narr:"The AI Control Tower gives partners a real-time view across all engagements."},{agent:"RFP Analyzer",action:"Analyzed RFP: 80% match to previous healthcare transformation win",narr:"AI matches new RFPs to past wins instantly."},{agent:"Proposal Writer",action:"Generated first draft in 4 hours (was 2 weeks)",narr:"AI drafts proposals using your firm's best past work."},{agent:"Knowledge Search",action:"Found 12 relevant case studies across 3 practice areas",narr:"No more knowledge trapped in individual consultants' heads."},{agent:"Utilization Tracker",action:"Real-time utilization: 78%. Flagged 4 below target.",narr:"Live data so partners make staffing decisions today, not in 2 weeks."},{agent:"AI Control Tower",action:"Insight: proposal win rate up 23% since AI drafting began",narr:"The Control Tower connects sales, operations, and finance for decisions."}],
+    narr:{idea:"Imagine you run a consulting firm with 150 consultants...",questions:"The AI advisor understands your professional services model...",design:"AI recommends revenue, operations, and intelligence engines...",results:"Your AI organization: 10 agents, $1.5M revenue impact, 360% ROI.",sim:"Watch your AI workforce accelerate proposals and optimize utilization."}
+  }
+];
+
+// Pick random scenario, avoid repeating the last one shown
+var _lastDemo = localStorage.getItem('cb_last_demo') || '';
+var _available = ID_SCENARIOS.filter(function(s) { return s.id !== _lastDemo; });
+if (!_available.length) _available = ID_SCENARIOS;
+var ID_DATA = _available[Math.floor(Math.random() * _available.length)];
 
 function _ids(ms) {
     var gen = _idCancelled;
@@ -663,10 +661,11 @@ async function runInlineDemo() {
     _idShow('results');
     await _ids(300);
 
-    _idCountUp(document.getElementById('ik1'), 485, '$', 'K');
-    _idCountUp(document.getElementById('ik2'), 1.2, '$', 'M');
-    _idCountUp(document.getElementById('ik3'), 340, '', '%');
-    _idCountUp(document.getElementById('ik4'), 10, '', '');
+    var kp = ID_DATA.kpis || {savings:485,savings_suf:'K',revenue:1.2,revenue_suf:'M',roi:340,agents:10};
+    _idCountUp(document.getElementById('ik1'), kp.savings, '$', kp.savings_suf||'K');
+    _idCountUp(document.getElementById('ik2'), kp.revenue, '$', kp.revenue_suf||'M');
+    _idCountUp(document.getElementById('ik3'), kp.roi, '', '%');
+    _idCountUp(document.getElementById('ik4'), kp.agents, '', '');
     await _ids(1500);
     if(gen!==_idCancelled) return;
 
@@ -675,8 +674,10 @@ async function runInlineDemo() {
     await _ids(2000);
     if(gen!==_idCancelled) return;
 
-    // Pulse key agents
-    var pulseList = ['AI Control Tower','Route Optimizer','Tracking Bot'];
+    // Pulse key agents (control tower + first two primary/named agents)
+    var pulseList = ['AI Control Tower'];
+    ID_DATA.agents.forEach(function(a){ if(a.primary && pulseList.length<3) pulseList.push(a.name); });
+    if(pulseList.length<3) ID_DATA.agents.forEach(function(a){ if(!a.cory && pulseList.length<3) pulseList.push(a.name); });
     for(var pi=0;pi<pulseList.length;pi++) {
         if(gen!==_idCancelled) return;
         _idGraphAPI.highlight(pulseList[pi]);
@@ -733,16 +734,21 @@ async function runInlineDemo() {
     ta.classList.add('input-glow');
 
     // Track completion
-    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_complete',{}); } catch(e){}
-    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_to_input_focus',{}); } catch(e){}
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_complete',{scenario:_demoScenarioShown||'',industry:ID_DATA.industry||''}); } catch(e){}
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_to_input_focus',{scenario:_demoScenarioShown||'',industry:ID_DATA.industry||''}); } catch(e){}
 }
 
+var _demoScenarioShown = null;
+var _typingTracked = false;
+
 function startInlineDemo() {
+    _demoScenarioShown = ID_DATA.id || ID_DATA.industry || 'unknown';
+    localStorage.setItem('cb_last_demo', _demoScenarioShown);
     var cont = document.getElementById('inline-demo');
     cont.classList.add('open');
     document.getElementById('watchDemoBtn').classList.add('d-none');
     document.getElementById('skipDemoBtn').classList.remove('d-none');
-    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_start',{}); } catch(e){}
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_start',{scenario:_demoScenarioShown, industry:ID_DATA.industry||''}); } catch(e){}
     runInlineDemo();
 }
 
@@ -756,7 +762,15 @@ function skipDemo() {
     document.getElementById('watchDemoBtn').classList.remove('d-none');
     document.getElementById('input-card').scrollIntoView({behavior:'smooth', block:'center'});
     setTimeout(function(){ document.getElementById('business_idea').focus(); }, 400);
-    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_skip',{}); } catch(e){}
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_skip',{scenario:_demoScenarioShown||'', industry:ID_DATA.industry||''}); } catch(e){}
 }
+
+// Track when user starts typing after watching a demo
+document.getElementById('business_idea').addEventListener('input', function() {
+    if (!_typingTracked && _demoScenarioShown) {
+        _typingTracked = true;
+        try { if(window.trackBookingEvent) window.trackBookingEvent('demo_typing_started',{scenario:_demoScenarioShown, industry:ID_DATA.industry||''}); } catch(e){}
+    }
+});
 </script>
 {% endblock %}
