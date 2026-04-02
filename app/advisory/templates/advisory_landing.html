@@ -121,14 +121,25 @@
 </div>
 
 <!-- Demo Hero -->
-<div class="text-center mb-4">
+<div class="text-center mb-4" id="demoHero">
     <h5 class="fw-bold mb-1">See exactly what you'll get before you start</h5>
-    <button class="btn btn-dark rounded-pill px-4 py-2" id="watchDemoBtn" onclick="startInlineDemo()" data-track="demo_watch_click">
-        <i class="bi bi-play-circle me-2"></i>Watch an AI Organization Get Built in Seconds
-    </button>
-    <button class="btn btn-link btn-sm text-muted ms-2 d-none" id="skipDemoBtn" onclick="skipDemo()">
-        Skip Demo <i class="bi bi-arrow-down"></i>
-    </button>
+    <!-- Initial state: Watch button -->
+    <div id="demoInitial">
+        <button class="btn btn-dark rounded-pill px-4 py-2" id="watchDemoBtn" onclick="startInlineDemo()" data-track="demo_watch_click">
+            <i class="bi bi-play-circle me-2"></i>Watch an AI Organization Get Built in Seconds
+        </button>
+    </div>
+    <!-- During demo: Skip button -->
+    <div id="demoPlaying" class="d-none">
+        <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="skipDemo()">
+            <i class="bi bi-skip-forward-fill me-1"></i>Skip to My Turn
+        </button>
+    </div>
+    <!-- After demo: Watch another industry -->
+    <div id="demoDone" class="d-none">
+        <small class="text-muted d-block mb-2">See it built for a different industry:</small>
+        <div class="d-flex flex-wrap justify-content-center gap-2" id="demoIndustryPicker"></div>
+    </div>
 </div>
 
 <!-- Inline Demo Container (hidden, expands on click) -->
@@ -137,7 +148,6 @@
     <div class="id-narr p-3 mb-3 d-flex align-items-center gap-2">
         <span class="id-dot" id="idDot"></span>
         <span id="idNarr" class="flex-grow-1"></span>
-        <button class="btn btn-sm btn-outline-light" onclick="skipDemo()"><i class="bi bi-skip-forward-fill me-1"></i>Skip</button>
     </div>
     <!-- Steps -->
     <div id="id-step-idea" class="id-step"></div>
@@ -726,6 +736,9 @@ async function runInlineDemo() {
     var label = document.getElementById('input-label');
     if(label) label.innerHTML = '<i class="bi bi-lightning-charge text-primary me-1"></i>Now it\'s your turn. Describe your business:';
 
+    // Show industry picker for rewatching
+    onDemoFinished();
+
     document.getElementById('input-card').scrollIntoView({behavior:'smooth', block:'center'});
     await _ids(600);
 
@@ -741,15 +754,44 @@ async function runInlineDemo() {
 var _demoScenarioShown = null;
 var _typingTracked = false;
 
+function _showDemoState(state) {
+    document.getElementById('demoInitial').classList.toggle('d-none', state !== 'initial');
+    document.getElementById('demoPlaying').classList.toggle('d-none', state !== 'playing');
+    document.getElementById('demoDone').classList.toggle('d-none', state !== 'done');
+}
+
+function _buildIndustryPicker() {
+    var picker = document.getElementById('demoIndustryPicker');
+    if (!picker || picker.children.length) return;
+    var icons = {logistics:'bi-truck',healthcare:'bi-heart-pulse',saas:'bi-cloud',ecommerce:'bi-cart3',consulting:'bi-briefcase'};
+    ID_SCENARIOS.forEach(function(s) {
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-outline-primary rounded-pill px-3';
+        btn.innerHTML = '<i class="bi ' + (icons[s.id]||'bi-building') + ' me-1"></i>' + s.industry;
+        btn.onclick = function() { playSpecificDemo(s.id); };
+        picker.appendChild(btn);
+    });
+}
+
+function playSpecificDemo(scenarioId) {
+    // Switch to the chosen scenario
+    var chosen = ID_SCENARIOS.find(function(s){ return s.id === scenarioId; });
+    if (chosen) ID_DATA = chosen;
+    startInlineDemo();
+}
+
 function startInlineDemo() {
     _demoScenarioShown = ID_DATA.id || ID_DATA.industry || 'unknown';
     localStorage.setItem('cb_last_demo', _demoScenarioShown);
-    var cont = document.getElementById('inline-demo');
-    cont.classList.add('open');
-    document.getElementById('watchDemoBtn').classList.add('d-none');
-    document.getElementById('skipDemoBtn').classList.remove('d-none');
+    _showDemoState('playing');
+    document.getElementById('inline-demo').classList.add('open');
     try { if(window.trackBookingEvent) window.trackBookingEvent('demo_start',{scenario:_demoScenarioShown, industry:ID_DATA.industry||''}); } catch(e){}
     runInlineDemo();
+}
+
+function onDemoFinished() {
+    _buildIndustryPicker();
+    _showDemoState('done');
 }
 
 function skipDemo() {
@@ -758,8 +800,8 @@ function skipDemo() {
     _idTimers = [];
     if(_idGraphAPI) { _idGraphAPI.destroy(); _idGraphAPI = null; }
     document.getElementById('inline-demo').classList.remove('open');
-    document.getElementById('skipDemoBtn').classList.add('d-none');
-    document.getElementById('watchDemoBtn').classList.remove('d-none');
+    _buildIndustryPicker();
+    _showDemoState('done');
     document.getElementById('input-card').scrollIntoView({behavior:'smooth', block:'center'});
     setTimeout(function(){ document.getElementById('business_idea').focus(); }, 400);
     try { if(window.trackBookingEvent) window.trackBookingEvent('demo_skip',{scenario:_demoScenarioShown||'', industry:ID_DATA.industry||''}); } catch(e){}
