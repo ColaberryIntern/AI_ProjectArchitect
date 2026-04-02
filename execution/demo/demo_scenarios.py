@@ -300,6 +300,301 @@ SCENARIOS = {
             "sim": "Watch your AI workforce accelerate proposals and optimize utilization."
         }
     },
+
+    # ─── 6. UTILITY / ENERGY ──────────────────────────────────
+    "utility": {
+        "id": "utility",
+        "industry": "Utility & Energy",
+        "company": {
+            "name": "PeakGrid Energy",
+            "idea": "We are a regional electric utility serving 380,000 residential and commercial customers across 4 counties. Our biggest challenges are predicting outages before they happen, managing a flood of customer calls during storms, dispatching field crews efficiently to restore power, and keeping up with regulatory compliance reporting. We want AI to predict failures, automate dispatch, handle customer communication, and streamline compliance.",
+            "size": "850 employees"
+        },
+        "questions": [
+            {"q": "What does your business do?", "a": "Regional electric utility serving 380,000 customers across 4 counties. We manage generation, transmission, distribution, and customer service.", "method": "type"},
+            {"q": "How large is your organization?", "chips": ["1-10", "11-50", "51-200", "201-1000", "1000+"], "a": "201-1000", "method": "chip"},
+            {"q": "What's your biggest bottleneck?", "a": "During storms we get 15,000+ calls in hours. Field crew dispatch is manual and inefficient. We can't predict equipment failures before they cause outages. Compliance reports take a full-time employee.", "method": "type"},
+            {"q": "Which departments need AI most?", "chips": ["Operations", "Customer Support", "Field Services", "Finance", "Compliance", "Engineering"], "a": "Operations, Customer Support, Field Services, Compliance", "method": "chip", "multi": True}
+        ],
+        "design": {
+            "outcomes": [
+                {"id": "reliability", "label": "Improve Grid Reliability", "icon": "bi-lightning-charge", "sel": True},
+                {"id": "cx", "label": "Reduce Call Volume", "icon": "bi-headset", "sel": True},
+                {"id": "costs", "label": "Reduce Costs", "icon": "bi-piggy-bank", "sel": True},
+                {"id": "compliance", "label": "Automate Compliance", "icon": "bi-shield-check", "sel": False}
+            ],
+            "systems": [
+                {"id": "ops", "label": "Grid Operations Engine", "icon": "bi-lightning-charge", "color": "warning", "sel": True},
+                {"id": "cust", "label": "Customer Engine", "icon": "bi-people", "color": "info", "sel": True},
+                {"id": "tower", "label": "AI Control Tower", "icon": "bi-cpu", "color": "dark", "sel": True},
+                {"id": "field", "label": "Field Services Engine", "icon": "bi-truck", "color": "success", "sel": False}
+            ]
+        },
+        "agents": [
+            {"name": "AI Control Tower", "dept": "Executive", "cory": True},
+            {"name": "Outage Predictor", "dept": "Operations", "primary": True},
+            {"name": "Grid Monitor", "dept": "Operations"},
+            {"name": "Load Balancer", "dept": "Operations"},
+            {"name": "Storm Response Bot", "dept": "Customer Support", "primary": True},
+            {"name": "Outage Communicator", "dept": "Customer Support"},
+            {"name": "Crew Dispatcher", "dept": "Field Services"},
+            {"name": "Asset Inspector", "dept": "Field Services"},
+            {"name": "Compliance Reporter", "dept": "Compliance"},
+            {"name": "Rate Analyzer", "dept": "Finance"}
+        ],
+        "kpis": {"savings": 620, "savings_suf": "K", "revenue": 1.8, "revenue_suf": "M", "roi": 290, "agents": 10},
+        "sim": [
+            {"agent": "AI Control Tower", "action": "Grid scan: 380,000 meters monitored, 7 anomalies detected", "narr": "The AI Control Tower monitors the entire grid in real-time, catching problems before customers notice."},
+            {"agent": "Outage Predictor", "action": "Transformer T-4821 showing thermal stress pattern, failure predicted in 48 hours", "narr": "AI predicts equipment failures days before they happen, preventing outages."},
+            {"agent": "Crew Dispatcher", "action": "Dispatched maintenance crew to T-4821, ETA 2 hours, zero customer impact", "narr": "Preventive dispatch means fixing problems before anyone loses power."},
+            {"agent": "Storm Response Bot", "action": "Incoming storm: auto-sent prep alerts to 42,000 customers in affected zone", "narr": "Proactive communication reduces inbound calls by 60% during storms."},
+            {"agent": "Grid Monitor", "action": "Rerouting power through alternate feeders to reduce storm exposure", "narr": "AI reroutes the grid in real-time to minimize storm impact."},
+            {"agent": "AI Control Tower", "action": "Storm response: 94% fewer inbound calls vs last comparable event", "narr": "The Control Tower coordinates prediction, dispatch, and communication into one seamless response."}
+        ],
+        "narr": {
+            "idea": "Imagine you run a utility serving 380,000 customers...",
+            "questions": "The AI advisor learns about your grid operations...",
+            "design": "AI recommends grid operations, customer, and control engines...",
+            "results": "Your AI organization: 10 agents, $620K savings, 290% ROI.",
+            "sim": "Watch your AI workforce predict outages and coordinate storm response."
+        }
+    },
+
+    # ─── 7. MANUFACTURING ─────────────────────────────────────
+    "manufacturing": {
+        "id": "manufacturing",
+        "industry": "Manufacturing",
+        "company": {
+            "name": "Precision Parts Inc",
+            "idea": "We are a precision manufacturing company producing automotive and aerospace components with 3 production lines running 24/7. Our biggest issues are unplanned downtime costing us $50K per hour, quality defects caught too late in the process, manual production scheduling, and supply chain disruptions we don't see coming until it's too late.",
+            "size": "320 employees"
+        },
+        "questions": [
+            {"q": "What does your business do?", "a": "Precision manufacturing for automotive and aerospace. 3 production lines running 24/7, producing 50,000 components per week.", "method": "type"},
+            {"q": "How large is your organization?", "chips": ["1-10", "11-50", "51-200", "201-1000", "1000+"], "a": "201-1000", "method": "chip"},
+            {"q": "What's your biggest bottleneck?", "a": "Unplanned downtime costs $50K/hour. Quality defects caught at final inspection instead of in-process. Production scheduling is a 4-hour manual exercise every morning.", "method": "type"},
+            {"q": "Which departments need AI most?", "chips": ["Production", "Quality", "Supply Chain", "Maintenance", "Finance", "Engineering"], "a": "Production, Quality, Maintenance", "method": "chip", "multi": True}
+        ],
+        "design": {
+            "outcomes": [
+                {"id": "uptime", "label": "Maximize Uptime", "icon": "bi-gear-wide-connected", "sel": True},
+                {"id": "quality", "label": "Zero-Defect Quality", "icon": "bi-check-circle", "sel": True},
+                {"id": "costs", "label": "Reduce Costs", "icon": "bi-piggy-bank", "sel": True},
+                {"id": "supply", "label": "Supply Chain Visibility", "icon": "bi-truck", "sel": False}
+            ],
+            "systems": [
+                {"id": "prod", "label": "Production Engine", "icon": "bi-gear-wide-connected", "color": "warning", "sel": True},
+                {"id": "quality", "label": "Quality Engine", "icon": "bi-check-circle", "color": "success", "sel": True},
+                {"id": "tower", "label": "AI Control Tower", "icon": "bi-cpu", "color": "dark", "sel": True},
+                {"id": "supply", "label": "Supply Chain Engine", "icon": "bi-truck", "color": "info", "sel": False}
+            ]
+        },
+        "agents": [
+            {"name": "AI Control Tower", "dept": "Executive", "cory": True},
+            {"name": "Predictive Maintenance", "dept": "Production", "primary": True},
+            {"name": "Production Scheduler", "dept": "Production"},
+            {"name": "OEE Monitor", "dept": "Production"},
+            {"name": "Defect Detector", "dept": "Quality", "primary": True},
+            {"name": "SPC Analyzer", "dept": "Quality"},
+            {"name": "Supplier Monitor", "dept": "Supply Chain"},
+            {"name": "Inventory Optimizer", "dept": "Supply Chain"},
+            {"name": "Energy Manager", "dept": "Operations"},
+            {"name": "Cost Tracker", "dept": "Finance"}
+        ],
+        "kpis": {"savings": 750, "savings_suf": "K", "revenue": 2.3, "revenue_suf": "M", "roi": 380, "agents": 10},
+        "sim": [
+            {"agent": "AI Control Tower", "action": "Plant scan: 3 lines running, OEE at 82%, 1 vibration anomaly flagged", "narr": "The AI Control Tower monitors every machine, every second, across all production lines."},
+            {"agent": "Predictive Maintenance", "action": "Spindle bearing on Line 2 showing wear pattern, failure predicted in 72 hours", "narr": "AI predicts failures days ahead, turning unplanned downtime into scheduled maintenance."},
+            {"agent": "Production Scheduler", "action": "Optimized tomorrow's schedule: rearranged 12 jobs to maximize Line 2 output before maintenance window", "narr": "What took 4 hours of manual scheduling happens in seconds."},
+            {"agent": "Defect Detector", "action": "Caught surface micro-crack on part #8847 at Station 3, rejected before next operation", "narr": "AI catches defects in-process, not at final inspection when it's too late."},
+            {"agent": "SPC Analyzer", "action": "Process drift detected on Line 1, auto-adjusted parameters to center tolerance", "narr": "Statistical process control runs continuously, not just during audits."},
+            {"agent": "AI Control Tower", "action": "Weekly impact: prevented 2 unplanned stops, saving $100K in downtime costs", "narr": "The Control Tower connects maintenance, quality, and scheduling into one intelligent system."}
+        ],
+        "narr": {
+            "idea": "Imagine you run a precision manufacturing plant with 3 production lines...",
+            "questions": "The AI advisor learns about your manufacturing operations...",
+            "design": "AI recommends production, quality, and control engines...",
+            "results": "Your AI organization: 10 agents, $750K savings, 380% ROI.",
+            "sim": "Watch your AI workforce prevent downtime and eliminate defects."
+        }
+    },
+
+    # ─── 8. REAL ESTATE ───────────────────────────────────────
+    "realestate": {
+        "id": "realestate",
+        "industry": "Real Estate",
+        "company": {
+            "name": "Apex Property Group",
+            "idea": "We are a commercial real estate firm managing 45 properties and 2.1 million square feet across 3 metro areas. Our challenges are tenant communication bottlenecks, maintenance requests piling up, lease renewal tracking falling through the cracks, and no visibility into which properties are underperforming until quarterly reviews.",
+            "size": "65 employees"
+        },
+        "questions": [
+            {"q": "What does your business do?", "a": "Commercial real estate firm managing 45 properties, 2.1M sq ft across 3 metro areas. Mixed portfolio: office, retail, and light industrial.", "method": "type"},
+            {"q": "How large is your organization?", "chips": ["1-10", "11-50", "51-200", "201-1000", "1000+"], "a": "51-200", "method": "chip"},
+            {"q": "What's your biggest bottleneck?", "a": "Maintenance requests take 48 hours to triage. We missed 6 lease renewals last quarter. Tenant satisfaction surveys show communication as the #1 complaint. Portfolio performance is only reviewed quarterly.", "method": "type"},
+            {"q": "Which departments need AI most?", "chips": ["Property Management", "Leasing", "Maintenance", "Finance", "Marketing", "Tenant Relations"], "a": "Property Management, Maintenance, Leasing", "method": "chip", "multi": True}
+        ],
+        "design": {
+            "outcomes": [
+                {"id": "retention", "label": "Improve Tenant Retention", "icon": "bi-people", "sel": True},
+                {"id": "ops", "label": "Streamline Operations", "icon": "bi-gear", "sel": True},
+                {"id": "revenue", "label": "Maximize Revenue", "icon": "bi-graph-up-arrow", "sel": True},
+                {"id": "costs", "label": "Reduce Costs", "icon": "bi-piggy-bank", "sel": False}
+            ],
+            "systems": [
+                {"id": "prop", "label": "Property Engine", "icon": "bi-building", "color": "primary", "sel": True},
+                {"id": "tenant", "label": "Tenant Engine", "icon": "bi-people", "color": "info", "sel": True},
+                {"id": "tower", "label": "AI Control Tower", "icon": "bi-cpu", "color": "dark", "sel": True},
+                {"id": "fin", "label": "Finance Engine", "icon": "bi-cash-stack", "color": "danger", "sel": False}
+            ]
+        },
+        "agents": [
+            {"name": "AI Control Tower", "dept": "Executive", "cory": True},
+            {"name": "Maintenance Router", "dept": "Property Management", "primary": True},
+            {"name": "Property Monitor", "dept": "Property Management"},
+            {"name": "Lease Tracker", "dept": "Leasing", "primary": True},
+            {"name": "Renewal Negotiator", "dept": "Leasing"},
+            {"name": "Tenant Communicator", "dept": "Tenant Relations"},
+            {"name": "Satisfaction Monitor", "dept": "Tenant Relations"},
+            {"name": "Vendor Manager", "dept": "Maintenance"},
+            {"name": "NOI Analyzer", "dept": "Finance"},
+            {"name": "Market Comparator", "dept": "Leasing"}
+        ],
+        "kpis": {"savings": 340, "savings_suf": "K", "revenue": 1.4, "revenue_suf": "M", "roi": 310, "agents": 10},
+        "sim": [
+            {"agent": "AI Control Tower", "action": "Portfolio scan: 45 properties, 3 maintenance backlogs, 2 leases expiring in 30 days", "narr": "The AI Control Tower monitors your entire portfolio in real-time."},
+            {"agent": "Maintenance Router", "action": "Triaged 18 maintenance requests in 12 seconds, dispatched 3 urgent to vendors", "narr": "What took 48 hours of triage now happens instantly."},
+            {"agent": "Lease Tracker", "action": "Alert: 2 high-value leases expiring in 30 days, renewal conversations not started", "narr": "AI catches every lease renewal so nothing falls through the cracks."},
+            {"agent": "Tenant Communicator", "action": "Sent proactive updates to 12 tenants about upcoming building maintenance", "narr": "Proactive communication turns the #1 complaint into a strength."},
+            {"agent": "NOI Analyzer", "action": "Property #23 NOI trending 8% below target, flagged for review", "narr": "Real-time portfolio analytics instead of waiting for quarterly reviews."},
+            {"agent": "AI Control Tower", "action": "Impact: tenant retention up 12%, maintenance resolution down from 48h to 4h", "narr": "The Control Tower connects leasing, maintenance, and finance into one operating view."}
+        ],
+        "narr": {
+            "idea": "Imagine you manage 45 commercial properties across 3 cities...",
+            "questions": "The AI advisor learns about your property portfolio...",
+            "design": "AI recommends property, tenant, and control engines...",
+            "results": "Your AI organization: 10 agents, $1.4M revenue impact, 310% ROI.",
+            "sim": "Watch your AI workforce manage properties and retain tenants."
+        }
+    },
+
+    # ─── 9. INSURANCE ─────────────────────────────────────────
+    "insurance": {
+        "id": "insurance",
+        "industry": "Insurance",
+        "company": {
+            "name": "ShieldPoint Insurance",
+            "idea": "We are a mid-size insurance company writing property and casualty policies with 120,000 policyholders. Claims processing takes 14 days on average, underwriting is mostly manual with inconsistent risk assessment, fraud costs us $4M annually, and policy renewals have a 23% lapse rate because we don't engage customers early enough.",
+            "size": "280 employees"
+        },
+        "questions": [
+            {"q": "What does your business do?", "a": "Mid-size P&C insurance company with 120,000 policyholders. We write homeowners, auto, and commercial lines across 8 states.", "method": "type"},
+            {"q": "How large is your organization?", "chips": ["1-10", "11-50", "51-200", "201-1000", "1000+"], "a": "201-1000", "method": "chip"},
+            {"q": "What's your biggest bottleneck?", "a": "Claims take 14 days average. Underwriting is manual and inconsistent. Fraud costs $4M/year. 23% policy lapse rate because we engage too late on renewals.", "method": "type"},
+            {"q": "Which departments need AI most?", "chips": ["Claims", "Underwriting", "Sales", "Customer Service", "Compliance", "Finance"], "a": "Claims, Underwriting, Sales", "method": "chip", "multi": True}
+        ],
+        "design": {
+            "outcomes": [
+                {"id": "claims", "label": "Accelerate Claims", "icon": "bi-lightning", "sel": True},
+                {"id": "fraud", "label": "Detect Fraud", "icon": "bi-shield-exclamation", "sel": True},
+                {"id": "retention", "label": "Improve Retention", "icon": "bi-people", "sel": True},
+                {"id": "costs", "label": "Reduce Costs", "icon": "bi-piggy-bank", "sel": False}
+            ],
+            "systems": [
+                {"id": "claims", "label": "Claims Engine", "icon": "bi-file-earmark-check", "color": "primary", "sel": True},
+                {"id": "underwriting", "label": "Underwriting Engine", "icon": "bi-clipboard-data", "color": "warning", "sel": True},
+                {"id": "tower", "label": "AI Control Tower", "icon": "bi-cpu", "color": "dark", "sel": True},
+                {"id": "cust", "label": "Customer Engine", "icon": "bi-people", "color": "info", "sel": False}
+            ]
+        },
+        "agents": [
+            {"name": "AI Control Tower", "dept": "Executive", "cory": True},
+            {"name": "Claims Processor", "dept": "Claims", "primary": True},
+            {"name": "Fraud Detector", "dept": "Claims"},
+            {"name": "Damage Assessor", "dept": "Claims"},
+            {"name": "Risk Scorer", "dept": "Underwriting", "primary": True},
+            {"name": "Policy Pricer", "dept": "Underwriting"},
+            {"name": "Renewal Agent", "dept": "Sales"},
+            {"name": "Policyholder Bot", "dept": "Customer Service"},
+            {"name": "Compliance Checker", "dept": "Compliance"},
+            {"name": "Loss Ratio Analyst", "dept": "Finance"}
+        ],
+        "kpis": {"savings": 580, "savings_suf": "K", "revenue": 3.2, "revenue_suf": "M", "roi": 440, "agents": 10},
+        "sim": [
+            {"agent": "AI Control Tower", "action": "Daily scan: 847 open claims, 12 flagged suspicious, 340 renewals due in 30 days", "narr": "The AI Control Tower monitors claims, fraud, and retention risk across your entire book."},
+            {"agent": "Claims Processor", "action": "Auto-processed 23 straightforward claims in 90 seconds (was 14 days)", "narr": "Simple claims resolved instantly. Complex claims fast-tracked with full documentation."},
+            {"agent": "Fraud Detector", "action": "Flagged claim #C-48291: inconsistent damage photos + prior claim pattern, confidence 91%", "narr": "AI catches fraud patterns humans miss, saving millions annually."},
+            {"agent": "Risk Scorer", "action": "Scored 15 new applications with consistent risk assessment in 8 seconds", "narr": "Underwriting decisions are consistent, fast, and data-driven."},
+            {"agent": "Renewal Agent", "action": "Sent personalized renewal offers to 34 at-risk policyholders", "narr": "AI engages customers before they lapse, not after."},
+            {"agent": "AI Control Tower", "action": "Impact: claims cycle down 73%, fraud savings $1.2M projected, lapse rate down to 15%", "narr": "The Control Tower connects claims, underwriting, and sales into one intelligent system."}
+        ],
+        "narr": {
+            "idea": "Imagine you run an insurance company with 120,000 policyholders...",
+            "questions": "The AI advisor understands your insurance operations...",
+            "design": "AI recommends claims, underwriting, and control engines...",
+            "results": "Your AI organization: 10 agents, $3.2M revenue impact, 440% ROI.",
+            "sim": "Watch your AI workforce process claims and detect fraud."
+        }
+    },
+
+    # ─── 10. EDUCATION / TRAINING ─────────────────────────────
+    "education": {
+        "id": "education",
+        "industry": "Education & Training",
+        "company": {
+            "name": "SkillBridge Academy",
+            "idea": "We are a workforce training company that delivers corporate upskilling programs to 200+ enterprise clients. Our challenges are creating personalized learning paths for thousands of learners, tracking completion and certification compliance, matching trainers to programs, and demonstrating ROI to corporate clients who are evaluating whether to renew contracts.",
+            "size": "95 employees"
+        },
+        "questions": [
+            {"q": "What does your business do?", "a": "Workforce training company delivering corporate upskilling programs to 200+ enterprise clients. We train 15,000+ learners annually across tech, leadership, and compliance.", "method": "type"},
+            {"q": "How large is your organization?", "chips": ["1-10", "11-50", "51-200", "201-1000", "1000+"], "a": "51-200", "method": "chip"},
+            {"q": "What's your biggest bottleneck?", "a": "Personalized learning paths are created manually for each cohort. Certification tracking is a spreadsheet nightmare. We can't prove ROI to clients at renewal time. Trainer scheduling takes days.", "method": "type"},
+            {"q": "Which departments need AI most?", "chips": ["Curriculum", "Operations", "Sales", "Student Support", "Finance", "HR"], "a": "Curriculum, Operations, Sales", "method": "chip", "multi": True}
+        ],
+        "design": {
+            "outcomes": [
+                {"id": "personalize", "label": "Personalize Learning", "icon": "bi-mortarboard", "sel": True},
+                {"id": "retention", "label": "Improve Client Retention", "icon": "bi-arrow-repeat", "sel": True},
+                {"id": "scale", "label": "Scale Operations", "icon": "bi-graph-up-arrow", "sel": True},
+                {"id": "costs", "label": "Reduce Costs", "icon": "bi-piggy-bank", "sel": False}
+            ],
+            "systems": [
+                {"id": "learn", "label": "Learning Engine", "icon": "bi-mortarboard", "color": "primary", "sel": True},
+                {"id": "ops", "label": "Operations Engine", "icon": "bi-gear-wide-connected", "color": "warning", "sel": True},
+                {"id": "tower", "label": "AI Control Tower", "icon": "bi-cpu", "color": "dark", "sel": True},
+                {"id": "rev", "label": "Revenue Engine", "icon": "bi-currency-dollar", "color": "success", "sel": False}
+            ]
+        },
+        "agents": [
+            {"name": "AI Control Tower", "dept": "Executive", "cory": True},
+            {"name": "Path Designer", "dept": "Curriculum", "primary": True},
+            {"name": "Content Recommender", "dept": "Curriculum"},
+            {"name": "Certification Tracker", "dept": "Operations", "primary": True},
+            {"name": "Trainer Scheduler", "dept": "Operations"},
+            {"name": "Learner Support Bot", "dept": "Student Support"},
+            {"name": "Progress Monitor", "dept": "Student Support"},
+            {"name": "ROI Calculator", "dept": "Sales"},
+            {"name": "Renewal Predictor", "dept": "Sales"},
+            {"name": "Invoice Automator", "dept": "Finance"}
+        ],
+        "kpis": {"savings": 260, "savings_suf": "K", "revenue": 1.1, "revenue_suf": "M", "roi": 350, "agents": 10},
+        "sim": [
+            {"agent": "AI Control Tower", "action": "Platform scan: 3,200 active learners, 14 at-risk completions, 8 certifications expiring", "narr": "The AI Control Tower monitors every learner, program, and client across your platform."},
+            {"agent": "Path Designer", "action": "Generated personalized learning paths for 120 new learners in Acme Corp cohort", "narr": "AI creates tailored paths based on role, skill gaps, and learning style."},
+            {"agent": "Certification Tracker", "action": "Alert: 8 learners need compliance certification renewal within 14 days", "narr": "No more spreadsheet tracking. AI catches every expiration."},
+            {"agent": "Trainer Scheduler", "action": "Optimized next week's trainer assignments across 12 programs", "narr": "What took days of coordination happens in seconds."},
+            {"agent": "ROI Calculator", "action": "Generated impact report for Acme Corp: 34% skill improvement, $890K business value", "narr": "AI proves ROI to clients automatically, making renewals easy."},
+            {"agent": "AI Control Tower", "action": "Client insight: renewal risk detected for 2 accounts, proactive outreach triggered", "narr": "The Control Tower connects learning outcomes, operations, and client success."}
+        ],
+        "narr": {
+            "idea": "Imagine you run a workforce training company with 200+ enterprise clients...",
+            "questions": "The AI advisor learns about your training operations...",
+            "design": "AI recommends learning, operations, and control engines...",
+            "results": "Your AI organization: 10 agents, $1.1M revenue impact, 350% ROI.",
+            "sim": "Watch your AI workforce personalize learning and prove ROI."
+        }
+    },
 }
 
 
