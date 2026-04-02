@@ -3,6 +3,7 @@
 {% block title %}Colaberry AI Workforce Designer | Design Your AI Organization{% endblock %}
 
 {% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 .hero-gradient { background: linear-gradient(135deg, #f8f9fc 0%, #e8eaf6 100%); }
 .chip { cursor: pointer; transition: all 0.2s; border: 1px solid #dee2e6; }
@@ -12,8 +13,32 @@
 #business_idea:focus { box-shadow: 0 0 0 0.35rem rgba(67, 97, 238, 0.15); border-color: #4361ee; }
 .value-item { transition: transform 0.2s; }
 .value-item:hover { transform: translateY(-2px); }
-.fade-text { animation: fadeRotate 8s infinite; }
-@keyframes fadeRotate { 0%,30% { opacity: 1; } 33%,63% { opacity: 0; } 66%,96% { opacity: 1; } }
+/* Inline Demo */
+#inline-demo { max-height: 0; overflow: hidden; transition: max-height 0.5s ease, opacity 0.4s ease; opacity: 0; }
+#inline-demo.open { max-height: 2000px; opacity: 1; }
+.id-narr { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; border-radius: 8px; font-size: 0.9rem; }
+.id-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: idPulse 1.2s infinite; }
+@keyframes idPulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(1.4);} }
+.id-step { display: none; animation: idFade .35s ease; }
+.id-step.active { display: block; }
+@keyframes idFade { from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);} }
+.id-bubble { animation: idFade .3s ease; margin-bottom: 10px; }
+.id-bubble-bot { display:flex; gap:8px; }
+.id-bubble-bot .bbl { background:#f0f4ff; border-radius:12px 12px 12px 0; padding:10px 14px; max-width:80%; }
+.id-bubble-user { display:flex; gap:8px; justify-content:flex-end; }
+.id-bubble-user .bbl { background:#4361ee; color:white; border-radius:12px 12px 0 12px; padding:10px 14px; max-width:80%; }
+.id-av { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+.id-tdots span { display:inline-block; width:5px; height:5px; border-radius:50%; background:#4361ee; animation:idDot 1.2s infinite; }
+.id-tdots span:nth-child(2){animation-delay:.2s;} .id-tdots span:nth-child(3){animation-delay:.4s;}
+@keyframes idDot { 0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);} }
+.id-card { border:2px solid #e2e8f0; border-radius:10px; padding:12px; transition:all .3s; }
+.id-card.sel { border-color:#4361ee; background:#eff6ff; }
+.id-kpi { font-size:1.6rem; font-weight:800; line-height:1; }
+.id-graph { min-height:320px; background:#fafbfe; border-radius:10px; }
+.id-feed-item { animation:idFade .3s ease; border-left:3px solid #dee2e6; padding:5px 10px; margin-bottom:5px; border-radius:0 6px 6px 0; background:#f8fafc; font-size:.8rem; }
+.id-feed-item.cory { border-left-color:#1a1a2e; background:#f0f4ff; }
+.input-glow { animation: inputGlow 1.5s ease-in-out 3; }
+@keyframes inputGlow { 0%,100%{box-shadow:0 0 0 0 rgba(67,97,238,0);} 50%{box-shadow:0 0 0 8px rgba(67,97,238,0.2);} }
 </style>
 {% endblock %}
 
@@ -95,13 +120,40 @@
     </div>
 </div>
 
+<!-- Demo Hero -->
+<div class="text-center mb-4">
+    <h5 class="fw-bold mb-1">See exactly what you'll get before you start</h5>
+    <button class="btn btn-dark rounded-pill px-4 py-2" id="watchDemoBtn" onclick="startInlineDemo()" data-track="demo_watch_click">
+        <i class="bi bi-play-circle me-2"></i>Watch an AI Organization Get Built in Seconds
+    </button>
+    <button class="btn btn-link btn-sm text-muted ms-2 d-none" id="skipDemoBtn" onclick="skipDemo()">
+        Skip Demo <i class="bi bi-arrow-down"></i>
+    </button>
+</div>
+
+<!-- Inline Demo Container (hidden, expands on click) -->
+<div id="inline-demo" class="mx-auto mb-4" style="max-width: 800px;">
+    <!-- Narration bar -->
+    <div class="id-narr p-3 mb-3 d-flex align-items-center gap-2">
+        <span class="id-dot" id="idDot"></span>
+        <span id="idNarr" class="flex-grow-1"></span>
+        <button class="btn btn-sm btn-outline-light" onclick="skipDemo()"><i class="bi bi-skip-forward-fill me-1"></i>Skip</button>
+    </div>
+    <!-- Steps -->
+    <div id="id-step-idea" class="id-step"></div>
+    <div id="id-step-questions" class="id-step"></div>
+    <div id="id-step-design" class="id-step"></div>
+    <div id="id-step-results" class="id-step"></div>
+    <div id="id-step-sim" class="id-step"></div>
+</div>
+
 <!-- Input Card -->
-<div class="card border-0 shadow mx-auto mb-5" style="max-width: 760px;">
+<div class="card border-0 shadow mx-auto mb-5" style="max-width: 760px;" id="input-card">
     <div class="card-body p-4 p-md-5">
         <form action="/advisory/start" method="POST" id="advisoryForm">
             <!-- Label -->
             <div class="mb-2">
-                <label for="business_idea" class="form-label fw-bold fs-5">
+                <label for="business_idea" class="form-label fw-bold fs-5" id="input-label">
                     What problem can AI solve for your business?
                 </label>
                 <p class="text-muted small mb-3">Tell us about your business and biggest challenge. The more detail, the better your AI system design.</p>
@@ -146,11 +198,9 @@
             <p class="text-muted small text-center mb-2">
                 <i class="bi bi-clock me-1"></i>Takes about 5 minutes <span class="mx-1">&#183;</span> No technical knowledge required
             </p>
-            <!-- Wow value line -->
             <p class="text-center small mb-2">
                 <i class="bi bi-bar-chart me-1 text-primary"></i>Most companies discover <strong>10 to 20 automation opportunities</strong> from a single input.
             </p>
-            <!-- Trust line -->
             <p class="text-muted small text-center mb-4">
                 Based on companies similar to yours, we prioritize the highest ROI opportunities first.
             </p>
@@ -160,11 +210,6 @@
                 <button type="submit" class="btn btn-primary btn-lg fw-semibold" id="start-btn" data-track="start_advisory">
                     Design My AI Operating System <i class="bi bi-arrow-right ms-2"></i>
                 </button>
-            </div>
-            <div class="text-center mt-3">
-                <a href="/advisory/demo/walkthrough" class="btn btn-outline-dark btn-sm rounded-pill px-4" data-track="demo_walkthrough_click">
-                    <i class="bi bi-play-circle me-1"></i>Watch It Build an AI Organization
-                </a>
             </div>
         </form>
     </div>
@@ -339,14 +384,9 @@ function selectExample(chip) {
     var textarea = document.getElementById('business_idea');
     textarea.value = chip.textContent.trim();
     textarea.focus();
-
-    // Visual feedback
     document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
     chip.classList.add('active');
 }
-
-// Clear placeholder on chip selection to avoid conflict
-
 
 // Loading state on submit
 document.getElementById('advisoryForm').addEventListener('submit', function() {
@@ -354,5 +394,369 @@ document.getElementById('advisoryForm').addEventListener('submit', function() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing your business...';
 });
+
+// ══════════════════════════════════════════════════════════
+// INLINE DEMO ENGINE
+// ══════════════════════════════════════════════════════════
+var _idTimers = [];
+var _idCancelled = 0;
+var _idGraphAPI = null;
+
+var ID_DATA = {
+    idea: "We are a regional logistics company with 200+ drivers and 15 warehouses. Our biggest challenges are manual route planning, no real-time tracking for customers, and slow dispatch. We want to automate operations and optimize delivery routes.",
+    questions: [
+        { q: "What industry is your business in?", chips: ["Technology","Healthcare","Logistics","Financial Services"], a: "Logistics", method: "chip" },
+        { q: "How large is your organization?", chips: ["1-10","11-50","51-200","201-1000","1000+"], a: "201-1000", method: "chip" },
+        { q: "What's your biggest bottleneck?", a: "Dispatchers spend 3 hours each morning manually assigning routes to 200+ drivers using spreadsheets.", method: "type" },
+        { q: "Which departments need AI most?", chips: ["Sales","Operations","Customer Support","Finance","Logistics"], a: "Operations, Customer Support, Logistics", method: "chip", multi: true }
+    ],
+    design: {
+        outcomes: [
+            { id:"costs", label:"Reduce Costs", icon:"bi-piggy-bank", sel:true },
+            { id:"scale", label:"Scale Operations", icon:"bi-graph-up-arrow", sel:true },
+            { id:"cx", label:"Improve CX", icon:"bi-people", sel:true },
+            { id:"rev", label:"Increase Revenue", icon:"bi-currency-dollar", sel:false }
+        ],
+        systems: [
+            { id:"ops", label:"Operations Engine", icon:"bi-gear-wide-connected", color:"warning", sel:true },
+            { id:"cust", label:"Customer Engine", icon:"bi-people", color:"info", sel:true },
+            { id:"tower", label:"AI Control Tower", icon:"bi-cpu", color:"dark", sel:true },
+            { id:"rev", label:"Revenue Engine", icon:"bi-currency-dollar", color:"primary", sel:false }
+        ]
+    },
+    agents: [
+        { name:"AI Control Tower", dept:"Executive", cory:true },
+        { name:"Route Optimizer", dept:"Operations", cory:false, primary:true },
+        { name:"Dispatch Agent", dept:"Operations", cory:false },
+        { name:"Warehouse Monitor", dept:"Operations", cory:false },
+        { name:"Tracking Bot", dept:"Customer Support", cory:false, primary:true },
+        { name:"Complaint Resolver", dept:"Customer Support", cory:false },
+        { name:"Lead Qualifier", dept:"Sales", cory:false },
+        { name:"Invoice Processor", dept:"Finance", cory:false },
+        { name:"Cost Analyzer", dept:"Finance", cory:false },
+        { name:"Report Generator", dept:"Executive", cory:false }
+    ],
+    sim: [
+        { agent:"AI Control Tower", action:"Morning scan: 847 deliveries, 3 risk zones flagged", narr:"The AI Control Tower scans all deliveries and flags risks before drivers leave." },
+        { agent:"Route Optimizer", action:"Optimized 212 routes, saving 1,840 miles", narr:"Routes recalculated using real-time traffic and weather data." },
+        { agent:"Dispatch Agent", action:"Auto-assigned 212 drivers in 8 seconds", narr:"What took 3 hours now happens in seconds." },
+        { agent:"Tracking Bot", action:"Answered 34 tracking inquiries simultaneously", narr:"Customers get instant updates without waiting." },
+        { agent:"AI Control Tower", action:"Rerouting 8 deliveries around weather zone", narr:"The Control Tower connects dots across departments." },
+        { agent:"Cost Analyzer", action:"Weekly savings: $12,400 from route optimization", narr:"Finance AI tracks exactly how much every optimization saves." }
+    ],
+    narr: {
+        idea: "Imagine you run a logistics company with 200 drivers...",
+        questions: "The AI advisor asks a few targeted questions...",
+        design: "The system recommends objectives and AI engines...",
+        results: "Your AI organization: 10 agents, $485K savings, 340% ROI.",
+        sim: "Watch your AI workforce operate autonomously."
+    }
+};
+
+function _ids(ms) {
+    var gen = _idCancelled;
+    return new Promise(function(r) {
+        var id = setTimeout(function() { _idTimers = _idTimers.filter(function(t){return t!==id;}); r(gen === _idCancelled); }, ms);
+        _idTimers.push(id);
+    });
+}
+
+function _idAlive() { return true; /* simplified — skip cancels via _idCancelled */ }
+
+function _idNarr(t) { var el = document.getElementById('idNarr'); if(el) el.textContent = t; }
+
+function _idShow(stepId) {
+    document.querySelectorAll('.id-step').forEach(function(s){s.classList.remove('active');});
+    var el = document.getElementById('id-step-' + stepId);
+    if(el) el.classList.add('active');
+}
+
+async function _idType(el, text, speed) {
+    el.value = '';
+    for (var i = 0; i < text.length; i++) {
+        if (_idCancelled !== window._idGen) return;
+        el.value += text[i];
+        el.scrollTop = el.scrollHeight;
+        await _ids(speed || 25);
+    }
+}
+
+function _idBotBubble(cont, html) {
+    var d = document.createElement('div');
+    d.className = 'id-bubble id-bubble-bot';
+    d.innerHTML = '<div class="id-av bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div><div class="bbl"><strong>'+html+'</strong></div>';
+    cont.appendChild(d);
+    cont.scrollTop = cont.scrollHeight;
+}
+
+function _idUserBubble(cont, text) {
+    var d = document.createElement('div');
+    d.className = 'id-bubble id-bubble-user';
+    d.innerHTML = '<div class="bbl">'+text+'</div><div class="id-av bg-primary text-white"><i class="bi bi-person"></i></div>';
+    cont.appendChild(d);
+    cont.scrollTop = cont.scrollHeight;
+}
+
+function _idCountUp(el, target, pre, suf, dur) {
+    pre=pre||''; suf=suf||''; dur=dur||1200;
+    var st=null;
+    function step(ts) {
+        if(!st)st=ts;
+        var p=Math.min((ts-st)/dur,1), e=1-Math.pow(1-p,3), c=Math.floor(e*target);
+        el.textContent = pre + c.toLocaleString() + suf;
+        if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
+function _idBuildGraph(contId, agents) {
+    var cont = document.getElementById(contId);
+    if(!cont) return {highlight:function(){},destroy:function(){}};
+    cont.innerHTML = '';
+    var w = cont.clientWidth || 500, h = 320;
+    var colors = {'Executive':'#1a1a2e','Operations':'#f59e0b','Customer Support':'#6f42c1','Sales':'#4361ee','Finance':'#dc3545'};
+    var nodes = [], links = [], deptMap = {};
+    agents.forEach(function(a) {
+        nodes.push({id:a.name,name:a.name,dept:a.dept,r:a.cory?24:(a.primary?14:10),color:colors[a.dept]||'#64748b',isCory:!!a.cory});
+        if(!a.cory) { if(!deptMap[a.dept]) deptMap[a.dept]=[]; deptMap[a.dept].push(a.name); }
+    });
+    var cory = nodes.find(function(n){return n.isCory;});
+    if(cory) nodes.forEach(function(n){if(!n.isCory) links.push({source:cory.id,target:n.id});});
+    Object.values(deptMap).forEach(function(arr){for(var i=0;i<arr.length-1;i++) links.push({source:arr[i],target:arr[i+1]});});
+    var svg = d3.select('#'+contId).append('svg').attr('width',w).attr('height',h);
+    var defs = svg.append('defs');
+    var f = defs.append('filter').attr('id','idglow');
+    f.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b');
+    var m = f.append('feMerge'); m.append('feMergeNode').attr('in','b'); m.append('feMergeNode').attr('in','SourceGraphic');
+    var sim = d3.forceSimulation(nodes)
+        .force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(70))
+        .force('charge',d3.forceManyBody().strength(-200))
+        .force('center',d3.forceCenter(w/2,h/2))
+        .force('collision',d3.forceCollide(20));
+    var link = svg.append('g').selectAll('line').data(links).enter().append('line')
+        .attr('stroke','#cbd5e1').attr('stroke-width',1.5).attr('stroke-dasharray','4,3');
+    var node = svg.append('g').selectAll('g').data(nodes).enter().append('g');
+    node.append('circle').attr('r',function(d){return d.r;}).attr('fill',function(d){return d.color;})
+        .attr('stroke','white').attr('stroke-width',2).attr('filter',function(d){return d.isCory?'url(#idglow)':null;});
+    node.append('text').text(function(d){return d.name.substring(0,2).toUpperCase();})
+        .attr('text-anchor','middle').attr('dy','.35em').attr('fill','white').attr('font-size','8px').attr('font-weight','700').style('pointer-events','none');
+    sim.on('tick',function(){
+        link.attr('x1',function(d){return d.source.x;}).attr('y1',function(d){return d.source.y;})
+            .attr('x2',function(d){return d.target.x;}).attr('y2',function(d){return d.target.y;});
+        node.attr('transform',function(d){d.x=Math.max(25,Math.min(w-25,d.x));d.y=Math.max(25,Math.min(h-25,d.y));return 'translate('+d.x+','+d.y+')';});
+    });
+    function hl(name) {
+        node.select('circle').transition().duration(200)
+            .attr('r',function(d){return d.name===name?d.r+7:d.r;})
+            .attr('stroke',function(d){return d.name===name?'#facc15':'white';})
+            .attr('stroke-width',function(d){return d.name===name?3:2;});
+        link.transition().duration(200)
+            .attr('stroke',function(d){return(d.source.name===name||d.target.name===name)?'#facc15':'#cbd5e1';})
+            .attr('stroke-width',function(d){return(d.source.name===name||d.target.name===name)?3:1.5;});
+        setTimeout(function(){
+            node.select('circle').transition().duration(400).attr('r',function(d){return d.r;}).attr('stroke','white').attr('stroke-width',2);
+            link.transition().duration(400).attr('stroke','#cbd5e1').attr('stroke-width',1.5);
+        },1200);
+    }
+    return {highlight:hl,destroy:function(){sim.stop();svg.remove();}};
+}
+
+async function runInlineDemo() {
+    var gen = _idCancelled;
+    window._idGen = gen;
+
+    // ── Step 1: Idea typing ──
+    _idNarr(ID_DATA.narr.idea);
+    var ideaHTML = '<div class="card border-0 shadow-sm"><div class="card-body p-3">' +
+        '<label class="form-label fw-semibold small">Describe your business challenge:</label>' +
+        '<textarea class="form-control" id="id-ta" rows="3" readonly style="resize:none;font-size:.85rem;border-radius:8px;"></textarea></div></div>';
+    document.getElementById('id-step-idea').innerHTML = ideaHTML;
+    _idShow('idea');
+    await _ids(600);
+    if(gen!==_idCancelled) return;
+    await _idType(document.getElementById('id-ta'), ID_DATA.idea, 20);
+    if(gen!==_idCancelled) return;
+    await _ids(800);
+
+    // ── Step 2: Questions ──
+    if(gen!==_idCancelled) return;
+    _idNarr(ID_DATA.narr.questions);
+    document.getElementById('id-step-questions').innerHTML = '<div id="id-chat" style="max-height:280px;overflow-y:auto;"></div>';
+    _idShow('questions');
+    var chat = document.getElementById('id-chat');
+
+    for (var qi = 0; qi < ID_DATA.questions.length; qi++) {
+        if(gen!==_idCancelled) return;
+        var q = ID_DATA.questions[qi];
+        // Typing dots
+        var dots = document.createElement('div');
+        dots.className = 'id-bubble id-bubble-bot';
+        dots.innerHTML = '<div class="id-av bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div><div class="bbl"><span class="id-tdots"><span></span><span></span><span></span></span></div>';
+        chat.appendChild(dots);
+        chat.scrollTop = chat.scrollHeight;
+        await _ids(600);
+        if(gen!==_idCancelled) return;
+        dots.querySelector('.bbl').innerHTML = '<strong style="font-size:.85rem;">'+q.q+'</strong>';
+
+        // Show chips if present
+        if (q.chips && q.method === 'chip') {
+            var cr = document.createElement('div');
+            cr.className = 'd-flex flex-wrap gap-1 ms-4 mb-2';
+            q.chips.forEach(function(c){
+                cr.innerHTML += '<span class="badge rounded-pill bg-white text-dark border px-2 py-1" style="font-size:.75rem;">'+c+'</span>';
+            });
+            chat.appendChild(cr);
+            chat.scrollTop = chat.scrollHeight;
+            await _ids(400);
+            if(gen!==_idCancelled) return;
+            // Highlight answer chips
+            var answers = q.a.split(', ');
+            cr.querySelectorAll('.badge').forEach(function(b){
+                if(answers.indexOf(b.textContent)!==-1) { b.classList.remove('bg-white','text-dark','border'); b.classList.add('bg-primary','text-white'); }
+            });
+        }
+        await _ids(300);
+        if(gen!==_idCancelled) return;
+        _idUserBubble(chat, q.a);
+        await _ids(500);
+    }
+    await _ids(600);
+
+    // ── Step 3: Design ──
+    if(gen!==_idCancelled) return;
+    _idNarr(ID_DATA.narr.design);
+    var dHTML = '<div class="row g-3"><div class="col-md-6"><h6 class="fw-semibold small mb-2"><i class="bi bi-bullseye me-1"></i>Outcomes</h6>';
+    ID_DATA.design.outcomes.forEach(function(o){
+        dHTML += '<div class="id-card mb-2 d-flex align-items-center gap-2" id="idc-'+o.id+'"><i class="bi '+o.icon+' text-primary"></i><span style="font-size:.85rem;">'+o.label+'</span></div>';
+    });
+    dHTML += '</div><div class="col-md-6"><h6 class="fw-semibold small mb-2"><i class="bi bi-cpu me-1"></i>AI Systems</h6>';
+    ID_DATA.design.systems.forEach(function(s){
+        dHTML += '<div class="id-card mb-2 d-flex align-items-center gap-2" id="idc-s-'+s.id+'"><i class="bi '+s.icon+' text-'+s.color+'"></i><span style="font-size:.85rem;">'+s.label+'</span></div>';
+    });
+    dHTML += '</div></div>';
+    document.getElementById('id-step-design').innerHTML = dHTML;
+    _idShow('design');
+    await _ids(600);
+
+    for (var oi = 0; oi < ID_DATA.design.outcomes.length; oi++) {
+        if(gen!==_idCancelled) return;
+        var o = ID_DATA.design.outcomes[oi];
+        if(o.sel) { var el=document.getElementById('idc-'+o.id); if(el){el.classList.add('sel');} await _ids(500); }
+    }
+    for (var si = 0; si < ID_DATA.design.systems.length; si++) {
+        if(gen!==_idCancelled) return;
+        var s = ID_DATA.design.systems[si];
+        if(s.sel) { var el=document.getElementById('idc-s-'+s.id); if(el){el.classList.add('sel');} await _ids(500); }
+    }
+    await _ids(800);
+
+    // ── Step 4: Results (KPI + Graph) ──
+    if(gen!==_idCancelled) return;
+    _idNarr(ID_DATA.narr.results);
+    var rHTML = '<div class="row g-2 mb-3">' +
+        '<div class="col"><div class="card shadow-sm border-0 text-center py-2"><div class="id-kpi text-success" id="ik1">$0</div><div style="font-size:.65rem;color:#64748b;text-transform:uppercase;">Savings</div></div></div>' +
+        '<div class="col"><div class="card shadow-sm border-0 text-center py-2"><div class="id-kpi text-primary" id="ik2">$0</div><div style="font-size:.65rem;color:#64748b;text-transform:uppercase;">Revenue</div></div></div>' +
+        '<div class="col"><div class="card shadow-sm border-0 text-center py-2"><div class="id-kpi text-warning" id="ik3">0</div><div style="font-size:.65rem;color:#64748b;text-transform:uppercase;">ROI</div></div></div>' +
+        '<div class="col"><div class="card shadow-sm border-0 text-center py-2"><div class="id-kpi text-info" id="ik4">0</div><div style="font-size:.65rem;color:#64748b;text-transform:uppercase;">Agents</div></div></div>' +
+        '</div><div class="id-graph" id="id-graph-res"></div>';
+    document.getElementById('id-step-results').innerHTML = rHTML;
+    _idShow('results');
+    await _ids(300);
+
+    _idCountUp(document.getElementById('ik1'), 485, '$', 'K');
+    _idCountUp(document.getElementById('ik2'), 1.2, '$', 'M');
+    _idCountUp(document.getElementById('ik3'), 340, '', '%');
+    _idCountUp(document.getElementById('ik4'), 10, '', '');
+    await _ids(1500);
+    if(gen!==_idCancelled) return;
+
+    if(_idGraphAPI) _idGraphAPI.destroy();
+    _idGraphAPI = _idBuildGraph('id-graph-res', ID_DATA.agents);
+    await _ids(2000);
+    if(gen!==_idCancelled) return;
+
+    // Pulse key agents
+    var pulseList = ['AI Control Tower','Route Optimizer','Tracking Bot'];
+    for(var pi=0;pi<pulseList.length;pi++) {
+        if(gen!==_idCancelled) return;
+        _idGraphAPI.highlight(pulseList[pi]);
+        await _ids(1500);
+    }
+    await _ids(800);
+
+    // ── Step 5: Simulation ──
+    if(gen!==_idCancelled) return;
+    _idNarr(ID_DATA.narr.sim);
+    var simHTML = '<div class="row g-2"><div class="col-lg-7"><div class="id-graph" id="id-graph-sim"></div></div>' +
+        '<div class="col-lg-5"><div class="card border-0 shadow-sm"><div class="card-header py-2 small fw-semibold"><i class="bi bi-activity me-1"></i>Live Activity</div>' +
+        '<div class="card-body p-2" id="id-feed" style="max-height:280px;overflow-y:auto;"></div></div></div></div>';
+    document.getElementById('id-step-sim').innerHTML = simHTML;
+    _idShow('sim');
+    await _ids(400);
+
+    if(_idGraphAPI) _idGraphAPI.destroy();
+    _idGraphAPI = _idBuildGraph('id-graph-sim', ID_DATA.agents);
+    await _ids(1200);
+
+    var feed = document.getElementById('id-feed');
+    for(var ei=0;ei<ID_DATA.sim.length;ei++) {
+        if(gen!==_idCancelled) return;
+        var ev = ID_DATA.sim[ei];
+        _idNarr(ev.narr);
+        _idGraphAPI.highlight(ev.agent);
+        var fi = document.createElement('div');
+        fi.className = 'id-feed-item' + (ev.agent==='AI Control Tower'?' cory':'');
+        fi.innerHTML = '<strong style="font-size:.75rem;">'+ev.agent+'</strong><div style="font-size:.7rem;">'+ev.action+'</div>';
+        feed.insertBefore(fi, feed.firstChild);
+        await _ids(2000);
+    }
+    await _ids(1000);
+
+    // ── Done: scroll to input ──
+    if(gen!==_idCancelled) return;
+    _idNarr("Now it's your turn. Design your own AI organization.");
+    await _ids(1500);
+
+    // Close demo, scroll to input
+    document.getElementById('inline-demo').classList.remove('open');
+    await _ids(500);
+
+    // Update label to post-demo text
+    var label = document.getElementById('input-label');
+    if(label) label.innerHTML = '<i class="bi bi-lightning-charge text-primary me-1"></i>Now it\'s your turn. Describe your business:';
+
+    document.getElementById('input-card').scrollIntoView({behavior:'smooth', block:'center'});
+    await _ids(600);
+
+    var ta = document.getElementById('business_idea');
+    ta.focus();
+    ta.classList.add('input-glow');
+
+    // Track completion
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_complete',{}); } catch(e){}
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_to_input_focus',{}); } catch(e){}
+}
+
+function startInlineDemo() {
+    var cont = document.getElementById('inline-demo');
+    cont.classList.add('open');
+    document.getElementById('watchDemoBtn').classList.add('d-none');
+    document.getElementById('skipDemoBtn').classList.remove('d-none');
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_start',{}); } catch(e){}
+    runInlineDemo();
+}
+
+function skipDemo() {
+    _idCancelled++;
+    _idTimers.forEach(clearTimeout);
+    _idTimers = [];
+    if(_idGraphAPI) { _idGraphAPI.destroy(); _idGraphAPI = null; }
+    document.getElementById('inline-demo').classList.remove('open');
+    document.getElementById('skipDemoBtn').classList.add('d-none');
+    document.getElementById('watchDemoBtn').classList.remove('d-none');
+    document.getElementById('input-card').scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(function(){ document.getElementById('business_idea').focus(); }, 400);
+    try { if(window.trackBookingEvent) window.trackBookingEvent('demo_skip',{}); } catch(e){}
+}
 </script>
 {% endblock %}
