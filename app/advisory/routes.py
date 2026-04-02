@@ -42,8 +42,15 @@ async def advisory_landing(request: Request):
 
 @router.get("/demo/walkthrough")
 async def demo_walkthrough(request: Request):
-    """Render the guided demo walkthrough page."""
-    return templates.TemplateResponse("demo_walkthrough.html", {"request": request})
+    """Render the guided demo walkthrough page with optional industry scenario."""
+    from execution.demo.demo_scenarios import get_scenario
+    scenario_id = request.query_params.get("scenario", "logistics")
+    scenario = get_scenario(scenario_id)
+    return templates.TemplateResponse("demo_walkthrough.html", {
+        "request": request,
+        "scenario_json": __import__("json").dumps(scenario),
+        "scenario_id": scenario_id,
+    })
 
 
 @router.post("/start")

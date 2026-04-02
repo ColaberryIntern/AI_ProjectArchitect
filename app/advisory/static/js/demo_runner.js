@@ -517,11 +517,60 @@ var DemoRunner = (function () {
         }
     }
 
+    function normalizeData(d) {
+        // Normalize scenario format to runner format
+        // Questions: q→question, a→answer, method→answer_method, chips→options, multi→multi_select
+        if (d.questions && d.questions[0] && d.questions[0].q) {
+            d.questions = d.questions.map(function(q) {
+                return {
+                    question: q.q || q.question,
+                    answer: q.a || q.answer,
+                    answer_method: q.method || q.answer_method || 'type',
+                    options: q.chips || q.options || null,
+                    multi_select: q.multi || q.multi_select || false
+                };
+            });
+        }
+        // Design: sel→rec, build selected lists
+        if (d.design && d.design.outcomes && d.design.outcomes[0] && 'sel' in d.design.outcomes[0]) {
+            d.design.selected_outcomes = d.design.outcomes.filter(function(o){return o.sel;}).map(function(o){return o.id;});
+            d.design.selected_systems = d.design.systems.filter(function(s){return s.sel;}).map(function(s){return s.id;});
+            d.design.outcomes.forEach(function(o){ o.rec = o.sel; });
+            d.design.systems.forEach(function(s){ s.rec = s.sel; });
+        }
+        // Results: agents at top level → results.agents; kpis at top level → results.kpis
+        if (d.agents && !d.results) {
+            d.results = {
+                agents: d.agents.map(function(a) {
+                    return { name: a.name, department: a.dept || a.department, is_cory: a.cory || a.is_cory || false, is_primary_focus: a.primary || a.is_primary_focus || false };
+                }),
+                kpis: d.kpis ? {
+                    cost_savings: '$' + d.kpis.savings + (d.kpis.savings_suf || 'K'),
+                    revenue_impact: '$' + d.kpis.revenue + (d.kpis.revenue_suf || 'M'),
+                    time_saved: '120h',
+                    three_year_roi: d.kpis.roi + '%',
+                    total_agents: d.kpis.agents
+                } : {}
+            };
+        }
+        // Simulation: sim→simulation.events
+        if (d.sim && !d.simulation) {
+            d.simulation = { events: d.sim.map(function(e) {
+                return { agent: e.agent, action: e.action, narration: e.narr || e.narration, delay: e.delay || 2000 };
+            })};
+        }
+        // Narration: narr→narration
+        if (d.narr && !d.narration) {
+            d.narration = d.narr;
+        }
+        return d;
+    }
+
     return {
         init: function () {
             var raw = $('demo-data');
             if (!raw) return;
-            data = JSON.parse(raw.textContent);
+            data = normalizeData(JSON.parse(raw.textContent));
             state = 'playing';
             currentStep = -1;
             nextStep();
