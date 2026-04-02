@@ -406,6 +406,17 @@ var DemoRunner = (function () {
         nextStep();
     }
 
+    function _agentCardHTML(agent) {
+        var deptColors = {'Executive':'dark','Operations':'warning','Customer Support':'info','Sales':'primary','Finance':'danger','Marketing':'success','HR':'info','Compliance':'success','Field Services':'success','Production':'warning','Quality':'success','Supply Chain':'info','Curriculum':'primary','Student Support':'info','Claims':'primary','Underwriting':'warning','Leasing':'primary','Property Management':'primary','Tenant Relations':'info','Maintenance':'warning','Customer Service':'info','Engineering':'secondary'};
+        var c = deptColors[agent.department] || 'secondary';
+        return '<div style="border:2px solid #facc15;border-radius:10px;padding:14px;background:#fffbeb;animation:msgIn .3s ease;">' +
+            '<div class="d-flex align-items-center gap-2 mb-2">' +
+            '<i class="bi ' + (agent.is_cory ? 'bi-cpu' : 'bi-robot') + ' fs-5 text-' + c + '"></i>' +
+            '<div><strong style="font-size:.9rem;">' + agent.name + '</strong>' +
+            '<span class="badge bg-' + c + '-subtle text-' + c + ' ms-2" style="font-size:.6rem;">' + agent.department + '</span></div></div>' +
+            '<div style="font-size:.8rem;color:#475569;line-height:1.5;">' + (agent.role || agent.name + ' agent') + '</div></div>';
+    }
+
     async function runResults() {
         setNarration(data.narration.results);
         showStep('results');
@@ -428,6 +439,18 @@ var DemoRunner = (function () {
         await sleep(1800);
         if (!alive()) return;
 
+        // Rebuild results section with graph + agent card side by side
+        var resultsGraph = $('demo-results-graph');
+        if (resultsGraph) {
+            var wrapper = resultsGraph.parentElement;
+            resultsGraph.remove();
+            var row = document.createElement('div');
+            row.className = 'row g-3';
+            row.innerHTML = '<div class="col-lg-7"><div class="demo-graph" id="demo-results-graph" style="min-height:400px;"></div></div>' +
+                '<div class="col-lg-5"><div class="small text-muted mb-2"><i class="bi bi-robot me-1"></i>Agent Details</div><div id="demo-agent-card"></div></div>';
+            wrapper.appendChild(row);
+        }
+
         // Build D3 graph
         if (graphAPI) graphAPI.destroy();
         graphAPI = buildDemoGraph('demo-results-graph', data.results.agents);
@@ -435,15 +458,20 @@ var DemoRunner = (function () {
         await sleep(2000);
         if (!alive()) return;
 
-        // Pulse sequence
-        var pulseAgents = ['AI Control Tower', 'Route Optimizer', 'Tracking Bot'];
-        for (var i = 0; i < pulseAgents.length; i++) {
+        // Cycle through agents with detail card
+        var agents = data.results.agents;
+        var cardEl = $('demo-agent-card');
+        for (var i = 0; i < agents.length; i++) {
             if (!alive()) return;
-            graphAPI.highlight(pulseAgents[i]);
+            await waitIfPaused();
+            var agent = agents[i];
+            graphAPI.highlight(agent.name);
+            if (cardEl) cardEl.innerHTML = _agentCardHTML(agent);
+            setNarration(agent.name + ': ' + (agent.role || ''));
             await sleep(1800);
         }
 
-        if (!await sleep(1000)) return;
+        if (!await sleep(800)) return;
         nextStep();
     }
 
@@ -562,6 +590,32 @@ var DemoRunner = (function () {
         // Narration: narr→narration
         if (d.narr && !d.narration) {
             d.narration = d.narr;
+        }
+        // Build capabilities from agents if missing
+        if (!d.capabilities && d.agents) {
+            var deptMap = {};
+            var deptIcons = {'Operations':'bi-gear','Customer Support':'bi-headset','Sales':'bi-currency-dollar','Marketing':'bi-megaphone','Finance':'bi-cash-stack','HR':'bi-people','Compliance':'bi-shield-check','Field Services':'bi-truck','Production':'bi-gear-wide-connected','Quality':'bi-check-circle','Supply Chain':'bi-truck','Curriculum':'bi-mortarboard','Student Support':'bi-chat-dots','Claims':'bi-file-earmark-check','Underwriting':'bi-clipboard-data','Customer Service':'bi-headset','Leasing':'bi-building','Property Management':'bi-building','Tenant Relations':'bi-people','Maintenance':'bi-wrench'};
+            var deptColors = {'Operations':'warning','Customer Support':'info','Sales':'primary','Marketing':'success','Finance':'danger','HR':'info','Compliance':'success','Field Services':'success','Production':'warning','Quality':'success','Supply Chain':'info','Curriculum':'primary','Student Support':'info','Claims':'primary','Underwriting':'warning','Leasing':'primary','Property Management':'primary','Tenant Relations':'info','Maintenance':'warning'};
+            (d.agents || []).forEach(function(a) {
+                var dept = a.dept || a.department;
+                if (!dept || dept === 'Executive') return;
+                if (!deptMap[dept]) deptMap[dept] = [];
+                deptMap[dept].push({id: a.name.toLowerCase().replace(/\s+/g,'_'), name: a.name, desc: a.role || 'AI-powered automation'});
+            });
+            var depts = [];
+            var selected = [];
+            Object.keys(deptMap).forEach(function(dept) {
+                depts.push({id: dept, icon: deptIcons[dept] || 'bi-gear', color: deptColors[dept] || 'primary', capabilities: deptMap[dept]});
+                deptMap[dept].forEach(function(c) { selected.push(c.id); });
+            });
+            d.capabilities = {departments: depts, selected: selected};
+        }
+        // Ensure narration has capabilities key
+        if (d.narration && !d.narration.capabilities) {
+            d.narration.capabilities = 'Now we select the specific AI capabilities each department needs.';
+        }
+        if (d.narration && !d.narration.cta) {
+            d.narration.cta = 'This was just a demo. Ready to design an AI organization for YOUR business?';
         }
         return d;
     }

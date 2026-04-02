@@ -598,9 +598,111 @@ SCENARIOS = {
 }
 
 
+_AGENT_ROLES = {
+    "AI Control Tower": "Central orchestrator monitoring all systems and coordinating cross-department actions",
+    "Route Optimizer": "Calculates optimal delivery routes using real-time traffic and weather data",
+    "Dispatch Agent": "Auto-assigns drivers to optimized routes in seconds",
+    "Warehouse Monitor": "Tracks inventory levels and predicts dock congestion",
+    "Tracking Bot": "Provides instant shipment tracking updates to customers 24/7",
+    "Complaint Resolver": "Auto-triages and resolves routine customer complaints",
+    "Lead Qualifier": "Scores and qualifies inbound sales leads by intent and fit",
+    "Invoice Processor": "Extracts, validates, and matches invoices to purchase orders",
+    "Cost Analyzer": "Tracks savings from AI optimizations across all departments",
+    "Report Generator": "Generates daily leadership dashboards and performance reports",
+    "Credential Verifier": "Verifies nurse licenses and certifications against state databases in seconds",
+    "Shift Matcher": "Matches available workers to open shifts by credentials and preference",
+    "Availability Scanner": "Tracks real-time availability of healthcare workers",
+    "Compliance Monitor": "Flags expiring certifications and ensures regulatory compliance",
+    "License Tracker": "Monitors license renewal deadlines across all states",
+    "Candidate Screener": "Screens and ranks new applicants by qualifications and fit",
+    "Onboarding Guide": "Walks new hires through orientation and document collection",
+    "Invoice Generator": "Creates accurate facility invoices with correct rates and hours",
+    "Facility Liaison": "Manages facility relationships and contract renewals",
+    "Lead Scorer": "Scores every inbound lead in seconds based on intent and fit signals",
+    "Pipeline Manager": "Tracks deal stages and forecasts revenue",
+    "Outreach Agent": "Sends personalized follow-up sequences within 30 seconds of lead capture",
+    "Churn Predictor": "Detects disengagement patterns weeks before customers cancel",
+    "Support Bot": "Resolves tier-1 support tickets autonomously without human involvement",
+    "Campaign Optimizer": "Adjusts ad targeting and bids in real-time to maximize ROAS",
+    "Revenue Forecaster": "Projects monthly and quarterly revenue based on pipeline data",
+    "Usage Analyzer": "Monitors product usage patterns to identify expansion and risk signals",
+    "Cart Recovery Agent": "Detects abandoned carts and sends personalized recovery emails",
+    "Personalization Engine": "Customizes product recommendations based on browsing history",
+    "Shopping Assistant": "Handles sizing, shipping, and returns inquiries 24/7",
+    "Returns Handler": "Processes returns and exchanges automatically with policy compliance",
+    "Demand Forecaster": "Predicts trending products and seasonal demand to prevent stockouts",
+    "Inventory Monitor": "Tracks real-time stock levels and triggers reorder alerts",
+    "Fraud Detector": "Flags suspicious transactions before payment settlement",
+    "Revenue Tracker": "Monitors daily revenue, margins, and campaign ROI in real-time",
+    "Proposal Writer": "Drafts proposals in hours using your firm's best past work",
+    "RFP Analyzer": "Matches new RFPs to past wins and identifies competitive advantages",
+    "Knowledge Search": "Finds relevant case studies across all practice areas instantly",
+    "Utilization Tracker": "Monitors real-time consultant utilization and flags below-target resources",
+    "Staffing Optimizer": "Recommends optimal team composition for new engagements",
+    "Client Reporter": "Generates client-ready status reports and financial summaries",
+    "Time Entry Agent": "Validates time entries for billing accuracy",
+    "Talent Matcher": "Matches consultant skills to project requirements",
+    "Meeting Summarizer": "Generates action items and summaries from meetings",
+    "Outage Predictor": "Predicts equipment failures days before they cause outages using sensor data",
+    "Grid Monitor": "Monitors 380,000 meters in real-time and detects anomalies",
+    "Load Balancer": "Reroutes power through alternate feeders to minimize disruption",
+    "Storm Response Bot": "Auto-sends prep alerts and outage updates to affected customers",
+    "Outage Communicator": "Provides real-time restoration estimates and status updates",
+    "Crew Dispatcher": "Dispatches field crews based on priority and proximity",
+    "Asset Inspector": "Schedules preventive maintenance based on equipment condition",
+    "Compliance Reporter": "Auto-generates regulatory compliance reports and audit documentation",
+    "Rate Analyzer": "Analyzes rate structures and projects revenue impact",
+    "Predictive Maintenance": "Detects bearing wear, vibration anomalies, and thermal stress before failures",
+    "Production Scheduler": "Optimizes job sequencing across all lines to maximize throughput",
+    "OEE Monitor": "Tracks overall equipment effectiveness in real-time across all lines",
+    "Defect Detector": "Catches surface defects and dimensional issues in-process",
+    "SPC Analyzer": "Runs continuous statistical process control and auto-adjusts parameters",
+    "Supplier Monitor": "Tracks supplier lead times and flags potential disruptions",
+    "Inventory Optimizer": "Maintains optimal raw material levels based on production schedules",
+    "Energy Manager": "Optimizes energy consumption across production lines",
+    "Cost Tracker": "Calculates per-unit costs and tracks savings from AI optimizations",
+    "Maintenance Router": "Triages maintenance requests instantly and dispatches vendors by priority",
+    "Property Monitor": "Tracks building systems, energy usage, and occupancy",
+    "Lease Tracker": "Monitors every lease expiration and triggers renewal workflows",
+    "Renewal Negotiator": "Generates market-based renewal proposals with competitive analysis",
+    "Tenant Communicator": "Sends proactive updates about building maintenance and events",
+    "Satisfaction Monitor": "Tracks tenant satisfaction signals and flags at-risk relationships",
+    "Vendor Manager": "Manages vendor performance, schedules, and cost comparisons",
+    "NOI Analyzer": "Calculates net operating income per property and flags underperformers",
+    "Market Comparator": "Compares rental rates to market data and recommends pricing",
+    "Claims Processor": "Auto-processes straightforward claims in seconds instead of days",
+    "Damage Assessor": "Evaluates damage documentation and estimates repair costs",
+    "Risk Scorer": "Scores new applications with consistent data-driven risk assessment",
+    "Policy Pricer": "Generates competitive pricing based on risk score and market data",
+    "Renewal Agent": "Sends personalized renewal offers to at-risk policyholders",
+    "Policyholder Bot": "Answers policy questions and handles certificate requests",
+    "Compliance Checker": "Validates decisions against regulatory requirements",
+    "Loss Ratio Analyst": "Tracks loss ratios by line and region",
+    "Path Designer": "Creates personalized learning paths based on role and skill gaps",
+    "Content Recommender": "Suggests relevant courses based on learner progress",
+    "Certification Tracker": "Monitors every certification expiration and triggers renewals",
+    "Trainer Scheduler": "Optimizes trainer assignments across programs and locations",
+    "Learner Support Bot": "Answers learner questions about courses and requirements 24/7",
+    "Progress Monitor": "Tracks completion rates and flags at-risk learners",
+    "ROI Calculator": "Generates business impact reports proving training value to clients",
+    "Renewal Predictor": "Identifies at-risk client accounts before renewal conversations",
+    "Invoice Automator": "Creates accurate invoices based on enrollment and contract terms",
+}
+
+
+def _enrich_agents(scenario: dict) -> dict:
+    """Add role descriptions to agents from the lookup table."""
+    for agent in scenario.get("agents", []):
+        if "role" not in agent:
+            agent["role"] = _AGENT_ROLES.get(agent["name"], f"AI-powered {agent.get('dept', '')} automation")
+    return scenario
+
+
 def get_scenario(scenario_id: str) -> dict:
     """Return a demo scenario by ID, defaulting to logistics."""
-    return SCENARIOS.get(scenario_id, SCENARIOS["logistics"])
+    import copy
+    scenario = copy.deepcopy(SCENARIOS.get(scenario_id, SCENARIOS["logistics"]))
+    return _enrich_agents(scenario)
 
 
 def list_scenarios() -> list[dict]:
