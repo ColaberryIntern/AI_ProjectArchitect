@@ -123,12 +123,13 @@
                 </ul>
                 <div class="tab-content">
                     {% for flow in demo.flows %}
-                    <div class="tab-pane fade {{ 'show active' if loop.first }}" id="flow{{ loop.index }}">
+                    {% set flow_idx = loop.index %}
+                    <div class="tab-pane fade {{ 'show active' if loop.first }}" id="flow{{ flow_idx }}">
                         {% for step in flow.steps %}
                         {% if not loop.first %}
                         <div class="flow-arrow"><i class="bi bi-arrow-down"></i></div>
                         {% endif %}
-                        <div class="flow-step" id="flow{{ loop.parent.loop.index }}-step{{ loop.index }}">
+                        <div class="flow-step" id="flow{{ flow_idx }}-step{{ loop.index }}">
                             <i class="bi {{ 'bi-cpu' if step.agent == 'AI Control Tower' else 'bi-robot' }} text-primary"></i>
                             <div>
                                 <strong style="font-size:0.8rem;">{{ step.agent }}</strong>
