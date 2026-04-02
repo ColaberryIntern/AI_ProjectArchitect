@@ -142,8 +142,8 @@
     </div>
     <!-- After demo: Watch another industry -->
     <div id="demoDone" class="d-none">
-        <small class="text-muted d-block mb-2">See it built for a different industry:</small>
-        <div class="d-flex flex-wrap justify-content-center gap-2" id="demoIndustryPicker" style="max-width:600px;margin:0 auto;"></div>
+        <small class="text-muted d-block mb-1">See it built for a different industry:</small>
+        <div class="d-flex flex-wrap justify-content-center gap-1" id="demoIndustryPicker" style="max-width:780px;margin:0 auto;"></div>
     </div>
 </div>
 
@@ -605,7 +605,7 @@ async function runInlineDemo() {
     _idShow('idea');
     await _ids(600);
     if(gen!==_idCancelled) return;
-    await _idType(document.getElementById('id-ta'), ID_DATA.idea, 20);
+    await _idType(document.getElementById('id-ta'), ID_DATA.idea, 40);
     if(gen!==_idCancelled) return;
     await _ids(800);
 
@@ -806,7 +806,8 @@ function _buildIndustryPicker() {
             picker.appendChild(br);
         }
         var btn = document.createElement('button');
-        btn.className = 'btn btn-sm btn-outline-primary rounded-pill px-3';
+        btn.className = 'btn btn-sm btn-outline-primary rounded-pill px-2 py-1';
+        btn.style.fontSize = '0.78rem';
         btn.innerHTML = '<i class="bi ' + (icons[s.id]||'bi-building') + ' me-1"></i>' + s.industry;
         btn.onclick = function() { playSpecificDemo(s.id); };
         picker.appendChild(btn);

@@ -270,7 +270,7 @@ var DemoRunner = (function () {
         var ta = $('demo-idea-textarea');
         if (!ta) return;
         if (!await sleep(800)) return;
-        await typeText(ta, data.company.idea, 30);
+        await typeText(ta, data.company.idea, 40);
         if (!alive()) return;
         var btn = $('demo-idea-btn');
         if (btn) { btn.classList.add('btn-success'); btn.classList.remove('btn-primary'); }
