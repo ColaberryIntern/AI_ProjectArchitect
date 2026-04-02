@@ -40,6 +40,12 @@ async def advisory_landing(request: Request):
     return templates.TemplateResponse("advisory_landing.html", {"request": request})
 
 
+@router.get("/demo/walkthrough")
+async def demo_walkthrough(request: Request):
+    """Render the guided demo walkthrough page."""
+    return templates.TemplateResponse("demo_walkthrough.html", {"request": request})
+
+
 @router.post("/start")
 async def start_session(request: Request, business_idea: str = Form(...)):
     """Create a new advisory session and redirect to questions."""
