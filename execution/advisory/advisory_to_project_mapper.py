@@ -154,7 +154,7 @@ def map_advisory_to_project_text(session: dict) -> str:
     if cap_map.get("departments") or agents:
         sys_text = "PROPOSED AI SYSTEM\n"
         if architecture.get("engines"):
-            engine_names = [e.get("name", "") for e in architecture["engines"]]
+            engine_names = [e.get("name", "") if isinstance(e, dict) else str(e) for e in architecture["engines"]]
             sys_text += f"Core engines: {', '.join(engine_names)}\n"
         if agents:
             agent_names = [a.get("name", "") for a in agents[:10]]
