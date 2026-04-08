@@ -583,20 +583,33 @@ function _idCountUp(el, target, pre, suf, dur) {
     requestAnimationFrame(step);
 }
 
-function _idBuildGraph(contId, agents) {
+function _idBuildGraph(contId, agents, simSteps) {
     var cont = document.getElementById(contId);
     if(!cont) return {highlight:function(){},destroy:function(){}};
     cont.innerHTML = '';
     var w = cont.clientWidth || 500, h = 320;
     var colors = {'Executive':'#1a1a2e','Operations':'#f59e0b','Customer Support':'#6f42c1','Sales':'#4361ee','Finance':'#dc3545'};
     var nodes = [], links = [], deptMap = {};
+    // Add AI agent nodes
     agents.forEach(function(a) {
-        nodes.push({id:a.name,name:a.name,dept:a.dept,r:a.cory?24:(a.primary?14:10),color:colors[a.dept]||'#64748b',isCory:!!a.cory});
+        nodes.push({id:a.name,name:a.name,dept:a.dept,r:a.cory?24:(a.primary?14:10),color:colors[a.dept]||'#64748b',isCory:!!a.cory,isHuman:false});
         if(!a.cory) { if(!deptMap[a.dept]) deptMap[a.dept]=[]; deptMap[a.dept].push(a.name); }
     });
+    // Add human nodes from HITL sim steps
+    var humanNames = {};
+    if(simSteps) {
+        simSteps.forEach(function(s) {
+            if(s.is_hitl && !humanNames[s.agent]) {
+                humanNames[s.agent] = true;
+                nodes.push({id:s.agent,name:s.agent,dept:'Human',r:16,color:'#38a169',isCory:false,isHuman:true});
+            }
+        });
+    }
     var cory = nodes.find(function(n){return n.isCory;});
     if(cory) nodes.forEach(function(n){if(!n.isCory) links.push({source:cory.id,target:n.id});});
     Object.values(deptMap).forEach(function(arr){for(var i=0;i<arr.length-1;i++) links.push({source:arr[i],target:arr[i+1]});});
+    // Position humans to the right
+    nodes.filter(function(n){return n.isHuman;}).forEach(function(n,i){n.fx=w-50;n.fy=60+i*60;});
     var svg = d3.select('#'+contId).append('svg').attr('width',w).attr('height',h);
     var defs = svg.append('defs');
     var f = defs.append('filter').attr('id','idglow');
@@ -608,28 +621,50 @@ function _idBuildGraph(contId, agents) {
         .force('center',d3.forceCenter(w/2,h/2))
         .force('collision',d3.forceCollide(20));
     var link = svg.append('g').selectAll('line').data(links).enter().append('line')
-        .attr('stroke','#cbd5e1').attr('stroke-width',1.5).attr('stroke-dasharray','4,3');
+        .attr('stroke',function(d){return (d.source.isHuman||d.target.isHuman)?'#38a169':'#cbd5e1';})
+        .attr('stroke-width',function(d){return (d.source.isHuman||d.target.isHuman)?2:1.5;})
+        .attr('stroke-dasharray','4,3');
     var node = svg.append('g').selectAll('g').data(nodes).enter().append('g');
-    node.append('circle').attr('r',function(d){return d.r;}).attr('fill',function(d){return d.color;})
-        .attr('stroke','white').attr('stroke-width',2).attr('filter',function(d){return d.isCory?'url(#idglow)':null;});
-    node.append('text').text(function(d){return d.name.substring(0,2).toUpperCase();})
-        .attr('text-anchor','middle').attr('dy','.35em').attr('fill','white').attr('font-size','8px').attr('font-weight','700').style('pointer-events','none');
+    // AI = circles, Humans = rounded rectangles
+    node.each(function(d) {
+        var g = d3.select(this);
+        if(d.isHuman) {
+            g.append('rect').attr('x',-18).attr('y',-14).attr('width',36).attr('height',28)
+                .attr('rx',6).attr('ry',6).attr('fill','#38a169').attr('stroke','white').attr('stroke-width',2);
+            g.append('text').text('\u{1F464}').attr('text-anchor','middle').attr('dy','.35em').attr('font-size','14px').style('pointer-events','none');
+            g.append('text').text(d.name.replace(' (Human)','')).attr('text-anchor','middle').attr('dy','26px')
+                .attr('fill','#38a169').attr('font-size','7px').attr('font-weight','600').style('pointer-events','none');
+        } else {
+            g.append('circle').attr('r',d.r).attr('fill',d.color)
+                .attr('stroke','white').attr('stroke-width',2).attr('filter',d.isCory?'url(#idglow)':null);
+            g.append('text').text(d.name.substring(0,2).toUpperCase())
+                .attr('text-anchor','middle').attr('dy','.35em').attr('fill','white').attr('font-size','8px').attr('font-weight','700').style('pointer-events','none');
+        }
+    });
     sim.on('tick',function(){
         link.attr('x1',function(d){return d.source.x;}).attr('y1',function(d){return d.source.y;})
             .attr('x2',function(d){return d.target.x;}).attr('y2',function(d){return d.target.y;});
-        node.attr('transform',function(d){d.x=Math.max(25,Math.min(w-25,d.x));d.y=Math.max(25,Math.min(h-25,d.y));return 'translate('+d.x+','+d.y+')';});
+        node.attr('transform',function(d){if(!d.fx){d.x=Math.max(25,Math.min(w-25,d.x));d.y=Math.max(25,Math.min(h-25,d.y));}return 'translate('+d.x+','+d.y+')';});
     });
     function hl(name) {
         node.select('circle').transition().duration(200)
             .attr('r',function(d){return d.name===name?d.r+7:d.r;})
             .attr('stroke',function(d){return d.name===name?'#facc15':'white';})
             .attr('stroke-width',function(d){return d.name===name?3:2;});
+        node.select('rect').transition().duration(200)
+            .attr('stroke',function(d){return d.name===name?'#facc15':'white';})
+            .attr('stroke-width',function(d){return d.name===name?3:2;})
+            .attr('x',function(d){return d.name===name?-22:-18;})
+            .attr('y',function(d){return d.name===name?-18:-14;})
+            .attr('width',function(d){return d.name===name?44:36;})
+            .attr('height',function(d){return d.name===name?36:28;});
         link.transition().duration(200)
-            .attr('stroke',function(d){return(d.source.name===name||d.target.name===name)?'#facc15':'#cbd5e1';})
+            .attr('stroke',function(d){return(d.source.name===name||d.target.name===name)?'#facc15':(d.source.isHuman||d.target.isHuman)?'#38a169':'#cbd5e1';})
             .attr('stroke-width',function(d){return(d.source.name===name||d.target.name===name)?3:1.5;});
         setTimeout(function(){
             node.select('circle').transition().duration(400).attr('r',function(d){return d.r;}).attr('stroke','white').attr('stroke-width',2);
-            link.transition().duration(400).attr('stroke','#cbd5e1').attr('stroke-width',1.5);
+            node.select('rect').transition().duration(400).attr('stroke','white').attr('stroke-width',2).attr('x',-18).attr('y',-14).attr('width',36).attr('height',28);
+            link.transition().duration(400).attr('stroke',function(d){return(d.source.isHuman||d.target.isHuman)?'#38a169':'#cbd5e1';}).attr('stroke-width',1.5);
         },1200);
     }
     return {highlight:hl,destroy:function(){sim.stop();svg.remove();}};
@@ -748,7 +783,7 @@ async function runInlineDemo() {
     if(gen!==_idCancelled) return;
 
     if(_idGraphAPI) _idGraphAPI.destroy();
-    _idGraphAPI = _idBuildGraph('id-graph-res', ID_DATA.agents);
+    _idGraphAPI = _idBuildGraph('id-graph-res', ID_DATA.agents, ID_DATA.sim);
     await _ids(2000);
     if(gen!==_idCancelled) return;
 
@@ -784,7 +819,7 @@ async function runInlineDemo() {
     await _ids(400);
 
     if(_idGraphAPI) _idGraphAPI.destroy();
-    _idGraphAPI = _idBuildGraph('id-graph-sim', ID_DATA.agents);
+    _idGraphAPI = _idBuildGraph('id-graph-sim', ID_DATA.agents, ID_DATA.sim);
     await _ids(1200);
 
     var feed = document.getElementById('id-feed');
