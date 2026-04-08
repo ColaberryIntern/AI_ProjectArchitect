@@ -917,6 +917,50 @@ function playAllFlows() {
     </div>
 </div>
 
+<!-- ROI Methodology (Expandable) -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center cursor-pointer" onclick="document.getElementById('roiMethodology').classList.toggle('d-none');" style="cursor:pointer;">
+            <h6 class="mb-0"><i class="bi bi-calculator me-2 text-primary"></i>How We Calculate ROI</h6>
+            <small class="text-primary">Show methodology <i class="bi bi-chevron-down"></i></small>
+        </div>
+        <div id="roiMethodology" class="d-none mt-3 pt-3 border-top" style="font-size: 0.85rem;">
+            <p class="text-muted mb-2"><strong>All calculations are fully deterministic. No AI is involved in the financial math.</strong></p>
+            <div class="mb-3">
+                <strong>Labor Savings Formula:</strong>
+                <div class="bg-light p-2 rounded mt-1" style="font-family: monospace; font-size: 0.8rem;">
+                    Department FTEs &times; Industry FTE Cost &times; Automation Rate = Annual Savings per Dept
+                </div>
+                <small class="text-muted">FTE costs calibrated from Bureau of Labor Statistics data by industry and role. Automation rates are conservative (15-45% depending on department).</small>
+            </div>
+            <div class="mb-3">
+                <strong>Loss Prevention Formula:</strong>
+                <div class="bg-light p-2 rounded mt-1" style="font-family: monospace; font-size: 0.8rem;">
+                    Estimated Revenue &times; Industry Benchmark % = Annual Prevention per Category
+                </div>
+                <small class="text-muted">Categories: billing error reduction, DSO improvement, avoided overpayments, dispute cost reduction. Benchmarks from published industry data.</small>
+            </div>
+            <div class="mb-3">
+                <strong>Implementation Cost Formula:</strong>
+                <div class="bg-light p-2 rounded mt-1" style="font-family: monospace; font-size: 0.8rem;">
+                    Base ($150K) + Per-Agent ($35K &times; agents) + Integration (0.5% of revenue, capped $200K)
+                </div>
+            </div>
+            <div class="mb-3">
+                <strong>3-Year ROI Formula:</strong>
+                <div class="bg-light p-2 rounded mt-1" style="font-family: monospace; font-size: 0.8rem;">
+                    ((Annual Benefit &times; 3) &minus; (Implementation + Maintenance &times; 2)) &divide; Total Cost &times; 100
+                </div>
+                <small class="text-muted">Year 1: full implementation cost. Years 2-3: annual maintenance at 20% of implementation.</small>
+            </div>
+            <div class="alert alert-info py-2" style="font-size: 0.8rem;">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Deterministic pipeline:</strong> Industry Detection (keyword matching) &rarr; Company Sizing (from your answers) &rarr; Department FTEs (industry ratios) &rarr; Savings (formula) &rarr; ROI (formula). Same inputs always produce the same output.
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Personalized Cost of Inaction -->
 <div class="card border-warning border-2 shadow-sm mb-4">
     <div class="card-body p-4">
