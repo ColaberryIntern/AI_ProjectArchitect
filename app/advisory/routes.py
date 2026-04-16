@@ -410,6 +410,34 @@ async def generate_results(request: Request, session_id: str):
     business_idea = session.get("business_idea", "")
     selected_caps = session.get("selected_capabilities", [])
 
+    # ── Industry Detection (taxonomy registry: seed → cache → sync LLM) ──
+    from execution.advisory.taxonomy_registry import lookup_taxonomy
+    answer_text = " ".join(a.get("answer_text", "") for a in answers)
+    industry_text = business_idea
+    if answers:
+        industry_text = f"{business_idea}\n\n{answers[0].get('answer_text', '')}"
+    try:
+        industry_profile = lookup_taxonomy(industry_text.strip(), business_idea + " " + answer_text)
+    except Exception:
+        industry_profile = None
+
+    if industry_profile:
+        meta = industry_profile.get("_meta", {})
+        industry_id = meta.get("industry_key") or ""
+        industry_confidence = {"seed": 0.85, "registry": 0.80, "generated": 0.60}.get(meta.get("source"), 0.5)
+        industry_label = industry_profile.get("label", industry_id)
+    else:
+        industry_id, industry_confidence, industry_label = "", 0.0, ""
+
+    session["industry"] = {
+        "id": industry_id,
+        "label": industry_label,
+        "confidence": industry_confidence,
+        "source": (industry_profile or {}).get("_meta", {}).get("source"),
+    }
+    from execution.advisory.advisory_state_manager import save_session as _save
+    _save(session)
+
     capability_map = interpret_answers(answers, business_idea, selected_capability_ids=selected_caps)
     set_capability_map(session, capability_map)
 
@@ -420,13 +448,13 @@ async def generate_results(request: Request, session_id: str):
     from execution.advisory.problem_analyzer import analyze_problems
     problem_analysis = analyze_problems(session)
 
-    # Generate problem-weighted agent architecture
+    # Generate problem-weighted agent architecture with industry context
     from execution.advisory.advisory_state_manager import set_agents
     from execution.advisory.agent_generator import generate_agents
     from execution.advisory.capability_mapper import should_include_cory
 
     include_cory = should_include_cory(session)
-    agents = generate_agents(selected_caps, include_cory=include_cory, problem_analysis=problem_analysis)
+    agents = generate_agents(selected_caps, include_cory=include_cory, problem_analysis=problem_analysis, industry_profile=industry_profile)
     set_agents(session, agents)
 
     # Store problem analysis on session for results page
@@ -437,7 +465,7 @@ async def generate_results(request: Request, session_id: str):
     org_nodes = build_org_structure(capability_map, maturity, business_idea)
     set_org_structure(session, org_nodes)
 
-    impact = calculate_impact(capability_map, maturity, answers, business_idea)
+    impact = calculate_impact(capability_map, maturity, answers, business_idea, industry_profile=industry_profile)
     set_impact_model(session, impact)
 
     # Build structured architecture (engines, dependencies, flows)

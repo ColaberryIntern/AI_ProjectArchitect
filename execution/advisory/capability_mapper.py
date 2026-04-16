@@ -344,22 +344,39 @@ def map_capabilities(session: dict) -> dict:
     """
     outcomes = session.get("selected_outcomes", [])
     idea = session.get("business_idea", "").lower()
-    answers_text = " ".join(
-        a.get("answer_text", "") for a in session.get("answers", [])
-    ).lower()
+    answers = session.get("answers", [])
+    answers_text = " ".join(a.get("answer_text", "") for a in answers).lower()
     all_text = f"{idea} {answers_text}"
     primary_goal = outcomes[0] if outcomes else "reduce_costs"
     primary_label = _get_outcome_label(primary_goal)
+
+    # Resolve industry taxonomy + the user's frustration text (Q4 = bottlenecks,
+    # Q8 = manual tasks). These let us boost capabilities that match
+    # industry-specific pains the user actually described.
+    taxonomy = _resolve_taxonomy_for_mapper(session, idea, all_text)
+    frustration_text = _frustration_text(answers)
+    user_pains = _user_relevant_pains(taxonomy, all_text) if taxonomy else []
+    pain_boosts = _frustration_pain_boosts(taxonomy, frustration_text) if taxonomy else {}
 
     # ═══ STEP 1: Domain Anchoring (from problem text, NOT goals) ═══
     primary_domain, domain_confidence, domain_scores = _anchor_domain(all_text)
     system_label = _DOMAIN_SYSTEM_LABELS.get(primary_domain, "AI System")
 
     # ═══ STEP 2: Hard Domain Enforcement ═══════════════════════════
-    allowed_depts = _DOMAIN_ALLOWED_DEPTS.get(primary_domain, {"Operations": 3, "Technology": 2})
+    allowed_depts = dict(_DOMAIN_ALLOWED_DEPTS.get(primary_domain, {"Operations": 3, "Technology": 2}))
+
+    # Additively expand allowed departments using the industry's dept_structure.
+    # A utility should show Operations/Field Services capabilities even when the
+    # domain anchor lands on HR because the user mentioned "employees". The
+    # hardcoded list is the floor; taxonomy depts are on top.
+    if taxonomy:
+        for dept_slot, count in _taxonomy_dept_allowance(taxonomy).items():
+            if dept_slot not in allowed_depts or allowed_depts[dept_slot] < count:
+                allowed_depts[dept_slot] = count
 
     # ═══ STEP 3: Extract entity signals ════════════════════════════
     entity_boosts = _extract_entity_signals(all_text)
+    frustration_entity_boosts = _extract_entity_signals(frustration_text)
 
     # ═══ STEP 4: Build problem vector (blended) ═══════════════════
     problem_vector = _build_problem_vector(outcomes)
@@ -399,6 +416,24 @@ def map_capabilities(session: dict) -> dict:
 
         score = (domain_match * 0.5) + (entity_match * 0.3) + (goal_score * 0.2)
 
+        # Industry pain match: capability text overlaps with a user-relevant pain
+        # (one the user described in their answers). Up to +0.20.
+        pain_hit = _capability_pain_match(cap, user_pains)
+        if pain_hit is not None:
+            score += min(0.10 + 0.05 * pain_hit["overlap"], 0.20)
+
+        # Frustration weight: extra boost when entity signal hits land in Q4/Q8.
+        # User's stated frustrations get to push capabilities harder than passing
+        # mentions elsewhere in the discovery.
+        frustration_hits = frustration_entity_boosts.get(cap["id"], 0)
+        if frustration_hits:
+            score += min(frustration_hits * 0.05, 0.15)
+
+        # Industry-specific frustration pain boost (the user describes a pain
+        # in Q4/Q8 that the taxonomy explicitly lists).
+        if cap["id"] in pain_boosts:
+            score += pain_boosts[cap["id"]]
+
         # Apply learned weight adjustment
         if has_learning:
             score *= get_capability_weight_adjustment(cap["id"])
@@ -409,7 +444,13 @@ def map_capabilities(session: dict) -> dict:
                 score += 0.03
                 break
 
-        scored.append({"cap": cap, "score": round(score, 3), "entity_matches": entity_boosts.get(cap["id"], 0)})
+        scored.append({
+            "cap": cap,
+            "score": round(score, 3),
+            "entity_matches": entity_boosts.get(cap["id"], 0),
+            "pain_hit": pain_hit,
+            "frustration_hits": frustration_hits,
+        })
 
     scored.sort(key=lambda x: x["score"], reverse=True)
 
@@ -496,6 +537,14 @@ def map_capabilities(session: dict) -> dict:
             matched = [e for e, caps in _ENTITY_SIGNALS.items() if cap["id"] in caps and e in all_text]
             if matched:
                 reasons[0] += f" | Matched: {', '.join(matched[:3])}"
+        # Pain-grounded justification (industry taxonomy + user's own words)
+        if s.get("pain_hit") and taxonomy:
+            pain_label = s["pain_hit"]["pain"].get("label", "")
+            industry = taxonomy.get("label", "your industry")
+            if pain_label:
+                reasons.append(f"Addresses {pain_label} in {industry}")
+        if s.get("frustration_hits", 0) > 0:
+            reasons.append("Matches a manual/frustration area you flagged")
         reasoning[cap["id"]] = reasons
 
     # Exclusion reasoning
@@ -533,7 +582,152 @@ def map_capabilities(session: dict) -> dict:
         "total_hard_blocked": len(hard_blocked),
         "qc_passed": qc_passed,
         "qc_notes": qc_notes,
+        "industry_label": (taxonomy or {}).get("label"),
+        "industry_source": ((taxonomy or {}).get("_meta") or {}).get("source"),
     }
+
+
+_FRUSTRATION_QUESTION_IDS = ("q4", "q8")
+
+# Maps taxonomy dept keys (snake_case, industry-idiomatic) to the catalog's
+# Title-Case department names. Unknown keys fall back to "Operations" so
+# industry-specific departments (field_services, clinical, underwriting,
+# allocation, compliance, etc.) still surface capabilities instead of being
+# dropped.
+_TAXONOMY_DEPT_TO_CATALOG_DEPT = {
+    "sales": "Sales",
+    "marketing": "Marketing",
+    "customer_support": "Customer Support",
+    "support": "Customer Support",
+    "operations": "Operations",
+    "field_services": "Operations",
+    "clinical": "Operations",
+    "compliance": "Operations",
+    "underwriting": "Operations",
+    "allocation": "Operations",
+    "merchandising": "Operations",
+    "production": "Operations",
+    "finance": "Finance",
+    "accounting": "Finance",
+    "communication": "Communication",
+    "hr": "Human Resources",
+    "human_resources": "Human Resources",
+    "people": "Human Resources",
+    "technology": "Technology",
+    "it": "Technology",
+    "engineering": "Technology",
+}
+
+
+def _taxonomy_dept_allowance(taxonomy: dict) -> dict[str, int]:
+    """Translate taxonomy.dept_structure into catalog-dept slot counts.
+
+    Slots scale with headcount share so a dept holding 40% of the industry's
+    people gets more capability slots than one at 5%. Management is always
+    excluded — the tool never automates management.
+    """
+    structure = taxonomy.get("dept_structure", {}) or {}
+    slots: dict[str, int] = {}
+    for dept_key, info in structure.items():
+        key = dept_key.lower().strip()
+        if key in {"management", "executive", "leadership"}:
+            continue
+        catalog_dept = _TAXONOMY_DEPT_TO_CATALOG_DEPT.get(key, "Operations")
+        pct = (info or {}).get("pct_of_headcount", 0) or 0
+        count = max(2, min(5, round(pct * 8)))
+        slots[catalog_dept] = max(slots.get(catalog_dept, 0), count)
+    return slots
+
+
+def _resolve_taxonomy_for_mapper(session: dict, idea: str, all_text: str) -> dict | None:
+    """Look up taxonomy. Returns None on any failure (mapper falls back to legacy logic)."""
+    try:
+        from execution.advisory.taxonomy_registry import lookup_taxonomy
+    except Exception:
+        return None
+    answers = session.get("answers", [])
+    industry_text = idea
+    if answers:
+        industry_text = f"{idea}\n\n{answers[0].get('answer_text', '')}"
+    try:
+        return lookup_taxonomy(industry_text.strip(), all_text)
+    except Exception:
+        return None
+
+
+def _frustration_text(answers: list[dict]) -> str:
+    """Concatenate the user's bottleneck (Q4) and manual-task (Q8) answers."""
+    parts = []
+    for ans in answers:
+        if ans.get("question_id") in _FRUSTRATION_QUESTION_IDS:
+            parts.append(ans.get("answer_text", ""))
+    return " ".join(parts).lower()
+
+
+def _user_relevant_pains(taxonomy: dict, user_text: str) -> list[dict]:
+    """Pains the user actually described, ranked by word overlap with their text.
+
+    A pain is "user-relevant" when at least 2 distinct words (length > 3) from
+    its label/root_cause appear in the user's combined text.
+    """
+    relevant = []
+    for pain in taxonomy.get("pain_catalog", []):
+        pain_text = f"{pain.get('label', '')} {pain.get('root_cause', '')}".lower()
+        words = {w for w in pain_text.split() if len(w) > 3}
+        overlap = sum(1 for w in words if w in user_text)
+        if overlap >= 2:
+            relevant.append({"pain": pain, "overlap": overlap})
+    relevant.sort(key=lambda x: x["overlap"], reverse=True)
+    return relevant
+
+
+_PAIN_MATCH_MIN_OVERLAP = 2
+
+
+def _capability_pain_match(cap: dict, user_pains: list[dict]) -> dict | None:
+    """Strongest pain match for a capability (by name+description word overlap).
+
+    Requires at least _PAIN_MATCH_MIN_OVERLAP distinct word matches so a
+    single coincidental word (e.g., "info", "area") can't tag an HR
+    capability with an unrelated Ops pain.
+    """
+    if not user_pains:
+        return None
+    cap_text = f"{cap.get('name', '')} {cap.get('description', '')}".lower()
+    cap_words = {w for w in cap_text.split() if len(w) > 3}
+    best = None
+    best_overlap = 0
+    for entry in user_pains:
+        pain_text = f"{entry['pain'].get('label', '')} {entry['pain'].get('root_cause', '')}".lower()
+        pain_words = {w for w in pain_text.split() if len(w) > 3}
+        overlap = len(cap_words & pain_words)
+        if overlap >= _PAIN_MATCH_MIN_OVERLAP and overlap > best_overlap:
+            best_overlap = overlap
+            best = {"pain": entry["pain"], "overlap": overlap}
+    return best
+
+
+def _frustration_pain_boosts(taxonomy: dict, frustration_text: str) -> dict[str, float]:
+    """Per-capability boost when the user's frustrations explicitly hit a taxonomy pain.
+
+    Light-touch: any capability whose name overlaps with a pain that appears in
+    Q4/Q8 gets a small boost. Returns {capability_id: boost}.
+    """
+    boosts: dict[str, float] = {}
+    if not frustration_text:
+        return boosts
+    from execution.advisory.capability_catalog import CAPABILITY_CATALOG
+    for pain in taxonomy.get("pain_catalog", []):
+        pain_text = f"{pain.get('label', '')} {pain.get('root_cause', '')}".lower()
+        pain_words = {w for w in pain_text.split() if len(w) > 3}
+        if not any(w in frustration_text for w in pain_words):
+            continue
+        for cap in CAPABILITY_CATALOG:
+            cap_text = f"{cap.get('name', '')} {cap.get('description', '')}".lower()
+            cap_words = {w for w in cap_text.split() if len(w) > 3}
+            if cap_words & pain_words:
+                boosts[cap["id"]] = max(boosts.get(cap["id"], 0), 0.10)
+    return boosts
 
 
 def should_include_cory(session: dict) -> bool:

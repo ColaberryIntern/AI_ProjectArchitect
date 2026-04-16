@@ -58,16 +58,21 @@ def generate_agents(
     selected_capability_ids: list[str],
     include_cory: bool = False,
     problem_analysis: dict | None = None,
+    industry_profile: dict | None = None,
 ) -> list[dict]:
     """Generate agent architecture from selected capabilities.
 
     When problem_analysis is provided, adds specialized agents for the
     dominant problem domain and focuses the AI Control Tower on that domain.
 
+    When industry_profile is provided, uses industry-specific agent names
+    and roles instead of generic templates.
+
     Args:
         selected_capability_ids: List of capability IDs.
         include_cory: Whether to include the AI Control Tower intelligence layer.
         problem_analysis: Output from problem_analyzer.analyze_problems().
+        industry_profile: Industry-specific benchmarks with agent_roles.
 
     Returns:
         List of agent architecture dicts.
@@ -79,6 +84,10 @@ def generate_agents(
         agent_names = cap.get("agents", [])
         primary_name = agent_names[0] if agent_names else f"AI {cap['name']} Agent"
         trigger_info = _TRIGGER_TYPES.get(cap["id"], {"trigger_type": "event", "trigger": "On demand"})
+
+        # Determine HITL level based on automation potential
+        auto_potential = cap.get("automation_potential", "medium")
+        hitl = _build_hitl_config(cap["department"], auto_potential)
 
         agent = {
             "id": f"agent_{cap['id']}",
@@ -94,6 +103,12 @@ def generate_agents(
             "connected_mcp_servers": cap.get("mcp_servers", []),
             "connected_skills": cap.get("skills", []),
             "is_primary_focus": False,
+            # HITL (Human-in-the-Loop) configuration
+            "autonomy_level": hitl["autonomy_level"],
+            "confidence_threshold": hitl["confidence_threshold"],
+            "approval_gates": hitl["approval_gates"],
+            "escalation_rules": hitl["escalation_rules"],
+            "human_override": True,
         }
         agents.append(agent)
 
@@ -108,12 +123,38 @@ def generate_agents(
                 agent["is_primary_focus"] = True
 
         # Add specialized agents if primary weight is strong (>0.3)
+        # Prefer industry-specific agents over generic domain specialists
         if primary_weight >= 0.3:
-            specialists = _get_domain_specialists(primary)
-            for spec in specialists:
-                # Avoid duplicates
-                if not any(a["name"] == spec["name"] for a in agents):
-                    agents.append(spec)
+            if industry_profile and "agent_roles" in industry_profile:
+                # Use industry-specific agent roles. The taxonomy is authoritative
+                # about which agents are meaningful in this vertical — we add them
+                # all (deduped), and mark `is_primary_focus` only when the dept
+                # aligns with the detected problem domain. This lets generated
+                # taxonomies (with idiomatic dept keys like "allocation",
+                # "compliance", "crowdfunding") surface their agents too.
+                for dept, roles in industry_profile["agent_roles"].items():
+                    dept_matches = _domain_matches_dept(primary, dept)
+                    for role_tmpl in roles:
+                        if any(a["name"] == role_tmpl["name"] for a in agents):
+                            continue
+                        agents.append({
+                            "id": f"agent_industry_{role_tmpl['name'].lower().replace(' ', '_')}",
+                            "name": role_tmpl["name"],
+                            "department": dept.replace("_", " ").title(),
+                            "role": role_tmpl["role"],
+                            "is_primary_focus": dept_matches,
+                            "trigger_type": "event",
+                            "trigger": "Triggered by operational conditions",
+                            "inputs": [],
+                            "outputs": [],
+                            "connected_mcp_servers": [],
+                            "connected_skills": [],
+                        })
+            else:
+                specialists = _get_domain_specialists(primary)
+                for spec in specialists:
+                    if not any(a["name"] == spec["name"] for a in agents):
+                        agents.append(spec)
 
     # Add AI COO intelligence layer
     if include_cory:
@@ -209,6 +250,67 @@ _DOMAIN_SPECIALISTS = {
          "outputs": ["Quality alerts", "Fix suggestions", "Impact assessments"]},
     ],
 }
+
+
+def _build_hitl_config(department: str, automation_potential: str = "medium") -> dict:
+    """Build Human-in-the-Loop configuration for an agent.
+
+    Higher-risk departments and lower automation potential = more human oversight.
+    """
+    # Departments with financial/legal impact require more human oversight
+    high_oversight_depts = {"finance", "compliance", "billing", "carrier_pay_ap", "collections_ar",
+                            "underwriting", "claims", "risk", "clinical"}
+    medium_oversight_depts = {"operations", "sales", "customer_support", "field_services",
+                              "production", "maintenance"}
+
+    if department.lower().replace(" ", "_") in high_oversight_depts:
+        autonomy = "assist"
+        threshold = 0.90
+        gates = [
+            {"condition": "Transaction value exceeds threshold", "approver": f"{department} Supervisor", "type": "mandatory"},
+            {"condition": "First-time counterparty", "approver": "Finance Controller", "type": "mandatory"},
+        ]
+        escalation = [
+            {"trigger": f"Confidence below {int(threshold*100)}%", "target": f"{department} Supervisor", "action": "Queue for review"},
+            {"trigger": "Anomaly detected", "target": "Finance Controller", "action": "Hold and notify"},
+        ]
+    elif department.lower().replace(" ", "_") in medium_oversight_depts:
+        autonomy = "assist" if automation_potential == "low" else "autonomous"
+        threshold = 0.85
+        gates = [
+            {"condition": "Exception or edge case detected", "approver": f"{department} Manager", "type": "conditional"},
+        ]
+        escalation = [
+            {"trigger": f"Confidence below {int(threshold*100)}%", "target": f"{department} Manager", "action": "Queue for review"},
+        ]
+    else:
+        autonomy = "autonomous"
+        threshold = 0.80
+        gates = []
+        escalation = [
+            {"trigger": f"Confidence below {int(threshold*100)}%", "target": "AI Supervisor", "action": "Queue for review"},
+        ]
+
+    return {
+        "autonomy_level": autonomy,
+        "confidence_threshold": threshold,
+        "approval_gates": gates,
+        "escalation_rules": escalation,
+    }
+
+
+def _domain_matches_dept(domain: str, dept: str) -> bool:
+    """Check if a problem domain matches a department from industry profile."""
+    mapping = {
+        "operations": ["operations", "field_services", "production", "delivery", "maintenance"],
+        "sales": ["sales", "marketing", "fundraising"],
+        "support": ["customer_support", "student_services", "member_services"],
+        "finance": ["finance", "underwriting", "claims"],
+        "data": ["technology", "engineering"],
+        "hr": ["hr"],
+        "communication": ["marketing", "customer_support"],
+    }
+    return dept in mapping.get(domain, [domain])
 
 
 def _get_domain_specialists(domain: str) -> list[dict]:

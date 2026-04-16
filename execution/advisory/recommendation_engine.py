@@ -7,53 +7,62 @@ and implementation strategy based on the full session context.
 from execution.advisory.capability_mapper import AI_SYSTEMS, BUSINESS_OUTCOMES
 
 
-def recommend_design(session: dict) -> dict:
-    """Recommend outcomes + systems with a SINGLE primary goal focus.
+PAIN_TO_OUTCOME_KEYWORDS = {
+    "increase_revenue": ("revenue", "sales", "lead", "pipeline", "conversion", "pricing", "upsell", "cross-sell", "growth"),
+    "reduce_costs": ("cost", "waste", "manual", "inefficien", "overhead", "labor", "rework", "idle", "overpay"),
+    "improve_cx": ("customer", "satisfaction", "service", "support", "retention", "churn", "response time", "complaint"),
+    "scale_operations": ("scale", "volume", "throughput", "capacity", "backlog", "bottleneck", "turnover"),
+    "improve_decisions": ("data", "visibility", "forecast", "reporting", "analytics", "decision", "compliance"),
+}
 
-    Forces exactly 1 primary outcome (highest keyword match) and
-    recommends only systems aligned with that primary goal.
+# Map generic system IDs to the department key in a taxonomy profile.
+SYSTEM_TO_DEPT = {
+    "operations_engine": "operations",
+    "revenue_engine": "sales",
+    "customer_engine": "customer_support",
+    "communication_engine": "customer_support",
+    "finance_engine": "finance",
+    "intelligence_engine": "technology",
+}
+
+
+def recommend_design(session: dict) -> dict:
+    """Recommend outcomes + systems, driven by industry taxonomy when available.
+
+    Looks up a taxonomy for the user's business (seeded, cached, or LLM-generated
+    sync on first encounter), then scores outcomes using both generic keywords
+    and taxonomy-specific pain_catalog, and labels systems with
+    industry-specific names from the taxonomy.
+
+    Falls back to generic keyword-only scoring if taxonomy lookup fails.
 
     Returns:
-        Dict with recommended_outcomes, recommended_systems, primary_goal, and reasoning.
+        Dict with recommended_outcomes, recommended_systems, and (when a
+        taxonomy was resolved) industry_label + industry_source metadata.
     """
     answers = session.get("answers", [])
-    idea = session.get("business_idea", "").lower()
-    all_text = idea + " " + " ".join(a.get("answer_text", "") for a in answers).lower()
+    idea = session.get("business_idea", "")
+    all_text = (idea + " " + " ".join(a.get("answer_text", "") for a in answers)).lower()
 
-    # ── Score each outcome by keyword density ───────────────────────
-    outcome_keywords = {
-        "increase_revenue": ["revenue", "sales", "lead", "conversion", "pipeline", "close", "deal", "prospect", "outreach", "quota"],
-        "reduce_costs": ["cost", "manual", "automat", "efficien", "reduce", "save", "expensive", "waste", "overhead"],
-        "improve_cx": ["customer", "support", "response", "satisfaction", "service", "chat", "ticket", "complaint", "nps"],
-        "scale_operations": ["scale", "grow", "expand", "volume", "hire", "headcount", "capacity", "throughput"],
-        "improve_decisions": ["data", "decision", "report", "dashboard", "analytics", "insight", "visibility", "metric"],
-    }
+    taxonomy = _resolve_taxonomy(session, idea, all_text)
 
-    outcome_scores = {}
-    for outcome_id, keywords in outcome_keywords.items():
-        score = sum(1 for kw in keywords if kw in all_text)
-        if score > 0:
-            outcome_scores[outcome_id] = score
+    outcome_scores = _score_outcomes(all_text, taxonomy)
 
-    # Pick PRIMARY (highest score) + at most 1 secondary
+    # Pick PRIMARY (highest score) + at most 1 secondary.
     rec_outcomes = {}
     if outcome_scores:
         sorted_outcomes = sorted(outcome_scores.items(), key=lambda x: x[1], reverse=True)
         primary_id = sorted_outcomes[0][0]
-        primary_label = _get_outcome_label_for_rec(primary_id)
-        rec_outcomes[primary_id] = f"Primary goal: {primary_label}"
+        rec_outcomes[primary_id] = _outcome_rationale(primary_id, taxonomy, all_text, primary=True)
 
-        # Add 1 secondary only if it has a strong signal (3+ keyword matches)
         if len(sorted_outcomes) > 1 and sorted_outcomes[1][1] >= 3:
             sec_id = sorted_outcomes[1][0]
-            rec_outcomes[sec_id] = f"Secondary: {_get_outcome_label_for_rec(sec_id)}"
+            rec_outcomes[sec_id] = _outcome_rationale(sec_id, taxonomy, all_text, primary=False)
     else:
-        # No keywords matched — default to reduce_costs (universal)
-        rec_outcomes["reduce_costs"] = "Primary goal: Reduce operational costs"
+        rec_outcomes["reduce_costs"] = _outcome_rationale("reduce_costs", taxonomy, all_text, primary=True)
 
     primary_goal = list(rec_outcomes.keys())[0]
 
-    # ── System recommendations aligned with primary goal ────────────
     goal_systems = {
         "increase_revenue": ["revenue_engine", "communication_engine"],
         "reduce_costs": ["operations_engine", "finance_engine"],
@@ -64,17 +73,140 @@ def recommend_design(session: dict) -> dict:
 
     rec_systems = {}
     for sys_id in goal_systems.get(primary_goal, ["operations_engine"]):
-        sys_label = next((s["label"] for s in AI_SYSTEMS if s["id"] == sys_id), sys_id)
-        rec_systems[sys_id] = f"Core system for {_get_outcome_label_for_rec(primary_goal)}"
+        rec_systems[sys_id] = _system_rationale(sys_id, primary_goal, taxonomy)
 
-    # Add intelligence engine if 2+ systems
     if len(rec_systems) >= 2 and "intelligence_engine" not in rec_systems:
-        rec_systems["intelligence_engine"] = "Coordinates your AI systems"
+        rec_systems["intelligence_engine"] = _system_rationale(
+            "intelligence_engine", primary_goal, taxonomy, coordinator=True
+        )
 
-    return {
+    result = {
         "recommended_outcomes": rec_outcomes,
         "recommended_systems": rec_systems,
     }
+    if taxonomy:
+        result["industry_label"] = taxonomy.get("label")
+        result["industry_source"] = taxonomy.get("_meta", {}).get("source")
+        result["industry_key"] = taxonomy.get("_meta", {}).get("industry_key")
+    return result
+
+
+def _resolve_taxonomy(session: dict, idea: str, all_text: str) -> dict | None:
+    """Look up taxonomy for this session's industry. Returns None on any failure.
+
+    Industry detection uses idea + the first answer (the explicit "what does
+    your business do and what industry?" question). Using the full Q&A corpus
+    here causes false positives — e.g., a board-game publisher saying
+    "...manufacturing..." as a step in their value chain gets routed to the
+    Manufacturing profile. The full corpus IS still passed as session_context
+    so the LLM has it on a generation miss, and the rationale layer uses it
+    for pain-citation overlap.
+    """
+    try:
+        from execution.advisory.taxonomy_registry import lookup_taxonomy
+    except Exception:
+        return None
+
+    answers = session.get("answers", [])
+    industry_text = idea
+    if answers:
+        industry_text = f"{idea}\n\n{answers[0].get('answer_text', '')}"
+
+    try:
+        return lookup_taxonomy(industry_text.strip(), all_text)
+    except Exception:
+        return None
+
+
+def _score_outcomes(all_text: str, taxonomy: dict | None) -> dict:
+    """Score outcomes using generic keywords plus taxonomy pain_catalog.
+
+    A pain is mapped to an outcome when any of that outcome's keyword roots
+    appear in the pain label or root_cause. Pain matches are weighted 2x
+    because they are industry-specific signal.
+    """
+    generic_keywords = {
+        "increase_revenue": ["revenue", "sales", "lead", "conversion", "pipeline", "close", "deal", "prospect", "outreach", "quota"],
+        "reduce_costs": ["cost", "manual", "automat", "efficien", "reduce", "save", "expensive", "waste", "overhead"],
+        "improve_cx": ["customer", "support", "response", "satisfaction", "service", "chat", "ticket", "complaint", "nps"],
+        "scale_operations": ["scale", "grow", "expand", "volume", "hire", "headcount", "capacity", "throughput"],
+        "improve_decisions": ["data", "decision", "report", "dashboard", "analytics", "insight", "visibility", "metric"],
+    }
+
+    scores: dict[str, int] = {}
+    for outcome_id, kws in generic_keywords.items():
+        score = sum(1 for kw in kws if kw in all_text)
+        if score:
+            scores[outcome_id] = score
+
+    if not taxonomy:
+        return scores
+
+    for pain in taxonomy.get("pain_catalog", []):
+        pain_text = f"{pain.get('label', '')} {pain.get('root_cause', '')}".lower()
+        if not any(kw in all_text for kw in pain_text.split() if len(kw) > 4):
+            continue
+        for outcome_id, roots in PAIN_TO_OUTCOME_KEYWORDS.items():
+            if any(root in pain_text for root in roots):
+                scores[outcome_id] = scores.get(outcome_id, 0) + 2
+    return scores
+
+
+def _outcome_rationale(outcome_id: str, taxonomy: dict | None, user_text: str, primary: bool) -> str:
+    """Build a rationale string. Cites the taxonomy pain that best matches what the user actually said.
+
+    Pains are first filtered to those relevant to the outcome (root-keyword match),
+    then ranked by how many distinct words from the pain's label/root_cause appear
+    in the user's combined Q&A text. The pain with the strongest user-text overlap
+    wins — so the rationale references something the user literally described.
+    """
+    label = _get_outcome_label_for_rec(outcome_id)
+    prefix = "Primary goal" if primary else "Secondary"
+
+    if not taxonomy:
+        return f"{prefix}: {label}"
+
+    roots = PAIN_TO_OUTCOME_KEYWORDS.get(outcome_id, ())
+    candidates = []
+    fallback = None
+    for pain in taxonomy.get("pain_catalog", []):
+        pain_text = f"{pain.get('label', '')} {pain.get('root_cause', '')}".lower()
+        if not any(root in pain_text for root in roots):
+            continue
+        if fallback is None:
+            fallback = pain
+        overlap = sum(
+            1 for word in set(pain_text.split())
+            if len(word) > 3 and word in user_text
+        )
+        if overlap > 0:
+            candidates.append((overlap, pain))
+
+    industry_label = taxonomy.get("label", "your industry")
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_pain = candidates[0][1]
+        return f"{prefix}: {label} — addresses {best_pain['label']} in {industry_label}"
+    if fallback is not None:
+        return f"{prefix}: {label} — addresses {fallback['label']} in {industry_label}"
+    return f"{prefix}: {label} for {industry_label}"
+
+
+def _system_rationale(sys_id: str, primary_goal: str, taxonomy: dict | None, coordinator: bool = False) -> str:
+    """Label a recommended system using the taxonomy system_names where possible."""
+    goal_label = _get_outcome_label_for_rec(primary_goal)
+
+    if taxonomy:
+        dept = SYSTEM_TO_DEPT.get(sys_id)
+        industry_name = taxonomy.get("system_names", {}).get(dept) if dept else None
+        if industry_name:
+            if coordinator:
+                return f"{industry_name} — coordinates your AI systems"
+            return f"{industry_name} — core system for {goal_label}"
+
+    if coordinator:
+        return "Coordinates your AI systems"
+    return f"Core system for {goal_label}"
 
 
 def _get_outcome_label_for_rec(outcome_id: str) -> str:
