@@ -9,10 +9,10 @@ from execution.advisory.capability_mapper import AI_SYSTEMS, BUSINESS_OUTCOMES
 
 PAIN_TO_OUTCOME_KEYWORDS = {
     "increase_revenue": ("revenue", "sales", "lead", "pipeline", "conversion", "pricing", "upsell", "cross-sell", "growth"),
-    "reduce_costs": ("cost", "waste", "manual", "inefficien", "overhead", "labor", "rework", "idle", "overpay"),
-    "improve_cx": ("customer", "satisfaction", "service", "support", "retention", "churn", "response time", "complaint"),
-    "scale_operations": ("scale", "volume", "throughput", "capacity", "backlog", "bottleneck", "turnover"),
-    "improve_decisions": ("data", "visibility", "forecast", "reporting", "analytics", "decision", "compliance"),
+    "reduce_costs": ("cost", "waste", "manual", "inefficien", "overhead", "labor", "rework", "idle", "overpay", "spend", "expensive"),
+    "improve_cx": ("satisfaction", "churn", "retention", "nps", "complaint"),
+    "scale_operations": ("scale", "volume", "throughput", "capacity", "backlog", "bottleneck", "turnover", "storm", "outage", "dispatch", "crew", "restoration", "vegetation", "fleet", "field", "warehouse", "production"),
+    "improve_decisions": ("data", "visibility", "forecast", "reporting", "analytics", "decision", "compliance", "regulatory", "audit"),
 }
 
 # Map generic system IDs to the department key in a taxonomy profile.
@@ -121,16 +121,17 @@ def _resolve_taxonomy(session: dict, idea: str, all_text: str) -> dict | None:
 def _score_outcomes(all_text: str, taxonomy: dict | None) -> dict:
     """Score outcomes using generic keywords plus taxonomy pain_catalog.
 
-    A pain is mapped to an outcome when any of that outcome's keyword roots
-    appear in the pain label or root_cause. Pain matches are weighted 2x
-    because they are industry-specific signal.
+    Taxonomy pain matches are weighted 5x (not 2x) because they are
+    industry-specific signal and should override generic keyword noise.
+    For example, a utility mentioning "members" and "call center" shouldn't
+    pull the outcome toward improve_cx when the real pains are operational.
     """
     generic_keywords = {
         "increase_revenue": ["revenue", "sales", "lead", "conversion", "pipeline", "close", "deal", "prospect", "outreach", "quota"],
-        "reduce_costs": ["cost", "manual", "automat", "efficien", "reduce", "save", "expensive", "waste", "overhead"],
-        "improve_cx": ["customer", "support", "response", "satisfaction", "service", "chat", "ticket", "complaint", "nps"],
-        "scale_operations": ["scale", "grow", "expand", "volume", "hire", "headcount", "capacity", "throughput"],
-        "improve_decisions": ["data", "decision", "report", "dashboard", "analytics", "insight", "visibility", "metric"],
+        "reduce_costs": ["cost", "manual", "automat", "efficien", "reduce", "save", "expensive", "waste", "overhead", "spend"],
+        "improve_cx": ["satisfaction", "nps", "complaint", "churn", "retention"],
+        "scale_operations": ["scale", "grow", "expand", "volume", "capacity", "throughput", "storm", "outage", "dispatch", "crews", "restoration", "vegetation", "fleet", "field", "warehouse", "manufacturing", "production", "backlog"],
+        "improve_decisions": ["data", "decision", "report", "dashboard", "analytics", "insight", "visibility", "metric", "compliance", "regulatory", "audit"],
     }
 
     scores: dict[str, int] = {}
@@ -142,13 +143,18 @@ def _score_outcomes(all_text: str, taxonomy: dict | None) -> dict:
     if not taxonomy:
         return scores
 
+    # Taxonomy pain matches weighted 5x — industry-specific signal overrides
+    # generic keyword noise. A matched pain that the user actually described
+    # is the strongest signal we have.
     for pain in taxonomy.get("pain_catalog", []):
         pain_text = f"{pain.get('label', '')} {pain.get('root_cause', '')}".lower()
-        if not any(kw in all_text for kw in pain_text.split() if len(kw) > 4):
+        pain_words = [w for w in pain_text.split() if len(w) > 4]
+        user_overlap = sum(1 for w in pain_words if w in all_text)
+        if user_overlap < 2:
             continue
         for outcome_id, roots in PAIN_TO_OUTCOME_KEYWORDS.items():
             if any(root in pain_text for root in roots):
-                scores[outcome_id] = scores.get(outcome_id, 0) + 2
+                scores[outcome_id] = scores.get(outcome_id, 0) + 5
     return scores
 
 
