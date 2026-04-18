@@ -301,7 +301,7 @@ INDUSTRY_PROFILES = {
     # ─── Professional Services & Consulting ────────────────────────────
     "consulting": {
         "label": "Professional Services & Consulting",
-        "aliases": ["consulting", "advisory", "professional services", "law firm", "accounting", "engineering firm", "architecture", "agency", "staffing"],
+        "aliases": ["consulting", "advisory", "professional services", "engineering firm", "architecture"],
         "dept_structure": {
             "delivery":         {"pct_of_headcount": 0.50, "avg_fte_cost": 110_000},
             "sales":            {"pct_of_headcount": 0.12, "avg_fte_cost": 105_000},
@@ -340,6 +340,50 @@ INDUSTRY_PROFILES = {
             "sales": [
                 {"name": "AI Proposal Generator", "role": "Assembles proposals from past winning content, pricing templates, and case studies tailored to the prospect's industry"},
                 {"name": "AI Win/Loss Analyzer", "role": "Identifies patterns in won vs lost deals to improve positioning, pricing, and pursuit decisions"},
+            ],
+        },
+    },
+
+    # ─── Staffing & Recruiting ────────────────────────────────────────
+    "staffing": {
+        "label": "Staffing & Recruiting",
+        "aliases": ["staffing", "staffing agency", "recruiting", "recruitment", "temp agency", "temporary staffing", "placement", "workforce solutions", "talent acquisition"],
+        "dept_structure": {
+            "sales":            {"pct_of_headcount": 0.25, "avg_fte_cost": 72_000},
+            "recruiting":       {"pct_of_headcount": 0.35, "avg_fte_cost": 55_000},
+            "operations":       {"pct_of_headcount": 0.15, "avg_fte_cost": 48_000},
+            "finance":          {"pct_of_headcount": 0.08, "avg_fte_cost": 68_000},
+            "hr":               {"pct_of_headcount": 0.07, "avg_fte_cost": 58_000},
+            "management":       {"pct_of_headcount": 0.10, "avg_fte_cost": 95_000},
+        },
+        "revenue_per_employee": 140_000,
+        "avg_margin": 0.04,
+        "revenue_lift_by_dept": {
+            "sales": 0.08, "recruiting": 0.12, "operations": 0.04,
+        },
+        "ai_adoption_rate": 0.12,
+        "pain_catalog": [
+            {"id": "time_to_fill", "label": "Slow Time-to-Fill", "root_cause": "Manual resume screening, phone-based candidate outreach, no automated matching against open reqs", "financial_formula": "avg_days_to_fill * daily_gross_margin_loss * open_reqs", "typical_impact_pct": 0.10},
+            {"id": "no_show_rate", "label": "High No-Show Rate", "root_cause": "Associates confirm shifts by phone, no automated reminders, no penalty tracking, last-minute replacements scrambled manually", "financial_formula": "no_show_rate * shifts_per_week * replacement_cost", "typical_impact_pct": 0.08},
+            {"id": "associate_turnover", "label": "Associate Turnover", "root_cause": "Poor shift matching to preferences, no engagement tracking, associates leave for competitors with better scheduling", "financial_formula": "turnover_rate * associates * recruitment_cost_per_hire", "typical_impact_pct": 0.12},
+            {"id": "timesheet_reconciliation", "label": "Timesheet Reconciliation Chaos", "root_cause": "Paper or text-based time reporting, manual entry into payroll, disputes over hours worked", "financial_formula": "reconciliation_hours_per_week * hourly_rate * 52", "typical_impact_pct": 0.05},
+            {"id": "thin_margins", "label": "Margin Compression", "root_cause": "Bill/pay rate spread eroding, no real-time visibility into per-placement profitability", "financial_formula": "placements * avg_bill_rate * margin_erosion_pct", "typical_impact_pct": 0.06},
+        ],
+        "system_names": {
+            "recruiting": "Talent Matching Intelligence",
+            "sales": "Client Pipeline Engine",
+            "operations": "Workforce Scheduling Optimizer",
+            "finance": "Placement Profitability System",
+            "technology": "AI Staffing Control Tower",
+        },
+        "agent_roles": {
+            "recruiting": [
+                {"name": "AI Resume Matcher", "role": "Scores and ranks candidates against open reqs by skills, location, availability, and past placement success"},
+                {"name": "AI Shift Confirmer", "role": "Sends automated shift reminders via text, detects likely no-shows from response patterns, triggers backup sourcing"},
+                {"name": "AI Candidate Engager", "role": "Maintains contact with bench associates through automated check-ins, availability polls, and re-engagement campaigns"},
+            ],
+            "operations": [
+                {"name": "AI Timesheet Processor", "role": "Validates submitted hours against scheduled shifts, flags discrepancies, auto-generates payroll-ready reports"},
             ],
         },
     },
@@ -540,7 +584,7 @@ INDUSTRY_PROFILES = {
     # ─── Real Estate ───────────────────────────────────────────────────
     "real_estate": {
         "label": "Real Estate",
-        "aliases": ["real estate", "property", "brokerage", "realty", "commercial real estate", "residential", "property management", "reit", "development"],
+        "aliases": ["real estate company", "real estate firm", "real estate agency", "property management company", "realty", "commercial real estate", "reit", "real estate developer", "property developer"],
         "dept_structure": {
             "sales":            {"pct_of_headcount": 0.35, "avg_fte_cost": 85_000},
             "operations":       {"pct_of_headcount": 0.15, "avg_fte_cost": 55_000},
