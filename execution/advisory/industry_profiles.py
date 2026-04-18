@@ -583,7 +583,7 @@ INDUSTRY_PROFILES = {
 
     # ─── Real Estate ───────────────────────────────────────────────────
     "real_estate": {
-        "label": "Real Estate",
+        "label": "Real Estate & Property Management",
         "aliases": ["real estate company", "real estate firm", "real estate agency", "property management company", "realty", "commercial real estate", "reit", "real estate developer", "property developer"],
         "dept_structure": {
             "sales":            {"pct_of_headcount": 0.35, "avg_fte_cost": 85_000},

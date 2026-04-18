@@ -121,9 +121,12 @@ def _check_seeded(text: str) -> str | None:
                 score += 3
         label = profile["label"]
         if _word_boundary_match(label, text_front):
-            score += 5  # Label in the opening description = strong signal
+            score += 5  # Full label in opening description = strong signal
         elif _word_boundary_match(label, text_lower):
-            score += 2  # Label buried later = weak signal (could be incidental)
+            score += 2  # Full label buried later = weak signal
+        # Do NOT match partial label substrings — e.g., "real estate" alone
+        # should not match "Real Estate & Property Management" label.
+        # The alias list handles partial matches with controlled scoring.
         if score > best_score:
             best_score = score
             best_id = industry_id
