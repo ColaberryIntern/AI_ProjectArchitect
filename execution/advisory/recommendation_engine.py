@@ -15,14 +15,15 @@ PAIN_TO_OUTCOME_KEYWORDS = {
     "improve_decisions": ("data", "visibility", "forecast", "reporting", "analytics", "decision", "compliance", "regulatory", "audit"),
 }
 
-# Map generic system IDs to the department key in a taxonomy profile.
-SYSTEM_TO_DEPT = {
-    "operations_engine": "operations",
-    "revenue_engine": "sales",
-    "customer_engine": "customer_support",
-    "communication_engine": "customer_support",
-    "finance_engine": "finance",
-    "intelligence_engine": "technology",
+# Map generic system IDs to taxonomy dept keys. Multiple keys tried in order
+# so generated taxonomies with idiomatic dept names still resolve.
+SYSTEM_TO_DEPT_CANDIDATES = {
+    "operations_engine": ["operations", "field_services", "production", "fulfillment", "logistics", "fleet", "clinical", "salon_operations", "grain_operations", "service"],
+    "revenue_engine": ["sales", "marketing", "fundraising", "merchandising", "business_development"],
+    "customer_engine": ["customer_support", "customer_service", "member_services", "client_services", "franchise_support"],
+    "communication_engine": ["communication", "customer_support", "marketing"],
+    "finance_engine": ["finance", "accounting", "billing", "revenue_cycle", "claims"],
+    "intelligence_engine": ["technology", "engineering", "it", "data", "analytics"],
 }
 
 
@@ -47,6 +48,12 @@ def recommend_design(session: dict) -> dict:
     taxonomy = _resolve_taxonomy(session, idea, all_text)
 
     outcome_scores = _score_outcomes(all_text, taxonomy)
+
+    # Nonprofit/mission-driven orgs should never get "increase_revenue" as primary
+    is_nonprofit = any(kw in all_text for kw in ["nonprofit", "non-profit", "not-for-profit", "501(c)", "foundation", "charity"])
+    if is_nonprofit and "increase_revenue" in outcome_scores:
+        outcome_scores["increase_revenue"] = max(0, outcome_scores["increase_revenue"] - 20)
+        outcome_scores["reduce_costs"] = outcome_scores.get("reduce_costs", 0) + 5
 
     # Pick PRIMARY (highest score) + at most 1 secondary.
     rec_outcomes = {}
@@ -203,8 +210,12 @@ def _system_rationale(sys_id: str, primary_goal: str, taxonomy: dict | None, coo
     goal_label = _get_outcome_label_for_rec(primary_goal)
 
     if taxonomy:
-        dept = SYSTEM_TO_DEPT.get(sys_id)
-        industry_name = taxonomy.get("system_names", {}).get(dept) if dept else None
+        system_names = taxonomy.get("system_names", {})
+        industry_name = None
+        for dept_candidate in SYSTEM_TO_DEPT_CANDIDATES.get(sys_id, []):
+            industry_name = system_names.get(dept_candidate)
+            if industry_name:
+                break
         if industry_name:
             if coordinator:
                 return f"{industry_name} — coordinates your AI systems"

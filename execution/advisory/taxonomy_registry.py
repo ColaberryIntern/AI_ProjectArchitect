@@ -103,7 +103,8 @@ def _check_seeded(text: str) -> str | None:
     """Return a seeded industry_id if aliases/label strongly match.
 
     Scoring:
-      - label hit  → +5 (unambiguous, triggers alone)
+      - label hit in first 200 chars  → +5 (unambiguous, triggers alone)
+      - label hit after 200 chars     → +2 (could be incidental mention)
       - alias hit  → +3 (needs a second signal to trigger)
     Threshold: score >= _SEED_MATCH_THRESHOLD.
 
@@ -111,14 +112,18 @@ def _check_seeded(text: str) -> str | None:
     (e.g., 'retail' in 'retailers', 'production' in 'small-production').
     """
     text_lower = text.lower()
+    text_front = text_lower[:200]
     best_id, best_score = None, 0
     for industry_id, profile in INDUSTRY_PROFILES.items():
         score = 0
         for alias in profile.get("aliases", []):
             if _word_boundary_match(alias, text_lower):
                 score += 3
-        if _word_boundary_match(profile["label"], text_lower):
-            score += 5
+        label = profile["label"]
+        if _word_boundary_match(label, text_front):
+            score += 5  # Label in the opening description = strong signal
+        elif _word_boundary_match(label, text_lower):
+            score += 2  # Label buried later = weak signal (could be incidental)
         if score > best_score:
             best_score = score
             best_id = industry_id
@@ -205,7 +210,8 @@ Return ONLY valid JSON matching this exact schema:
 }
 
 Rules:
-- Use department names the user would recognize in their vertical (e.g., "field_services" for utilities, "underwriting" for insurance, "clinical" for healthcare).
+- Use CANONICAL department keys from this list where possible: operations, sales, customer_support, finance, technology, hr, marketing, engineering, field_services, compliance. Only invent new dept keys if none of these fit.
+- system_names are names for AI SYSTEMS (e.g., "Grid Operations Engine", "Fleet Intelligence System", "Clinical Workforce Optimizer") — NOT names of existing software tools the company uses.
 - Every system_name and agent name MUST reference the specific industry (e.g., "Grid Operations Engine", not "Operations Engine").
 - pain_catalog must describe pains that are characteristic of this industry, not generic business pains.
 - Benchmarks should reflect real industry data you are confident about; conservative is better than optimistic.
