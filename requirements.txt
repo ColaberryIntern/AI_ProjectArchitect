@@ -11,3 +11,7 @@ google-api-python-client>=2.100.0
 google-auth>=2.20.0
 pytz>=2023.3
 httpx>=0.27.0
+# Required by execution/ops_platform/distributed_lock.py
+filelock>=3.13.0
+# Powers the daily use-case generator + skill scanner cron jobs
+apscheduler>=3.10.0
