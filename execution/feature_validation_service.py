@@ -1,10 +1,19 @@
 """System Design Contract validation service.
 
-Deterministic checks for feature dependencies, skill coverage, and MCP
-server mapping.  No LLM calls — all rules are static and auditable.
+Deterministic checks for feature dependencies, skill coverage, MCP
+server mapping, and Requirement-level invariants (DAG integrity,
+acceptance-criteria presence on must-priority requirements, NFR
+threshold completeness).  No LLM calls — all rules are static and
+auditable.
 """
 
 import logging
+
+from execution.feature_classifier import (
+    check_acceptance_criteria_present,
+    detect_dependency_cycles,
+    find_dangling_dependencies,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +257,83 @@ def derive_mcp_servers(
 
 
 # ---------------------------------------------------------------------------
+# Requirement-level invariants (spec-driven layer)
+# ---------------------------------------------------------------------------
+
+
+def check_requirement_invariants(features: list[dict]) -> dict:
+    """Run all Requirement-level structural checks.
+
+    Verifies the dependency graph (no cycles, no dangling refs), AC
+    presence on must-priority requirements, and NFR threshold
+    completeness. All checks are static and deterministic.
+
+    Args:
+        features: List of feature/requirement dicts (post-promotion).
+
+    Returns:
+        {"passed": bool, "issues": [...]} where each issue has
+        {"check", "severity", "message", "related_ids"}.
+    """
+    issues: list[dict] = []
+
+    cycles = detect_dependency_cycles(features)
+    for cycle in cycles:
+        issues.append({
+            "check": "dependency_cycle",
+            "severity": "error",
+            "message": f"Dependency cycle detected: {' -> '.join(cycle)}",
+            "related_ids": list(dict.fromkeys(cycle)),
+        })
+
+    dangling = find_dangling_dependencies(features)
+    for entry in dangling:
+        issues.append({
+            "check": "dangling_dependency",
+            "severity": "error",
+            "message": (
+                f"Requirement '{entry['feature_id']}' depends on unknown IDs: "
+                f"{entry['missing']}"
+            ),
+            "related_ids": [entry["feature_id"]] + entry["missing"],
+        })
+
+    ac_check = check_acceptance_criteria_present(features)
+    for fid in ac_check["missing_ac"]:
+        issues.append({
+            "check": "missing_acceptance_criteria",
+            "severity": "error",
+            "message": (
+                f"Must-priority requirement '{fid}' has no acceptance criteria"
+            ),
+            "related_ids": [fid],
+        })
+
+    # NFR threshold completeness — every NFR entry must have a non-empty
+    # threshold. Schema enforces presence; this check enforces non-empty.
+    for f in features:
+        for idx, nfr in enumerate(f.get("nfr") or []):
+            threshold = (nfr.get("threshold") or "").strip()
+            if not threshold:
+                issues.append({
+                    "check": "empty_nfr_threshold",
+                    "severity": "error",
+                    "message": (
+                        f"Requirement '{f.get('id', 'unknown')}' NFR entry "
+                        f"#{idx} has empty threshold"
+                    ),
+                    "related_ids": [f.get("id", "unknown")],
+                })
+
+    passed = not any(i["severity"] == "error" for i in issues)
+    if not passed:
+        logger.warning(
+            "Requirement invariant check failed: %d errors", len(issues)
+        )
+    return {"passed": passed, "issues": issues}
+
+
+# ---------------------------------------------------------------------------
 # Aggregator
 # ---------------------------------------------------------------------------
 
@@ -279,6 +365,7 @@ def run_all_feature_validation(
     dep_result = check_feature_dependencies(selected_feature_ids)
     skill_result = check_skill_coverage(features, selected_skills)
     mcp_result = check_mcp_mapping(selected_feature_ids, selected_skills)
+    invariant_result = check_requirement_invariants(features)
 
     # -- Build issues (error severity) and warnings lists --
     issues: list[dict] = []
@@ -291,6 +378,9 @@ def run_all_feature_validation(
             "message": item["message"],
             "related_ids": [item["feature"]] + item["missing"],
         })
+
+    # Requirement invariants (DAG integrity, AC presence, NFR thresholds)
+    issues.extend(invariant_result["issues"])
 
     for item in skill_result["gaps"]:
         warnings.append({

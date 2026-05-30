@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Audit Entry",
+  "description": "One immutable audit log row capturing a mutating action in the ops platform. Persisted append-only to output/ops_platform/audit/{YYYY-MM-DD}.jsonl.",
+  "type": "object",
+  "required": ["entry_id", "timestamp", "actor", "action", "entity_type", "entity_id"],
+  "properties": {
+    "entry_id": {
+      "type": "string",
+      "description": "UUID v4 — unique per row.",
+      "examples": ["b3e3c6c0-7e58-4f0a-8a1b-9a8a7c6d5e4f"]
+    },
+    "timestamp": {
+      "type": "string", "format": "date-time",
+      "description": "ISO-8601 UTC."
+    },
+    "actor": {
+      "type": "object",
+      "description": "Who performed the action. 'name' is the only required field; 'system' marks automated origin.",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "examples": ["alice", "workflow_optimizer", "auto-rollback"] },
+        "email": { "type": "string" },
+        "team": { "type": "string" },
+        "system": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "string",
+      "description": "Verb naming what happened. Lowercase, underscore-delimited.",
+      "examples": ["capability_version.promoted", "discovery.approved", "pipeline.published", "optimizer.applied", "rollback.executed"]
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Kind of object affected.",
+      "examples": ["capability", "capability_version", "pipeline", "discovery_item", "workspace", "feedback", "optimizer_suggestion"]
+    },
+    "entity_id": { "type": "string" },
+    "previous_state": {
+      "description": "Snapshot of the relevant fields before the action. May be null for pure-create actions.",
+      "type": ["object", "null"]
+    },
+    "new_state": {
+      "description": "Snapshot of the relevant fields after the action. May be null for delete actions.",
+      "type": ["object", "null"]
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Optional grouping id so chains of related actions can be replayed together."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Free-form context the action handler wants to attach (reason, ip, request_id, etc).",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

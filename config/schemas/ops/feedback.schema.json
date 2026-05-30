@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capability Feedback Entry",
+  "description": "Single feedback record submitted by an employee against a workflow / agent / MCP server. Multiple records per capability are aggregated by feedback_store.",
+  "type": "object",
+  "required": ["id", "capability_id", "submitted_at", "submitter"],
+  "properties": {
+    "id": { "type": "string", "description": "UUID v4." },
+    "capability_id": { "type": "string", "description": "Plugin ID this feedback is about." },
+    "run_id": { "type": ["string", "null"], "description": "Optional link to a specific execution." },
+    "submitted_at": { "type": "string", "format": "date-time" },
+    "submitter": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "department": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ratings": {
+      "type": "object",
+      "description": "1-5 stars on each dimension. Optional — operational notes are allowed without ratings.",
+      "properties": {
+        "usefulness": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "accuracy": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "time_savings": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "reliability": { "type": "integer", "minimum": 1, "maximum": 5 }
+      },
+      "additionalProperties": false
+    },
+    "operational_notes": {
+      "type": "object",
+      "description": "Free-form notes about how the employee used the capability.",
+      "properties": {
+        "how_used": { "type": "string" },
+        "improvements_discovered": { "type": "string" },
+        "edge_cases": { "type": "string" },
+        "better_prompts": { "type": "string" },
+        "business_impact": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "suggested_enhancements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["missing_feature", "automation_idea", "workflow_improvement", "ux_issue", "bug"] },
+          "description": { "type": "string" },
+          "estimated_impact": { "type": "string", "enum": ["low", "medium", "high"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capability Reputation Score",
+  "description": "8-dimension score for a capability, computed by reputation_scorer from existing data (runs, feedback, verifications, pipeline inclusions). Persisted per-capability and recomputed on demand.",
+  "type": "object",
+  "required": [
+    "capability_id",
+    "computed_at",
+    "reputation_score",
+    "usage_score",
+    "reliability_score",
+    "business_impact_score",
+    "feedback_score",
+    "verification_score",
+    "pipeline_usage_score",
+    "team_adoption_score"
+  ],
+  "properties": {
+    "capability_id": { "type": "string" },
+    "computed_at": { "type": "string", "format": "date-time" },
+    "reputation_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Weighted composite of the seven sub-scores. 0 = no signal, 100 = saturated positive signal."
+    },
+    "usage_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "reliability_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "business_impact_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "feedback_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "verification_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "pipeline_usage_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "team_adoption_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "signal_counts": {
+      "type": "object",
+      "description": "Raw signal counts behind the scores. Audit + explanation surface.",
+      "properties": {
+        "total_runs": { "type": "integer", "minimum": 0 },
+        "succeeded_runs": { "type": "integer", "minimum": 0 },
+        "failed_runs": { "type": "integer", "minimum": 0 },
+        "feedback_records": { "type": "integer", "minimum": 0 },
+        "distinct_submitters": { "type": "integer", "minimum": 0 },
+        "pipeline_inclusions": { "type": "integer", "minimum": 0 },
+        "verifications_green": { "type": "integer", "minimum": 0 },
+        "verifications_yellow": { "type": "integer", "minimum": 0 },
+        "verifications_red": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

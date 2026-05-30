@@ -1,0 +1,81 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Executive Scorecard | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Executive Scorecard</h2>
+<p class="text-muted">Last 30 days. Generated at {{ scorecard.generated_at }}.</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.total_hours_saved_30d }}</div>
+    <div class="text-muted small">Hours saved (30d)</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">${{ '{:,.0f}'.format(scorecard.estimated_dollars_saved_30d) }}</div>
+    <div class="text-muted small">Estimated $ saved</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.reliability_pct_30d }}%</div>
+    <div class="text-muted small">Reliability</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.distinct_initiators_30d }}</div>
+    <div class="text-muted small">People active</div>
+  </div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.capability_count }}</div>
+    <div class="text-muted small">Capabilities</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.pipeline_count }}</div>
+    <div class="text-muted small">Pipelines</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.average_feedback_30d or '—' }}</div>
+    <div class="text-muted small">Avg feedback (30d)</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ scorecard.walkthroughs_published }}</div>
+    <div class="text-muted small">Walkthroughs</div>
+  </div></div>
+</div>
+
+{% if scorecard.failure_reduction_pct_vs_prior_month is not none %}
+<div class="alert alert-secondary">
+  Failure reduction vs prior 30 days: <strong>{{ scorecard.failure_reduction_pct_vs_prior_month }}%</strong>
+</div>
+{% endif %}
+
+<h5>Top value capabilities</h5>
+<table class="table card-cap p-2">
+  <thead><tr><th>Capability</th><th>Department</th><th>Succeeded runs</th><th>Hours saved</th></tr></thead>
+  <tbody>
+    {% for r in scorecard.top_value_capabilities %}
+    <tr>
+      <td><a href="/ops/capabilities/{{ r.capability_id }}">{{ r.name }}</a></td>
+      <td>{{ r.category or '—' }}</td>
+      <td>{{ r.succeeded_runs }}</td>
+      <td>{{ r.hours_saved }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted">No succeeded runs in the last 30 days.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h5 class="mt-4">Department adoption</h5>
+<table class="table card-cap p-2">
+  <thead><tr><th>Department</th><th>Capabilities</th><th>Runs</th><th>Reliability</th></tr></thead>
+  <tbody>
+    {% for d in scorecard.department_adoption %}
+    <tr>
+      <td>{{ d.department }}</td><td>{{ d.capability_count }}</td>
+      <td>{{ d.total_runs }}</td><td>{{ d.reliability_pct }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

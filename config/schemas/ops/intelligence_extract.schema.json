@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Requirements Intelligence Extract",
+  "description": "Reusable intelligence extracted from a single workflow run. Feeds the existing requirements generation system: each entry can be promoted to a Requirement, an architecture decision, or a reusable component in the project builder.",
+  "type": "object",
+  "required": ["run_id", "capability_id", "extracted_at", "patterns"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "capability_id": { "type": "string" },
+    "extracted_at": { "type": "string", "format": "date-time" },
+    "patterns": {
+      "type": "object",
+      "properties": {
+        "reusable_requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "actor": { "type": "string" },
+              "action": { "type": "string" },
+              "value": { "type": "string" },
+              "suggested_priority": { "type": "string", "enum": ["must", "should", "could", "wont"] },
+              "source": { "type": "string", "description": "What signal in the response triggered extraction." }
+            },
+            "additionalProperties": false
+          }
+        },
+        "architecture_decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["decision"],
+            "properties": {
+              "decision": { "type": "string" },
+              "category": { "type": "string", "description": "database / runtime / framework / event_bus / etc." },
+              "rationale": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "reusable_components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "kind": { "type": "string" },
+              "purpose": { "type": "string" },
+              "path_hint": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "successful_prompts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["context"],
+            "properties": {
+              "context": { "type": "string", "description": "Where the prompt would be reused." },
+              "summary": { "type": "string" },
+              "plugin_id": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "common_workflows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "trigger": { "type": "string" },
+              "steps_seen": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

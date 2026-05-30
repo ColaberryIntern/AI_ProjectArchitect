@@ -1,0 +1,95 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Operational Dashboard | Colaberry Ops{% endblock %}
+{% block extra_head %}
+<style>
+  .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2ea043; margin-right:6px; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+  .event-row { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; padding: 4px 8px; border-bottom: 1px solid #21262d; }
+  .event-feed { background:#0d1117; border:1px solid #2d333b; border-radius:6px; max-height: 360px; overflow-y: auto; }
+  .kpi-num { font-weight: 600; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Operational Dashboard</h2>
+    <p class="text-muted mb-0"><span class="live-dot"></span>Live via SSE — events refresh in real time.</p>
+  </div>
+  <small id="last-event-id" class="text-muted">last event id: 0</small>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-queue">{{ kpis.queue_depth }}</div><div class="text-muted small">Queue depth</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-workers">{{ kpis.workers_active }}</div><div class="text-muted small">Active workers</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-incidents">{{ kpis.incidents_open }}</div><div class="text-muted small">Open incidents</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-alerts">{{ kpis.alerts_open }}</div><div class="text-muted small">Active alerts</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-approvals">{{ kpis.approvals_pending }}</div><div class="text-muted small">Pending approvals</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="display-6 kpi-num" id="kpi-experiments">{{ kpis.experiments_running }}</div><div class="text-muted small">Experiments running</div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <h5>Live event feed</h5>
+    <div id="event-feed" class="event-feed"></div>
+  </div>
+  <div class="col-lg-5">
+    <h5>Operator presence — global</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>User</th><th>Viewing</th><th>Last seen</th></tr></thead>
+      <tbody>
+        {% for ws, rows in presence.items() %}
+          {% for r in rows %}
+          <tr><td>{{ r.display_name }}</td><td class="small text-muted">{{ r.currently_viewing or '—' }}</td><td class="small text-muted">{{ r.last_seen_at }}</td></tr>
+          {% endfor %}
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No active operators.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h5 class="mt-3">Active alerts</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Severity</th><th>Metric</th><th>Observed</th><th>State</th></tr></thead>
+      <tbody>
+        {% for a in alerts %}
+        <tr>
+          <td>{{ a.severity }}/5</td>
+          <td><code>{{ a.metric }}</code></td>
+          <td>{{ a.observed_value }} (limit {{ a.threshold }})</td>
+          <td>{{ a.state }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">No active alerts.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const feed = document.getElementById('event-feed');
+const lastIdEl = document.getElementById('last-event-id');
+const es = new EventSource('/ops/realtime/sse');
+const eventTypes = ['workflow.started', 'workflow.completed', 'workflow.failed',
+                    'alert.opened', 'alert.acknowledged', 'alert.resolved',
+                    'approval.requested', 'approval.approved', 'approval.rejected',
+                    'incident.opened', 'incident.transitioned',
+                    'self_healing.applied', 'experiment.assigned'];
+eventTypes.forEach((kind) => {
+  es.addEventListener(kind, (ev) => {
+    try {
+      const payload = JSON.parse(ev.data);
+      const row = document.createElement('div');
+      row.className = 'event-row';
+      const ts = payload.timestamp ? payload.timestamp.split('T')[1].split('.')[0] : '';
+      row.innerHTML = `<span class="text-muted">${ts}</span> · <span class="reason-chip">${kind}</span> · ${escapeHtml(JSON.stringify(payload.payload || {}))}`;
+      feed.prepend(row);
+      lastIdEl.textContent = 'last event id: ' + ev.lastEventId;
+      if (feed.children.length > 200) feed.removeChild(feed.lastChild);
+    } catch (e) { console.error(e); }
+  });
+});
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+</script>
+{% endblock %}

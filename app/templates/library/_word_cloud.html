@@ -1,0 +1,182 @@
+{# Reusable word-cloud + refinement-chip macros.
+
+   Usage:
+     {% from "library/_word_cloud.html" import word_cloud, refinement_chips %}
+     {{ word_cloud(terms, title="What's hot", subtitle="…") }}
+     (Encoding is fixed: order=frequency · size=recency · color=avg rating · tilt=vetted ratio)
+     {{ refinement_chips(chips, label="Narrow further:") }}
+#}
+
+{% macro word_cloud(terms, title="", subtitle="") %}
+<div class="word-cloud-card">
+  <div class="word-cloud-header">
+    <div style="flex: 1;">
+      {% if title %}<h3 style="margin: 0;">{{ title }}</h3>{% endif %}
+      {% if subtitle %}<div class="word-cloud-sub">{{ subtitle|safe }}</div>{% endif %}
+    </div>
+  </div>
+
+  {# ── Legend: 4 KPIs, 4 visual encodings — always on ───────── #}
+  <div class="cloud-legend" aria-label="visual encoding">
+    <span class="lg-item"><span class="lg-icon">🔢</span><strong>Order</strong> = frequency (matches)</span>
+    <span class="lg-sep">·</span>
+    <span class="lg-item"><span class="lg-icon">📏</span><strong>Size</strong> = recency (newer → bigger)</span>
+    <span class="lg-sep">·</span>
+    <span class="lg-item"><span class="lg-icon">🎨</span><strong>Color</strong> = avg rating
+       <span class="lg-swatch" style="background: #cf222e;"></span>
+       <span class="lg-swatch" style="background: #b48a35;"></span>
+       <span class="lg-swatch" style="background: #1a7f37;"></span>
+    </span>
+    <span class="lg-sep">·</span>
+    <span class="lg-item"><span class="lg-icon">↗</span><strong>Tilt</strong> = vetted ratio (upright → vetted)</span>
+  </div>
+
+  <div class="word-cloud" role="list" aria-label="filter by word">
+    {% for t in terms %}
+    <a href="{{ t.link }}" role="listitem"
+       data-word="{{ t.word|lower }}"
+       class="cloud-word{% if t.is_active %} active{% endif %}"
+       title="{{ t.title }}"
+       style="font-size: {{ t.size_rem }}rem;
+                color: {{ t.color }};
+                transform: rotate({{ t.rotation_deg }}deg);">
+      {{ t.word }}{% if t.is_active %} ✕{% endif %}
+    </a>
+    {% else %}
+    <div class="text-muted small">No data yet.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+  .word-cloud-card {
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg); margin-bottom: var(--space-5);
+    overflow: hidden;
+  }
+  .word-cloud-header {
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    display: flex; justify-content: space-between; align-items: center; gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .word-cloud-sub { font-size: 13px; color: var(--fg-muted); margin-top: 2px; }
+  .cloud-legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+    padding: 8px var(--space-5);
+    background: var(--bg-canvas);
+    border-bottom: 1px dashed var(--border-default);
+    font-size: 12px; color: var(--fg-muted);
+  }
+  .cloud-legend .lg-item { display: inline-flex; align-items: center; gap: 4px; }
+  .cloud-legend .lg-icon { font-size: 14px; }
+  .cloud-legend .lg-sep { color: var(--border-strong); }
+  .cloud-legend .lg-swatch {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 2px; margin: 0 1px; vertical-align: middle;
+  }
+  .word-cloud {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 4px 12px; padding: var(--space-5);
+    line-height: 1.6;
+  }
+  .cloud-word {
+    display: inline-block;
+    padding: 2px 6px; border-radius: var(--radius-sm);
+    text-decoration: none; font-weight: 600;
+    transition: transform 0.15s, background-color 0.15s, color 0.15s;
+    transform-origin: center; white-space: nowrap;
+  }
+  .cloud-word:hover {
+    text-decoration: none; background: var(--bg-sunken);
+    transform: rotate(0deg) scale(1.08) !important;
+  }
+  .cloud-word.active {
+    background: var(--accent-library); color: white !important;
+    transform: rotate(0deg) !important;
+    box-shadow: 0 1px 4px rgba(26, 127, 55, 0.4);
+  }
+  .cloud-word.active:hover {
+    background: #15803d;
+  }
+  .cloud-word.dimmed {
+    opacity: 0.25;
+    filter: grayscale(0.6);
+  }
+  .cloud-word.live-match {
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+</style>
+
+<script>
+function updateQS(key, val) {
+  const u = new URLSearchParams(window.location.search);
+  if (!val) u.delete(key); else u.set(key, val);
+  return '?' + u.toString();
+}
+</script>
+{% endmacro %}
+
+
+{% macro refinement_chips(chips, label="Narrow further:") %}
+<div class="refinement-row">
+  <span class="refinement-label">{{ label }}</span>
+  {% for t in chips %}
+  <a href="{{ t.link }}" class="ref-chip{% if t.is_active %} active{% endif %}"
+     title="{{ t.title }}"
+     style="font-size: {{ t.size_rem }}rem; color: {{ t.color }};">
+    {{ t.word }}{% if t.is_active %} ✕{% endif %}
+  </a>
+  {% endfor %}
+</div>
+<style>
+  .refinement-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+  }
+  .refinement-label {
+    font-size: 12px; color: var(--fg-muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-right: 6px;
+  }
+  .ref-chip {
+    display: inline-block; padding: 2px 8px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    color: var(--fg-muted); text-decoration: none;
+    font-weight: 500; white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .ref-chip:hover {
+    text-decoration: none; border-color: var(--accent-library);
+    color: var(--accent-library);
+  }
+  .ref-chip.active {
+    background: var(--accent-library); color: white !important;
+    border-color: var(--accent-library);
+  }
+</style>
+{% endmacro %}
+
+
+{% macro active_filter_strip(filters, base_url, workspace) %}
+{% if filters %}
+<div class="active-filter-strip">
+  <span class="refinement-label">Filtering by:</span>
+  {% for dim, val in filters.items() %}
+  <a href="{{ base_url }}?ws={{ workspace }}{% for d, v in filters.items() if d != dim %}&{{ d }}={{ v }}{% endfor %}"
+     class="ref-chip active">{{ dim }}: {{ val }} ✕</a>
+  {% endfor %}
+  <a href="{{ base_url }}?ws={{ workspace }}" class="ref-chip">Clear all</a>
+</div>
+{% endif %}
+{% endmacro %}

@@ -133,8 +133,8 @@ class TestRunAutoBuild:
     def test_full_pipeline_yields_complete_event(
         self, mock_retry, mock_gen, tmp_output_dir
     ):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -148,8 +148,8 @@ class TestRunAutoBuild:
     def test_all_chapters_generated_and_approved(
         self, mock_retry, mock_gen, tmp_output_dir
     ):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         list(run_auto_build(state, slug))
@@ -162,8 +162,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_state_advances_to_complete(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         list(run_auto_build(state, slug))
@@ -173,8 +173,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_document_file_created(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         list(run_auto_build(state, slug))
@@ -186,8 +186,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_progress_events_emitted_in_order(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -202,8 +202,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_percent_increases_monotonically(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -226,12 +226,17 @@ class TestRunAutoBuild:
         call_count = [0]
         def mock_gen_side_effect(*args, **kwargs):
             call_count[0] += 1
+            section_title = kwargs.get("section_title", args[2] if len(args) > 2 else "Section")
+            # Non-empty usage signals "real LLM call" so fallback-retry
+            # doesn't kick in. We're testing the gate-failure retry path,
+            # not the LLM-fallback retry path.
+            usage = {"prompt_tokens": 1, "completion_tokens": 1}
             if call_count[0] == 1:
-                return bad_content, {}
-            return _make_enterprise_content(args[2]), {}
+                return bad_content, usage
+            return _make_enterprise_content(section_title), usage
 
         mock_gen.side_effect = mock_gen_side_effect
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
 
         state, slug = _setup_ready_state(tmp_output_dir)
         events = list(run_auto_build(state, slug))
@@ -248,8 +253,11 @@ class TestRunAutoBuild:
             "content": "Handle edge cases and optimize later. Use best practices."
         }
 
-        mock_gen.return_value = (bad_content, {})
-        mock_retry.return_value = (bad_content, {})
+        # Non-empty usage signals "real LLM call" so fallback-retry doesn't
+        # kick in — we're testing gate-driven retry/force-approval, not the
+        # LLM-fallback retry path.
+        mock_gen.return_value = (bad_content, {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.return_value = (bad_content, {"prompt_tokens": 1, "completion_tokens": 1})
 
         state, slug = _setup_ready_state(tmp_output_dir)
         events = list(run_auto_build(state, slug))
@@ -271,8 +279,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_scoring_events_contain_data(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -287,8 +295,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_complete_event_contains_page_estimate(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -301,8 +309,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_chapter_scores_recorded_in_state(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         list(run_auto_build(state, slug))
@@ -314,8 +322,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_validation_event_emitted(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -325,8 +333,8 @@ class TestRunAutoBuild:
     @patch("execution.auto_builder.generate_chapter_enterprise_with_usage")
     @patch("execution.auto_builder.generate_chapter_enterprise_with_retry_and_usage")
     def test_depth_mode_event_emitted(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
 
         events = list(run_auto_build(state, slug))
@@ -340,8 +348,8 @@ class TestRunAutoBuildLiteMode:
     @patch("execution.auto_builder.generate_chapter_with_usage")
     @patch("execution.auto_builder.generate_chapter_with_retry_and_usage")
     def test_lite_mode_uses_legacy_functions(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_fallback_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_fallback_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_fallback_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_fallback_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
         set_build_depth_mode(state, "lite")
         save_state(state, slug)
@@ -354,8 +362,8 @@ class TestRunAutoBuildLiteMode:
     @patch("execution.auto_builder.generate_chapter_with_usage")
     @patch("execution.auto_builder.generate_chapter_with_retry_and_usage")
     def test_lite_mode_advances_to_complete(self, mock_retry, mock_gen, tmp_output_dir):
-        mock_gen.side_effect = lambda *a, **kw: (_make_fallback_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_fallback_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_fallback_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_fallback_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
         state, slug = _setup_ready_state(tmp_output_dir)
         set_build_depth_mode(state, "lite")
         save_state(state, slug)
@@ -473,6 +481,175 @@ class TestHelpers:
         assert "Chapter 3 content" in result
 
 
+# ---------------------------------------------------------------------------
+# Spec-driven helper tests (Phase A/C wiring)
+# ---------------------------------------------------------------------------
+
+
+from execution.auto_builder import (
+    _build_cross_chapter_context,
+    _build_requirements_lookup,
+    _persist_chapter_traces,
+    _update_chapter_traces,
+)
+
+
+class TestBuildRequirementsLookup:
+    def test_matches_by_outline_section_id(self):
+        sections = [{"index": 1, "title": "System Purpose"}, {"index": 2, "title": "Architecture"}]
+        reqs = [
+            {"id": "REQ-001", "name": "Login", "traces_to": {"outline_section_id": "Architecture"}},
+        ]
+        lookup = _build_requirements_lookup(reqs, sections)
+        assert lookup["Architecture"] == [reqs[0]]
+        assert lookup["System Purpose"] == []
+
+    def test_falls_back_to_keyword_match(self):
+        sections = [{"index": 1, "title": "Authentication & Identity"}]
+        reqs = [
+            {"id": "REQ-001", "name": "Login", "problem_mapped_to": "authentication", "traces_to": {}},
+        ]
+        lookup = _build_requirements_lookup(reqs, sections)
+        assert lookup["Authentication & Identity"] == [reqs[0]]
+
+    def test_unmatched_requirement_dropped_quietly(self):
+        sections = [{"index": 1, "title": "Architecture"}]
+        reqs = [{"id": "REQ-001", "name": "Login", "traces_to": {}}]
+        lookup = _build_requirements_lookup(reqs, sections)
+        # Architecture title has no "login" keyword and no outline_section_id match
+        assert lookup["Architecture"] == []
+
+
+class TestUpdateChapterTraces:
+    def test_appends_chapter_id(self):
+        reqs = [
+            {"id": "REQ-001", "traces_to": {"chapter_ids": ["1"]}},
+            {"id": "REQ-002", "traces_to": {"chapter_ids": []}},
+        ]
+        linked = [reqs[0], reqs[1]]
+        out = _update_chapter_traces(reqs, "3", linked)
+        assert out[0]["traces_to"]["chapter_ids"] == ["1", "3"]
+        assert out[1]["traces_to"]["chapter_ids"] == ["3"]
+
+    def test_idempotent(self):
+        reqs = [{"id": "REQ-001", "traces_to": {"chapter_ids": ["3"]}}]
+        out = _update_chapter_traces(reqs, "3", [reqs[0]])
+        assert out[0]["traces_to"]["chapter_ids"] == ["3"]
+
+    def test_does_not_mutate_input(self):
+        reqs = [{"id": "REQ-001", "traces_to": {"chapter_ids": []}}]
+        _update_chapter_traces(reqs, "3", [reqs[0]])
+        assert reqs[0]["traces_to"]["chapter_ids"] == []
+
+
+class TestPersistChapterTraces:
+    def test_updates_core_and_optional(self):
+        state = {
+            "features": {
+                "core": [{"id": "REQ-001", "traces_to": {"chapter_ids": ["1"]}}],
+                "optional": [{"id": "REQ-002"}],
+            }
+        }
+        linked = [{"id": "REQ-001"}, {"id": "REQ-002"}]
+        _persist_chapter_traces(state, "3", linked)
+        assert state["features"]["core"][0]["traces_to"]["chapter_ids"] == ["1", "3"]
+        assert state["features"]["optional"][0]["traces_to"]["chapter_ids"] == ["3"]
+
+    def test_no_op_when_no_linked(self):
+        state = {"features": {"core": [{"id": "REQ-001"}]}}
+        _persist_chapter_traces(state, "3", [])
+        assert "traces_to" not in state["features"]["core"][0]
+
+
+class TestFallbackRetry:
+    def test_succeeds_first_try(self, monkeypatch):
+        from execution.auto_builder import _generate_with_fallback_retry
+
+        calls = {"n": 0}
+
+        def fake(**kwargs):
+            calls["n"] += 1
+            return {"content": "real"}, {"prompt_tokens": 10, "completion_tokens": 20}
+
+        # Speed up: zero backoff
+        monkeypatch.setattr("execution.auto_builder.LLM_FALLBACK_BACKOFF_SEC", 0)
+        content, usage, attempts = _generate_with_fallback_retry(fake, log_label="ch1")
+        assert calls["n"] == 1
+        assert attempts == 1
+        assert usage["prompt_tokens"] == 10
+
+    def test_retries_on_fallback_then_succeeds(self, monkeypatch):
+        from execution.auto_builder import _generate_with_fallback_retry
+
+        calls = {"n": 0}
+
+        def fake(**kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return {"content": "fallback"}, {}  # empty usage = fallback
+            return {"content": "real"}, {"prompt_tokens": 10, "completion_tokens": 20}
+
+        monkeypatch.setattr("execution.auto_builder.LLM_FALLBACK_BACKOFF_SEC", 0)
+        content, usage, attempts = _generate_with_fallback_retry(fake, log_label="ch1")
+        assert calls["n"] == 3
+        assert attempts == 3
+        assert usage  # real LLM data on the third try
+
+    def test_accepts_fallback_after_max_attempts(self, monkeypatch):
+        from execution.auto_builder import (
+            LLM_FALLBACK_MAX_ATTEMPTS,
+            _generate_with_fallback_retry,
+        )
+
+        calls = {"n": 0}
+
+        def fake(**kwargs):
+            calls["n"] += 1
+            return {"content": "fallback"}, {}
+
+        monkeypatch.setattr("execution.auto_builder.LLM_FALLBACK_BACKOFF_SEC", 0)
+        content, usage, attempts = _generate_with_fallback_retry(fake, log_label="ch1")
+        assert calls["n"] == LLM_FALLBACK_MAX_ATTEMPTS
+        assert attempts == LLM_FALLBACK_MAX_ATTEMPTS
+        assert usage == {}  # fallback accepted
+
+    def test_kwargs_pass_through(self, monkeypatch):
+        from execution.auto_builder import _generate_with_fallback_retry
+
+        seen_kwargs = {}
+
+        def fake(**kwargs):
+            seen_kwargs.update(kwargs)
+            return {"content": "real"}, {"prompt_tokens": 1, "completion_tokens": 1}
+
+        monkeypatch.setattr("execution.auto_builder.LLM_FALLBACK_BACKOFF_SEC", 0)
+        _generate_with_fallback_retry(
+            fake, log_label="ch5",
+            profile={"x": 1}, section_title="Foo",
+            chapter_index=5, total_chapters=10,
+        )
+        assert seen_kwargs == {
+            "profile": {"x": 1}, "section_title": "Foo",
+            "chapter_index": 5, "total_chapters": 10,
+        }
+
+
+class TestBuildCrossChapterContext:
+    def test_empty_returns_empty(self):
+        assert _build_cross_chapter_context({}) == ""
+
+    def test_renders_one_line_per_chapter(self):
+        result = _build_cross_chapter_context({"1": ["REQ-001"], "2": ["REQ-002", "REQ-003"]})
+        assert "Chapter 1: REQ-001" in result
+        assert "Chapter 2: REQ-002, REQ-003" in result
+        assert "do not re-implement" in result
+
+    def test_skips_empty_lists(self):
+        result = _build_cross_chapter_context({"1": []})
+        # Only the header is present, but no chapter lines — function returns empty
+        assert result == ""
+
+
 class TestBuildMetrics:
     """Tests for the BuildMetrics dataclass."""
 
@@ -575,8 +752,9 @@ class TestScoreBasedApproval:
             ) * 13  # Repeat to exceed word count floor (35% of min_words = 1750)
         }
 
-        mock_gen.side_effect = lambda *a, **kw: (high_score_content, {})
-        mock_retry.side_effect = lambda *a, **kw: (high_score_content, {})
+        usage = {"prompt_tokens": 1, "completion_tokens": 1}
+        mock_gen.side_effect = lambda *a, **kw: (high_score_content, usage)
+        mock_retry.side_effect = lambda *a, **kw: (high_score_content, usage)
 
         state, slug = _setup_ready_state(tmp_output_dir)
         events = list(run_auto_build(state, slug))
@@ -602,8 +780,11 @@ class TestScoreBasedApproval:
             "content": "Handle edge cases and optimize later. Use best practices."
         }
 
-        mock_gen.return_value = (bad_content, {})
-        mock_retry.return_value = (bad_content, {})
+        # Non-empty usage signals "real LLM call" so fallback-retry doesn't
+        # kick in — we're testing gate-driven retry/force-approval, not the
+        # LLM-fallback retry path.
+        mock_gen.return_value = (bad_content, {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.return_value = (bad_content, {"prompt_tokens": 1, "completion_tokens": 1})
 
         state, slug = _setup_ready_state(tmp_output_dir)
         events = list(run_auto_build(state, slug))
@@ -619,8 +800,8 @@ class TestScoreBasedApproval:
     ):
         """If all gates pass, the chapter should be approved even with a low score."""
         # Use the known-good enterprise content that passes all gates
-        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(a[2]), {})
+        mock_gen.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
+        mock_retry.side_effect = lambda *a, **kw: (_make_enterprise_content(kw.get("section_title", a[2] if len(a) > 2 else "Section")), {"prompt_tokens": 1, "completion_tokens": 1})
 
         state, slug = _setup_ready_state(tmp_output_dir)
         events = list(run_auto_build(state, slug))

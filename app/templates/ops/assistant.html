@@ -1,0 +1,71 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Operational Assistant | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Operational Execution Assistant</h2>
+<p class="text-muted">Describe what you're trying to accomplish — the platform will surface the workflows, agents, and pipelines that fit, with the reasoning behind each suggestion.</p>
+
+<form method="get" action="/ops/assistant" class="card card-cap p-3 mb-4">
+  <div class="row g-2">
+    <div class="col-md-7">
+      <input name="intent" value="{{ intent|e }}" placeholder='e.g. "I need to respond to an RFP by Friday"' class="form-control" autofocus />
+    </div>
+    <div class="col-md-2">
+      <input name="role" value="{{ role or '' }}" placeholder="Your role" class="form-control" />
+    </div>
+    <div class="col-md-2">
+      <input name="department" value="{{ department or '' }}" placeholder="Department" class="form-control" />
+    </div>
+    <div class="col-md-1">
+      <button class="btn btn-primary w-100">Ask</button>
+    </div>
+  </div>
+  <div class="small text-muted mt-2">
+    Try: <a href="/ops/assistant?intent=respond+to+an+RFP">respond to an RFP</a> ·
+    <a href="/ops/assistant?intent=summarize+a+meeting">summarize a meeting</a> ·
+    <a href="/ops/assistant?intent=audit+a+code+repository">audit a repo</a>
+  </div>
+</form>
+
+{% if intent and not recommendations %}
+<div class="alert alert-secondary">
+  No matches yet — the platform may need more capabilities or more usage history. Try a broader intent or browse <a href="/ops/">all capabilities</a>.
+</div>
+{% endif %}
+
+<div class="row g-3">
+  {% for r in recommendations %}
+  <div class="col-md-6">
+    <div class="card card-cap p-3 h-100">
+      <div class="d-flex justify-content-between mb-2">
+        <span class="badge badge-type">{{ r.type }}</span>
+        <small class="text-muted">match {{ '%.2f'|format(r.final_score) }}</small>
+      </div>
+      <h6 style="color:#e6e6e6;">{{ r.name }}</h6>
+      <div class="score-bar mb-2"><div class="score-fill" style="width: {{ (r.final_score * 100)|int }}%;"></div></div>
+      <div class="small text-muted mb-2">
+        L {{ '%.2f'|format(r.sub_scores.lexical) }} ·
+        S {{ '%.2f'|format(r.sub_scores.semantic) }} ·
+        G {{ '%.2f'|format(r.sub_scores.graph) }} ·
+        R {{ '%.2f'|format(r.sub_scores.reputation) }}
+      </div>
+      <div class="mb-2">
+        {% for reason in r.reasons %}<span class="reason-chip">{{ reason }}</span>{% endfor %}
+      </div>
+      {% if r.evidence %}
+      <div class="small text-muted">
+        {% if r.evidence.total_runs %}{{ r.evidence.total_runs }} runs ·{% endif %}
+        {% if r.evidence.reliability_pct is not none %}{{ r.evidence.reliability_pct }}% reliable ·{% endif %}
+        {% if r.evidence.distinct_initiators %}{{ r.evidence.distinct_initiators }} initiators ·{% endif %}
+        {% if r.evidence.feedback_average %}feedback {{ r.evidence.feedback_average }}/5{% endif %}
+      </div>
+      {% endif %}
+      <div class="mt-3 d-flex gap-2">
+        <a href="/ops/capabilities/{{ r.capability_id }}" class="btn btn-sm btn-outline-light">Details</a>
+        <a href="/ops/run/{{ r.capability_id }}" class="btn btn-sm btn-primary">Launch</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

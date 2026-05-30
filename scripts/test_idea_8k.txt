@@ -1,0 +1,291 @@
+FREIGHT BROKERAGE FINANCIAL OPERATING SYSTEM — PRODUCT VISION DOCUMENT
+
+EXECUTIVE SUMMARY
+
+We are building a financial operating system for freight brokerages and third-party logistics providers (3PLs) that orchestrates the full post-delivery money flow. The system spans billing, accounts receivable (AR), invoicing, dispute resolution, accounts payable (AP), and carrier settlement. The core promise is simple to state and enormously hard to deliver: convert delivered shipments into correct customer invoices that get paid faster, and into correct carrier settlements that pay safely.
+
+Today, freight brokerages run their financial operations on a stack of email, Excel, and dated transportation management systems (TMS) that were never designed for the complexity of modern accessorial pricing, document-driven billing gates, two-sided invoicing, or fraud-rich carrier markets. Our platform replaces that stack with deterministic services: a document intelligence engine for BOL and POD ingestion, an accessorial rules engine that applies contract math without human guesswork, a dispute resolution engine that auto-assembles evidence binders, a carrier trust system that catches identity theft and double brokering before money leaves the building, and an AR/AP orchestration platform that compresses days-sales-outstanding (DSO) and protects working capital.
+
+The expected business impact for a mid-size brokerage (50 to 500 employees, $50M to $300M gross merchandise value) is meaningful and measurable: a 30 to 45 percent reduction in DSO, 35 to 45 percent automation of billing labor, 15 to 25 percent reduction in carrier overpayment leakage, and a 70 to 90 percent reduction in time spent assembling dispute evidence. These translate into tens of millions in freed working capital and labor savings, and into a step-change in margin protection during volatile freight markets.
+
+THE INDUSTRY PROBLEM SPACE
+
+Freight brokerage is a two-sided business. The broker arranges transportation between shippers (customers) and carriers (truckers), taking a margin between the rate the customer pays and the rate the carrier accepts. The brokerage industry generates roughly $200 billion in annual revenue in North America. Margins are thin — typically 12 to 18 percent — and operational leverage is paramount. Every dollar of working capital tied up in unpaid invoices, every dollar lost to billing errors, and every hour spent chasing dispute paperwork is margin compression.
+
+The industry's financial operations have several structural pathologies that no existing software adequately addresses. First, document-driven gating: a load is not invoiceable until the carrier delivers and the proof of delivery (POD) and bill of lading (BOL) are received, scanned, and validated. Lumper receipts, accessorial documentation, and customer-specific paperwork add layers of gating. The median brokerage waits three to five days after delivery before an invoice can even be drafted, simply because of paperwork lag. Second, accessorial complexity: detention charges, layover fees, truck-ordered-not-used (TONU) fees, lumper reimbursements, fuel surcharges, and a dozen other line items require contract-specific rules and time-windowed calculations. Mistakes here are the largest single cause of customer disputes and short-pays. Third, two-sided invoicing with asymmetrical risk: the broker pays the carrier (often within 30 days, sometimes faster via QuickPay) before collecting from the customer (typically 45 to 60 days). The broker carries the cash flow risk and the counterparty risk on both sides. Fourth, fraud and identity theft: double brokering — where a carrier accepts a load and quietly passes it to another carrier — and payee bank fraud — where bad actors intercept settlement payments — together account for an estimated 2 to 5 percent of industry settlement losses. Fifth, disputes as normal process: roughly 15 percent of invoices generate some form of dispute, and the median dispute takes 6 to 8 hours of human labor across multiple systems to resolve. Disputes are not edge cases; they are a steady-state workload. Sixth, regulatory compliance: the Federal Motor Carrier Safety Administration (FMCSA) requires brokers to carry surety bonds (currently $75,000) and to maintain auditable records of carrier qualification, insurance verification, and payment history.
+
+TARGET USER AND USE CASES
+
+Our primary users are freight brokerage operations teams: the AR clerk processing invoices, the AP clerk approving carrier settlements, the dispute resolution specialist assembling evidence, the compliance officer monitoring carrier qualification, and the controller or CFO overseeing the financial close and margin reporting. Secondary users include carrier reps, who need to understand why a settlement is held, and customer reps, who need rapid access to dispute evidence to retain the customer relationship.
+
+The core use cases the platform must support are concrete: ingest a delivered shipment's documents and validate them; compute the customer invoice including all accessorial charges per the customer contract; issue the invoice with full audit trail; track AR aging, prioritize collection, and apply payments; resolve disputes by assembling evidence binders from five or more upstream systems; verify carrier identity and qualification before issuing a settlement; compute carrier settlement including all per-load and per-period adjustments; pay the carrier via ACH, wire, or QuickPay; reconcile settlements against bank statements; surface margin and DSO metrics to leadership in real time; and produce auditable records for the FMCSA, the brokerage's bank, and any external auditor.
+
+CORE CAPABILITIES — DETAILED VIEW
+
+Document Intelligence Engine. Accept PDFs, images, and EDI 214 messages from carriers and customers. Classify document types (BOL, POD, lumper receipt, weight ticket, accessorial backup, customer-specific paperwork). Extract structured fields: load number, carrier identity, shipment dates, weights, signatures, accessorial codes, and dollar amounts. Cross-reference extracted fields against the shipment record. Flag missing or inconsistent documents and route them to human review queues. The engine must achieve at least 95 percent accuracy on load number extraction and 90 percent on accessorial line items, with a clear "confidence" score on every extracted field so downstream systems can decide how much human review is required.
+
+Billing Accuracy and Accessorial Rules Engine. Maintain a contract registry, with each contract encoding rate tables, accessorial rules (detention thresholds, layover rates, lumper reimbursement caps), fuel surcharge formulas, and customer-specific exceptions. Compute each invoice line deterministically from the contract plus the operational data (delivery telemetry, BOL fields, accessorial documentation). Persist not just the final number but the computation trace: which rule fired, which inputs were used, which version of the contract applied. This trace is the basis for all downstream dispute resolution. The engine must support contract amendments mid-cycle, with effective dates, and must handle "grandfather" rules for shipments tendered before the amendment.
+
+AR/AP Orchestration Platform. The orchestration layer is the financial state machine. Each shipment moves through states: tendered, in-transit, delivered, paperwork-received, validated, invoiceable, invoiced, partially-paid, paid, in-dispute, resolved, written-off. Each carrier settlement moves through similar states: scheduled, eligible, in-review, approved, sent, cleared, returned, reconciled. The orchestrator enforces invariants — for example, no settlement can be sent until carrier identity is verified within the last 90 days, no invoice can be issued unless all required documents are validated, no dispute can be closed without an approved evidence binder. Events trigger automated actions (send invoice, send settlement, send collection reminder), and humans intervene at gates that require judgment (approve a credit memo over $1,000, approve a payee bank change, override a fraud hold).
+
+Dispute Resolution Intelligence. When a customer disputes an invoice line, the system auto-assembles an evidence binder from up to seven sources: the BOL, the POD, the customer contract excerpt covering the disputed accessorial, the lumper receipt, the GPS telemetry log, the email/text correspondence with the carrier, and any prior dispute history with the same customer. The binder is generated as a single PDF with a signed, time-limited URL, suitable for emailing to the disputing customer. The dispute lifecycle (open, evidence-assembled, awaiting-customer-response, customer-confirmed, customer-rejected, escalated, resolved) is tracked with SLAs and escalation rules. Every dispute outcome feeds back into the dispute taxonomy for pattern detection — a customer with a 30 percent dispute rate on detention is a different problem from a customer with a 5 percent dispute rate spread across categories.
+
+Carrier Trust and Fraud Detection System. Verify carrier identity at onboarding and continuously: MC number, USDOT number, insurance certificate currency, FMCSA safety rating, operating authority status, and payee bank verification. Detect anomalies: a payee bank change within 72 hours of a settlement; a sudden spike in load volume from a small carrier; a mismatch between MC# on the load and MC# on the bank account; double-brokering signals (carrier name appearing on multiple BOLs for the same load); identity-theft signals (an MC# operating from a previously dormant address). Hold settlements automatically when risk thresholds are crossed. Surface the risk reasoning to a human reviewer with a recommended action. Maintain an immutable audit log compliant with SOC 2 Type II requirements.
+
+AI Freight Financial Control Tower. Provide a single executive view: live DSO by customer cohort, dispute rate trends, carrier payment leakage, margin by lane, working capital tied up in unbilled deliveries, and fraud-prevention savings. The control tower is the day-to-day operating instrument for the controller and CFO. It supports drill-down into any single shipment, any single dispute, any single settlement. It supports natural-language queries ("which customers have DSO over 60 days and disputed more than 10 invoices last quarter?") and exports for board reporting and bank covenants.
+
+TECHNICAL CONSTRAINTS
+
+The platform must be SOC 2 Type II compliant from day one. Customer data, carrier data, and financial data are all sensitive; the brokerage industry is increasingly being asked by enterprise shippers and by banks for compliance attestations. The audit trail for every financial event must be immutable, time-stamped, and reproducible from raw events.
+
+Integrations are non-negotiable. We must integrate with the major TMS platforms (McLeod, Aljex, MercuryGate, Revenova, Tai Software), with the major accounting systems (QuickBooks Online, Sage Intacct, NetSuite), with banking partners for ACH and wire, with fuel surcharge providers, with FMCSA's SAFER and Licensing & Insurance databases, and with the GPS telemetry providers (Project44, FourKites, MacroPoint). Integration failures must degrade gracefully — a TMS outage should not block invoice generation, only flag affected records for review.
+
+Throughput targets are non-trivial. A mid-size brokerage processes 5,000 to 50,000 shipments per month. The platform must handle peak loads of 1,000 invoice generations per hour, 500 settlement decisions per hour, and 50 dispute openings per hour. p95 API latency for transactional flows must stay under 500 milliseconds. Document ingestion must complete OCR-to-extracted-fields within 8 seconds at the 95th percentile.
+
+Multi-tenancy is mandatory. Each brokerage is a tenant; tenant data is logically isolated; cross-tenant data access is impossible by design. Operations staff at the SaaS provider can troubleshoot a tenant only with explicit, audited access grants.
+
+NON-FUNCTIONAL REQUIREMENTS
+
+Availability target: 99.9% measured monthly. The platform supports financial operations during business hours; downtime is real money lost. Disaster recovery: RTO of 4 hours, RPO of 15 minutes. Data residency: all customer data within North America initially; expansion to EU requires a separate data residency tier. Encryption: at rest (AES-256) and in transit (TLS 1.3); customer-managed keys are a tier-2 enterprise feature. Audit logs: WORM (write-once-read-many) storage with seven-year retention to meet IRS, FMCSA, and SOX-derived requirements. PII handling: minimization at ingest, redaction in logs, deletion-on-request workflows. Performance: as above, p95 API latency under 500ms for transactional flows, p95 reporting queries under 3 seconds.
+
+SUCCESS METRICS
+
+We will measure success along four axes. First, financial outcomes for the brokerage: DSO reduction (target: 12-15 day reduction in the first 12 months), billing accuracy (target: 99.5% first-issue accuracy, up from industry baseline of 92-94%), dispute resolution time (target: median 30 minutes vs industry 6-8 hours), settlement leakage (target: < 0.3% of carrier payments mis-paid or fraud-impacted, vs industry 2-5%). Second, operational outcomes: labor automation rate by department (target: 40-45% in billing, 35% in collections, 30% in dispute resolution, 40% in carrier pay). Third, platform health: uptime, latency, integration health, customer NPS. Fourth, commercial outcomes: net revenue retention, gross margin, time-to-value (target: customer goes live within 90 days of contract).
+
+RISKS AND MITIGATIONS
+
+Risk: brokerages are conservative buyers; the industry has been burned by ambitious tech promises before. Mitigation: anchor on quantitative, auditable outcomes from day one. Publish a "value scorecard" weekly per customer that shows DSO, leakage, and labor automation against baseline.
+
+Risk: integrations are hard and TMS vendors are uncooperative. Mitigation: build a robust integration layer with vendor-specific adapters, EDI fallback paths, and a CSV-import safety net. Treat integration health as a first-class operational metric.
+
+Risk: the AI extraction layer makes mistakes that propagate into financial decisions. Mitigation: every AI-extracted field carries a confidence score; below threshold routes to human review; decisions over a configurable dollar amount always require human approval; full audit trail allows post-hoc correction.
+
+Risk: regulatory change. The FMCSA, IRS, and state DOTs all change rules. Mitigation: a regulatory monitoring function, a flexible rules engine that can absorb changes without code deployment, and active membership in the Transportation Intermediaries Association (TIA).
+
+Risk: cybersecurity. Financial systems are targets. Mitigation: SOC 2 Type II from launch, penetration testing every six months, bug bounty program, encryption everywhere, principle-of-least-privilege everywhere, multi-factor auth required, anomaly detection on every settlement decision.
+
+PHASING AND ROADMAP
+
+Phase 1 (months 1-6): document ingestion engine, contract registry, basic billing accuracy engine, manual invoice composition with audit trail. First customer goes live on basic billing.
+
+Phase 2 (months 7-12): full accessorial rules engine, AR orchestration, carrier identity verification, basic dispute workflow. Second through fifth customers go live, billing automation rate exceeds 30 percent.
+
+Phase 3 (months 13-18): full dispute evidence binder automation, carrier fraud detection, AP orchestration, settlement automation, financial control tower. Customer base scales to 20+ customers, billing automation exceeds 40 percent, leakage reduction is measurable.
+
+Phase 4 (months 19-24): natural-language control tower interface, predictive analytics (forecast DSO, predict dispute risk on new customers, predict carrier fraud risk), enterprise integrations, multi-region data residency.
+
+COMPETITIVE LANDSCAPE
+
+The competitive landscape for freight financial operations is fragmented and underserved. The dominant TMS vendors — McLeod, Aljex, MercuryGate, Revenova — have built strong shipment management functionality but treat the financial layer as an afterthought, typically pushing settlement and AR back into a generic accounting integration like QuickBooks or NetSuite. Their accessorial pricing logic is often configurable but brittle; their dispute workflows are usually email-driven; their fraud detection is rudimentary. They are good at moving freight; they are weak at moving money safely.
+
+A second tier of competitors are the AR-financing fintechs — companies like RTS Financial, Triumph, OTR Capital, and Apex Capital. These businesses purchase invoices from brokerages at a discount and finance the cash-flow gap. They have built decent payment infrastructure, but their software is in service of factoring rather than autonomous financial operations. A brokerage using a factoring company still spends labor on documentation, accessorial computation, and dispute resolution; the factoring fintech mostly cares about the receivable being valid enough to advance against.
+
+A third tier are point-solution startups, each tackling one slice of the problem: BOL OCR vendors, fuel surcharge calculators, dispute management add-ons, carrier identity-verification services, settlement-day-payment apps. None of them solve the orchestration problem — the brokerage must assemble the point solutions itself, integrate them into the TMS, and operate the seams. The seams are where labor disappears.
+
+Our position is unique: we are the orchestration layer plus the rules engines plus the trust layer plus the analytics surface. We are not trying to displace the TMS; we are trying to displace the email-and-Excel-and-six-tabs financial back office that exists between the TMS and the accounting system. Our edge is depth in the rules domain, depth in the integration plumbing, and a deliberate insistence on auditable, deterministic services rather than opaque AI black boxes.
+
+PRICING AND BUSINESS MODEL
+
+The pricing model is a hybrid of per-seat and per-volume. The per-seat component anchors the revenue per customer regardless of fluctuations in freight volume. The per-volume component scales revenue with the customer's growth and the value we deliver. A typical mid-size customer (50 to 200 employees, 10,000 shipments per month) pays $8,000 to $25,000 per month, broken into seat licenses for the AR/AP/dispute/compliance teams plus a volume fee per processed shipment, per resolved dispute, and per verified carrier. Premium tiers add custom-key encryption, dedicated infrastructure, white-glove onboarding, and quarterly business reviews with the controller and CFO.
+
+We avoid percentage-of-revenue pricing models. Our customers' margins are too thin and the revenue association would create perverse incentives — we should not earn more when our customer's billing accuracy goes down or when their disputes spike. Per-volume aligns us with shipment throughput; per-seat aligns us with adoption breadth.
+
+The unit economics target a gross margin of 75 to 80 percent. Cost-of-goods-sold is dominated by infrastructure (cloud, document storage, AI inference for OCR), payment-rails fees (ACH and wire transfer), third-party data subscriptions (FMCSA SAFER, insurance verification, fuel surcharge feeds), and customer success staffing. The lifetime-value-to-customer-acquisition-cost ratio is targeted at 5x or higher, given that the brokerage industry has high switching costs once financial workflows are embedded.
+
+We project payback on customer acquisition cost in 14 to 18 months, with net revenue retention above 115 percent driven by volume growth, premium tier upgrades, and module expansion (a customer that starts with billing automation typically expands into dispute resolution within 12 months and into AP orchestration within 18 months).
+
+TECHNICAL ARCHITECTURE — DETAILED VIEW
+
+The platform is structured as a set of bounded-context services around an event backbone. The bounded contexts mirror the business model: Document Intelligence, Contract Registry, Billing & Accessorials, AR Orchestration, AP Orchestration, Dispute Resolution, Carrier Trust, and Financial Control Tower. Each context owns its data, exposes a stable API, and emits domain events. Cross-context communication is event-driven by default; synchronous calls are used only when latency demands and only with circuit breakers.
+
+The runtime is Kubernetes on AWS, deployed across at least two availability zones in each region, with us-east-1 as the primary and us-west-2 as the warm secondary. Stateful services use managed AWS primitives (RDS Postgres for transactional data, S3 for document storage, OpenSearch for analytics, Kinesis for the event backbone, MSK for high-throughput streaming where relevant). Compute is mostly stateless container workloads; AI inference for OCR runs on Amazon Bedrock with a fallback to a self-hosted model for cost control on long-tail workloads.
+
+The data model is multi-tenant from the ground up. Every table has a tenant_id column with a row-level security policy. All cross-tenant queries are blocked at the database layer, not at the application layer. We treat tenant isolation as a security boundary, not a convenience. The application layer adds a second defense in depth — every service request carries a tenant context that is validated against the authenticated principal, and any handler that omits tenant scoping fails compilation via a custom static analyzer.
+
+Observability is first-class. Every domain event is logged with a correlation ID that propagates across services. Distributed tracing (OpenTelemetry) is on by default. Per-tenant dashboards expose latency, error rate, and throughput at the service level. Alert thresholds are tuned per-tenant — a slowdown that is acceptable for a 1,000-shipment-per-month customer is a critical alert for a 50,000-shipment-per-month customer.
+
+Configuration is managed-via-version-control. Tenant configuration (rules, contract terms, custom workflows) is stored as JSON in a versioned config store, with a UI for non-engineers to edit and a four-eyes approval workflow for high-impact changes. Tenant configuration changes are themselves auditable events.
+
+DATA MODEL DETAIL
+
+The core entities are Shipment, Document, Contract, Invoice, Settlement, Carrier, Customer, Dispute, AccessorialLine, Event, and AuditRow. Relationships are directed and explicit. A Shipment has zero-or-more Documents, zero-or-one Invoices, zero-or-one Settlements. An Invoice has one-or-more InvoiceLines (each tied to a contract rule). A Settlement has zero-or-more Adjustments (per-load or per-period). A Dispute is opened against an InvoiceLine and references zero-or-more Documents as evidence. A Carrier has one-or-more BankAccounts (with full change history) and a verification status that is time-windowed (a verification expires after 90 days). A Customer has one-or-more Contracts (with effective-date semantics).
+
+Every domain event is persisted in an append-only event store. The event store is the source of truth for all read models. Read models are projections — denormalized views maintained by event handlers — and they can be rebuilt from the event store at any time. This is event sourcing in spirit: it gives us auditability, replay capability, and the freedom to evolve schemas without schema migrations on hot paths.
+
+Audit rows are written for every state transition that touches money. An audit row records the actor (user or system), the action, the input payload sha256, the output state, and a Merkle-tree-anchored timestamp suitable for forensic reconstruction.
+
+INTEGRATION ARCHITECTURE
+
+The integration layer is the most operationally important and the most technically humble part of the platform. Most brokerages run on McLeod or Aljex; smaller and newer brokerages run on Revenova or MercuryGate. The integration model uses a vendor-specific adapter pattern: each TMS has its own adapter that translates the TMS's API or EDI feed into our canonical event model. Adapters are versioned independently and deployed independently of the rest of the platform. When McLeod releases a new API version, only the McLeod adapter changes.
+
+For TMS systems that don't expose a clean API, we support EDI 204 (load tender), EDI 214 (shipment status), EDI 210 (motor carrier freight invoice), and EDI 990 (response to load tender). EDI is messy in practice; partner-specific quirks (qualifier codes, segment ordering, identifier formatting) are isolated in adapter code, not in the canonical model. Where neither API nor EDI is available, we fall back to scheduled CSV imports — slow but reliable.
+
+For accounting integration, we sync invoices, payments, and settlements to QuickBooks Online, Sage Intacct, or NetSuite. The sync is bidirectional but biased toward our system as the source of truth for shipment-linked records, with the accounting system owning the chart of accounts, customer master, and vendor master. Conflict resolution rules are explicit and auditable.
+
+For banking, we use a tier-1 banking partner (e.g., JPMorgan Chase or Mercury Bank) for ACH and wire origination. Settlement files are generated from our orchestrator, signed, and submitted via SFTP or API. Returned items (NSF, account closed) flow back as events that automatically trigger settlement state transitions.
+
+For carrier verification, we integrate with FMCSA SAFER, the Licensing & Insurance database, and commercial verification providers like Highway and Carrier411. Every carrier qualification check produces an immutable verification record with a timestamp and a result; the verification record is the audit-grade artifact a brokerage shows to a regulator or to an insurance underwriter.
+
+SECURITY AND COMPLIANCE — DEEPER
+
+Beyond SOC 2 Type II, we treat security as a continuously-tested property rather than a checkbox. We run authenticated penetration testing twice a year against the production environment with a separate vendor each time, to avoid familiarity bias. We run a public bug bounty program with a payout schedule from $500 for low-severity findings up to $25,000 for critical-severity findings affecting customer data. We run static analysis (Semgrep), dependency scanning (Snyk and OSS Index), and container image scanning (Trivy) on every pull request. We require multi-factor authentication for all internal users; we require it for customer admin users by default with a clear opt-out trail for customers who insist otherwise.
+
+We run a quarterly access review for all internal staff: every grant, every role, every shared credential. Service accounts are managed via short-lived credentials issued by AWS IAM with strict scope; long-lived secrets are rotated every 30 days at the latest.
+
+Our incident response plan is a living document with named roles, severity levels, communication runbooks, and 30-minute RTO for sev-1 incidents. We run quarterly tabletop exercises and an annual full-scale red-team exercise.
+
+For PCI compliance: we do not handle credit cards at all. Customer payments come via ACH or wire to a customer-owned bank account; we orchestrate but never custody. This deliberately keeps us out of PCI scope. For HIPAA: not applicable to freight; we are explicit about not processing health data. For GLBA: we do not engage in lending or factoring directly; partnerships with factoring fintechs route the financial risk through them.
+
+ONBOARDING AND CUSTOMER SUCCESS
+
+Onboarding is a 90-day program. Week 1: contract signed, kickoff, integration scoping. Weeks 2-4: integration build for TMS, accounting system, banking partner. Weeks 5-8: contract registry population, accessorial rule encoding, historical data backfill, carrier roster import. Weeks 9-10: shadow run — the customer's existing process runs in parallel with ours, divergences flagged. Weeks 11-12: cutover, parallel monitoring, daily standups. Days 91+: ongoing customer success, monthly business reviews, quarterly executive reviews with the controller and CFO.
+
+Each customer is assigned a Customer Success Engineer (CSE) who is technical enough to debug an integration mismatch, financial enough to read a margin report, and operationally minded enough to recognize when a customer's workflow assumptions are different from our defaults. The CSE-to-customer ratio is 1:5 in the first 12 months, scaling to 1:10 once self-service tooling matures.
+
+We track time-to-value as a primary metric. Time-to-first-automated-invoice is targeted at less than 30 days from kickoff. Time-to-first-50%-billing-automation is targeted at less than 90 days. Time-to-first-positive-DSO-impact is targeted at less than 120 days.
+
+HIRING AND ORGANIZATION
+
+The first 12 months hires concentrate on integration depth and rules expertise. Hires include three integration engineers (TMS-specific experience preferred), two rules-and-billing engineers (experience in fintech or accounting software), one machine-learning engineer (document intelligence), one security engineer, two customer success engineers, one solutions architect, and one go-to-market lead. The founding engineering team is small, opinionated, and biased toward depth over breadth.
+
+The org expands in year 2 with a second engineering team focused on the financial control tower analytics surface, a third team focused on AP and settlement automation, and the first dedicated SRE/platform engineering hire. We delay general-purpose product management hires until year 2; in year 1 the founders own product directly.
+
+ANALYTICAL METHODOLOGY
+
+We instrument every customer outcome we promise. DSO is measured weekly per customer with a 13-week trailing average. Billing accuracy is measured per invoice as the percentage of invoices that pass customer review without short-pay or dispute. Dispute resolution time is measured from open to resolved-or-escalated. Carrier payment leakage is measured as the dollar value of mis-paid or fraud-impacted settlements divided by total settlement value, both rolling 90-day. Labor automation rate is harder; we measure it as the ratio of operations actions taken by the platform to total operations actions, excluding actions that require explicit human judgment by policy.
+
+Each customer gets a weekly value scorecard email with these metrics, baseline-versus-current, and a per-metric narrative. Negative trends generate proactive customer success outreach within 24 hours. Positive trends are celebrated and used in case studies (with customer permission).
+
+DETAILED PHASING AND OPERATIONAL ROLLOUT
+
+The product cannot launch as a single big release. Brokerages will not flip an entire financial back office to a new vendor on faith. The phasing is therefore designed to land value on day-one and compound it over four roughly six-month phases.
+
+Phase 1 lands a deterministic billing accuracy engine plus document ingestion, integrated against the customer's existing TMS read-only and writing invoices into the customer's existing accounting system. The customer's existing AR team continues to operate; our system replaces the spreadsheet that the AR team uses for accessorial computation. We instrument the existing flow and prove that our accessorial math matches or beats the customer's existing math on a 90-day backtest before any production cutover. The success criterion for phase 1 is a published value scorecard showing first-issue invoice accuracy improvement of at least 5 percentage points within 60 days of go-live.
+
+Phase 2 lands the orchestrator and starts replacing the customer's email-and-Excel AR queue. Invoices are issued by our system, with the customer's controller approving exceptions. Carrier identity verification turns on. Disputes are tracked in our system; evidence binders are auto-assembled but still reviewed by a human before sending to the customer. The success criterion is a measurable DSO improvement of at least 5 days within 90 days of phase 2 go-live, plus a billing automation rate of at least 30 percent.
+
+Phase 3 lands AP orchestration and the financial control tower. Carrier settlements are computed by our system and reviewed-and-approved by the customer's AP clerk. Fraud detection runs in shadow mode for 30 days, then flips to active. The control tower goes live with weekly DSO and leakage reporting.
+
+Phase 4 turns on natural-language analytics, predictive risk scoring, and the broader integration surface (multi-region data residency, customer-managed encryption keys, advanced API access for the customer's data team).
+
+Each phase is delivered behind a feature flag scoped per-tenant. The customer can roll back any phase by disabling the flag with no data loss; the orchestrator simply stops emitting events for the disabled capability and the customer's existing tooling continues to work. Rollback capability is a non-negotiable design constraint, not an afterthought.
+
+EDGE CASES AND OPERATIONAL SCENARIOS
+
+The platform must gracefully handle a long tail of edge cases that human operators today resolve via tribal knowledge. Some examples that must have explicit, documented playbooks:
+
+A carrier delivers a load and the BOL is illegible. The document intelligence engine flags low confidence; the system queues the load for human document review with a 24-hour SLA. The shipment does not block downstream invoicing for unrelated loads.
+
+A customer disputes an entire batch of invoices simultaneously, often after a leadership change or audit. The dispute system supports batch-open and shared evidence binders for related disputes, plus a clear audit trail showing which invoices are linked to which dispute case.
+
+A carrier's MC number changes mid-relationship (carrier sells to a new operator). The carrier identity system handles this as a verifiable transition rather than a fraud signal, requiring the new MC# to be linked to the prior carrier record with documentation.
+
+An accessorial line is computed under contract version 2.3 but the customer disputes citing the new version 3.0 that took effect after delivery. The contract engine retains effective-date semantics; the dispute resolution shows the version applied and the version the customer claims, with a clear escalation path.
+
+A bank file is rejected by the bank with a generic error code. The settlement system supports re-issue with new sequence numbers, a clear linkage from the original failed settlement to the re-issued one, and audit trail.
+
+A TMS integration outage means we cannot get delivery confirmation. The platform still allows manual delivery confirmation by an authorized broker user, with a clear annotation that the confirmation source is human rather than TMS.
+
+A customer's auditor or bank requests evidence for a sample of 100 historical invoices. The platform supports an "audit pack" export that produces a zip file with each invoice's audit trail, source documents, contract version, and event history, suitable for external review.
+
+A fraud signal fires on a carrier that the customer has used for ten years without incident. The risk system supports a one-click "trusted partner" override with audit trail, a documented reason, and an expiration date — overrides cannot be permanent.
+
+A new customer is onboarded with five years of historical data they want loaded for trend analysis. The platform supports a backfill mode that loads historical events without triggering active workflows; backfilled events are flagged so they don't appear in operational alerts.
+
+CUSTOMER PAIN STORIES — REPRESENTATIVE
+
+A 250-employee brokerage in the Midwest spends 11 days median to issue an invoice from delivery date. The CFO's working capital is $14M tied up at any time in unbilled-but-deliverable shipments. Their billing team of 6 people produces $42M in monthly invoiced revenue with a 7 percent first-issue accuracy gap (i.e., 7 percent of invoices generate short-pay or dispute). They lose an estimated $1.8M annually to billing errors, plus another $0.9M to working capital cost.
+
+A 90-employee brokerage in Texas runs settlement on Tuesday and Friday. They were hit by a payee-bank-change fraud in 2024 that cost them $186K. They now require manual phone-call verification of every payee change, which adds 15 to 20 minutes per affected settlement and slows down the entire AP queue. They want fraud detection that lets them safely automate the verification.
+
+A 500-employee 3PL on the East Coast runs disputes through Salesforce because their TMS dispute module is unusable. Each dispute averages 8 hours of labor and pulls evidence from six different systems. They estimate $3.5M annually in dispute-related labor cost, plus an additional $1.2M in concessions made because the dispute window expired and the customer's accusation went unanswered.
+
+A 70-employee small brokerage in California runs everything in QuickBooks and Excel. They cannot grow past their current revenue without hiring more billing staff, and the local talent market is tight. They want automation that scales their existing team rather than replaces it.
+
+These pain stories drive the prioritization of capabilities. The first three are mid-market and large; the fourth is the long tail of the SMB market. We will not target the SMB market in the first 24 months — the unit economics are too thin and the need for hand-holding too high. The first 24 months focus on mid-market 3PLs.
+
+API REFERENCE HIGHLIGHTS
+
+The customer-facing API is RESTful, versioned, and documented via OpenAPI 3.1. Authentication is OAuth 2.0 with rotating tokens; service-to-service authentication uses signed JWTs with short TTLs.
+
+Key endpoints: POST /api/documents (upload a document), GET /api/shipments/{id} (retrieve shipment with computed accessorials), POST /api/invoices (compose and issue an invoice), GET /api/invoices/{id}/audit (retrieve full audit trail), POST /api/disputes (open a dispute), GET /api/disputes/{id}/evidence (retrieve evidence binder), POST /api/carriers/{id}/verify (run a fresh verification), GET /api/settlements/{id}/risk (retrieve fraud-risk assessment), POST /api/settlements/{id}/release (override a hold with reason and approver).
+
+Webhooks are first-class. Customers can subscribe to events: document.validated, invoice.issued, dispute.opened, dispute.resolved, settlement.held, settlement.released, settlement.cleared, carrier.verification.expired, audit.row.written. Webhook deliveries include a sequence number and a tenant-scoped signing secret.
+
+Rate limits are per-tenant with burst tolerance — typical limits are 100 requests per second sustained, 500 requests per second burst for one minute, with clear 429 responses and Retry-After headers when exceeded.
+
+VENDOR EVALUATION CRITERIA
+
+Brokerages evaluating us against alternatives use a roughly consistent set of criteria: integration depth (does it work with their TMS and accounting system without 12 months of consulting?), rules customization (can they encode their unique customer contracts without writing code?), audit and compliance posture (do they have SOC 2 Type II?), references (have they delivered measurable DSO improvement at a comparable brokerage?), pricing model (is it predictable, or will the per-shipment fee bite when volume spikes?), data portability (if we leave, can we get our data out cleanly?), and roadmap alignment (do they understand AP and settlement, not just billing?).
+
+We anticipate and address each of these in our sales motion. The integration depth question is answered by a 30-day "integration proof" project before contract signing. The rules customization question is answered by encoding the customer's three most complex accessorial rules in our test environment during the sales cycle. The compliance question is answered by sharing the SOC 2 Type II report under NDA. The references question is answered by introducing prospective customers to two existing customers, including one in their TMS ecosystem and one in their geography.
+
+MIGRATION PLAYBOOK FROM EXISTING SYSTEMS
+
+Most prospects come from a hybrid environment: their TMS handles loads, their accounting system handles GL and AP/AR, a spreadsheet handles accessorials, an email inbox handles disputes, and tribal knowledge fills the gaps. The migration playbook is therefore not a single-system replacement but a careful absorption of the spreadsheets and inbox into our orchestrator.
+
+Step 1: enumerate the customer's accessorial rules from contracts and from spreadsheet formulas. Encode them in our contract registry. Validate by replaying 90 days of historical shipments through the engine and comparing line-by-line to the customer's actual invoices.
+
+Step 2: enumerate the customer's dispute backlog and active dispute cases. Import them with full context. Identify patterns (top three dispute reasons, top five disputing customers, average time to resolve). Set baseline.
+
+Step 3: enumerate the customer's carrier roster. Run a fresh verification on each active carrier. Flag any anomalies. Establish the verification cycle (90-day default).
+
+Step 4: cut over invoicing in batches of 50 to 100 invoices per day, with parallel runs against the customer's existing process for the first two weeks. Daily reconciliation meetings with the customer's billing manager.
+
+Step 5: cut over disputes once the invoicing cutover is stable. Cut over settlement next, then fraud detection. Each cutover follows the same pattern: parallel run, daily reconciliation, gradual ramp, full transition.
+
+PRICING DEPTH AND CONTRACT STRUCTURE
+
+The contracts with brokerages are typically two or three years in duration with annual price escalators tied to consumer-price-index adjustments capped at 5 percent annually. Service-level agreements include 99.9 percent uptime measured monthly, with credits to the customer for any month where uptime falls below the threshold. Credit calculations are graduated: 99.0 to 99.9 yields a 5 percent credit, 95 to 99 percent yields a 25 percent credit, below 95 percent yields a 50 percent credit. The credits are not designed to be a profit lever for the customer; they are designed to be a pain signal for our engineering team.
+
+Volume-based pricing has tiered breakpoints. Customers below 5,000 shipments per month pay a per-shipment fee of $0.85; customers between 5,000 and 25,000 pay $0.65; customers above 25,000 pay $0.45. Dispute resolution is priced separately at $4 per dispute opened, with no charge for disputes that resolve within 30 minutes (an incentive to use our auto-binder rather than manual workflows). Carrier verification is priced at $1.50 per fresh verification.
+
+Discounts apply for multi-year contracts, for early-adopter customers (first 25 customers receive a 15 percent permanent discount), and for customer reference rights. Annual contracts include a quarterly business review and an annual on-site executive briefing.
+
+GO-TO-MARKET STRATEGY
+
+The go-to-market motion is field-led for the first 24 months. The buying decision is not self-service: the customer's controller, CFO, and head of operations all need to be involved, and the integration scoping cannot be fully self-served. We hire a small team of senior account executives with prior experience in TMS, factoring fintechs, or freight-vertical SaaS — they bring industry credibility plus a Rolodex.
+
+The sales process is structured as a four-stage funnel: discovery, technical evaluation, business case, contract. Discovery is typically two to three meetings, surfaces the customer's specific pain (DSO, billing accuracy, leakage, dispute volume), and produces a one-page hypothesis of what we would deliver. Technical evaluation is a four-week period with our solutions architect: integration scoping, accessorial rule encoding, and a small data sample run-through. Business case is a numerical proposal: here is what we will save you, here is what we will cost you, here is the ROI. Contract is straightforward; we have a standard MSA with appendices for SLAs, data processing, and security.
+
+The marketing motion supports the field with industry-specific content: white papers on DSO reduction in freight, webinars on carrier fraud detection trends, case studies from existing customers. We invest in industry events: TIA's annual conference, FreightWaves events, regional 3PL gatherings. We do not invest heavily in paid digital marketing — the buyer is not searching for our category online yet.
+
+Customer references are the highest-leverage asset. Every customer agreement includes a reference rights clause; we negotiate carefully on scope (named in case studies, willing to take prospect calls, willing to host site visits). The first 10 customers each have a customer success engineer assigned who is also our reference manager — they coordinate with the customer's controller for any reference engagement.
+
+ENGINEERING QUALITY BAR
+
+We hold ourselves to high quality standards because the cost of a mistake is direct customer money. Every code change goes through code review by at least two engineers; security-sensitive changes require a security engineer's review. Every service has a runbook, an SLO, and an alert ladder. The runbook is not a wiki page that goes stale; it is a versioned document that must be updated as part of any change that affects operational behavior.
+
+Test coverage targets are set per service: integration tests cover the public API and the event handlers, with at least 80 percent line coverage and 90 percent branch coverage; unit tests cover business logic with no minimum coverage threshold but a clear "every business rule has a test" expectation; end-to-end tests exercise the most important user journeys (issue an invoice, resolve a dispute, settle a carrier).
+
+Production deployments use blue-green or canary patterns. No deployment goes directly to all-traffic; every change is canaried at 10 percent for at least 30 minutes before fan-out. Database schema changes are decoupled from code deploys: schemas are migrated in compatible-with-old-and-new shape first, then the code is deployed, then the schema is migrated to the final shape after the code has stabilized. This is operationally tedious and absolutely required to avoid catastrophic financial bugs.
+
+Feature flags are used aggressively — every customer-facing change ships behind a flag, and every tenant has the ability to opt into or out of any flag. Flags have a documented lifecycle: experimental, beta, GA, and finally removed (along with the dead code paths). Stale flags are tech debt; we run a quarterly review.
+
+We invest in tooling. Internal CLIs for common operational tasks. Auto-generated API clients for common languages. A "tenant simulator" that lets engineers reproduce a customer's data shape locally for debugging. A "playback" mode that lets us replay an event sequence against a fixed clock for deterministic test reproduction.
+
+CHANGE MANAGEMENT FOR CUSTOMERS
+
+When we ship a change that affects a customer's operational workflow, the change goes through a documented communication cadence. Tier 1 changes (no behavioral impact) are deployed silently. Tier 2 changes (improvements to existing flows, no breaking behavior) are mentioned in the monthly release notes and demonstrated in the next quarterly business review. Tier 3 changes (new capabilities, opt-in) require a 30-day notice period plus customer success engineer engagement. Tier 4 changes (breaking, opt-out) require a 90-day notice period plus written acknowledgment from the customer admin. We do not introduce Tier 4 changes lightly, but we do not avoid them when they are necessary for security, compliance, or correctness.
+
+Change communication includes the rationale, the operational impact, the rollout timeline, the rollback plan, and the contact path for questions. We treat customer change-readiness as a product feature, not as a sales-team afterthought.
+
+KPI DEFINITIONS — PRECISE
+
+To avoid the trap of vague metrics, every customer-facing KPI has a precise definition that ships in our Customer Success Charter:
+
+Days Sales Outstanding (DSO): For a given period (typically 13 weeks rolling), the average number of days from invoice issuance to payment receipt for fully-paid invoices, weighted by invoice dollar value. Excludes disputed invoices in active dispute. The numerator is sum-of-(days-to-pay times invoice-dollar) and the denominator is sum-of-(invoice-dollar).
+
+Billing Accuracy: For a given period, the percentage of issued invoices that pass customer review without short-pay, dispute, or correction. Computed as one minus (count of invoices with any disputed line) over (total invoices issued).
+
+Dispute Resolution Time: Median wall-clock duration from dispute open event to dispute resolved event, computed across the trailing 30-day window. Resolved events include both customer-confirmed and customer-paid-as-issued; escalations are excluded from the median but tracked separately.
+
+Carrier Payment Leakage: Dollar value of settlements identified as mis-paid (overpaid by computation error) or fraud-impacted (paid to a fraudulently-changed bank account, requiring recovery), divided by total settlement dollar value, both rolling 90-day. Lower is better.
+
+Labor Automation Rate by Department: For a given department, the ratio of operations actions taken by the platform without human intervention to total operations actions in that department, excluding actions explicitly designated as human-judgment-only by policy. A "policy override" by a human counts as a human action; the underlying compute by the system counts as a system action; the two are tracked separately.
+
+Time to Value: Wall-clock duration from contract signature to first measurable improvement on the customer's primary KPI (typically DSO or billing accuracy). Reported per customer as a story with milestones.
+
+CLOSING NOTE
+
+This document is intended as the input to a build-ready architecture exercise. The deliverable is a structured, intern-executable build guide that turns this vision into deterministic, testable, auditable services. The architecture should respect the bounded-context boundaries described here, the audit-trail requirements, the multi-tenant security boundary, and the integration-first reality of the brokerage industry. Specifically, the build guide should answer, in concrete terms: what services exist, what events they exchange, what data they own, what APIs they expose, what tests prove their correctness, and what operational signals indicate they are healthy. Each chapter of the guide should be executable by a competent intern with no prior brokerage knowledge — that is the bar.

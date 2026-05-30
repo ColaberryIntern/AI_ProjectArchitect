@@ -1,0 +1,210 @@
+# Phase 9H multi-host production manifests.
+#
+# Topology support matrix
+# -----------------------
+# Supported       :  3-host cluster, 2-3 API replicas, 3-6 worker replicas,
+#                    1 scheduler leader + 1 standby, Redis as StatefulSet,
+#                    RWX-capable persistent storage class.
+# Conditional     :  single-host single-replica deployment (collab + presence
+#                    fall back to local-process scope; documented).
+# Unsupported     :  cross-region active-active (no consensus protocol),
+#                    multi-tenant isolation at infra level (use workspaces
+#                    instead), >50 worker replicas on one Redis (saturates
+#                    XADD throughput).
+#
+# Operational limits
+# ------------------
+# - Redis throughput: ~50k XADDs/sec per Redis node; plan workers accordingly.
+# - WebSocket fanout: ~5k concurrent subscribers per API replica.
+# - Step claim heartbeat: 30s lease, 10s heartbeat — reduce only for jobs
+#   <5s; longer leases create longer reclaim windows.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ops-redis
+spec:
+  serviceName: ops-redis
+  replicas: 1     # raise to 3 with Sentinel/Cluster when HA Redis is wired
+  selector:
+    matchLabels: { app: ops-platform, component: redis }
+  template:
+    metadata:
+      labels: { app: ops-platform, component: redis }
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: { app: ops-platform, component: redis }
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+          ports:
+            - { containerPort: 6379 }
+          resources:
+            requests: { cpu: "200m", memory: "512Mi" }
+            limits:   { cpu: "1000m", memory: "1Gi" }
+          volumeMounts:
+            - { name: redis-data, mountPath: /data }
+          readinessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 15
+  volumeClaimTemplates:
+    - metadata: { name: redis-data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-redis
+spec:
+  selector: { app: ops-platform, component: redis }
+  ports:
+    - { port: 6379, targetPort: 6379 }
+---
+# RWX PersistentVolumeClaim for cross-replica file state. REQUIRED for >1
+# API replica or >1 worker replica because Phase 6+ persistence still uses
+# the local filesystem. EFS / Azure Files / Filestore all satisfy RWX.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ops-output-rwx
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources: { requests: { storage: 50Gi } }
+  # storageClassName: <set to a RWX-capable class on your cluster>
+---
+# Pod disruption budget — keep at least 1 API replica during voluntary
+# disruption events.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ops-api-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: ops-platform, component: api }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ops-worker-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: ops-platform, component: worker }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-api-multihost
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: ops-platform, component: api }
+  template:
+    metadata:
+      labels: { app: ops-platform, component: api }
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: { app: ops-platform, component: api }
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: api
+          image: colaberry/ops-platform:latest
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: OPS_ENFORCE_RBAC,    value: "true" }
+            - { name: OPS_CACHE_BACKEND,   value: "redis" }
+            - { name: OPS_REDIS_HOST,      value: "ops-redis" }
+            - { name: OPS_REDIS_PORT,      value: "6379" }
+            - { name: OPS_AUDIT_HMAC_KEY,  valueFrom: { secretKeyRef: { name: ops-secrets, key: audit-hmac-key } } }
+            - { name: OPS_COORDINATION_MULTI_HOST, value: "true" }
+          readinessProbe:
+            httpGet: { path: /ops/system/cluster-health, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ops/system/health, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "300m", memory: "512Mi" }
+            limits:   { cpu: "1500m", memory: "1Gi" }
+          volumeMounts:
+            - { name: ops-output, mountPath: /app/output }
+      volumes:
+        - name: ops-output
+          persistentVolumeClaim: { claimName: ops-output-rwx }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-worker-multihost
+spec:
+  replicas: 6
+  selector:
+    matchLabels: { app: ops-platform, component: worker }
+  template:
+    metadata:
+      labels: { app: ops-platform, component: worker }
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: { app: ops-platform, component: worker }
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: worker
+          image: colaberry/ops-platform:latest
+          command: ["python", "-m", "execution.ops_platform.worker_main"]
+          env:
+            - { name: OPS_CACHE_BACKEND, value: "redis" }
+            - { name: OPS_REDIS_HOST,    value: "ops-redis" }
+            - { name: OPS_REDIS_PORT,    value: "6379" }
+          resources:
+            requests: { cpu: "300m", memory: "512Mi" }
+            limits:   { cpu: "2000m", memory: "1Gi" }
+          volumeMounts:
+            - { name: ops-output, mountPath: /app/output }
+      volumes:
+        - name: ops-output
+          persistentVolumeClaim: { claimName: ops-output-rwx }
+---
+# HPA for workers based on queue depth (set up a metrics adapter exposing
+# the Prometheus gauge `ops_queue_depth` for this to work end-to-end).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ops-worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ops-worker-multihost
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

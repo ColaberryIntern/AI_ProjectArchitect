@@ -1,0 +1,78 @@
+{
+  "id": "summarize_proposal",
+  "name": "Summarize a Proposal",
+  "type": "workflow",
+  "category": "Sales",
+  "subcategory": "Proposals & Quotes",
+  "description": "Turn a long client proposal or RFP response into a one-page summary that a busy executive can scan in two minutes: key offer, price, timeline, risks, and the recommended next move.",
+  "business_value": "Saves 30-45 minutes of executive reading time per proposal and standardizes the brief format your sales leaders see across deals.",
+  "version": "1.0.0",
+  "owner": {
+    "name": "Sales Operations",
+    "email": "sales-ops@colaberry.com",
+    "team": "Sales"
+  },
+  "inputs": [
+    {
+      "name": "proposal_text",
+      "type": "text",
+      "description": "Paste the proposal body or upload its text.",
+      "required": true
+    },
+    {
+      "name": "client_name",
+      "type": "string",
+      "description": "Optional — used to personalize the summary.",
+      "required": false
+    },
+    {
+      "name": "summary_audience",
+      "type": "string",
+      "description": "Who is the summary for? Helps tune tone.",
+      "options": ["Account Executive", "Sales Leader", "Executive Sponsor", "Legal Review"],
+      "default": "Sales Leader"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "summary",
+      "type": "markdown",
+      "description": "The one-page executive summary."
+    },
+    {
+      "name": "next_recommended_tasks",
+      "type": "list",
+      "description": "Suggested follow-ups (prepare counter, ask legal review, etc.)."
+    }
+  ],
+  "tags": ["sales", "proposal", "rfp", "summary", "executive", "client"],
+  "launch_mode": "guided",
+  "dependencies": [],
+  "related_tools": ["docx_export"],
+  "related_agents": ["rfp_analyzer"],
+  "related_mcp_servers": [],
+  "difficulty": "beginner",
+  "estimated_time_savings": {
+    "minutes_per_run": 35,
+    "runs_per_week_estimate": 12
+  },
+  "training_video": {
+    "source": "generated",
+    "url": null,
+    "duration_seconds": null,
+    "generated_walkthrough_path": null
+  },
+  "feedback_enabled": true,
+  "prompt_path": "prompts/execute.txt",
+  "readme_path": "README.md",
+  "response_contract_required": true,
+  "mcp_servers_used": [],
+  "agents_used": [],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-26",
+      "summary": "Initial release — bundled with the ops platform foundation."
+    }
+  ]
+}

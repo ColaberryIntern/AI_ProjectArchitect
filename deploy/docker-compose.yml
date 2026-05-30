@@ -1,0 +1,93 @@
+version: "3.9"
+
+# Single-host Docker Compose for the AI Operations Platform.
+#
+# Scope honesty
+# -------------
+# - This compose file runs the platform in a real multi-process configuration
+#   on ONE host (api + worker + scheduler + redis).
+# - It does NOT provide HA. For HA, run the same images across multiple
+#   hosts with a managed Redis cluster and a load balancer in front of `api`.
+# - OTel collector is optional; the `otel-collector` profile only starts
+#   when you `docker compose --profile otel up`.
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      - OPS_ENFORCE_RBAC=true
+      - OPS_CACHE_BACKEND=redis
+      - OPS_REDIS_HOST=redis
+      - OPS_REDIS_PORT=6379
+      - OPS_AUDIT_HMAC_KEY=${OPS_AUDIT_HMAC_KEY:-rotate-me-in-production}
+    volumes:
+      - ops_output:/app/output
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/ops/system/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["python", "-m", "execution.ops_platform.worker_main"]
+    environment:
+      - OPS_CACHE_BACKEND=redis
+      - OPS_REDIS_HOST=redis
+      - OPS_REDIS_PORT=6379
+    volumes:
+      - ops_output:/app/output
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["python", "-m", "execution.ops_platform.scheduler_main"]
+    environment:
+      - OPS_CACHE_BACKEND=redis
+      - OPS_REDIS_HOST=redis
+      - OPS_REDIS_PORT=6379
+    volumes:
+      - ops_output:/app/output
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  otel-collector:
+    profiles: ["otel"]
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config", "/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+
+volumes:
+  redis_data:
+  ops_output:

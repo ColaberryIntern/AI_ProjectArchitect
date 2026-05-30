@@ -1,0 +1,340 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = category.key %}
+
+{% block title %}{{ asset_id }} · Colaberry · Library{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb" style="font-size: 13px; margin: 0;">
+    <li class="breadcrumb-item"><a href="/library/?ws={{ workspace }}">📚 Library</a></li>
+    <li class="breadcrumb-item"><a href="/library/{{ category.key }}?ws={{ workspace }}">{{ category.emoji }} {{ category.label }}</a></li>
+    <li class="breadcrumb-item active">{{ asset_id }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-start mb-4">
+  <div style="font-size: 56px; line-height: 1; margin-right: 16px;">{{ category.emoji }}</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">
+      {{ asset_id }}
+      {% if meta.vetted %}<span class="vetted-badge ms-2">Colaberry vetted</span>{% endif %}
+    </h1>
+    <div class="text-muted">
+      {% if raw %}{{ raw.kind or category.label|lower }} · v{{ raw.version or meta.version or '1.0' }} · owner: {{ raw.owner or meta.owner or '—' }}{% endif %}
+      {% if meta.license %} · <span class="asset-tag">📜 {{ meta.license }}</span>{% endif %}
+    </div>
+    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+      {% if raw and raw.tags %}{% for t in raw.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}{% endif %}
+      <span class="enrichment-pill {{ meta.enrichment_state }}">
+        {% if meta.enrichment_state == 'enriched' %}✓ enriched {{ meta.enriched_at[:10] if meta.enriched_at else '' }}
+        {% elif meta.enrichment_state == 'enriching' %}⏳ enriching…
+        {% elif meta.enrichment_state == 'failed' %}✗ enrichment failed
+        {% else %}○ not yet enriched{% endif %}
+      </span>
+      <form method="post" action="/library/{{ category.key }}/{{ asset_id }}/enrich?force=1&ws={{ workspace }}&as={{ actor }}" style="display:inline;">
+        <button class="asset-tag" style="cursor:pointer; background: var(--accent-library-soft); color: var(--accent-library); border-color: var(--accent-library);">
+          🔄 {% if meta.enrichment_state == 'enriched' %}Refresh{% else %}Enrich now{% endif %}
+        </button>
+      </form>
+    </div>
+
+    {# Action row — every asset gets concrete next steps. No empty messaging. #}
+    <div class="mt-3 d-flex gap-2 flex-wrap" id="asset-actions">
+      {% if raw and raw.source %}
+      <a href="{{ raw.source }}" target="_blank" rel="noopener" class="btn btn-sm" style="background: var(--accent-library); color: white;">
+        🌐 View source
+      </a>
+      {% endif %}
+      {% if meta.install_command %}
+      <button class="btn btn-sm btn-outline-success"
+              data-install="{{ meta.install_command }}"
+              onclick="navigator.clipboard.writeText(this.dataset.install).then(()=>this.textContent='✅ Copied')">
+        📋 Copy install
+      </button>
+      {% endif %}
+      {% if meta.install_url and meta.install_url != raw.source %}
+      <a href="{{ meta.install_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">
+        ⬇️ Install page
+      </a>
+      {% endif %}
+      {% if meta.docs_url %}
+      <a href="{{ meta.docs_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">
+        📖 Docs
+      </a>
+      {% endif %}
+      {% if meta.homepage_url and meta.homepage_url not in [raw.source, meta.docs_url] %}
+      <a href="{{ meta.homepage_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">
+        🏠 Homepage
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="text-end" style="min-width: 200px;">
+    {% if meta.rating_count %}
+      <div class="stars" style="font-size: 24px;">{% for _ in range(meta.rating_avg|round|int) %}★{% endfor %}<span class="stars-empty">{% for _ in range(5 - (meta.rating_avg|round|int)) %}★{% endfor %}</span></div>
+      <div class="asset-meta">{{ "%.1f"|format(meta.rating_avg) }} ({{ meta.rating_count }} rating{{ '' if meta.rating_count == 1 else 's' }})</div>
+    {% else %}
+      <div class="asset-meta">No ratings yet</div>
+    {% endif %}
+    <div class="asset-meta">💬 {{ meta.comment_count }} comment{{ '' if meta.comment_count == 1 else 's' }}</div>
+    {% if meta.repo_stats and meta.repo_stats.get('stars') %}
+    <div class="asset-meta mt-2">⭐ {{ meta.repo_stats['stars'] }} · 🍴 {{ meta.repo_stats.get('forks', 0) }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    {# What it's used for — the headline answer the user wants first #}
+    {% if meta.what_its_for %}
+    <div class="library-card" style="border-color: var(--accent-library);">
+      <div class="library-card-header" style="background: var(--accent-library-soft);"><h2>🎯 What it's used for</h2></div>
+      <div class="p-4">
+        <p style="font-size: 16px; line-height: 1.6; margin: 0;">{{ meta.what_its_for }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# README — rendered #}
+    {% if meta.readme_markdown %}
+    <div class="library-card">
+      <div class="library-card-header">
+        <h2>📝 README</h2>
+        <span class="asset-meta">snapshot from <a href="{{ raw.source if raw else meta.source_url }}" target="_blank">source</a></span>
+      </div>
+      <div class="p-4">
+        <div id="readme-rendered" class="readme-render"></div>
+        <textarea id="readme-source" hidden>{{ meta.readme_markdown }}</textarea>
+      </div>
+    </div>
+    {% endif %}
+
+    {# What it does — fallback if no README #}
+    {% if not meta.readme_markdown %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📝 What it does</h2></div>
+      <div class="p-4">
+        {% if raw and raw.description %}<p>{{ raw.description }}</p>
+        {% elif meta.description %}<p>{{ meta.description }}</p>
+        {% else %}<p class="text-muted">No description yet — run <strong>🔄 Enrich</strong> above to fetch from source.</p>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Install steps #}
+    {% if meta.install_steps %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📥 Install / Setup</h2></div>
+      <div class="p-4">
+        <ol class="mb-0">
+          {% for step in meta.install_steps %}<li class="mb-1"><code style="background: var(--bg-sunken); padding: 1px 6px; border-radius: 3px;">{{ step }}</code></li>{% endfor %}
+        </ol>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Code samples #}
+    {% for sample in meta.code_samples %}
+    <div class="library-card">
+      <div class="library-card-header">
+        <h2>💻 {{ sample.path }}</h2>
+        <span class="asset-meta">{{ sample.language }}</span>
+      </div>
+      <pre style="margin: 0;"><code class="language-{{ sample.language }}">{{ sample.content }}</code></pre>
+    </div>
+    {% endfor %}
+
+    {# Additional examples beyond the README's first one #}
+    {% if meta.examples and meta.examples|length > 1 %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>💡 More examples</h2></div>
+      <div class="p-0">
+        {% for ex in meta.examples[1:5] %}
+        <pre style="margin: 0; border-bottom: 1px solid var(--border-muted);"><code>{{ ex }}</code></pre>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Comments #}
+    <div class="library-card">
+      <div class="library-card-header">
+        <h2>💬 Discussion ({{ comments|length }})</h2>
+      </div>
+      <div class="p-4">
+        {% for c in comments %}
+          <div class="comment">
+            <div><span class="author">{{ c.author }}</span> <span class="when">· {{ c.created_at }}</span></div>
+            <div class="mt-1">{{ c.body }}</div>
+          </div>
+        {% else %}
+          <p class="text-muted">No comments yet. Be the first to share what you learned.</p>
+        {% endfor %}
+
+        <form method="post" action="/library/{{ category.key }}/{{ asset_id }}/comment?ws={{ workspace }}&as={{ actor }}" class="mt-3">
+          <label class="form-label small text-muted">Leave a comment (as {{ actor }})</label>
+          <textarea name="body" rows="3" class="form-control mb-2" placeholder="Share what you learned, problems you hit, tweaks that worked..."></textarea>
+          <button class="btn btn-sm" style="background: var(--accent-library); color: white;">Post comment</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+
+    {# Linked use cases — the "this matters because" panel #}
+    <div class="library-card" style="border-color: var(--accent-library);">
+      <div class="library-card-header" style="background: var(--accent-library-soft);">
+        <h2>🎯 Used in {{ linked_use_cases|length }} use case{{ '' if linked_use_cases|length == 1 else 's' }}</h2>
+      </div>
+      <div>
+        {% for uc in linked_use_cases[:5] %}
+        <a href="/library/use-cases/{{ uc.use_case_id }}?ws={{ workspace }}" class="asset-row" style="text-decoration: none;">
+          <div style="flex: 1; min-width: 0;">
+            <div class="asset-name" style="font-size: 14px;">{{ uc.title }}</div>
+            <div class="asset-meta" style="font-size: 12px;">
+              {% if uc.complexity == 'quick_win' %}⚡ Quick win{% elif uc.complexity == 'advanced' %}🧠 Advanced{% else %}📐 Moderate{% endif %}
+              {% if uc.industry %} · 🏢 {{ uc.industry }}{% endif %}
+            </div>
+          </div>
+          <div class="asset-meta" style="font-size: 11px;">→</div>
+        </a>
+        {% else %}
+        <div class="p-3 text-muted small">
+          Not yet referenced by any use case.
+          <a href="/library/use-cases?ws={{ workspace }}">Browse use cases →</a>
+        </div>
+        {% endfor %}
+        {% if linked_use_cases|length > 5 %}
+        <div class="p-2 text-center">
+          <a href="/library/use-cases?ws={{ workspace }}" class="asset-tag" style="color: var(--accent-library);">+ {{ linked_use_cases|length - 5 }} more</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Repo stats #}
+    {% if meta.repo_stats %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📊 Repository</h2></div>
+      <div class="p-4">
+        {% if meta.repo_stats.get('stars') is not none %}
+        <div class="meta-row" style="padding: 8px 0; border-bottom: 1px solid var(--border-muted);">
+          <span>⭐ Stars</span>&nbsp;<strong style="margin-left: auto;">{{ meta.repo_stats['stars'] }}</strong>
+        </div>
+        <div class="meta-row" style="padding: 8px 0; border-bottom: 1px solid var(--border-muted); display: flex;">
+          <span>🍴 Forks</span><strong style="margin-left: auto;">{{ meta.repo_stats.get('forks', 0) }}</strong>
+        </div>
+        {% endif %}
+        {% if meta.repo_stats.get('last_commit') %}
+        <div style="padding: 8px 0; display: flex;"><span>🕒 Last commit</span><strong style="margin-left: auto;">{{ meta.repo_stats['last_commit'][:10] }}</strong></div>
+        {% endif %}
+        {% if meta.repo_stats.get('language') %}
+        <div style="padding: 8px 0; display: flex;"><span>💻 Language</span><strong style="margin-left: auto;">{{ meta.repo_stats['language'] }}</strong></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Dependencies #}
+    {% if meta.dependencies %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>🔗 Dependencies</h2></div>
+      <div class="p-3">
+        {% for d in meta.dependencies[:20] %}<div class="asset-tag mb-1 d-inline-block">{{ d }}</div> {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Rate #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>⭐ Rate this</h2></div>
+      <div class="p-4">
+        <form method="post" action="/library/{{ category.key }}/{{ asset_id }}/rate?ws={{ workspace }}&as={{ actor }}">
+          <div class="mb-3">
+            <label class="form-label small">Stars (as {{ actor }})</label>
+            <div class="d-flex gap-2">
+              {% for s in [1,2,3,4,5] %}
+                <label class="d-inline-flex align-items-center gap-1">
+                  <input type="radio" name="stars" value="{{ s }}" {% if s == 5 %}checked{% endif %}>
+                  <span>{{ s }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          <textarea name="note" rows="2" class="form-control mb-2" placeholder="One-line take (optional)"></textarea>
+          <button class="btn btn-sm" style="background: var(--accent-library); color: white;">Submit rating</button>
+        </form>
+      </div>
+    </div>
+
+    {# Vetting #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>✓ Colaberry vetting</h2></div>
+      <div class="p-4">
+        {% if meta.vetted %}
+          <p class="mb-1"><span class="vetted-badge">Colaberry vetted</span></p>
+          <p class="text-muted small mb-0">by {{ meta.vetted_by }} · {{ meta.vetted_at }}</p>
+          {% if meta.vetted_notes %}<p class="mt-2 small">"{{ meta.vetted_notes }}"</p>{% endif %}
+        {% elif meta.vetted_status == 'rejected' %}
+          <p class="mb-1 text-danger">Rejected by {{ meta.vetted_by }}</p>
+        {% else %}
+          <p class="text-muted small">Not yet vetted.</p>
+        {% endif %}
+        <form method="post" action="/library/{{ category.key }}/{{ asset_id }}/vet?ws={{ workspace }}&as={{ actor }}" class="mt-3">
+          <select name="decision" class="form-select form-select-sm mb-2">
+            <option value="accepted">✓ Mark as Colaberry vetted</option>
+            <option value="rejected">✗ Reject</option>
+          </select>
+          <textarea name="notes" rows="2" class="form-control mb-2" placeholder="Curator notes (optional)"></textarea>
+          <button class="btn btn-sm btn-outline-success">Submit</button>
+        </form>
+      </div>
+    </div>
+
+    {# Source + provenance #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📁 Provenance</h2></div>
+      <div class="p-4">
+        <p class="small text-muted mb-1">Asset source:</p>
+        {% if raw and raw.source %}
+        <a href="{{ raw.source }}" target="_blank" rel="noopener" style="word-break: break-all;">{{ raw.source }}</a>
+        {% endif %}
+        <p class="small text-muted mb-1 mt-3">Category source:</p>
+        <code>{{ category.source }}</code>
+        {% if meta.snapshot_path %}
+        <p class="small text-muted mb-1 mt-3">Snapshot:</p>
+        <code>{{ meta.snapshot_path }}</code>
+        {% endif %}
+        {% if meta.enrichment_error %}
+        <p class="small mb-1 mt-3" style="color: #991b1b;">Enrichment error:</p>
+        <code>{{ meta.enrichment_error }}</code>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Lightweight markdown renderer -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.0/marked.min.js"></script>
+<script>
+  const ta = document.getElementById('readme-source');
+  const out = document.getElementById('readme-rendered');
+  if (ta && out && typeof marked !== 'undefined') {
+    try {
+      marked.setOptions({ headerIds: false, mangle: false });
+      out.innerHTML = marked.parse(ta.value);
+      // Trigger Prism for any <code class="language-x"> blocks marked created.
+      if (typeof Prism !== 'undefined') Prism.highlightAll();
+    } catch (e) {
+      out.textContent = ta.value;
+    }
+  }
+</script>
+{% endblock %}

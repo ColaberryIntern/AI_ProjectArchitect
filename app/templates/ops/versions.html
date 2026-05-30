@@ -1,0 +1,31 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}{{ capability.name if capability else capability_id }} Versions | Colaberry Ops{% endblock %}
+{% block content %}
+
+<div class="mb-3"><a href="/ops/capabilities/{{ capability_id }}">&larr; Capability detail</a></div>
+
+<h2 class="mb-1">{{ (capability.name if capability else capability_id) }} — Versions</h2>
+<p class="text-muted">First-class lifecycle history. Each row is an immutable snapshot of the manifest at that semver. Promote, deprecate, or roll back via the actions column.</p>
+
+<table class="table card-cap p-2">
+  <thead><tr><th>Semver</th><th>Status</th><th>Rollout</th><th>Created</th><th>Created by</th><th>Approved by</th><th>Changelog</th></tr></thead>
+  <tbody>
+    {% for v in versions %}
+    <tr>
+      <td><code>{{ v.semver }}</code></td>
+      <td><span class="reason-chip">{{ v.status }}</span></td>
+      <td>{{ '%.0f%%'|format(v.rollout_percentage) }}</td>
+      <td class="small text-muted">{{ v.created_at }}</td>
+      <td>{{ v.created_by.name }}</td>
+      <td>{{ v.approved_by.name if v.approved_by else '—' }}</td>
+      <td class="small">{{ v.changelog[:120] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-muted">No versions yet. Use <code>POST /ops/capabilities/{id}/versions</code> to create the first.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if versions|length >= 2 %}
+<p class="text-muted small">Compare with <code>GET /ops/capabilities/{{ capability_id }}/compare?v1=&v2=</code></p>
+{% endif %}
+{% endblock %}

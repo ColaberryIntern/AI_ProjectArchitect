@@ -1,0 +1,162 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Analytics | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-3">Operations Analytics</h2>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ summary.capability_count }}</div>
+    <div class="text-muted small">Capabilities</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ summary.total_runs }}</div>
+    <div class="text-muted small">Total runs</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">{{ summary.total_hours_saved }}</div>
+    <div class="text-muted small">Hours saved</div>
+  </div></div>
+  <div class="col-md-3"><div class="stat-card text-center">
+    <div class="display-6">${{ '{:,.0f}'.format(summary.estimated_dollars_saved) }}</div>
+    <div class="text-muted small">Est. dollars saved</div>
+  </div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <h5>Department usage</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Department</th><th>Caps</th><th>Runs</th><th>Reliability</th><th>Avg rep</th></tr></thead>
+      <tbody>
+        {% for d in department_usage %}
+        <tr>
+          <td>{{ d.department }}</td>
+          <td>{{ d.capability_count }}</td>
+          <td>{{ d.total_runs }}</td>
+          <td>{{ d.reliability_pct }}%</td>
+          <td>{{ d.average_reputation }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">No usage yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col-lg-6">
+    <h5>ROI per capability</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Capability</th><th>Runs</th><th>Min saved</th><th>$ saved</th></tr></thead>
+      <tbody>
+        {% for r in roi.per_capability[:10] %}
+        <tr>
+          <td><a href="/ops/capabilities/{{ r.capability_id }}">{{ r.name }}</a></td>
+          <td>{{ r.succeeded_runs }}</td>
+          <td>{{ r.total_minutes_saved }}</td>
+          <td>${{ '{:,.0f}'.format(r.estimated_dollars_saved) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">No data.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-lg-6">
+    <h5>Bottlenecks (highest failure rates)</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Capability</th><th>Runs</th><th>Failure %</th></tr></thead>
+      <tbody>
+        {% for b in bottlenecks %}
+        <tr>
+          <td><a href="/ops/capabilities/{{ b.capability_id }}">{{ b.name }}</a></td>
+          <td>{{ b.total_runs }}</td>
+          <td>{{ b.failure_rate_pct }}%</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No bottlenecks detected — nice work.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col-lg-6">
+    <h5>Training gaps (popular, no walkthrough)</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Capability</th><th>Usage</th><th>Department</th></tr></thead>
+      <tbody>
+        {% for g in training_gaps %}
+        <tr>
+          <td><a href="/ops/capabilities/{{ g.capability_id }}">{{ g.name }}</a></td>
+          <td>{{ g.usage_count }}</td>
+          <td>{{ g.category or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No popular capability is missing a walkthrough.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-lg-6">
+    <h5>Growth (last 7 days vs prior 7)</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Capability</th><th>Last 7d</th><th>Prior 7d</th><th>Δ</th></tr></thead>
+      <tbody>
+        {% for g in top_by_growth %}
+        <tr>
+          <td><a href="/ops/capabilities/{{ g.capability_id }}">{{ g.name }}</a></td>
+          <td>{{ g.runs_last_7d }}</td>
+          <td>{{ g.runs_prior_7d }}</td>
+          <td><strong>{{ g.delta }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">Not enough run history yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col-lg-6">
+    <h5>Feedback pulse</h5>
+    <div class="card card-cap p-3">
+      <div class="row text-center">
+        <div class="col">
+          <div class="h3">{{ feedback_pulse.last_7d_average or '—' }}</div>
+          <div class="text-muted small">last 7d avg ({{ feedback_pulse.feedback_count_7d }} records)</div>
+        </div>
+        <div class="col">
+          <div class="h3">{{ feedback_pulse.last_30d_average or '—' }}</div>
+          <div class="text-muted small">last 30d avg</div>
+        </div>
+        <div class="col">
+          <div class="h3">{{ feedback_pulse.delta_vs_prior if feedback_pulse.delta_vs_prior is not none else '—' }}</div>
+          <div class="text-muted small">Δ vs prior week</div>
+        </div>
+      </div>
+    </div>
+
+    <h5 class="mt-3">Pipeline health</h5>
+    <table class="table table-sm card-cap p-2">
+      <thead><tr><th>Pipeline</th><th>Runs</th><th>Success</th></tr></thead>
+      <tbody>
+        {% for h in pipeline_health %}
+        <tr>
+          <td><a href="/ops/pipelines/{{ h.pipeline_id }}">{{ h.pipeline_id }}</a></td>
+          <td>{{ h.total_runs }}</td>
+          <td>{{ h.success_rate_pct }}%</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No pipeline runs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = category.key %}
+{% from "library/_word_cloud.html" import word_cloud, active_filter_strip %}
+
+{% block title %}Colaberry · Library · {{ category.label }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">{{ category.emoji }}</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">{{ category.label }}</h1>
+    <p class="text-muted mb-0">{{ category.description }}</p>
+  </div>
+  <div class="text-end">
+    <div style="font-size: 32px; font-weight: 700; color: var(--accent-library); line-height: 1;">{{ count }}</div>
+    <div class="text-muted" style="font-size: 12px;">{% if only_vetted %}vetted{% else %}showing{% endif %}{% if only_vetted and total_count != count %} (of {{ total_count }}){% endif %}</div>
+  </div>
+</div>
+
+{# Word cloud over tags — 4 KPIs always on #}
+{% if cat_cloud %}
+{{ word_cloud(
+    cat_cloud,
+    title="🔍 Tags across " ~ category.label,
+    subtitle="Click any tag to filter the inventory."
+) }}
+{% endif %}
+
+{# Active filter strip #}
+{% if tag_filter %}
+<div class="active-filter-strip" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); margin-bottom: var(--space-4);">
+  <span style="font-size: 12px; color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Filtering by tag:</span>
+  <a href="/library/{{ category.key }}?ws={{ workspace }}" class="ref-chip active" style="background: var(--accent-library); color: white; padding: 2px 8px; border-radius: var(--radius-pill); text-decoration: none;">{{ tag_filter }} ✕</a>
+</div>
+{% endif %}
+
+{# Filter chips #}
+<div class="d-flex gap-2 mb-4 align-items-center flex-wrap">
+  <span class="text-muted small">Filter:</span>
+  <a class="filter-chip {% if not only_vetted %}active{% endif %}" href="/library/{{ category.key }}?ws={{ workspace }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">All</a>
+  <a class="filter-chip {% if only_vetted %}active{% endif %}" href="/library/{{ category.key }}?ws={{ workspace }}&vetted=1{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">✓ Colaberry vetted only</a>
+  <span class="asset-tag ms-auto">📁 source: <code>{{ category.source }}</code></span>
+  <a href="/library/ingest?ws={{ workspace }}" class="btn btn-sm btn-outline-success">🌐 Ingest URL</a>
+  <a href="/library/submit?ws={{ workspace }}" class="btn btn-sm" style="background: var(--accent-library); color: white;">+ Submit manually</a>
+</div>
+
+{% if items %}
+
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📋 {{ category.label }} inventory</h2>
+    <span class="asset-meta">{{ count }} entries</span>
+  </div>
+  <div>
+    {% for item in items %}
+    {% set asset_id = item.name or item.id or "?" %}
+    <a class="asset-row" href="/library/{{ category.key }}/{{ asset_id }}?ws={{ workspace }}">
+      <div style="flex: 1; min-width: 0;">
+        <div class="asset-name">
+          {{ asset_id }}
+          {% if item._meta and item._meta.vetted %}
+            <span class="vetted-badge ms-1">Colaberry vetted</span>
+          {% endif %}
+        </div>
+        {% if item.description %}
+        <div class="asset-meta">{{ item.description }}</div>
+        {% endif %}
+        {% if item.tags %}
+        <div class="mt-1">
+          {% for t in item.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="text-end" style="min-width: 140px;">
+        <div class="asset-meta">{{ item.kind }}</div>
+        <div class="asset-meta">v{{ item.version }}</div>
+      </div>
+      <div class="text-end" style="min-width: 120px;">
+        {% if item._meta and item._meta.rating_count %}
+          <div class="stars">{% for _ in range(item._meta.rating_avg|round|int) %}★{% endfor %}<span class="stars-empty">{% for _ in range(5 - (item._meta.rating_avg|round|int)) %}★{% endfor %}</span></div>
+          <div class="asset-meta">{{ "%.1f"|format(item._meta.rating_avg) }} ({{ item._meta.rating_count }})</div>
+        {% else %}
+          <div class="asset-meta">no ratings yet</div>
+        {% endif %}
+      </div>
+      <div class="text-end" style="min-width: 90px;">
+        <div class="asset-meta">{{ item.owner }}</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% else %}
+
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📭 No {{ category.label|lower }}{% if only_vetted %} (vetted only){% endif %} yet</h2>
+  </div>
+  <div class="p-4">
+    {% if only_vetted %}
+    <p>No <strong>Colaberry-vetted</strong> {{ category.label|lower }} in this workspace yet. Try the full list, or submit one for review.</p>
+    <a href="/library/{{ category.key }}?ws={{ workspace }}" class="btn btn-outline-success me-2">Show all</a>
+    <a href="/library/submit?ws={{ workspace }}" class="btn" style="background: var(--accent-library); color: white;">+ Submit one</a>
+    {% elif category.status == 'pending' %}
+    <p>The backing store for <strong>{{ category.label }}</strong> isn't wired yet. You can still submit candidates — they'll land in the pending queue.</p>
+    <p class="text-muted mb-3">📁 Planned source: <code>{{ category.source }}</code></p>
+    <a href="/library/submit?ws={{ workspace }}" class="btn" style="background: var(--accent-library); color: white;">+ Submit one</a>
+    {% else %}
+    <p>No entries in this workspace. Submit one, or check candidates the scanner discovered.</p>
+    <a href="/library/submit?ws={{ workspace }}" class="btn me-2" style="background: var(--accent-library); color: white;">+ Submit one</a>
+    <a href="/library/candidates?ws={{ workspace }}" class="btn btn-outline-success">View candidates</a>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

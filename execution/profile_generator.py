@@ -10,6 +10,7 @@ an unparseable response.
 
 import json
 import logging
+import re
 
 from execution.llm_client import LLMClientError, LLMUnavailableError, chat, is_available
 
@@ -172,27 +173,113 @@ def _fallback_profile() -> dict:
     }
 
 
+def _extract_json_object(raw: str) -> dict | None:
+    """Best-effort extraction of a JSON object from an LLM response.
+
+    Handles three failure shapes seen in the wild:
+    1. Pure JSON — straight ``json.loads``
+    2. JSON wrapped in a markdown code fence (```json ... ``` or ``` ... ```)
+    3. JSON with leading/trailing prose (e.g. "Here is the profile: { ... }")
+
+    Returns the parsed dict or None if no JSON object can be extracted.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+
+    # Try 1: pure JSON
+    try:
+        result = json.loads(raw)
+        return result if isinstance(result, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    text = raw.strip()
+
+    # Try 2: strip a markdown code fence (with or without "json" tag)
+    fence = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL)
+    if fence:
+        inner = fence.group(1)
+        try:
+            result = json.loads(inner)
+            return result if isinstance(result, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Try 3: extract the first balanced { ... } block (handles prose around JSON)
+    start = text.find("{")
+    if start >= 0:
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        result = json.loads(candidate)
+                        return result if isinstance(result, dict) else None
+                    except (json.JSONDecodeError, TypeError):
+                        return None
+                    finally:
+                        # If this block didn't parse, try the NEXT { - but
+                        # for simplicity we only try the first balanced block.
+                        pass
+    return None
+
+
 def _parse_profile_response(raw_json: str) -> dict:
     """Parse LLM JSON response into a structured profile dict.
 
     Expects: {"fields": {...}, "derived": {...}}
     Falls back to generic options if parsing fails or result is invalid.
+
+    Robust to LLM-side variations: markdown code fences, prose around the
+    JSON, and a flat shape where the top-level dict already contains the
+    7 required field keys (no "fields" wrapper).
     """
-    try:
-        data = json.loads(raw_json)
-    except (json.JSONDecodeError, TypeError):
+    data = _extract_json_object(raw_json)
+    if data is None:
         logger.warning("Failed to parse profile JSON, using fallback")
         return _fallback_profile()
 
-    if not isinstance(data, dict) or "fields" not in data:
-        logger.warning("Profile JSON missing 'fields' key, using fallback")
-        return _fallback_profile()
-
-    fields = data["fields"]
     required_fields = [
         "problem_definition", "target_user", "value_proposition",
         "deployment_type", "ai_depth", "monetization_model", "mvp_scope",
     ]
+
+    # Accept two shapes:
+    #   1. {"fields": {...}, "derived": {...}}        — original schema
+    #   2. {"problem_definition": {...}, ..., "derived": {...}}  — flat
+    if "fields" in data and isinstance(data["fields"], dict):
+        # Shape 1
+        pass
+    elif all(k in data for k in required_fields):
+        # Shape 2: lift the top-level field keys into a nested "fields" dict
+        derived = data.get("derived")
+        flat_fields = {k: data[k] for k in required_fields}
+        data = {"fields": flat_fields}
+        if isinstance(derived, dict):
+            data["derived"] = derived
+    else:
+        logger.warning("Profile JSON missing 'fields' key, using fallback")
+        return _fallback_profile()
+
+    fields = data["fields"]
 
     # Validate all 7 fields exist and have valid structure
     for field_name in required_fields:

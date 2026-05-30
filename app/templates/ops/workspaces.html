@@ -1,0 +1,35 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Workspaces | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Workspaces</h2>
+<p class="text-muted">Lightweight team segmentation — a workspace scopes which capabilities and pipelines are surfaced. Global capabilities are visible everywhere; workspace-scoped capabilities are only visible in the owning workspace.</p>
+
+<div class="row g-3">
+  {% for w in workspaces %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card card-cap h-100 p-3">
+      <div class="d-flex justify-content-between mb-2">
+        <span class="badge badge-type">{{ w.visibility }}</span>
+        <small class="text-muted">{{ w.department or '—' }}</small>
+      </div>
+      <h6 style="color:#e6e6e6;">{{ w.name }}</h6>
+      <p class="small text-muted mb-2">{{ w.description[:160] }}</p>
+      <div class="small text-muted">
+        owner: {{ w.owner.name }} · capabilities: {{ w.capability_ids|length }} · pipelines: {{ w.pipeline_ids|length }}
+      </div>
+      {% if w.tags %}
+      <div class="mt-2">
+        {% for t in w.tags %}<span class="reason-chip">{{ t }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12 text-muted">
+    No workspaces yet. Create one via <code>POST /ops/workspaces</code> with body
+    <code>{"workspace_id":"...", "name":"...", "owner":{"name":"..."}}</code>.
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

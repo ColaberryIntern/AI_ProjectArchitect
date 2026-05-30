@@ -3,6 +3,7 @@
 from execution.feature_validation_service import (
     check_feature_dependencies,
     check_mcp_mapping,
+    check_requirement_invariants,
     check_skill_coverage,
     derive_mcp_servers,
     run_all_feature_validation,
@@ -226,3 +227,67 @@ class TestConfidenceScoring:
         result = run_all_feature_validation([], [], [])
         assert result["is_valid"] is True
         assert result["confidence"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# check_requirement_invariants
+# ---------------------------------------------------------------------------
+
+
+class TestCheckRequirementInvariants:
+    def test_all_clean(self):
+        features = [
+            {
+                "id": "REQ-001",
+                "priority": "must",
+                "dependencies": [],
+                "acceptance_criteria": [{"id": "AC-001-1", "given": "g", "when": "w", "then": "t"}],
+            }
+        ]
+        result = check_requirement_invariants(features)
+        assert result["passed"] is True
+        assert result["issues"] == []
+
+    def test_dependency_cycle_flagged(self):
+        features = [
+            {"id": "A", "dependencies": ["B"]},
+            {"id": "B", "dependencies": ["A"]},
+        ]
+        result = check_requirement_invariants(features)
+        assert result["passed"] is False
+        assert any(i["check"] == "dependency_cycle" for i in result["issues"])
+
+    def test_dangling_dependency_flagged(self):
+        features = [{"id": "A", "dependencies": ["MISSING"]}]
+        result = check_requirement_invariants(features)
+        assert result["passed"] is False
+        assert any(i["check"] == "dangling_dependency" for i in result["issues"])
+
+    def test_must_without_ac_flagged(self):
+        features = [{"id": "REQ-001", "priority": "must"}]
+        result = check_requirement_invariants(features)
+        assert result["passed"] is False
+        assert any(i["check"] == "missing_acceptance_criteria" for i in result["issues"])
+
+    def test_empty_nfr_threshold_flagged(self):
+        features = [
+            {
+                "id": "REQ-001",
+                "priority": "should",
+                "nfr": [{"category": "performance", "metric": "latency", "threshold": "  "}],
+            }
+        ]
+        result = check_requirement_invariants(features)
+        assert result["passed"] is False
+        assert any(i["check"] == "empty_nfr_threshold" for i in result["issues"])
+
+    def test_aggregator_includes_invariants(self):
+        # Run via the top-level aggregator and confirm an invariant error
+        # propagates into the issues list and flips is_valid to False.
+        features = [
+            {"id": "A", "priority": "must", "dependencies": ["MISSING"]}
+        ]
+        result = run_all_feature_validation(features, ["A"], [])
+        assert result["is_valid"] is False
+        assert any(i["check"] == "dangling_dependency" for i in result["issues"])
+        assert any(i["check"] == "missing_acceptance_criteria" for i in result["issues"])

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-worker
+  labels:
+    app: ops-platform
+    component: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ops-platform
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: ops-platform
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: colaberry/ops-platform:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "execution.ops_platform.worker_main"]
+          env:
+            - name: OPS_CACHE_BACKEND
+              value: "redis"
+            - name: OPS_REDIS_HOST
+              value: "ops-redis"
+            - name: OPS_REDIS_PORT
+              value: "6379"
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "512Mi"
+            limits:
+              cpu: "1500m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: ops-output
+              mountPath: /app/output
+      volumes:
+        - name: ops-output
+          persistentVolumeClaim:
+            claimName: ops-output-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-scheduler
+  labels:
+    app: ops-platform
+    component: scheduler
+spec:
+  # Scheduler is single-active by design (leader election via Redis lock).
+  # Running 2 replicas yields one leader and one warm standby.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ops-platform
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: ops-platform
+        component: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: colaberry/ops-platform:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "execution.ops_platform.scheduler_main"]
+          env:
+            - name: OPS_CACHE_BACKEND
+              value: "redis"
+            - name: OPS_REDIS_HOST
+              value: "ops-redis"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: ops-output
+              mountPath: /app/output
+      volumes:
+        - name: ops-output
+          persistentVolumeClaim:
+            claimName: ops-output-pvc

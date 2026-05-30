@@ -3,12 +3,17 @@
 import pytest
 
 from execution.feature_classifier import (
+    check_acceptance_criteria_present,
     check_feature_problem_mapping,
     check_intern_explainability,
     check_mutual_exclusions,
     classify_feature,
+    detect_dependency_cycles,
+    find_dangling_dependencies,
     flag_deferred,
     order_by_priority,
+    promote_to_requirement,
+    promote_features_to_requirements,
 )
 
 
@@ -200,3 +205,145 @@ class TestCheckMutualExclusions:
         )
         assert result["passed"] is False
         assert len(result["violations"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Requirement promotion + dependency-graph tests
+# ---------------------------------------------------------------------------
+
+
+class TestPromoteToRequirement:
+    def test_seeds_defaults_for_core(self):
+        feature = {
+            "id": "REQ-001",
+            "name": "Login",
+            "description": "x",
+            "rationale": "x",
+            "type": "core",
+            "problem_mapped_to": "auth",
+            "build_order": 1,
+        }
+        result = promote_to_requirement(feature)
+        assert result["requirement_type"] == "functional"
+        assert result["priority"] == "must"
+        assert result["dependencies"] == []
+        assert result["acceptance_criteria"] == []
+        assert result["nfr"] == []
+        assert result["traces_to"]["problem_id"] == "auth"
+        assert result["traces_to"]["chapter_ids"] == []
+
+    def test_seeds_defaults_for_optional(self):
+        feature = {
+            "id": "REQ-002",
+            "name": "Dark Mode",
+            "description": "x",
+            "rationale": "x",
+            "type": "optional",
+        }
+        result = promote_to_requirement(feature)
+        assert result["priority"] == "should"
+
+    def test_preserves_existing_fields(self):
+        feature = {
+            "id": "REQ-003",
+            "name": "Search",
+            "description": "x",
+            "rationale": "x",
+            "type": "core",
+            "priority": "could",
+            "actor": "broker",
+            "acceptance_criteria": [{"id": "AC-003-1", "given": "g", "when": "w", "then": "t"}],
+        }
+        result = promote_to_requirement(feature)
+        assert result["priority"] == "could"  # not overwritten
+        assert result["actor"] == "broker"
+        assert len(result["acceptance_criteria"]) == 1
+
+    def test_idempotent(self):
+        feature = {"id": "x", "name": "n", "description": "d", "rationale": "r", "type": "core"}
+        once = promote_to_requirement(feature)
+        twice = promote_to_requirement(once)
+        assert once == twice
+
+    def test_vectorized(self):
+        features = [
+            {"id": "A", "name": "n", "description": "d", "rationale": "r", "type": "core"},
+            {"id": "B", "name": "n", "description": "d", "rationale": "r", "type": "optional"},
+        ]
+        result = promote_features_to_requirements(features)
+        assert len(result) == 2
+        assert result[0]["priority"] == "must"
+        assert result[1]["priority"] == "should"
+
+
+class TestDetectDependencyCycles:
+    def test_acyclic(self):
+        features = [
+            {"id": "A", "dependencies": ["B"]},
+            {"id": "B", "dependencies": ["C"]},
+            {"id": "C", "dependencies": []},
+        ]
+        assert detect_dependency_cycles(features) == []
+
+    def test_self_loop(self):
+        features = [{"id": "A", "dependencies": ["A"]}]
+        cycles = detect_dependency_cycles(features)
+        assert len(cycles) == 1
+        assert "A" in cycles[0]
+
+    def test_two_node_cycle(self):
+        features = [
+            {"id": "A", "dependencies": ["B"]},
+            {"id": "B", "dependencies": ["A"]},
+        ]
+        cycles = detect_dependency_cycles(features)
+        assert len(cycles) >= 1
+        flat = {n for cyc in cycles for n in cyc}
+        assert flat == {"A", "B"}
+
+    def test_dangling_does_not_count_as_cycle(self):
+        features = [{"id": "A", "dependencies": ["X"]}]
+        assert detect_dependency_cycles(features) == []
+
+    def test_empty_input(self):
+        assert detect_dependency_cycles([]) == []
+
+
+class TestFindDanglingDependencies:
+    def test_all_resolve(self):
+        features = [{"id": "A", "dependencies": ["B"]}, {"id": "B"}]
+        assert find_dangling_dependencies(features) == []
+
+    def test_dangling_reported(self):
+        features = [{"id": "A", "dependencies": ["B", "X", "Y"]}, {"id": "B"}]
+        result = find_dangling_dependencies(features)
+        assert result == [{"feature_id": "A", "missing": ["X", "Y"]}]
+
+    def test_no_deps(self):
+        features = [{"id": "A"}, {"id": "B"}]
+        assert find_dangling_dependencies(features) == []
+
+
+class TestCheckAcceptanceCriteriaPresent:
+    def test_must_with_ac_passes(self):
+        features = [
+            {"id": "A", "priority": "must", "acceptance_criteria": [{"id": "AC-A-1"}]},
+        ]
+        result = check_acceptance_criteria_present(features)
+        assert result["passed"] is True
+
+    def test_must_without_ac_fails(self):
+        features = [{"id": "A", "priority": "must"}]
+        result = check_acceptance_criteria_present(features)
+        assert result["passed"] is False
+        assert "A" in result["missing_ac"]
+
+    def test_should_without_ac_passes(self):
+        features = [{"id": "A", "priority": "should"}]
+        result = check_acceptance_criteria_present(features)
+        assert result["passed"] is True
+
+    def test_must_with_empty_ac_list_fails(self):
+        features = [{"id": "A", "priority": "must", "acceptance_criteria": []}]
+        result = check_acceptance_criteria_present(features)
+        assert result["passed"] is False

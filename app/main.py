@@ -21,6 +21,8 @@ from app.routers import (
     final_assembly,
     generate,
     idea_intake,
+    library,
+    ops_platform,
     outline_approval,
     outline_generation,
     projects,
@@ -33,20 +35,30 @@ APP_DIR = Path(__file__).parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """App lifespan: start/stop background services."""
+    stops: list = []
     try:
         from execution.skill_scanner_scheduler import start_scheduler, stop_scheduler
         start_scheduler()
+        stops.append(stop_scheduler)
     except ImportError:
         logger.info("APScheduler not installed — skill scanner disabled")
-        stop_scheduler = None
     except Exception:
         logger.warning("Failed to start skill scanner scheduler", exc_info=True)
-        stop_scheduler = None
+
+    try:
+        from execution.products.library.use_case_scheduler import (
+            start_scheduler as uc_start, stop_scheduler as uc_stop,
+        )
+        uc_start()
+        stops.append(uc_stop)
+    except Exception:
+        logger.warning("Failed to start use-case scheduler", exc_info=True)
 
     yield
 
-    if stop_scheduler:
-        stop_scheduler()
+    for stop in stops:
+        try: stop()
+        except Exception: pass
 
 
 app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
@@ -73,6 +85,8 @@ app.include_router(chat.router, prefix="/projects/{slug}")
 app.include_router(demo.router, prefix="/projects/{slug}")
 app.include_router(generate.router)
 app.include_router(advisory_router)
+app.include_router(ops_platform.router)
+app.include_router(library.router)
 
 
 @app.exception_handler(ValueError)

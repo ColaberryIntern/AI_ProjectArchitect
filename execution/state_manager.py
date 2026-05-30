@@ -8,6 +8,7 @@ This is the single most critical script — every other component depends on it.
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ from pathlib import Path
 from config.blueprints import DEFAULT_BLUEPRINT_ID, resolve_blueprint
 from config.settings import MAX_CHAPTER_REVISIONS, OUTPUT_DIR, PHASE_ORDER
 from execution.build_depth import DEFAULT_DEPTH_MODE, DEPTH_MODES, resolve_depth_mode
+
+logger = logging.getLogger(__name__)
 
 PROFILE_REQUIRED_FIELDS = [
     "problem_definition",
@@ -772,6 +775,21 @@ def lock_outline(state: dict) -> dict:
         }
         for section in sections
     ]
+
+    # Spec-driven: emit the Requirements artifact at outline-lock time.
+    # Lazy import to avoid circular dependency at module load. Failures are
+    # logged but do not block the lock — a missing requirements.json is
+    # surfaced later by the spec gates, not by aborting outline approval.
+    try:
+        from execution.requirements_writer import write_requirements
+
+        slug = state.get("project", {}).get("slug")
+        if slug:
+            write_requirements(state, slug)
+    except Exception as e:
+        logger.warning(
+            "Failed to write requirements.json on outline lock: %s", e
+        )
 
     return state
 

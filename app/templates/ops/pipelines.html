@@ -1,0 +1,43 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Pipelines | Colaberry Ops{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="mb-1">Pipelines</h2>
+    <p class="text-muted mb-0">Composed workflows that chain multiple capabilities into one executable flow.</p>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for p in pipelines %}
+  <div class="col-md-6 col-lg-4">
+    <a href="/ops/pipelines/{{ p.pipeline_id }}" class="text-decoration-none">
+      <div class="card card-cap h-100 p-3">
+        <div class="d-flex justify-content-between mb-2">
+          <span class="badge badge-type">{{ p._source or 'built_in' }}</span>
+          <small class="text-muted">v{{ p.version }}</small>
+        </div>
+        <h6 class="mb-1" style="color: #e6e6e6;">{{ p.name }}</h6>
+        <p class="small text-muted mb-2">{{ (p.description or '')[:160] }}{% if p.description and p.description|length > 160 %}…{% endif %}</p>
+        <div class="small text-muted">
+          <strong>{{ p.steps|length }}</strong> step{{ '' if p.steps|length == 1 else 's' }} ·
+          {{ p.execution_strategy or 'sequential' }}
+          {% set h = health.get(p.pipeline_id) %}
+          {% if h %}· {{ h.success_rate_pct }}% success ({{ h.total_runs }} runs){% endif %}
+        </div>
+        {% if p.tags %}
+        <div class="mt-2">
+          {% for t in p.tags[:4] %}<span class="reason-chip">{{ t }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </a>
+  </div>
+  {% else %}
+  <div class="col-12 text-muted">
+    No pipelines yet. Drop a manifest under <code>plugins/pipelines/&lt;slug&gt;/manifest.json</code>
+    or compose one via <code>POST /ops/pipelines</code>.
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

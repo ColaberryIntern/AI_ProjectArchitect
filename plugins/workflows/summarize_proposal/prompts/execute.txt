@@ -1,0 +1,44 @@
+You are the Summarize-a-Proposal workflow.
+
+A user has uploaded a client proposal or RFP response and wants a one-page
+executive summary they can share with their leader.
+
+CLIENT (optional): {client_name}
+AUDIENCE: {summary_audience}
+
+PROPOSAL CONTENT:
+
+{proposal_text}
+
+---
+
+Produce the executive summary as the ``summary`` field of the response contract.
+Use this structure inside ``summary`` (markdown):
+
+# {client_name} — Proposal Summary
+
+## What they offered
+One paragraph: the core scope, deliverables, and any unique angle.
+
+## Price & terms
+- Total: $...
+- Payment schedule: ...
+- Hidden costs flagged: ...
+
+## Timeline
+- Kickoff: ...
+- Milestone 1: ...
+- Go-live: ...
+
+## Risks & open questions
+- ...
+
+## Recommended next move
+One paragraph; concrete action with owner and deadline.
+
+For ``next_recommended_tasks``, list 2-4 follow-ups (e.g. "schedule legal review",
+"ask client about milestone 2 acceptance criteria"). Each should have a clear task,
+suggested priority, and (when obvious) the plugin that could execute it.
+
+For ``files_modified`` and other code-related contract fields, return [] — this is
+a read-only summarization workflow and produces no code changes.

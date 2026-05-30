@@ -1,0 +1,152 @@
+# Redis Sentinel manifests for HA Redis.
+#
+# Topology
+# --------
+# - 3 Redis pods (1 master + 2 replicas)
+# - 3 Sentinel pods that watch the Redis pods
+# - All pods spread across nodes via topologySpreadConstraints
+# - Hard anti-affinity: no two Redis or Sentinel pods on the same node
+#
+# Operational truth
+# -----------------
+# - Failover detection is Sentinel's responsibility; the application's
+#   redis_sentinel.py polls check_failover() to discover when the master
+#   changes.
+# - The application's distributed_lock_v2 + distributed_event_bus do NOT
+#   themselves participate in election; they just talk to whichever node
+#   Sentinel currently designates as master.
+#
+# Tested compatibility: redis:7-alpine, configured via the platform's
+# redis_sentinel.configure_sentinel() helper.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ops-redis-ha
+spec:
+  serviceName: ops-redis-ha
+  replicas: 3
+  selector:
+    matchLabels: { app: ops-platform, component: redis }
+  template:
+    metadata:
+      labels: { app: ops-platform, component: redis }
+    spec:
+      affinity:
+        podAntiAffinity:
+          # HARD requirement — Redis pods MUST land on different nodes
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: { app: ops-platform, component: redis }
+              topologyKey: "kubernetes.io/hostname"
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "topology.kubernetes.io/zone"
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: ops-platform, component: redis }
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            - "--replica-announce-ip"
+            - "$(POD_IP)"
+            - "--replica-read-only"
+            - "no"
+          env:
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+          ports: [{ containerPort: 6379 }]
+          readinessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "200m", memory: "512Mi" }
+            limits:   { cpu: "1000m", memory: "1Gi" }
+          volumeMounts:
+            - { name: redis-data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata: { name: redis-data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ops-redis-ha }
+spec:
+  clusterIP: None      # headless service, lets Sentinel discover pods
+  selector: { app: ops-platform, component: redis }
+  ports:
+    - { name: redis, port: 6379, targetPort: 6379 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: ops-sentinel }
+spec:
+  serviceName: ops-sentinel
+  replicas: 3
+  selector:
+    matchLabels: { app: ops-platform, component: sentinel }
+  template:
+    metadata:
+      labels: { app: ops-platform, component: sentinel }
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: { app: ops-platform, component: sentinel }
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: sentinel
+          image: redis:7-alpine
+          command: ["redis-sentinel", "/etc/sentinel/sentinel.conf"]
+          ports: [{ containerPort: 26379 }]
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
+          volumeMounts:
+            - { name: sentinel-conf, mountPath: /etc/sentinel }
+      volumes:
+        - name: sentinel-conf
+          configMap: { name: ops-sentinel-conf }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ops-sentinel }
+spec:
+  clusterIP: None
+  selector: { app: ops-platform, component: sentinel }
+  ports:
+    - { name: sentinel, port: 26379, targetPort: 26379 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: ops-sentinel-conf }
+data:
+  sentinel.conf: |
+    sentinel monitor ops-master ops-redis-ha-0.ops-redis-ha 6379 2
+    sentinel down-after-milliseconds ops-master 5000
+    sentinel failover-timeout ops-master 30000
+    sentinel parallel-syncs ops-master 1
+---
+# Pod disruption budgets — never drop below quorum.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: ops-redis-pdb }
+spec:
+  minAvailable: 2
+  selector: { matchLabels: { app: ops-platform, component: redis } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: ops-sentinel-pdb }
+spec:
+  minAvailable: 2
+  selector: { matchLabels: { app: ops-platform, component: sentinel } }

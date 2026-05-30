@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plugin Manifest",
+  "description": "Canonical manifest for any plugin (workflow, agent, MCP server, skill, prompt pack). One manifest.json per plugin folder under /plugins/<type>/<slug>/. The platform's plugin loader validates every manifest against this schema before registering the capability.",
+  "type": "object",
+  "required": ["id", "name", "type", "category", "description", "owner", "version"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{2,63}$",
+      "description": "Stable URL-safe identifier. Must be unique across all plugins. Cannot change once published."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "type": {
+      "type": "string",
+      "enum": ["workflow", "agent", "mcp_server", "skill", "prompt_pack", "automation", "template"]
+    },
+    "category": {
+      "type": "string",
+      "description": "Top-level grouping for navigation (e.g. 'Sales', 'Engineering', 'Operations', 'Knowledge')."
+    },
+    "subcategory": { "type": "string" },
+    "description": {
+      "type": "string",
+      "minLength": 20,
+      "description": "One-paragraph summary aimed at non-technical employees."
+    },
+    "business_value": {
+      "type": "string",
+      "description": "Why a business user cares. Should not mention prompts, MCP, or LLMs."
+    },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "owner": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "team": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/io_field" },
+      "description": "What the user provides before running."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/io_field" },
+      "description": "What the workflow produces. Maps to the response contract fields where applicable."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Searchable keywords."
+    },
+    "launch_mode": {
+      "type": "string",
+      "enum": ["guided", "one_click", "scheduled", "background", "api_only"],
+      "default": "guided"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Other plugin IDs this one requires."
+    },
+    "related_tools": { "type": "array", "items": { "type": "string" } },
+    "related_agents": { "type": "array", "items": { "type": "string" } },
+    "related_mcp_servers": { "type": "array", "items": { "type": "string" } },
+    "difficulty": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "default": "beginner"
+    },
+    "estimated_time_savings": {
+      "type": "object",
+      "description": "Used by the impact / recommendation surfaces.",
+      "properties": {
+        "minutes_per_run": { "type": "number", "minimum": 0 },
+        "runs_per_week_estimate": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "training_video": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "enum": ["embedded", "external", "generated"] },
+        "url": { "type": ["string", "null"] },
+        "duration_seconds": { "type": ["number", "null"] },
+        "generated_walkthrough_path": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "feedback_enabled": { "type": "boolean", "default": true },
+    "prompt_path": {
+      "type": ["string", "null"],
+      "description": "Path (relative to the plugin folder) to the primary execution prompt."
+    },
+    "workflow_yaml_path": {
+      "type": ["string", "null"],
+      "description": "Path to workflow.yaml for multi-step workflows. Optional."
+    },
+    "readme_path": {
+      "type": ["string", "null"],
+      "description": "Path to the README. Defaults to README.md in the plugin folder."
+    },
+    "response_contract_required": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, the workflow runner refuses to accept an LLM response that does not validate against the response contract."
+    },
+    "mcp_servers_used": { "type": "array", "items": { "type": "string" } },
+    "agents_used": { "type": "array", "items": { "type": "string" } },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "summary"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "io_field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["string", "text", "number", "boolean", "file", "url", "json", "markdown", "list"]
+        },
+        "description": { "type": "string" },
+        "required": { "type": "boolean", "default": false },
+        "default": {},
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "For enum-like inputs, the allowed values."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

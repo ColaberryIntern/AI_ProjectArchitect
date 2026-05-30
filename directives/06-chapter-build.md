@@ -35,6 +35,18 @@ Each chapter must contain these 3 required elements, in order:
 - Assumptions about tools and environment
 - Detailed enough for an intern to act without guesswork
 
+### Step 2b: Cite Linked Requirements
+
+Before drafting, the chapter writer is given the Requirement objects whose `traces_to.outline_section_id` matches this chapter's outline section. The chapter MUST cite each linked Requirement inline in the form `[REQ-NNN]` (and where relevant, individual acceptance criteria as `[AC-NNN-N]`). Citations should appear in the body of Implementation Guidance, not just at the end.
+
+Examples:
+- "The settlement service exposes `POST /v1/settlements` to receive payment notifications [REQ-014]; on success it emits a `settlement.created` event matching `[AC-014-1]`."
+- "Ingestion accepts BOL PDFs and extracts the load number per [REQ-005] [AC-005-1] [AC-005-2]."
+
+A chapter that fails to cite any of its linked Requirements is rejected by the Completeness gate (citation-presence check).
+
+Once the chapter is approved, the chapter writer adds this chapter's index/id to each linked Requirement's `traces_to.chapter_ids` and re-emits `output/{slug}/specs/requirements.json` via `requirements_writer.write_requirements()`. This keeps the Requirement Coverage gate (Gate 6) accurate.
+
 ### Step 3: Save and Record
 Save chapter content as a Markdown file. Update state via `state_manager.record_chapter_status(state, chapter_index, "draft", content_path)`.
 

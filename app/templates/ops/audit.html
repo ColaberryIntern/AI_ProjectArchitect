@@ -1,0 +1,34 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Audit Log | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Audit Log</h2>
+<p class="text-muted">Immutable append-only record of every mutating action in the ops platform. Filter via the API at <code>/ops/audit?days=&entity_id=&action=</code>.</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h3">{{ stats.total }}</div><div class="text-muted small">Entries last {{ days }}d</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h3">{{ stats.by_entity_type|length }}</div><div class="text-muted small">Entity types</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h3">{{ stats.by_action|length }}</div><div class="text-muted small">Distinct actions</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h3">{{ stats.by_actor|length }}</div><div class="text-muted small">Distinct actors</div></div></div>
+</div>
+
+<table class="table card-cap p-2">
+  <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Entity</th><th>State change</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="small text-muted">{{ e.timestamp }}</td>
+      <td>{{ e.actor.name }}{% if e.actor.system %} <span class="reason-chip">system</span>{% endif %}</td>
+      <td><code>{{ e.action }}</code></td>
+      <td>{{ e.entity_type }}: <code style="color:#79c0ff;">{{ e.entity_id }}</code></td>
+      <td class="small text-muted">
+        {% if e.previous_state %}<div>was: {{ e.previous_state }}</div>{% endif %}
+        {% if e.new_state %}<div>now: {{ e.new_state }}</div>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-muted">No audit entries in the lookback window.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

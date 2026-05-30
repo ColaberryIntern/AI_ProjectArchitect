@@ -142,6 +142,50 @@ class TestParseProfileResponse:
         result = _parse_profile_response(json.dumps(data))
         assert result == _fallback_profile()
 
+
+class TestParseProfileResponseRobustness:
+    """Robustness tests for variations seen with newer models (gpt-4.1-mini)."""
+
+    def test_markdown_code_fence_with_json_tag(self):
+        # gpt-4.1-mini sometimes wraps JSON in ```json ... ``` despite
+        # response_format json_object being set.
+        data = _make_valid_llm_response()
+        wrapped = "```json\n" + json.dumps(data) + "\n```"
+        result = _parse_profile_response(wrapped)
+        assert "fields" in result
+        assert "derived" in result
+
+    def test_markdown_code_fence_no_tag(self):
+        data = _make_valid_llm_response()
+        wrapped = "```\n" + json.dumps(data) + "\n```"
+        result = _parse_profile_response(wrapped)
+        assert "fields" in result
+
+    def test_prose_around_json(self):
+        # Some models prepend a sentence before the JSON
+        data = _make_valid_llm_response()
+        prose = "Here is the requested profile:\n" + json.dumps(data)
+        result = _parse_profile_response(prose)
+        assert "fields" in result
+
+    def test_flat_shape_lifted_to_fields(self):
+        # Some models return the 7 field keys at the top level instead of
+        # nested under "fields". Lift them.
+        data = _make_valid_llm_response()
+        flat = {**data["fields"], "derived": data["derived"]}
+        result = _parse_profile_response(json.dumps(flat))
+        assert "fields" in result
+        for k in FALLBACK_OPTIONS:
+            assert k in result["fields"]
+        assert result["derived"]["technical_constraints"] == ["REST API required", "Must support SSO"]
+
+    def test_extracts_first_json_block_when_followed_by_prose(self):
+        # First valid JSON object followed by trailing prose
+        data = _make_valid_llm_response()
+        text = json.dumps(data) + "\n\nLet me know if you need any changes!"
+        result = _parse_profile_response(text)
+        assert "fields" in result
+
     def test_bad_recommended_defaults_to_first(self):
         data = _make_valid_llm_response()
         data["fields"]["ai_depth"]["recommended"] = "nonexistent_value"

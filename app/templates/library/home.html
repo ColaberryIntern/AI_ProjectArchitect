@@ -1,0 +1,151 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "home" %}
+{% from "library/_word_cloud.html" import word_cloud %}
+
+{% block content %}
+
+<div class="library-hero">
+  <div class="d-flex align-items-center gap-4">
+    <div style="font-size: 64px; line-height: 1;">📚</div>
+    <div>
+      <h1>Colaberry Library</h1>
+      <p>Real use cases. Real tools. The team's shared, vetted, growing playbook.</p>
+      <div class="mt-3 d-flex flex-wrap gap-3 align-items-center" style="font-size: 14px;">
+        <strong>{{ use_case_count }}</strong> use cases &nbsp;·&nbsp;
+        <strong>{{ total_assets }}</strong> assets &nbsp;·&nbsp;
+        <strong>{{ categories|length }}</strong> categories &nbsp;·&nbsp;
+        🏢 workspace: <strong>{{ workspace }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── WHAT'S HOT — word cloud (4 KPIs always on) ──────────────── #}
+{% if home_cloud %}
+{{ word_cloud(
+    home_cloud,
+    title="🔍 What's hot — across every use case",
+    subtitle="Type in the top search to filter live. Tap any word to drill into matching use cases. " ~
+                "<a href='/library/use-cases?ws=" ~ workspace ~ "' style='color: var(--accent-library); font-weight: 600;'>See all use cases →</a>"
+) }}
+{% endif %}
+
+{# ── USE CASES LEAD ─────────────────────────────────────────── #}
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>🎯 Real-world use cases</h2>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="asset-meta">{{ top_use_cases|length }} of {{ use_case_count }}</span>
+      <a href="/library/use-cases?ws={{ workspace }}" class="asset-tag" style="color: var(--accent-library);">See all →</a>
+    </div>
+  </div>
+  <div class="p-4">
+    {% if top_use_cases %}
+    <div class="row g-3">
+      {% for uc in top_use_cases %}
+      <div class="col-md-6">
+        <a href="/library/use-cases/{{ uc.use_case_id }}?ws={{ workspace }}" class="asset-tile" style="height: 100%;">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="asset-tag" style="font-size: 11px;">
+              {% if uc.complexity == 'quick_win' %}⚡ Quick win
+              {% elif uc.complexity == 'advanced' %}🧠 Advanced
+              {% else %}📐 Moderate{% endif %}
+            </span>
+            {% if uc.industry %}<span class="asset-tag" style="font-size: 11px;">🏢 {{ uc.industry }}</span>{% endif %}
+          </div>
+          <h3 style="font-size: 16px; margin-bottom: 8px;">{{ uc.title }}</h3>
+          <div style="color: var(--fg-muted); font-size: 13px; margin-bottom: 6px;">
+            👤 {{ uc.persona.split(',')[0] if uc.persona else 'multi-team' }}
+          </div>
+          <div style="font-size: 13px;">
+            {{ (uc.summary or uc.problem)[:140] }}{% if (uc.summary or uc.problem)|length > 140 %}…{% endif %}
+          </div>
+          {% if uc.outcome_metric %}
+          <div class="mt-2" style="font-size: 12px; color: var(--accent-library); font-weight: 600;">
+            📊 {{ uc.outcome_metric[:120] }}
+          </div>
+          {% endif %}
+          <div class="mt-2 d-flex justify-content-between align-items-center" style="font-size: 12px; color: var(--fg-muted);">
+            <span>🧩 {{ uc.tools_used|length }} tools</span>
+            {% if uc.rating_count %}<span>⭐ {{ "%.1f"|format(uc.rating_avg) }} ({{ uc.rating_count }})</span>{% endif %}
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="text-center mt-4">
+      <form method="post" action="/library/use-cases/generate?ws={{ workspace }}&as={{ actor }}" class="d-inline">
+        <button class="btn btn-outline-success">+ Generate a new use case</button>
+      </form>
+    </div>
+    {% else %}
+    <p>No use cases yet. The scheduler runs nightly — or kick one off now:</p>
+    <form method="post" action="/library/use-cases/generate?ws={{ workspace }}&as={{ actor }}">
+      <button class="btn" style="background: var(--accent-library); color: white;">+ Generate the first use case</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{# ── FEATURED / DAILY ────────────────────────────────────── #}
+{% if featured %}
+<div class="of-the-day">
+  <div class="d-flex justify-content-between align-items-start">
+    <div style="flex: 1;">
+      <div class="label">{% if featured.category == 'prompts' %}💡 Prompt of the Day{% elif featured.category == 'workflows' %}🎼 Workflow of the Day{% else %}🌟 Featured Today{% endif %}</div>
+      <h3 class="mt-2 mb-2"><a href="{{ featured.url }}?ws={{ workspace }}" style="color: #78350f;">{{ featured.name }}</a></h3>
+      <p class="mb-2">{{ featured.description or "(run enrichment for a richer description)" }}</p>
+      <div class="d-flex gap-3 align-items-center" style="font-size: 13px;">
+        {% if featured.vetted %}<span class="vetted-badge">Colaberry vetted</span>{% endif %}
+        {% if featured.rating_avg %}
+          <span class="stars">{% for _ in range(featured.rating_avg|int) %}★{% endfor %}<span class="stars-empty">{% for _ in range(5 - featured.rating_avg|int) %}★{% endfor %}</span></span>
+          <span>{{ "%.1f"|format(featured.rating_avg) }} ({{ featured.rating_count }})</span>
+        {% endif %}
+        <span>{{ featured.category }} · v{{ featured.version }}</span>
+      </div>
+    </div>
+    <div style="font-size: 56px; line-height: 1;">⭐</div>
+  </div>
+</div>
+{% endif %}
+
+{# ── BROWSE BY CATEGORY ──────────────────────────────────── #}
+<h3 class="mt-4 mb-3">📦 Browse by category</h3>
+<div class="row g-3">
+  {% for cat in categories %}
+  <div class="col-md-4 col-lg-3">
+    <a class="asset-tile" href="/library/{{ cat.key }}?ws={{ workspace }}">
+      <div class="icon">{{ cat.emoji }}</div>
+      <h3>{{ cat.label }}</h3>
+      <div class="count">{{ counts.get(cat.key, 0) }}</div>
+      <div class="desc">{{ cat.description }}</div>
+      <div>
+        <span class="badge-status {% if cat.status == 'live' %}badge-live{% else %}badge-pending{% endif %}">
+          {% if cat.status == 'live' %}● live{% else %}○ TBD{% endif %}
+        </span>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="mt-5 d-flex gap-3 flex-wrap">
+  <div class="stat-mini">
+    <div class="n">{{ use_case_count }}</div>
+    <div class="l">Use cases</div>
+  </div>
+  <div class="stat-mini">
+    <div class="n">{{ total_assets }}</div>
+    <div class="l">Total assets</div>
+  </div>
+  <div class="stat-mini">
+    <div class="n">{{ new_candidates_count }}</div>
+    <div class="l">New this week</div>
+  </div>
+  <div class="stat-mini">
+    <div class="n">{{ pending_count }}</div>
+    <div class="l">Pending review</div>
+  </div>
+</div>
+
+{% endblock %}

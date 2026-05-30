@@ -1,0 +1,67 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Discovery Queue | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Discovery Queue</h2>
+<p class="text-muted">Repeated workflow sequences observed in real operator usage. Approve to mark for publishing; publish to materialize as a saved pipeline. Rejections are remembered so we don't re-surface the same suggestion.</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-2"><div class="stat-card text-center"><div class="h3">{{ stats.pending }}</div><div class="text-muted small">Pending</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="h3">{{ stats.approved }}</div><div class="text-muted small">Approved</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="h3">{{ stats.published }}</div><div class="text-muted small">Published</div></div></div>
+  <div class="col-md-2"><div class="stat-card text-center"><div class="h3">{{ stats.rejected }}</div><div class="text-muted small">Rejected</div></div></div>
+  <div class="col-md-4">
+    <div class="stat-card">
+      Filter:
+      <a class="dept-pill" href="/ops/discovery-queue">all</a>
+      <a class="dept-pill" href="/ops/discovery-queue?state=pending">pending</a>
+      <a class="dept-pill" href="/ops/discovery-queue?state=approved">approved</a>
+      <a class="dept-pill" href="/ops/discovery-queue?state=published">published</a>
+    </div>
+  </div>
+</div>
+
+<table class="table card-cap p-2">
+  <thead><tr><th>Sequence</th><th>Occurrences</th><th>Initiators</th><th>Last seen</th><th>State</th><th></th></tr></thead>
+  <tbody>
+    {% for it in items %}
+    <tr id="item-{{ it.queue_id }}">
+      <td>
+        <code style="color:#79c0ff;">{{ it.capability_names|join(' → ') }}</code>
+      </td>
+      <td>{{ it.occurrences }}</td>
+      <td>{{ it.distinct_initiators }}</td>
+      <td class="small text-muted">{{ it.last_observed }}</td>
+      <td><span class="reason-chip">{{ it.state }}</span></td>
+      <td>
+        {% if it.state == 'pending' %}
+        <button class="btn btn-sm btn-outline-light"
+                onclick="action('{{ it.queue_id }}', 'approve')">Approve</button>
+        <button class="btn btn-sm btn-outline-light"
+                onclick="action('{{ it.queue_id }}', 'reject')">Reject</button>
+        {% elif it.state == 'approved' %}
+        <button class="btn btn-sm btn-primary"
+                onclick="action('{{ it.queue_id }}', 'publish')">Publish</button>
+        {% elif it.state == 'published' %}
+        <a href="/ops/pipelines/{{ it.published_pipeline_id }}">View pipeline</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-muted">No items yet. Run some workflows so the discovery engine has something to learn from.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+async function action(queueId, kind) {
+  const res = await fetch(`/ops/discovery-queue/${queueId}/${kind}`, { method: 'POST' });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const body = await res.json();
+    alert('Action failed: ' + (body.error || res.statusText));
+  }
+}
+</script>
+{% endblock %}

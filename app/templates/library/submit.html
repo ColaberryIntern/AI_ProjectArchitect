@@ -1,0 +1,80 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "submit" %}
+
+{% block title %}Colaberry · Library · Submit{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">➕</div>
+  <div>
+    <h1 class="mb-1">Submit to the Library</h1>
+    <p class="text-muted mb-0">Share something the team would find useful. Goes to the pending review queue.</p>
+  </div>
+</div>
+
+<div class="library-card">
+  <div class="library-card-header"><h2>📝 New asset</h2></div>
+  <div class="p-4">
+    <form method="post" action="/library/submit?ws={{ workspace }}&as={{ actor }}">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Category *</label>
+          <select name="category" class="form-select" required>
+            {% for cat in categories %}
+            <option value="{{ cat.key }}">{{ cat.emoji }} {{ cat.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Name *</label>
+          <input name="name" class="form-control" required placeholder="e.g. RFP Summary Prompt v2">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">What it does *</label>
+          <textarea name="description" rows="3" class="form-control" required
+                    placeholder="One paragraph — what this asset accomplishes, who it's for, why it's worth keeping."></textarea>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">How to use it</label>
+          <textarea name="how_to_use" rows="4" class="form-control"
+                    placeholder="Step-by-step instructions or invocation. Keep it concrete."></textarea>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Example</label>
+          <textarea name="example" rows="4" class="form-control"
+                    placeholder="A concrete example — input + output, or sample code, or a screenshot URL."></textarea>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Tags (comma-separated)</label>
+          <input name="tags" class="form-control" placeholder="sales, summarization, gpt-4">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Source (URL or path, optional)</label>
+          <input name="source" class="form-control" placeholder="https://... or path/to/file.md">
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex align-items-center gap-3">
+        <button class="btn" style="background: var(--accent-library); color: white;">Submit for review</button>
+        <span class="text-muted small">Submitting as <strong>{{ actor }}</strong> · workspace <strong>{{ workspace }}</strong></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="mt-4 p-4 rounded" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
+  <h5>🧭 What happens next?</h5>
+  <ol class="mb-0 text-muted">
+    <li>Your submission lands in the <strong>pending review queue</strong>.</li>
+    <li>A Colaberry curator reviews it for clarity, originality, and fit.</li>
+    <li>If accepted, it gets a <span class="vetted-badge">Colaberry vetted</span> badge and appears in the catalog.</li>
+    <li>Other team members can rate, comment, and improve it over time.</li>
+  </ol>
+</div>
+
+{% endblock %}

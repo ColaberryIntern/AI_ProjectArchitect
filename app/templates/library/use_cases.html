@@ -1,0 +1,87 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "use_cases" %}
+{% from "library/_word_cloud.html" import word_cloud, refinement_chips, active_filter_strip %}
+
+{% block title %}🎯 Use Cases · Colaberry · Library{% endblock %}
+
+{% block content %}
+
+<div class="library-hero">
+  <div class="d-flex align-items-center gap-4">
+    <div style="font-size: 64px; line-height: 1;">🎯</div>
+    <div class="flex-grow-1">
+      <h1>Use Cases</h1>
+      <p>Real business problems and the Colaberry tools that solve them. Find one that matches your situation — clone the walkthrough, swap in your data.</p>
+      <div class="mt-3" style="font-size: 14px;">
+        <strong>{{ cases|length }}</strong>{% if filters %} of {{ total_cases }}{% endif %} use cases · auto-grows nightly · contributed by the team
+      </div>
+    </div>
+    <form method="post" action="/library/use-cases/generate?ws={{ workspace }}&as={{ actor }}">
+      <button class="btn" style="background: white; color: var(--accent-library); font-weight: 600;">+ Generate one now</button>
+    </form>
+  </div>
+</div>
+
+{# ── Word cloud — 4 KPIs always on ──────────────────────────── #}
+{{ word_cloud(
+    cloud_terms,
+    title="🔍 What's hot — across every use case",
+    subtitle="Type in the top search to filter live. Click any word to commit the filter to the URL."
+) }}
+
+{# ── Active filter strip + refinement chips ────────────────── #}
+{{ active_filter_strip(filters, "/library/use-cases", workspace) }}
+{% if chips %}{{ refinement_chips(chips, "Refine further:") }}{% endif %}
+
+<div class="d-flex gap-2 mb-4 align-items-center flex-wrap">
+  <span class="text-muted small">Sort:</span>
+  <a class="filter-chip {% if sort == 'newest' %}active{% endif %}" href="/library/use-cases?ws={{ workspace }}&sort=newest{% for k,v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">🆕 Newest</a>
+  <a class="filter-chip {% if sort == 'rating' %}active{% endif %}" href="/library/use-cases?ws={{ workspace }}&sort=rating{% for k,v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">⭐ Top rated</a>
+  <a class="filter-chip {% if sort == 'persona' %}active{% endif %}" href="/library/use-cases?ws={{ workspace }}&sort=persona{% for k,v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">👤 By persona</a>
+  <a class="filter-chip ms-3 {% if only_vetted %}active{% endif %}" href="/library/use-cases?ws={{ workspace }}&sort={{ sort }}&vetted=1{% for k,v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">✓ Colaberry vetted only</a>
+</div>
+
+{% if cases %}
+<div class="row g-3" id="uc-results-grid">
+  {% for uc in cases %}
+  <div class="col-md-6 col-lg-4 uc-card"
+       data-search-text="{{ uc.title }} {{ uc.summary }} {{ uc.persona }} {{ uc.industry }} {{ uc.problem }} {{ uc.solution }} {{ uc.outcome_metric }} {{ uc.tags|join(' ') }}">
+    <a href="/library/use-cases/{{ uc.use_case_id }}?ws={{ workspace }}" class="asset-tile" style="height: 100%; display: flex; flex-direction: column;">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <span class="asset-tag" style="font-size: 11px;">
+          {% if uc.complexity == 'quick_win' %}⚡ Quick win
+          {% elif uc.complexity == 'advanced' %}🧠 Advanced
+          {% else %}📐 Moderate{% endif %}
+        </span>
+        {% if uc.vetted %}<span class="vetted-badge" style="font-size: 10px;">vetted</span>{% endif %}
+      </div>
+      <h3 style="font-size: 17px; margin-bottom: 8px;">{{ uc.title }}</h3>
+      <div style="color: var(--fg-muted); font-size: 13px; margin-bottom: 8px; flex-grow: 1;">
+        {{ uc.summary or uc.problem[:160] }}
+      </div>
+      <div class="d-flex justify-content-between align-items-end" style="font-size: 12px; color: var(--fg-muted);">
+        <div>
+          {% if uc.persona %}👤 {{ uc.persona.split(',')[0] }}{% endif %}
+        </div>
+        <div>
+          {% if uc.tools_used %}🧩 {{ uc.tools_used|length }} tools{% endif %}
+          {% if uc.rating_count %} · ⭐ {{ "%.1f"|format(uc.rating_avg) }}{% endif %}
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="library-card">
+  <div class="library-card-header"><h2>📭 No use cases yet</h2></div>
+  <div class="p-4">
+    <p>The use-case generator hasn't run yet for this workspace.</p>
+    <form method="post" action="/library/use-cases/generate?ws={{ workspace }}&as={{ actor }}">
+      <button class="btn" style="background: var(--accent-library); color: white;">+ Generate the first one</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

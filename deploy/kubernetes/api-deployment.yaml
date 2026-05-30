@@ -1,0 +1,109 @@
+# Kubernetes manifests for the AI Operations Platform — api deployment.
+#
+# Scope honesty
+# -------------
+# - These are minimal manifests suitable for a small enterprise deployment.
+# - HPA is provided as a placeholder; tune resource requests/limits against
+#   your workload before enabling autoscaling.
+# - Storage: the output directory uses a PersistentVolumeClaim; multi-replica
+#   API requires ReadWriteMany (RWX) — switch to a real object store
+#   integration when you scale past one host's filesystem.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-api
+  labels:
+    app: ops-platform
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ops-platform
+      component: api
+  template:
+    metadata:
+      labels:
+        app: ops-platform
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: colaberry/ops-platform:latest
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OPS_ENFORCE_RBAC
+              value: "true"
+            - name: OPS_CACHE_BACKEND
+              value: "redis"
+            - name: OPS_REDIS_HOST
+              value: "ops-redis"
+            - name: OPS_REDIS_PORT
+              value: "6379"
+            - name: OPS_AUDIT_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ops-secrets
+                  key: audit-hmac-key
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /ops/system/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/system/health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: ops-output
+              mountPath: /app/output
+      volumes:
+        - name: ops-output
+          persistentVolumeClaim:
+            claimName: ops-output-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-api
+spec:
+  selector:
+    app: ops-platform
+    component: api
+  ports:
+    - port: 80
+      targetPort: 8000
+      name: http
+---
+# HPA placeholder. Validate metrics-server is installed before enabling.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ops-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ops-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

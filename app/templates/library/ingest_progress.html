@@ -1,0 +1,153 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "ingest" %}
+
+{% block title %}Colaberry · Library · Ingest progress{% endblock %}
+
+{% block content %}
+{% set header = status.header %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb" style="font-size: 13px;">
+    <li class="breadcrumb-item"><a href="/library/?ws={{ workspace }}">📚 Library</a></li>
+    <li class="breadcrumb-item"><a href="/library/ingest?ws={{ workspace }}">🌐 Ingest</a></li>
+    <li class="breadcrumb-item active">{{ batch_id }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-start mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">
+    {% if header.status == 'done' %}✅{% elif header.status == 'running' %}⏳{% else %}❌{% endif %}
+  </div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">{{ header.source }}</h1>
+    <p class="text-muted mb-0">Batch {{ batch_id }} · by {{ header.submitter }} · started {{ header.created_at }}</p>
+  </div>
+  <div class="text-end">
+    <div style="font-size: 32px; font-weight: 700; color: var(--accent-library); line-height: 1;">
+      {{ status.processed }} / {{ status.total }}
+    </div>
+    <div class="asset-meta">processed</div>
+  </div>
+</div>
+
+<!-- Progress bar -->
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📊 Live status</h2>
+    <span class="asset-meta" id="poll-indicator">polling…</span>
+  </div>
+  <div class="p-4">
+    <div style="background: var(--bg-sunken); height: 16px; border-radius: 8px; overflow: hidden;">
+      <div id="progress-bar"
+           style="background: var(--accent-library); height: 100%; width: {{ ((status.processed / status.total * 100) if status.total else 0)|round }}%; transition: width 0.5s;"></div>
+    </div>
+    <div class="mt-3 d-flex gap-3 flex-wrap" id="status-breakdown">
+      {% for k, v in status.by_status.items() %}
+        <span class="asset-tag">{{ k }}: <strong>{{ v }}</strong></span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="library-card mt-4">
+  <div class="library-card-header">
+    <h2>📋 Latest results</h2>
+  </div>
+  <div id="items-list">
+    {% for item in status.recent %}
+    <div class="asset-row" style="cursor: default;">
+      <div style="flex: 1; min-width: 0;">
+        <div class="asset-name">
+          {% if item.status == 'submitted' %}
+            ✅ {{ item.asset_name or '(no name)' }}
+            {% if item.auto_vetted %}<span class="vetted-badge ms-1">Auto-vetted</span>{% endif %}
+          {% elif item.status == 'failed' %}
+            ❌ {{ item.source_url }}
+          {% else %}
+            ⏳ {{ item.source_url }}
+          {% endif %}
+        </div>
+        <div class="asset-meta">
+          {% if item.category %}<span class="asset-tag">{{ item.category }}</span>{% endif %}
+          {% if item.confidence is not none %}<span class="asset-tag">conf {{ '%.0f%%'|format(item.confidence * 100) }}</span>{% endif %}
+          {% if item.quality_score %}<span class="asset-tag">quality {{ '%.0f%%'|format(item.quality_score * 100) }}</span>{% endif %}
+          {% if item.error %}<span class="asset-tag" style="background: #fee2e2; color: #991b1b;">{{ item.error }}</span>{% endif %}
+        </div>
+        {% if item.warnings %}
+        <div class="mt-1">
+          {% for w in item.warnings %}<span class="asset-tag" style="background: #fef3c7; color: #92400e;">⚠ {{ w }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="text-end" style="min-width: 130px;">
+        <div class="asset-meta">{{ item.status }}</div>
+        {% if item.finished_at %}<div class="asset-meta">{{ item.finished_at }}</div>{% endif %}
+      </div>
+    </div>
+    {% else %}
+    {% if status.total == 0 %}
+    <div class="p-4">
+      <div class="d-flex align-items-start gap-3">
+        <div style="font-size: 32px;">🤔</div>
+        <div>
+          <h5 class="mb-2">Nothing matched the file-pattern set</h5>
+          <p class="mb-2">The walker reached the repo but found no files matching skills / agents / prompts / MCP / capability / template / workflow patterns at the recognized paths.</p>
+          <p class="mb-1"><strong>Common causes:</strong></p>
+          <ul class="mb-3">
+            <li>Repo's content lives in non-standard paths (e.g. <code>cookbook/</code>, <code>examples/</code>)</li>
+            <li>Awesome-list style: all content is in one root README → try the single-URL ingest of the README instead</li>
+            <li>GitHub API rate limit hit (60 req/hr without <code>GITHUB_TOKEN</code>)</li>
+          </ul>
+          <p class="mb-0">Try the <strong>single-URL ingest</strong> of the README, or set <code>GITHUB_TOKEN</code> env var for higher rate limits, or open an issue with the repo URL.</p>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">Queued — waiting for the first worker tick.</div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mt-4 d-flex gap-2 flex-wrap">
+  {% if header.status == 'done' %}
+  <a href="/library/ingest/{{ batch_id }}/report?ws={{ workspace }}&as={{ actor }}" class="btn" style="background: var(--accent-library); color: white;">📊 View full report</a>
+  {% endif %}
+  <a href="/library/pending?ws={{ workspace }}&as={{ actor }}" class="btn btn-outline-success">View pending queue</a>
+  <a href="/library/ingest?ws={{ workspace }}&as={{ actor }}" class="btn btn-outline-secondary">Back to Ingest</a>
+</div>
+
+<script>
+const BATCH_ID = "{{ batch_id }}";
+const WORKSPACE = "{{ workspace }}";
+
+async function poll() {
+  try {
+    const r = await fetch(`/library/ingest/${BATCH_ID}/json?ws=${WORKSPACE}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.header) return;
+    const pct = j.total ? (j.processed / j.total * 100) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('status-breakdown').innerHTML =
+      Object.entries(j.by_status || {})
+        .map(([k, v]) => `<span class="asset-tag">${k}: <strong>${v}</strong></span>`)
+        .join('');
+    if (j.header.status === 'done' || j.header.status === 'failed') {
+      document.getElementById('poll-indicator').textContent =
+        j.header.status === 'done' ? '✅ complete' : '❌ failed';
+      // Reload once to render the full results from server-side
+      setTimeout(() => location.reload(), 1500);
+    }
+  } catch (e) {
+    document.getElementById('poll-indicator').textContent = 'poll error';
+  }
+}
+
+// Only poll while running
+{% if header.status == 'running' %}
+  setInterval(poll, 1500);
+{% endif %}
+</script>
+
+{% endblock %}

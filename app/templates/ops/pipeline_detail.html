@@ -1,0 +1,86 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}{{ pipeline.name }} | Pipelines{% endblock %}
+{% block content %}
+<div class="mb-3"><a href="/ops/pipelines">&larr; All pipelines</a></div>
+
+<h2 class="mb-1">{{ pipeline.name }}</h2>
+<p class="text-muted">{{ pipeline.description }}</p>
+
+<div class="row mb-4">
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h4">{{ pipeline.steps|length }}</div><div class="text-muted small">Steps</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h4">{{ pipeline.execution_strategy or 'sequential' }}</div><div class="text-muted small">Strategy</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h4">{{ pipeline.department or '—' }}</div><div class="text-muted small">Department</div></div></div>
+  <div class="col-md-3"><div class="stat-card text-center"><div class="h4">{{ pipeline.estimated_time_savings.minutes_per_run if pipeline.estimated_time_savings else 0 }}</div><div class="text-muted small">Min/run saved</div></div></div>
+</div>
+
+<h5 class="mt-4">Steps</h5>
+<div class="card card-cap p-3 mb-4">
+  <ol class="mb-0">
+    {% for s in pipeline.steps %}
+    <li class="mb-2">
+      <strong>{{ s.name or s.step_id }}</strong>
+      &nbsp;<span class="badge badge-type">{{ s.capability_id }}</span>
+      {% if s.depends_on %}<span class="text-muted small">after: {{ s.depends_on|join(', ') }}</span>{% endif %}
+      <span class="text-muted small">· on_failure: {{ s.on_failure or 'abort' }}</span>
+      {% if s.input_bindings %}
+      <div class="small text-muted mt-1">
+        Bindings: {% for k, v in s.input_bindings.items() %}<code>{{ k }}</code> &larr; <code>{{ v }}</code>; {% endfor %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+
+<h5>Run this pipeline</h5>
+<form id="run-form" class="card card-cap p-3 mb-4">
+  {% for inp in (pipeline.inputs or []) %}
+  <div class="mb-2">
+    <label class="small text-muted">{{ inp.name }} ({{ inp.type }}) {% if inp.required %}*{% endif %}</label>
+    {% if inp.type == 'text' %}
+    <textarea name="{{ inp.name }}" rows="4" class="form-control" {% if inp.required %}required{% endif %}>{{ inp.default or '' }}</textarea>
+    {% else %}
+    <input name="{{ inp.name }}" value="{{ inp.default or '' }}" class="form-control" {% if inp.required %}required{% endif %} />
+    {% endif %}
+    {% if inp.description %}<small class="text-muted">{{ inp.description }}</small>{% endif %}
+  </div>
+  {% endfor %}
+  <input type="hidden" name="__initiator" value="anonymous" />
+  <button type="submit" class="btn btn-primary mt-2">Launch</button>
+</form>
+<pre id="run-output" class="card card-cap p-3" style="display:none; max-height: 400px; overflow:auto;"></pre>
+
+<h5 class="mt-4">Recent runs</h5>
+<table class="table table-sm">
+  <thead><tr><th>Run id</th><th>Status</th><th>Started</th><th>Steps</th></tr></thead>
+  <tbody>
+    {% for r in recent_runs %}
+    <tr>
+      <td><code>{{ r.pipeline_run_id[:8] }}</code></td>
+      <td>{{ r.status }}</td>
+      <td class="small text-muted">{{ r.started_at }}</td>
+      <td>{{ r.step_runs|length }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted">No runs yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+document.getElementById('run-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const out = document.getElementById('run-output');
+  out.style.display = 'block';
+  out.textContent = 'Launching...';
+  try {
+    const res = await fetch('/ops/pipelines/{{ pipeline.pipeline_id }}/run', { method: 'POST', body: fd });
+    const j = await res.json();
+    out.textContent = JSON.stringify(j, null, 2);
+  } catch (err) {
+    out.textContent = 'Error: ' + err.message;
+  }
+});
+</script>
+{% endblock %}

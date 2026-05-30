@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow Execution Response Contract",
+  "description": "Every workflow execution that touches the LLM MUST return a payload matching this schema. The workflow runner refuses to record a run that fails this contract (unless the plugin manifest opts out via response_contract_required=false). This is the single source of truth that downstream systems (verification, requirements intelligence, search index, audit) consume.",
+  "type": "object",
+  "required": [
+    "summary",
+    "files_created",
+    "files_modified",
+    "components_added",
+    "database_changes",
+    "routes_added",
+    "dependencies_added",
+    "mcp_servers_used",
+    "agents_used",
+    "tests_written",
+    "known_issues",
+    "verification_steps",
+    "next_recommended_tasks"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph plain-language description of what the workflow accomplished. Must be readable by a non-technical employee."
+    },
+    "files_created": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file_ref" }
+    },
+    "files_modified": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file_ref" }
+    },
+    "components_added": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "description": "service / model / view / job / migration / etc." },
+          "purpose": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "database_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["change_type", "target"],
+        "properties": {
+          "change_type": { "type": "string", "enum": ["table_added", "column_added", "index_added", "schema_changed", "migration", "data_seeded"] },
+          "target": { "type": "string", "description": "Table or schema name affected." },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routes_added": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "path"],
+        "properties": {
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"] },
+          "path": { "type": "string" },
+          "handler": { "type": "string" },
+          "purpose": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dependencies_added": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "ecosystem": { "type": "string", "description": "pip / npm / system / etc." },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "mcp_servers_used": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Stable IDs of MCP servers invoked during the run."
+    },
+    "agents_used": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Stable IDs of agent plugins invoked."
+    },
+    "tests_written": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 },
+          "scope": { "type": "string", "description": "unit / integration / e2e / smoke" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "known_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description"],
+        "properties": {
+          "description": { "type": "string" },
+          "severity": { "type": "string", "enum": ["low", "medium", "high", "blocker"], "default": "medium" },
+          "suggested_fix": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "verification_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step"],
+        "properties": {
+          "step": { "type": "string", "description": "Imperative instruction the reviewer can execute." },
+          "expected": { "type": "string", "description": "What success looks like." },
+          "command": { "type": ["string", "null"], "description": "Optional shell command." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "next_recommended_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task"],
+        "properties": {
+          "task": { "type": "string" },
+          "suggested_plugin": { "type": ["string", "null"], "description": "If another plugin would handle this, its id." },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"], "default": "medium" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "file_ref": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string" },
+        "purpose": { "type": "string" },
+        "lines": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

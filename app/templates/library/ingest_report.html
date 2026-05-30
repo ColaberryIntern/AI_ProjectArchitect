@@ -1,0 +1,212 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "ingest" %}
+{% set header = status.header %}
+
+{% block title %}📊 Ingest Report · {{ batch_id }}{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb" style="font-size: 13px; margin: 0;">
+    <li class="breadcrumb-item"><a href="/library/?ws={{ workspace }}">📚 Library</a></li>
+    <li class="breadcrumb-item"><a href="/library/ingest?ws={{ workspace }}">🌐 Ingest</a></li>
+    <li class="breadcrumb-item"><a href="/library/ingest/{{ batch_id }}?ws={{ workspace }}">{{ batch_id }}</a></li>
+    <li class="breadcrumb-item active">Report</li>
+  </ol>
+</nav>
+
+<div class="library-hero" style="background: linear-gradient(135deg, #1a7f37, #22863a);">
+  <div class="d-flex align-items-center gap-4">
+    <div style="font-size: 56px; line-height: 1;">📊</div>
+    <div class="flex-grow-1">
+      <h1>Ingest report</h1>
+      <p>{{ header.source }} · processed {{ status.processed }}/{{ status.total }} · started {{ header.created_at[:19] }}{% if header.finished_at %} · finished {{ header.finished_at[:19] }}{% endif %}</p>
+      <div class="mt-3 d-flex flex-wrap gap-3 align-items-center" style="font-size: 14px;">
+        ✅ <strong>{{ submitted|length }}</strong> submitted &nbsp;·&nbsp;
+        ✓ <strong>{{ auto_vetted_count }}</strong> auto-vetted &nbsp;·&nbsp;
+        ⏳ <strong>{{ pending_count_batch }}</strong> in pending review &nbsp;·&nbsp;
+        ❌ <strong>{{ failed|length }}</strong> failed
+        {% if skipped %}&nbsp;·&nbsp; ⏭️ <strong>{{ skipped|length }}</strong> skipped{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Overall outcome breakdown — visual #}
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="library-card" style="margin: 0;">
+      <div class="library-card-header" style="background: var(--accent-library-soft);"><h2 style="color: var(--accent-library);">✅ Submitted</h2></div>
+      <div class="p-4 text-center">
+        <div style="font-size: 36px; font-weight: 700; color: var(--accent-library);">{{ submitted|length }}</div>
+        <div class="text-muted small">assets landed</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="library-card" style="margin: 0;">
+      <div class="library-card-header"><h2>✓ Auto-vetted</h2></div>
+      <div class="p-4 text-center">
+        <div style="font-size: 36px; font-weight: 700;">{{ auto_vetted_count }}</div>
+        <div class="text-muted small">trusted source</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="library-card" style="margin: 0;">
+      <div class="library-card-header"><h2>⏳ Pending</h2></div>
+      <div class="p-4 text-center">
+        <div style="font-size: 36px; font-weight: 700;">{{ pending_count_batch }}</div>
+        <div class="text-muted small">awaiting curator</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="library-card" style="margin: 0;">
+      <div class="library-card-header" style="background: #fee2e2;"><h2 style="color: #991b1b;">❌ Failed</h2></div>
+      <div class="p-4 text-center">
+        <div style="font-size: 36px; font-weight: 700; color: #991b1b;">{{ failed|length }}</div>
+        <div class="text-muted small">errors below</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    {# Successfully submitted — the big payoff list #}
+    {% if submitted %}
+    <div class="library-card">
+      <div class="library-card-header">
+        <h2>📦 Everything that was added ({{ submitted|length }})</h2>
+        <span class="asset-meta">click any → asset / submission record</span>
+      </div>
+      <div>
+        {% for r in submitted %}
+        <div class="asset-row" style="cursor: default;">
+          <div style="flex: 1; min-width: 0;">
+            <div class="asset-name">
+              {% if r.url %}<a href="{{ r.url }}" style="color: var(--fg-default);">{{ r.asset_name or '(unnamed)' }}</a>
+              {% else %}{{ r.asset_name or '(unnamed)' }}{% endif %}
+              {% if r.auto_vetted %}<span class="vetted-badge ms-1" style="font-size: 10px;">Auto-vetted</span>{% endif %}
+            </div>
+            {% if r.description %}<div class="asset-meta" style="margin-top: 2px;">{{ r.description[:200] }}{% if r.description|length > 200 %}…{% endif %}</div>{% endif %}
+            <div class="mt-1 d-flex flex-wrap gap-1">
+              <span class="asset-tag" style="background: var(--accent-library-soft); color: var(--accent-library);">{{ r.category }}</span>
+              {% if r.confidence is not none %}<span class="asset-tag">conf {{ '%.0f%%'|format(r.confidence * 100) }}</span>{% endif %}
+              {% if r.quality_score %}<span class="asset-tag">quality {{ '%.0f%%'|format(r.quality_score * 100) }}</span>{% endif %}
+              {% for t in r.tags[:5] %}<span class="asset-tag">{{ t }}</span>{% endfor %}
+            </div>
+            {% if r.warnings %}<div class="mt-1">
+              {% for w in r.warnings %}<span class="asset-tag" style="background: #fef3c7; color: #92400e;">⚠ {{ w }}</span>{% endfor %}
+            </div>{% endif %}
+          </div>
+          <div class="text-end" style="min-width: 120px;">
+            <a class="asset-tag" style="text-decoration:none; color: var(--accent-library);" href="{{ r.source_url }}" target="_blank" rel="noopener">↗ Source</a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Failures — surface them so the user can see what went wrong #}
+    {% if failed %}
+    <div class="library-card" style="border-color: #fca5a5;">
+      <div class="library-card-header" style="background: #fee2e2;"><h2 style="color: #991b1b;">❌ Failed ({{ failed|length }})</h2></div>
+      <div>
+        {% for r in failed %}
+        <div class="asset-row">
+          <div style="flex: 1; min-width: 0;">
+            <div class="asset-name" style="word-break: break-all;">{{ r.source_url }}</div>
+            <div class="asset-meta" style="color: #991b1b;">{{ r.error or 'unknown error' }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="col-lg-4">
+
+    {# Category breakdown #}
+    {% if cat_counts %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📂 By category</h2></div>
+      <div>
+        {% for cat, n in cat_counts.items() %}
+        <a class="asset-row" href="/library/{{ cat }}?ws={{ workspace }}">
+          <div style="flex: 1;">
+            <strong>{{ cat }}</strong>
+          </div>
+          <div class="asset-tag" style="background: var(--accent-library-soft); color: var(--accent-library);">{{ n }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Quality histogram #}
+    {% if submitted %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>✨ Quality breakdown</h2></div>
+      <div class="p-4">
+        {% for label, n in [('🟢 High (≥70%)', quality_buckets.high),
+                                  ('🟡 Medium (40–69%)', quality_buckets.medium),
+                                  ('🟠 Low (1–39%)', quality_buckets.low),
+                                  ('⚪ None', quality_buckets.none)] %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between" style="font-size: 13px;">
+            <span>{{ label }}</span>
+            <strong>{{ n }}</strong>
+          </div>
+          <div style="background: var(--bg-sunken); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 2px;">
+            <div style="background: var(--accent-library); height: 100%; width: {{ (n / submitted|length * 100) if submitted|length else 0 }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Top tags #}
+    {% if top_tags %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>🏷️ Top tags</h2></div>
+      <div class="p-3">
+        {% for t, n in top_tags %}
+        <span class="asset-tag" style="margin: 2px;">{{ t }} <strong style="color: var(--accent-library);">{{ n }}</strong></span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Next actions #}
+    <div class="library-card" style="border-color: var(--accent-library);">
+      <div class="library-card-header" style="background: var(--accent-library-soft);"><h2>👉 Next steps</h2></div>
+      <div class="p-4">
+        {% if pending_count_batch %}
+        <p>{{ pending_count_batch }} item{{ '' if pending_count_batch == 1 else 's' }} awaiting curator review.</p>
+        <a href="/library/pending?ws={{ workspace }}&as={{ actor }}" class="btn btn-sm" style="background: var(--accent-library); color: white;">Review pending →</a>
+        {% endif %}
+        {% if failed %}
+        <p class="mt-3"><strong>{{ failed|length }} item{{ '' if failed|length == 1 else 's' }} failed.</strong> Consider single-URL ingest for those.</p>
+        {% endif %}
+        {% if not submitted and not failed %}
+        <p>This batch matched 0 files. Try:</p>
+        <ul class="small mb-3">
+          <li><a href="/library/ingest?ws={{ workspace }}">Single-URL ingest of the README</a></li>
+          <li>Set <code>GITHUB_TOKEN</code> env var for higher rate limits</li>
+        </ul>
+        {% endif %}
+        <a href="/library/ingest?ws={{ workspace }}" class="btn btn-sm btn-outline-secondary mt-2">New ingest</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

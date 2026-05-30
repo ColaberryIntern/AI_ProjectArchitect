@@ -105,13 +105,35 @@ Every suggestion must include: the problem it solves, why it matters, core or op
 4. **Explicit Deferment**: Deferred features are documented with reason — not forgotten.
 5. **Mutual Exclusion**: Conflicting features cannot both be selected (enforced server-side).
 
-### Step 6: Present and Approve
+### Step 6: Promote Features to Requirements (Spec-Driven Layer)
+
+After classification, every retained feature is promoted into a **Requirement** object. This is the spec-driven layer: it makes the feature machine-verifiable and traceable downstream.
+
+For each feature, capture (or auto-draft via LLM and let the user approve):
+
+| Field | Required for | Notes |
+|---|---|---|
+| `requirement_type` | all | `functional` / `nonfunctional` / `constraint`. Defaults to `functional`. |
+| `actor` | functional | The role doing or benefiting from the action (e.g. `broker`, `carrier`, `system`). |
+| `action` | functional | Verb phrase (e.g. "submit a settlement claim"). |
+| `value` | functional | The "so that …" outcome. |
+| `priority` | all | MoSCoW: `must` / `should` / `could` / `wont`. `must` is the MVP gate. |
+| `dependencies` | all | Other Requirement IDs this depends on. Must form a DAG. |
+| `acceptance_criteria` | `must`-priority | Given/When/Then triplets. See [03b-acceptance-criteria.md](03b-acceptance-criteria.md) for the SOP. |
+| `nfr` | nonfunctional | Each entry must include `category`, `metric`, `threshold` with concrete units. |
+
+`id` follows the convention `REQ-NNN` (zero-padded, monotonically assigned). AC IDs follow `AC-<reqid-numeric>-N` (e.g. `AC-001-1`).
+
+This step does NOT replace the feature — the existing `name`/`description`/`rationale`/`type`/`build_order` fields stay. The Requirement fields are added alongside.
+
+### Step 7: Present and Approve
 Present:
-- Core features list with rationale and build order
+- Core features list with rationale, build order, and **a count of acceptance criteria per `must`-priority requirement**
 - Optional features list with rationale and deferment notes
 - Features organized by layer tabs (Product Features / Architecture & Ops)
+- A summary of requirements by priority (must / should / could) and by type (functional / nonfunctional / constraint)
 
-On user approval, call `state_manager.approve_features()` and advance to `outline_generation`.
+On user approval, call `state_manager.approve_features()`, write the artifact via `requirements_writer.write_requirements()`, and advance to `outline_generation`.
 
 ## UI Layout
 
@@ -136,9 +158,10 @@ The feature discovery page uses a **tabbed layout**:
 
 ## Outputs
 
-- `features.core` populated with classified features
-- `features.optional` populated with classified features
+- `features.core` populated with classified features, each upgraded to a Requirement object
+- `features.optional` populated with classified features, each upgraded to a Requirement object
 - `features.approved` is `True`
+- `output/{slug}/specs/requirements.json` written by `requirements_writer.write_requirements()` — single source of truth for downstream gates
 - Phase advanced to `outline_generation`
 
 ## Edge Cases
@@ -161,7 +184,11 @@ The feature discovery page uses a **tabbed layout**:
 
 - Core features list exists and is non-empty
 - Each core feature has: id, name, description, rationale, problem_mapped_to, build_order
+- Each `must`-priority Requirement has at least one acceptance criterion
+- Every entry in `dependencies` references an existing Requirement ID (no dangling refs)
+- The dependency graph is acyclic (no cycles)
 - Optional features (if any) are explicitly labeled with deferment status
 - Build order is defensible (dependency -> value -> risk)
 - No mutual exclusion violations in saved selections
+- `output/{slug}/specs/requirements.json` exists and validates against `feature.schema.json`
 - User has approved the feature set

@@ -1,0 +1,71 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Operational Copilot | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Operational Copilot</h2>
+<p class="text-muted">Evidence-backed answers from the platform's own audit, incidents, telemetry, and reliability data. No hallucination — every answer cites the source.</p>
+
+<form method="get" action="/ops/copilot/page" class="card card-cap p-3 mb-4">
+  <div class="row g-2">
+    <div class="col-md-9"><input name="question" value="{{ question or '' }}" placeholder='e.g. "Why was summarize_proposal quarantined?"' class="form-control" autofocus /></div>
+    <div class="col-md-2"><input name="capability_id" value="{{ capability_id or '' }}" placeholder="capability_id" class="form-control" /></div>
+    <div class="col-md-1"><button class="btn btn-primary w-100">Ask</button></div>
+  </div>
+  <div class="small text-muted mt-2">
+    Try: <a href="/ops/copilot/page?question=Why is latency rising?">Why is latency rising?</a> ·
+    <a href="/ops/copilot/page?question=What approvals are blocked?">What approvals are blocked?</a> ·
+    <a href="/ops/copilot/page?question=What autonomous actions ran?">What autonomous actions ran?</a>
+  </div>
+</form>
+
+{% if answer %}
+<div class="card card-cap p-3 mb-4">
+  <div class="d-flex justify-content-between">
+    <h5 class="mb-0">{{ answer.summary }}</h5>
+    <span class="reason-chip">confidence {{ '%.0f%%'|format(answer.confidence * 100) }}</span>
+  </div>
+  <div class="small text-muted mt-2">Intent: <code>{{ answer.intent }}</code>{% if not answer.sufficient_evidence %} · <span style="color:#f0883e;">insufficient evidence</span>{% endif %}</div>
+  {% if answer.reasoning_chain %}
+  <h6 class="mt-3">Reasoning</h6>
+  <ul class="small text-muted">
+    {% for step in answer.reasoning_chain %}<li>{{ step }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if answer.evidence_refs %}
+  <h6 class="mt-3">Evidence</h6>
+  <ul class="small">
+    {% for ref in answer.evidence_refs %}
+    <li><code>{{ ref.source }}</code>
+      {% if ref.entry_id %} entry_id=<code>{{ ref.entry_id }}</code>{% endif %}
+      {% if ref.capability_id %} cap=<code>{{ ref.capability_id }}</code>{% endif %}
+      {% if ref.kind %} kind=<code>{{ ref.kind }}</code>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if recommendations %}
+<h5 class="mt-4">Operational recommendations</h5>
+<div class="row g-3">
+  {% for r in recommendations %}
+  <div class="col-md-6">
+    <div class="card card-cap p-3 h-100">
+      <div class="d-flex justify-content-between mb-2">
+        <span class="badge badge-type">{{ r.kind }}</span>
+        <small class="text-muted">confidence {{ '%.0f%%'|format(r.confidence * 100) }} · risk {{ r.risk }}</small>
+      </div>
+      <h6 style="color:#e6e6e6;">{{ r.title }}</h6>
+      <p class="small text-muted mb-1">{{ r.why }}</p>
+      {% if r.evidence %}
+      <div class="small text-muted">
+        {% for ev in r.evidence %}<span class="reason-chip">{{ ev.source }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

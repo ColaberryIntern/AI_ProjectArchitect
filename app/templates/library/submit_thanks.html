@@ -1,0 +1,33 @@
+{% extends "library/_library_base.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 56px; margin-right: 16px;">🎉</div>
+  <div>
+    <h1 class="mb-1">Thanks, {{ submission.submitted_by }}!</h1>
+    <p class="text-muted mb-0">Your submission landed in the pending review queue.</p>
+  </div>
+</div>
+
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📝 Your submission</h2>
+    <span class="asset-meta">{{ submission.submission_id }}</span>
+  </div>
+  <div class="p-4">
+    <h3>{{ submission.name }}</h3>
+    <p class="text-muted">{{ submission.category }} · submitted {{ submission.submitted_at }}</p>
+    <p>{{ submission.description }}</p>
+    {% if submission.how_to_use %}<details><summary class="text-muted small">How to use</summary><pre style="background: var(--bg-sunken); padding: var(--space-3); border-radius: var(--radius-md); white-space: pre-wrap;">{{ submission.how_to_use }}</pre></details>{% endif %}
+    {% if submission.example %}<details><summary class="text-muted small">Example</summary><pre style="background: var(--bg-sunken); padding: var(--space-3); border-radius: var(--radius-md); white-space: pre-wrap;">{{ submission.example }}</pre></details>{% endif %}
+  </div>
+</div>
+
+<div class="mt-4">
+  <a href="/library/?ws={{ workspace }}" class="btn me-2" style="background: var(--accent-library); color: white;">Back to Library</a>
+  <a href="/library/submit?ws={{ workspace }}" class="btn btn-outline-success me-2">Submit another</a>
+  <a href="/library/pending?ws={{ workspace }}" class="btn btn-outline-secondary">View pending queue</a>
+</div>
+
+{% endblock %}

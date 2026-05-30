@@ -299,6 +299,34 @@ class TestOutline:
         with pytest.raises(ValueError, match="no sections"):
             lock_outline(sample_state)
 
+    def test_lock_outline_emits_requirements_artifact(
+        self, sample_state, sample_outline_sections, tmp_path, monkeypatch
+    ):
+        # Redirect OUTPUT_DIR so the artifact lands in tmp_path. The
+        # write_requirements helper imports OUTPUT_DIR from
+        # config.settings; the requirements_writer module also captures
+        # it at module level, so we patch both.
+        from execution import requirements_writer
+        import config.settings as settings
+
+        monkeypatch.setattr(settings, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(requirements_writer, "OUTPUT_DIR", tmp_path)
+
+        set_outline_sections(sample_state, sample_outline_sections)
+        # Ensure the project has a slug (sample_state may already)
+        slug = sample_state["project"]["slug"]
+
+        lock_outline(sample_state)
+
+        artifact = tmp_path / slug / "specs" / "requirements.json"
+        assert artifact.exists(), (
+            "lock_outline should emit output/{slug}/specs/requirements.json"
+        )
+        import json
+        loaded = json.loads(artifact.read_text(encoding="utf-8"))
+        assert loaded["project"]["slug"] == slug
+        assert "requirements" in loaded
+
     def test_unlock_outline(self, sample_state, sample_outline_sections):
         set_outline_sections(sample_state, sample_outline_sections)
         lock_outline(sample_state)

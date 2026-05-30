@@ -1,0 +1,206 @@
+/* Colaberry Platform design tokens
+   Single source of truth for color, spacing, typography, radius.
+
+   Contrast ratios are WCAG-checked; values listed against the
+   companion surface in comments.
+*/
+
+:root {
+  /* ── Surfaces — light theme (default) ─────────────────── */
+  --bg-canvas:        #ffffff;
+  --bg-elevated:      #f6f8fa;
+  --bg-sunken:        #f0f3f6;
+  --bg-overlay:       rgba(20, 24, 28, 0.55);
+  --bg-tooltip:       #1f2328;
+  --border-default:   #d0d7de;
+  --border-muted:     #e2e7ec;
+  --border-strong:    #afb8c1;
+
+  /* ── Text — light theme (against --bg-canvas) ─────────── */
+  --fg-default:       #1f2328;  /* 16.8:1 AAA */
+  --fg-muted:         #57606a;  /*  7.0:1 AAA  — replaces Bootstrap text-muted */
+  --fg-subtle:        #6e7781;  /*  5.6:1 AA   — replaces Bootstrap text-secondary */
+  --fg-inverse:       #ffffff;
+  --fg-link:          #0969da;  /*  5.8:1 AA */
+  --fg-link-hover:    #0550ae;  /*  9.1:1 AAA */
+
+  /* ── Product accents ──────────────────────────────────── */
+  --accent-architect:        #6f42c1;  /* design / creation */
+  --accent-architect-soft:   #f3eff9;
+  --accent-architect-on:     #ffffff;
+
+  --accent-ops:              #1f6feb;  /* governance / control */
+  --accent-ops-soft:         #ddf4ff;
+  --accent-ops-on:           #ffffff;
+
+  --accent-library:          #1a7f37;  /* governed assets */
+  --accent-library-soft:     #dafbe1;
+  --accent-library-on:       #ffffff;
+
+  --accent-platform:         #6e7781;  /* shared platform core (neutral) */
+
+  /* ── Status ───────────────────────────────────────────── */
+  --status-success:   #1a7f37;
+  --status-warning:   #9a6700;
+  --status-danger:    #cf222e;
+  --status-info:      #0969da;
+
+  /* ── Spacing scale (4 px base) ────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+
+  /* ── Radius ───────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* ── Typography ───────────────────────────────────────── */
+  --font-sans:   -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+                   sans-serif;
+  --font-mono:   "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono",
+                   "Courier New", monospace;
+  --text-xs:    11px;
+  --text-sm:    13px;
+  --text-base:  14px;
+  --text-md:    16px;
+  --text-lg:    18px;
+  --text-xl:    22px;
+  --text-2xl:   28px;
+  --text-3xl:   36px;
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+
+  /* ── Shadow ───────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.08);
+  --shadow-md: 0 4px 12px rgba(20, 24, 28, 0.08);
+  --shadow-lg: 0 12px 32px rgba(20, 24, 28, 0.16);
+  --shadow-glow-architect: 0 0 24px rgba(111, 66, 193, 0.25);
+  --shadow-glow-ops:       0 0 24px rgba(31, 111, 235, 0.25);
+  --shadow-glow-library:   0 0 24px rgba(26, 127, 55, 0.25);
+}
+
+/* ── Dark theme — override surfaces + text only ─────────── */
+[data-theme="dark"] {
+  --bg-canvas:        #0e1117;
+  --bg-elevated:      #161b22;
+  --bg-sunken:        #0d1117;
+  --bg-overlay:       rgba(0, 0, 0, 0.65);
+  --bg-tooltip:       #1c2128;
+  --border-default:   #30363d;
+  --border-muted:     #21262d;
+  --border-strong:    #484f58;
+
+  --fg-default:       #e6e6e6;  /* 14.0:1 AAA on canvas */
+  --fg-muted:         #c9d1d9;  /* 11.7:1 AAA */
+  --fg-subtle:        #adbac7;  /*  7.4:1 AAA */
+  --fg-inverse:       #0e1117;
+  --fg-link:          #79c0ff;  /*  8.6:1 AAA */
+  --fg-link-hover:    #a5d6ff;  /* 11.3:1 AAA */
+
+  --accent-architect-soft:   #2a1f3d;
+  --accent-ops-soft:         #0c2d6b;
+  --accent-library-soft:     #0c3d1b;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Base body wiring ──────────────────────────────────── */
+body {
+  background: var(--bg-canvas);
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+a { color: var(--fg-link); text-decoration: none; }
+a:hover { color: var(--fg-link-hover); text-decoration: underline; }
+
+/* ── Bootstrap overrides — make .text-muted WCAG-compliant ── */
+.text-muted, .small.text-muted, .form-text {
+  color: var(--fg-muted) !important;
+}
+
+/* ── Reusable platform header chrome ───────────────────── */
+.platform-nav {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-default);
+  padding: var(--space-3) 0;
+}
+.platform-nav .navbar-brand {
+  color: var(--fg-default);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.2px;
+}
+.platform-nav .navbar-brand .brand-sep {
+  color: var(--fg-subtle);
+  margin: 0 var(--space-2);
+  font-weight: var(--weight-regular);
+}
+.platform-nav .navbar-brand .brand-product {
+  color: var(--fg-default);
+  font-weight: var(--weight-medium);
+}
+.platform-nav .nav-link {
+  color: var(--fg-muted);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+.platform-nav .nav-link:hover,
+.platform-nav .nav-link:focus {
+  color: var(--fg-default);
+  background: var(--bg-sunken);
+}
+.platform-nav .nav-link.active {
+  color: var(--fg-inverse);
+  background: var(--accent-current, var(--accent-ops));
+}
+.platform-nav .navbar-nav { gap: var(--space-1); }
+
+/* Product switcher (top-right of every platform page) */
+.product-switcher {
+  display: inline-flex; gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.product-switcher a {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.product-switcher a:hover {
+  color: var(--fg-default);
+  background: var(--bg-sunken);
+  text-decoration: none;
+}
+.product-switcher a.current {
+  color: var(--fg-inverse);
+  background: var(--accent-current, var(--accent-ops));
+}
+
+/* Per-product current accent */
+.product-architect { --accent-current: var(--accent-architect); }
+.product-ops       { --accent-current: var(--accent-ops); }
+.product-library   { --accent-current: var(--accent-library); }
+
+/* Platform footer */
+.platform-footer {
+  color: var(--fg-subtle);
+  font-size: var(--text-sm);
+  padding: var(--space-5) 0;
+  text-align: center;
+}

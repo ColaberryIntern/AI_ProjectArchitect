@@ -1,0 +1,191 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "use_cases" %}
+
+{% block title %}{{ uc.title }} · Use Case · Colaberry Library{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb" style="font-size: 13px; margin: 0;">
+    <li class="breadcrumb-item"><a href="/library/?ws={{ workspace }}">📚 Library</a></li>
+    <li class="breadcrumb-item"><a href="/library/use-cases?ws={{ workspace }}">🎯 Use Cases</a></li>
+    <li class="breadcrumb-item active">{{ uc.title }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-start mb-4">
+  <div style="font-size: 56px; line-height: 1; margin-right: 16px;">🎯</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">{{ uc.title }}{% if uc.vetted %}<span class="vetted-badge ms-2">Colaberry vetted</span>{% endif %}</h1>
+    <div class="text-muted" style="font-size: 15px;">{{ uc.summary }}</div>
+    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+      <span class="asset-tag">
+        {% if uc.complexity == 'quick_win' %}⚡ Quick win
+        {% elif uc.complexity == 'advanced' %}🧠 Advanced
+        {% else %}📐 Moderate{% endif %}
+      </span>
+      {% if uc.industry %}<span class="asset-tag">🏢 {{ uc.industry }}</span>{% endif %}
+      {% for t in uc.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}
+      <span class="text-muted small ms-2">created {{ uc.created_at[:10] }} · by {{ uc.created_by }} · source: {{ uc.source }}</span>
+    </div>
+  </div>
+  <div class="text-end" style="min-width: 180px;">
+    {% if uc.rating_count %}
+      <div class="stars" style="font-size: 22px;">{% for _ in range(uc.rating_avg|round|int) %}★{% endfor %}<span class="stars-empty">{% for _ in range(5 - (uc.rating_avg|round|int)) %}★{% endfor %}</span></div>
+      <div class="asset-meta">{{ "%.1f"|format(uc.rating_avg) }} ({{ uc.rating_count }} rating{{ '' if uc.rating_count == 1 else 's' }})</div>
+    {% else %}
+      <div class="asset-meta">No ratings yet</div>
+    {% endif %}
+    <div class="asset-meta">💬 {{ uc.comment_count }} comment{{ '' if uc.comment_count == 1 else 's' }}</div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    {# Persona #}
+    {% if uc.persona %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>👤 Who has this problem</h2></div>
+      <div class="p-4">
+        <p style="font-size: 16px; margin: 0;"><strong>{{ uc.persona }}</strong></p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Problem #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>🔥 The problem</h2></div>
+      <div class="p-4">
+        <p style="font-size: 15px; line-height: 1.6;">{{ uc.problem }}</p>
+      </div>
+    </div>
+
+    {# Solution #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>💡 The solution</h2></div>
+      <div class="p-4">
+        <p style="font-size: 15px; line-height: 1.6;">{{ uc.solution }}</p>
+      </div>
+    </div>
+
+    {# Walkthrough #}
+    {% if uc.walkthrough %}
+    <div class="library-card">
+      <div class="library-card-header"><h2>🚶 Walkthrough</h2></div>
+      <div class="p-4">
+        <ol style="line-height: 1.7;">
+          {% for step in uc.walkthrough %}<li class="mb-2">{{ step }}</li>{% endfor %}
+        </ol>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Outcome #}
+    {% if uc.outcome_metric %}
+    <div class="library-card" style="border-color: var(--accent-library);">
+      <div class="library-card-header" style="background: var(--accent-library-soft);"><h2>📊 Outcome</h2></div>
+      <div class="p-4">
+        <p style="font-size: 18px; color: var(--accent-library); font-weight: 600; margin: 0;">{{ uc.outcome_metric }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Discussion #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>💬 Discussion ({{ comments|length }})</h2></div>
+      <div class="p-4">
+        {% for c in comments %}
+          <div class="comment">
+            <div><span class="author">{{ c.author }}</span> <span class="when">· {{ c.created_at }}</span></div>
+            <div class="mt-1">{{ c.body }}</div>
+          </div>
+        {% else %}
+          <p class="text-muted">No comments yet. Tried this and have notes? Share.</p>
+        {% endfor %}
+        <form method="post" action="/library/use-cases/{{ uc.use_case_id }}/comment?ws={{ workspace }}&as={{ actor }}" class="mt-3">
+          <label class="form-label small text-muted">Leave a comment (as {{ actor }})</label>
+          <textarea name="body" rows="3" class="form-control mb-2" placeholder="Did you try this? What worked, what didn't?"></textarea>
+          <button class="btn btn-sm" style="background: var(--accent-library); color: white;">Post comment</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+
+    {# Tools used — the actionable layer #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>🧩 Tools used</h2></div>
+      <div>
+        {% for t in tools %}
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-muted);">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <div>
+              <div style="font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+                {{ t.category_emoji }} {{ t.category_label }}
+              </div>
+              {% if t.exists %}
+              <a href="/library/{{ t.category }}/{{ t.asset_id }}?ws={{ workspace }}" style="font-weight: 600;">
+                {{ t.asset_id }}
+              </a>
+              {% else %}
+              <span style="font-weight: 600; color: var(--fg-muted);">{{ t.asset_id }}</span>
+              <span class="asset-tag" style="margin-left: 6px; background: #fef3c7; color: #92400e;">not in library yet</span>
+              {% endif %}
+            </div>
+            {% if t.meta.vetted %}<span class="vetted-badge" style="font-size: 10px;">vetted</span>{% endif %}
+          </div>
+          {% if t.role %}<div class="asset-meta">{{ t.role }}</div>{% endif %}
+          {% if t.exists and t.raw %}
+          <div class="mt-2 d-flex gap-1 flex-wrap">
+            {% if t.raw.source %}<a href="{{ t.raw.source }}" target="_blank" rel="noopener" class="asset-tag" style="color: var(--accent-library);">↗ Source</a>{% endif %}
+            {% if t.meta.install_command %}<span class="asset-tag" title="{{ t.meta.install_command }}">⬇️ Install</span>{% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Rate #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>⭐ Rate this use case</h2></div>
+      <div class="p-4">
+        <form method="post" action="/library/use-cases/{{ uc.use_case_id }}/rate?ws={{ workspace }}&as={{ actor }}">
+          <div class="mb-3">
+            <label class="form-label small">Stars (as {{ actor }})</label>
+            <div class="d-flex gap-2">
+              {% for s in [1,2,3,4,5] %}
+                <label class="d-inline-flex align-items-center gap-1">
+                  <input type="radio" name="stars" value="{{ s }}" {% if s == 5 %}checked{% endif %}>
+                  <span>{{ s }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          <textarea name="note" rows="2" class="form-control mb-2" placeholder="Did it work? Worth doing? (optional)"></textarea>
+          <button class="btn btn-sm" style="background: var(--accent-library); color: white;">Submit rating</button>
+        </form>
+      </div>
+    </div>
+
+    {# Provenance #}
+    <div class="library-card">
+      <div class="library-card-header"><h2>📁 Provenance</h2></div>
+      <div class="p-4">
+        <p class="small text-muted mb-1">Created by:</p>
+        <code>{{ uc.created_by }}</code>
+        <p class="small text-muted mb-1 mt-2">Source:</p>
+        <code>{{ uc.source }}</code>
+        {% if uc.generator_meta %}
+        <p class="small text-muted mb-1 mt-2">Generator meta:</p>
+        <pre style="font-size: 11px; background: var(--bg-sunken); padding: 6px; border-radius: 4px; margin: 0;">{{ uc.generator_meta }}</pre>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

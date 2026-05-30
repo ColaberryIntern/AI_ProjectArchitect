@@ -1,0 +1,61 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "search" %}
+
+{% block title %}Search · Colaberry · Library{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">🔍</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">{% if q %}Results for "{{ q }}"{% else %}Search the Library{% endif %}</h1>
+    <p class="text-muted mb-0">
+      {% if q %}{{ hits|length }} match{{ '' if hits|length == 1 else 'es' }} across {{ categories|length }} categories.
+      {% else %}Type in the top bar (Ctrl+K) or use the form below.{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="library-card">
+  <div class="library-card-header"><h2>🔎 Search</h2></div>
+  <div class="p-4">
+    <form method="get" action="/library/search">
+      <input type="hidden" name="ws" value="{{ workspace }}" />
+      <div class="d-flex gap-2 mb-2">
+        <input name="q" class="form-control" value="{{ q|default('') }}" autofocus
+               placeholder="e.g. 'rfp', 'slack', 'langchain', 'mcp filesystem'" />
+        <button class="btn" style="background: var(--accent-library); color: white;">Search</button>
+      </div>
+      <label class="form-check-label small">
+        <input class="form-check-input" type="checkbox" name="vetted" value="1" {% if only_vetted %}checked{% endif %}>
+        Show only Colaberry-vetted
+      </label>
+    </form>
+  </div>
+</div>
+
+{% if q %}
+<div class="library-card">
+  <div class="library-card-header"><h2>📋 {{ hits|length }} match{{ '' if hits|length == 1 else 'es' }}</h2></div>
+  <div>
+    {% for h in hits %}
+    <a class="asset-row" href="/library/{{ h.category }}/{{ h.asset_id }}?ws={{ workspace }}">
+      <div style="flex: 1; min-width: 0;">
+        <div class="asset-name">{{ h.name }}</div>
+        {% if h.snippet %}<div class="asset-meta">…{{ h.snippet }}…</div>
+        {% elif h.description %}<div class="asset-meta">{{ h.description }}</div>{% endif %}
+        {% if h.tags %}<div class="mt-1">{% for t in h.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="text-end" style="min-width: 140px;">
+        <div class="asset-tag">{{ h.category }}</div>
+        <div class="asset-meta mt-1" style="font-size: 11px;">score {{ '%.1f'|format(h.score) }}</div>
+      </div>
+    </a>
+    {% else %}
+    <div class="p-4 text-muted">No matches. Try a broader query, or browse a category from the sidebar.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

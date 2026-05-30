@@ -1,0 +1,526 @@
+{# Library product shell — catalog of governed reusable assets.
+
+   Layout: left sidebar (categories grouped) + top bar (brand, search,
+   + Add menu, admin badges, workspace, product switcher).
+
+   Categories are grouped into three sections matching the platform model:
+     • Reusable assets  (Skills, Agents, Prompts, MCP, Capabilities, Templates)
+     • Operations       (Workflows, Projections, Recovery, Chaos)
+     • Governance       (Policies, Governance, Evals, Connectors, Adapters)
+#}
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Colaberry · Library{% endblock %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+<link rel="stylesheet" href="/static/css/colaberry-tokens.css">
+<style>
+  /* ── Layout shell ─────────────────────────────────────────── */
+  body { background: var(--bg-sunken); color: var(--fg-default); margin: 0; }
+  .lib-shell { display: grid; grid-template-columns: 240px 1fr;
+                  grid-template-rows: 56px 1fr; min-height: 100vh; }
+  .lib-topbar { grid-column: 1 / -1; grid-row: 1;
+                    background: var(--bg-canvas); border-bottom: 1px solid var(--border-default);
+                    display: flex; align-items: center; padding: 0 var(--space-5);
+                    gap: var(--space-4); z-index: 10; }
+  .lib-sidebar { grid-column: 1; grid-row: 2;
+                     background: var(--bg-canvas); border-right: 1px solid var(--border-default);
+                     padding: var(--space-4) var(--space-3); overflow-y: auto; }
+  .lib-main { grid-column: 2; grid-row: 2;
+                background: var(--bg-sunken); padding: var(--space-5) var(--space-6);
+                overflow-y: auto; }
+
+  /* ── Top bar ─────────────────────────────────────────────── */
+  .lib-brand {
+    font-weight: 700; color: var(--fg-default); text-decoration: none;
+    display: flex; align-items: center; gap: var(--space-2);
+    flex: 0 0 auto;
+  }
+  .lib-brand .brand-sep { color: var(--fg-subtle); }
+  .lib-brand .brand-product { font-weight: 500; color: var(--accent-library); }
+
+  .lib-search { flex: 1; max-width: 560px; margin-left: var(--space-4); }
+  .lib-search input {
+    width: 100%; height: 36px; padding: 0 var(--space-3);
+    border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    background: var(--bg-sunken); color: var(--fg-default);
+    font-size: var(--text-base);
+  }
+  .lib-search input:focus {
+    outline: none; border-color: var(--accent-library);
+    background: var(--bg-canvas);
+    box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15);
+  }
+
+  .lib-top-actions { display: flex; align-items: center; gap: var(--space-3);
+                          flex: 0 0 auto; margin-left: auto; }
+  .lib-action-btn {
+    background: var(--accent-library); color: white !important;
+    padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+    text-decoration: none; font-size: var(--text-sm); font-weight: 500;
+    border: 0; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .lib-action-btn:hover { background: #15803d; color: white !important; }
+  .lib-action-btn.outline {
+    background: transparent; color: var(--fg-default) !important;
+    border: 1px solid var(--border-default);
+  }
+  .lib-action-btn.outline:hover { background: var(--bg-sunken); }
+
+  .lib-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: var(--radius-pill);
+    background: var(--bg-sunken); color: var(--fg-muted);
+    font-size: var(--text-xs); border: 1px solid var(--border-default);
+  }
+  .lib-badge.has-count {
+    background: #fff7ed; color: #9a3412; border-color: #fed7aa;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  .lib-sidebar a {
+    display: block; padding: 6px 12px; border-radius: var(--radius-sm);
+    color: var(--fg-default); text-decoration: none; font-size: var(--text-sm);
+  }
+  .lib-sidebar a:hover { background: var(--bg-sunken); color: var(--fg-default); }
+  .lib-sidebar a.active {
+    background: var(--accent-library-soft); color: var(--accent-library);
+    font-weight: 600;
+  }
+  .lib-sidebar .group-label {
+    font-size: var(--text-xs); text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--fg-subtle);
+    margin: var(--space-4) var(--space-3) var(--space-2);
+    font-weight: 600;
+  }
+  .lib-sidebar .nav-icon {
+    display: inline-block; width: 22px; text-align: center; margin-right: 4px;
+  }
+  .lib-sidebar .nav-count {
+    float: right; color: var(--fg-muted); font-size: var(--text-xs);
+    background: var(--bg-sunken); padding: 0 6px; border-radius: var(--radius-pill);
+  }
+  .lib-sidebar a.active .nav-count {
+    background: white; color: var(--accent-library);
+  }
+
+  /* ── Component styles (shared) ──────────────────────────── */
+  .library-hero {
+    background: linear-gradient(135deg, var(--accent-library) 0%, #228636 100%);
+    color: white;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-5);
+  }
+  .library-hero h1 { font-weight: 700; margin: 0 0 var(--space-2) 0; color: white; }
+  .library-hero p { opacity: 0.92; margin: 0; }
+
+  .asset-tile {
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    text-decoration: none; color: inherit; display: block;
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  }
+  .asset-tile:hover {
+    border-color: var(--accent-library); transform: translateY(-2px);
+    box-shadow: var(--shadow-md); text-decoration: none; color: inherit;
+  }
+  .asset-tile .icon { font-size: 32px; line-height: 1; }
+  .asset-tile h3 { margin: var(--space-3) 0 var(--space-1) 0; font-size: var(--text-lg); color: var(--fg-default); }
+  .asset-tile .count { font-size: var(--text-3xl); font-weight: 700; color: var(--accent-library); }
+  .asset-tile .desc { color: var(--fg-muted); font-size: var(--text-sm); margin-top: var(--space-2); }
+  .asset-tile .badge-status {
+    display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
+    font-size: var(--text-xs); margin-top: var(--space-3);
+  }
+  .asset-tile .badge-live    { background: var(--accent-library-soft); color: var(--accent-library); }
+  .asset-tile .badge-pending { background: var(--bg-sunken); color: var(--fg-muted); }
+
+  .asset-row {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-muted);
+    text-decoration: none; color: inherit;
+  }
+  .asset-row:last-child { border-bottom: 0; }
+  .asset-row:hover { background: var(--bg-sunken); color: inherit; text-decoration: none; }
+  .asset-name { font-weight: 600; }
+  .asset-meta { color: var(--fg-muted); font-size: var(--text-sm); }
+  .asset-tag {
+    display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
+    font-size: var(--text-xs); background: var(--bg-sunken); color: var(--fg-muted);
+    border: 1px solid var(--border-muted);
+  }
+
+  .library-card {
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg); overflow: hidden;
+    margin-bottom: var(--space-5);
+  }
+  .library-card-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .library-card-header h2 { margin: 0; font-size: var(--text-xl); }
+
+  .vetted-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--accent-library-soft); color: var(--accent-library);
+    border: 1px solid var(--accent-library);
+    padding: 2px 10px; border-radius: var(--radius-pill);
+    font-size: var(--text-xs); font-weight: 600;
+  }
+  .vetted-badge::before { content: "✓"; font-weight: 700; }
+
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: var(--radius-pill);
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    color: var(--fg-default); text-decoration: none; font-size: var(--text-sm);
+  }
+  .filter-chip.active {
+    background: var(--accent-library); color: white;
+    border-color: var(--accent-library);
+  }
+  .filter-chip:hover { color: inherit; text-decoration: none; border-color: var(--accent-library); }
+
+  .stars { color: #ddab12; letter-spacing: 1px; }
+  .stars-empty { color: #d0d7de; }
+
+  .of-the-day {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #d97706;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    color: #78350f;
+    margin-bottom: var(--space-5);
+  }
+  .of-the-day .label {
+    font-size: var(--text-xs); text-transform: uppercase;
+    letter-spacing: 0.1em; font-weight: 700;
+  }
+
+  .stat-mini {
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+    flex: 1; text-align: center;
+  }
+  .stat-mini .n { font-size: var(--text-xl); font-weight: 700; }
+  .stat-mini .l { font-size: var(--text-xs); color: var(--fg-muted);
+                       text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* ── Dropdown for "+ Add" menu ────────────────────────────── */
+  .add-menu { position: relative; }
+  .add-menu-panel {
+    display: none; position: absolute; top: 110%; right: 0;
+    background: var(--bg-canvas); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+    min-width: 220px; padding: var(--space-2); z-index: 20;
+  }
+  .add-menu.open .add-menu-panel { display: block; }
+  .add-menu-panel a {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    color: var(--fg-default); text-decoration: none; font-size: var(--text-sm);
+  }
+  .add-menu-panel a:hover { background: var(--bg-sunken); }
+
+  /* ── Comment styling ─────────────────────────────────────── */
+  .comment {
+    padding: var(--space-3); background: var(--bg-sunken);
+    border-radius: var(--radius-md); margin-bottom: var(--space-2);
+  }
+  .comment .author { font-weight: 600; }
+  .comment .when { color: var(--fg-muted); font-size: var(--text-xs); }
+
+  /* ── Sticky enrichment progress strip ────────────────────── */
+  .enrichment-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: var(--radius-pill);
+    background: var(--bg-sunken); color: var(--fg-muted);
+    font-size: var(--text-xs); border: 1px solid var(--border-default);
+  }
+  .enrichment-pill.enriched { background: var(--accent-library-soft); color: var(--accent-library); border-color: var(--accent-library); }
+  .enrichment-pill.failed { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+  /* ── Rendered README ─────────────────────────────────────── */
+  .readme-render h1, .readme-render h2, .readme-render h3 {
+    margin-top: var(--space-5); margin-bottom: var(--space-3);
+  }
+  .readme-render h1 { font-size: 24px; }
+  .readme-render h2 { font-size: 20px; }
+  .readme-render h3 { font-size: 17px; }
+  .readme-render p { margin-bottom: var(--space-3); line-height: 1.6; }
+  .readme-render pre {
+    background: #1e1e2e; color: #d4d4d4;
+    padding: var(--space-4); border-radius: var(--radius-md);
+    overflow-x: auto; font-size: 13px; margin-bottom: var(--space-3);
+  }
+  .readme-render code {
+    background: var(--bg-sunken); padding: 1px 6px;
+    border-radius: 3px; font-size: 13px;
+  }
+  .readme-render pre code { background: transparent; padding: 0; }
+  .readme-render a { color: var(--accent-library); }
+  .readme-render ul, .readme-render ol { padding-left: var(--space-5); }
+  .readme-render blockquote {
+    border-left: 4px solid var(--border-default);
+    padding-left: var(--space-3); color: var(--fg-muted);
+    margin: 0 0 var(--space-3) 0;
+  }
+
+  /* Responsive: collapse sidebar on small viewports */
+  @media (max-width: 900px) {
+    .lib-shell { grid-template-columns: 1fr; }
+    .lib-sidebar { display: none; }
+    .lib-search { display: none; }
+  }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div class="lib-shell">
+
+  <!-- Top bar -->
+  <div class="lib-topbar">
+    <a class="lib-brand" href="/library/?ws={{ workspace|default('global') }}">
+      Colaberry<span class="brand-sep">·</span><span class="brand-product">Library</span>
+    </a>
+
+    <form class="lib-search" method="get" action="/library/search" role="search" id="lib-search-form">
+      <input type="search" name="q"
+             id="lib-search-input"
+             placeholder="Search skills, agents, prompts, MCP servers… (Ctrl+K)"
+             value="{{ q|default('') }}"
+             aria-label="Search Library"
+             {% if library_nav_active in ('home','use_cases') %}data-live-filter="1"{% endif %} />
+      <input type="hidden" name="ws" value="{{ workspace|default('global') }}" />
+    </form>
+
+    <div class="lib-top-actions">
+      <div class="add-menu" id="add-menu">
+        <button class="lib-action-btn" onclick="document.getElementById('add-menu').classList.toggle('open')">+ Add ▾</button>
+        <div class="add-menu-panel">
+          <a href="/library/ingest?ws={{ workspace|default('global') }}">🌐 From URL or GitHub</a>
+          <a href="/library/submit?ws={{ workspace|default('global') }}">✏️ Submit manually</a>
+          <hr style="margin: 4px 0; border: 0; border-top: 1px solid var(--border-muted);">
+          <a href="/library/candidates?ws={{ workspace|default('global') }}">🔍 Review scanner candidates</a>
+        </div>
+      </div>
+
+      <a href="/library/pending?ws={{ workspace|default('global') }}" class="lib-badge {% if (pending_count|default(0)) > 0 %}has-count{% endif %}" title="Pending review">
+        ⏳ {{ pending_count|default(0) }}
+      </a>
+
+      <select class="lib-badge" onchange="window.location.href='/library/?ws=' + this.value" aria-label="Workspace">
+        {% for ws in (workspaces|default(['global'])) %}
+          <option value="{{ ws }}" {% if ws == workspace %}selected{% endif %}>🏢 {{ ws }}</option>
+        {% endfor %}
+      </select>
+
+      <a href="/" class="lib-action-btn outline" title="Project Architect">📐</a>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="lib-sidebar">
+    <a href="/library/use-cases?ws={{ workspace|default('global') }}" {% if library_nav_active == 'use_cases' %}class="active"{% endif %}>
+      <span class="nav-icon">🎯</span> Use Cases
+      {% if use_case_count is not none %}<span class="nav-count">{{ use_case_count }}</span>{% endif %}
+    </a>
+    <a href="/library/?ws={{ workspace|default('global') }}" {% if library_nav_active == 'home' %}class="active"{% endif %}>
+      <span class="nav-icon">🏠</span> Overview
+    </a>
+    <a href="/library/search?ws={{ workspace|default('global') }}" {% if library_nav_active == 'search' %}class="active"{% endif %}>
+      <span class="nav-icon">🔍</span> Search
+    </a>
+
+    <div class="group-label">📦 Reusable assets</div>
+    {% for k, label, emoji in [
+      ('skills', 'Skills', '🛠️'),
+      ('agents', 'Agents', '🤖'),
+      ('prompts', 'Prompts', '💬'),
+      ('mcp', 'MCP Servers', '🔌'),
+      ('capabilities', 'Capabilities', '🧩'),
+      ('templates', 'Templates', '📋'),
+    ] %}
+    <a href="/library/{{ k }}?ws={{ workspace|default('global') }}" {% if library_nav_active == k %}class="active"{% endif %}>
+      <span class="nav-icon">{{ emoji }}</span>{{ label }}
+      {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+
+    <div class="group-label">⚙️ Operations</div>
+    {% for k, label, emoji in [
+      ('workflows', 'Workflows', '🎼'),
+      ('projections', 'Projections', '📊'),
+      ('recovery', 'Recovery', '🩹'),
+      ('chaos', 'Chaos', '🌪️'),
+    ] %}
+    <a href="/library/{{ k }}?ws={{ workspace|default('global') }}" {% if library_nav_active == k %}class="active"{% endif %}>
+      <span class="nav-icon">{{ emoji }}</span>{{ label }}
+      {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+
+    <div class="group-label">🏛️ Governance</div>
+    {% for k, label, emoji in [
+      ('policies', 'Policies', '📜'),
+      ('governance', 'Scorecards', '🏛️'),
+      ('evals', 'Evals', '🧪'),
+      ('connectors', 'Connectors', '🔗'),
+      ('adapters', 'Adapters', '🪛'),
+    ] %}
+    <a href="/library/{{ k }}?ws={{ workspace|default('global') }}" {% if library_nav_active == k %}class="active"{% endif %}>
+      <span class="nav-icon">{{ emoji }}</span>{{ label }}
+      {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+
+    <div class="group-label">🔧 Admin</div>
+    <a href="/library/ingest?ws={{ workspace|default('global') }}" {% if library_nav_active == 'ingest' %}class="active"{% endif %}>
+      <span class="nav-icon">🌐</span>Ingest
+    </a>
+    <a href="/library/pending?ws={{ workspace|default('global') }}" {% if library_nav_active == 'pending' %}class="active"{% endif %}>
+      <span class="nav-icon">⏳</span>Pending
+    </a>
+    <a href="/library/candidates?ws={{ workspace|default('global') }}" {% if library_nav_active == 'candidates' %}class="active"{% endif %}>
+      <span class="nav-icon">🔍</span>Candidates
+    </a>
+  </aside>
+
+  <!-- Main content -->
+  <main class="lib-main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+// Close + Add dropdown on click outside
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('add-menu');
+  if (m && !m.contains(e.target)) m.classList.remove('open');
+});
+// Ctrl+K to focus search
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    document.querySelector('.lib-search input')?.focus();
+  }
+});
+
+// ── Live search filter (only when input has data-live-filter) ─────
+(function() {
+  const input = document.getElementById('lib-search-input');
+  if (!input || !input.dataset.liveFilter) return;
+  const form = document.getElementById('lib-search-form');
+
+  // Cards: any element with data-uc-card OR an anchor inside .library-card
+  // We tag UC cards with .uc-card so JS finds them deterministically.
+  let timer = null;
+  let lastQuery = '';
+
+  function debounced(fn, delay) {
+    return function() {
+      const args = arguments;
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(null, args), delay);
+    };
+  }
+
+  function tokenize(s) {
+    return (s || '').toLowerCase().split(/\s+/).filter(Boolean);
+  }
+
+  function matchesAll(text, tokens) {
+    text = (text || '').toLowerCase();
+    return tokens.every(t => text.indexOf(t) >= 0);
+  }
+
+  function applyFilter(q) {
+    const tokens = tokenize(q);
+    const cards = document.querySelectorAll('.uc-card');
+    let shown = 0;
+    cards.forEach(c => {
+      const text = c.dataset.searchText || c.textContent || '';
+      if (!tokens.length || matchesAll(text, tokens)) {
+        c.style.display = '';
+        shown++;
+      } else {
+        c.style.display = 'none';
+      }
+    });
+
+    // Highlight cloud words that contain the (last) token
+    const words = document.querySelectorAll('.cloud-word');
+    if (tokens.length === 0) {
+      words.forEach(w => {
+        w.classList.remove('dimmed', 'live-match');
+      });
+    } else {
+      const last = tokens[tokens.length - 1];
+      words.forEach(w => {
+        const word = (w.dataset.word || '').toLowerCase();
+        if (word.indexOf(last) >= 0) {
+          w.classList.remove('dimmed');
+          w.classList.add('live-match');
+        } else {
+          w.classList.add('dimmed');
+          w.classList.remove('live-match');
+        }
+      });
+    }
+
+    // Update hero counter "X of Y use cases"
+    const heroN = document.getElementById('uc-hero-shown');
+    if (heroN) heroN.textContent = String(shown);
+  }
+
+  input.addEventListener('input', debounced(function() {
+    const q = input.value.trim();
+    if (q === lastQuery) return;
+    lastQuery = q;
+    applyFilter(q);
+  }, 180));
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      input.value = '';
+      lastQuery = '';
+      applyFilter('');
+      input.blur();
+      e.preventDefault();
+    } else if (e.key === 'Enter') {
+      // Commit to URL — keep the live behaviour but make it shareable on reload
+      const q = input.value.trim();
+      if (q && (location.pathname === '/library/' || location.pathname === '/library/use-cases')) {
+        e.preventDefault();
+        const u = new URL('/library/use-cases', location.origin);
+        u.searchParams.set('ws', '{{ workspace|default("global") }}');
+        u.searchParams.set('keyword', q);
+        location.href = u.toString();
+      }
+    }
+  });
+
+  // If page loaded with ?keyword=X, apply immediately
+  const params = new URLSearchParams(location.search);
+  const initial = params.get('keyword');
+  if (initial) {
+    input.value = initial;
+    lastQuery = initial;
+    applyFilter(initial);
+  }
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

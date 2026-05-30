@@ -1,0 +1,86 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "candidates" %}
+
+{% block title %}Colaberry · Library · Scanner candidates{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">🔍</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">Scanner candidates</h1>
+    <p class="text-muted mb-0">Things the weekly scanner found that aren't in the Library yet. Review, accept the ones worth keeping.</p>
+  </div>
+  <form method="post" action="/library/candidates/scan?ws={{ workspace }}&as={{ actor }}">
+    <button class="btn btn-outline-success">🔄 Run scan now</button>
+  </form>
+</div>
+
+{% if last_scan %}
+<div class="mb-3 d-flex gap-3 align-items-center">
+  <div class="stat-mini" style="text-align: left; flex: 0 0 auto;">
+    <div class="n">{{ last_scan.new_candidates }}</div>
+    <div class="l">new last run</div>
+  </div>
+  <div class="stat-mini" style="text-align: left; flex: 0 0 auto;">
+    <div class="n">{{ last_scan.total_candidates }}</div>
+    <div class="l">total discovered</div>
+  </div>
+  <div class="text-muted small">Last scanned: <strong>{{ last_scan.scanned_at }}</strong></div>
+</div>
+{% endif %}
+
+{% if candidates %}
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📦 {{ candidates|length }} candidate{{ '' if candidates|length == 1 else 's' }}</h2>
+  </div>
+  <div>
+    {% for c in candidates %}
+    <div class="asset-row" style="cursor: default;">
+      <div style="flex: 1; min-width: 0;">
+        <div class="asset-name">{{ c.name }}</div>
+        {% if c.description %}<div class="asset-meta">{{ c.description }}</div>{% endif %}
+        <div class="mt-1">
+          <span class="asset-tag">{{ c.category }}</span>
+          {% for t in c.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}
+        </div>
+      </div>
+      <div class="text-end" style="min-width: 200px;">
+        <div class="asset-meta">found by {{ c.discovered_by }}</div>
+        <div class="asset-meta">{{ c.discovered_at }}</div>
+        <div class="asset-meta" style="font-size: 11px;">source: {{ c.source }}</div>
+      </div>
+      <div class="text-end" style="min-width: 100px;">
+        <span class="filter-chip">{{ c.status }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="library-card">
+  <div class="library-card-header"><h2>📭 No candidates yet</h2></div>
+  <div class="p-4">
+    <p>The weekly scanner hasn't found anything new since the last review. That can mean:</p>
+    <ul>
+      <li>The team is up to date — everything discovered is already in the Library.</li>
+      <li>No new sources were configured. Add discovery sources at <code>config/library_sources.json</code>.</li>
+      <li>The scanner hasn't run yet — click <strong>Run scan now</strong> above.</li>
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+<div class="mt-4 p-4 rounded" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
+  <h5>🤖 How the scanner works</h5>
+  <p class="text-muted mb-2">
+    Runs weekly. Scans skill catalog, plugin folders, and configurable external sources. Idempotent — running
+    twice in the same week doesn't double-queue the same candidate (deterministic <code>sha256(category|name)</code> IDs).
+  </p>
+  <p class="text-muted mb-0">
+    Sources today: <code>skill_catalog</code> · <code>plugins/</code> · <code>config/library_sources.json</code>
+  </p>
+</div>
+
+{% endblock %}

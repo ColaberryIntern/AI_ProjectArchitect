@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capability Version",
+  "description": "One immutable revision of a capability. Multiple versions can coexist; recommendation routing decides what portion of traffic each receives.",
+  "type": "object",
+  "required": [
+    "version_id", "capability_id", "semver", "status",
+    "created_by", "created_at", "manifest_snapshot"
+  ],
+  "properties": {
+    "version_id": {
+      "type": "string",
+      "description": "UUID v4 unique per version row.",
+      "examples": ["3f8a1c2d-..."]
+    },
+    "capability_id": {
+      "type": "string",
+      "description": "References the live capability id in the registry."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["1.0.0", "2.3.1"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "experimental", "approved", "deprecated", "archived"],
+      "description": "Lifecycle stage. Only one approved version per capability is the recommended default; experimental versions get rollout_percentage traffic."
+    },
+    "parent_version_id": {
+      "type": ["string", "null"],
+      "description": "Previous version this revision was derived from. null for v1.0.0."
+    },
+    "changelog": {
+      "type": "string",
+      "description": "Human-readable summary of what changed.",
+      "examples": ["Tightened tone guidance, removed redundant framing, swapped to gpt-4.1-mini."]
+    },
+    "migration_notes": {
+      "type": "string",
+      "description": "How to move users / pipelines from the previous version. Free text."
+    },
+    "compatibility_notes": {
+      "type": "string",
+      "description": "What changes operators must know about (breaking inputs, new outputs, etc)."
+    },
+    "rollout_percentage": {
+      "type": "number", "minimum": 0, "maximum": 100, "default": 0,
+      "description": "For experimental status: portion of traffic that should route to this version. Approved version absorbs the remainder."
+    },
+    "created_by": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "team": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "approved_by": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "approval_timestamp": { "type": ["string", "null"], "format": "date-time" },
+    "deprecated_at": { "type": ["string", "null"], "format": "date-time" },
+    "manifest_snapshot": {
+      "type": "object",
+      "description": "Frozen copy of the capability manifest at this version.",
+      "additionalProperties": true
+    },
+    "prompt_snapshot": {
+      "type": ["string", "null"],
+      "description": "Captured prompt body at version time."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "revision_id": {
+      "type": ["string", "null"],
+      "description": "Optimistic-concurrency revision token (Phase 8A). Updated on every persist."
+    }
+  },
+  "additionalProperties": false
+}

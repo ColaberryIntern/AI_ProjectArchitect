@@ -172,3 +172,55 @@ class TestRunAllDetectors:
         assert "missing_criteria" in result
         assert "total_findings" in result
         assert "has_issues" in result
+
+
+# ---------------------------------------------------------------------------
+# Measurability checks (Phase B.3)
+# ---------------------------------------------------------------------------
+
+
+from execution.ambiguity_detector import (
+    detect_measurability_issues,
+    detect_unquantified_adjectives,
+)
+
+
+class TestUnquantifiedAdjectives:
+    def test_bare_fast_flagged(self):
+        findings = detect_unquantified_adjectives("Then the page loads fast.")
+        assert len(findings) == 1
+        assert findings[0]["term"].lower() == "fast"
+
+    def test_fast_with_threshold_passes(self):
+        findings = detect_unquantified_adjectives(
+            "Then the page loads fast — p95 < 500ms under 1000 rps."
+        )
+        assert findings == []
+
+    def test_secure_alone_flagged(self):
+        findings = detect_unquantified_adjectives("The system is secure.")
+        assert any(f["term"].lower() == "secure" for f in findings)
+
+    def test_secure_with_compliance_standard_passes(self):
+        findings = detect_unquantified_adjectives(
+            "The system is secure: SOC 2 Type II audited, TLS 1.3 in transit."
+        )
+        assert all(f["term"].lower() != "secure" for f in findings)
+
+    def test_scalable_with_concurrency_passes(self):
+        findings = detect_unquantified_adjectives(
+            "It is scalable to 10000 concurrent users."
+        )
+        assert all(f["term"].lower() != "scalable" for f in findings)
+
+    def test_aggregator_returns_structure(self):
+        result = detect_measurability_issues("It is fast and intuitive.")
+        assert "unquantified_adjectives" in result
+        assert result["has_issues"] is True
+        assert result["total_findings"] >= 2
+
+    def test_aggregator_clean_text(self):
+        result = detect_measurability_issues(
+            "It returns 200 OK with body matching schema in <= 500ms."
+        )
+        assert result["has_issues"] is False

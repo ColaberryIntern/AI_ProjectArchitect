@@ -1,0 +1,77 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "pending" %}
+
+{% block title %}Colaberry · Library · Pending review{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">⏳</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">Pending review</h1>
+    <p class="text-muted mb-0">Submissions waiting for curator decision. Acting as <strong>{{ actor }}</strong>.</p>
+  </div>
+  <div class="text-end">
+    <div style="font-size: 32px; font-weight: 700; color: var(--accent-library);">{{ submissions|length }}</div>
+    <div class="asset-meta">in queue</div>
+  </div>
+</div>
+
+{% if submissions %}
+{% for s in submissions %}
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>{{ s.name }}</h2>
+    <div>
+      <span class="asset-tag">{{ s.category }}</span>
+      <span class="asset-tag">{{ s.submitted_by }}</span>
+      <span class="asset-tag">{{ s.submitted_at }}</span>
+    </div>
+  </div>
+  <div class="p-4">
+    <p>{{ s.description }}</p>
+    {% if s.how_to_use %}
+    <details class="mt-2"><summary class="text-muted small">How to use</summary>
+      <pre style="background: var(--bg-sunken); padding: var(--space-3); border-radius: var(--radius-md); white-space: pre-wrap; font-size: 13px;">{{ s.how_to_use }}</pre>
+    </details>
+    {% endif %}
+    {% if s.example %}
+    <details class="mt-2"><summary class="text-muted small">Example</summary>
+      <pre style="background: var(--bg-sunken); padding: var(--space-3); border-radius: var(--radius-md); white-space: pre-wrap; font-size: 13px;">{{ s.example }}</pre>
+    </details>
+    {% endif %}
+    {% if s.tags %}
+    <div class="mt-2">
+      {% for t in s.tags %}<span class="asset-tag">{{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/library/pending/{{ s.submission_id }}/review?ws={{ workspace }}&as={{ actor }}" class="mt-4 row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small">Decision</label>
+        <select name="decision" class="form-select form-select-sm">
+          <option value="accepted">✓ Accept</option>
+          <option value="rejected">✗ Reject</option>
+        </select>
+      </div>
+      <div class="col-md-7">
+        <label class="form-label small">Curator notes (optional)</label>
+        <input name="notes" class="form-control form-control-sm" placeholder="Why accept or reject?">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-sm w-100" style="background: var(--accent-library); color: white;">Submit decision</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="library-card">
+  <div class="library-card-header"><h2>📭 Queue is empty</h2></div>
+  <div class="p-4">
+    <p>No pending submissions. <a href="/library/submit?ws={{ workspace }}">Encourage the team to submit →</a></p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,15 +1,27 @@
 """Quality gate runner for chapters and final documents.
 
-Implements the 5 quality gates: Completeness, Clarity, Build Readiness,
-Anti-Vagueness, and Intern Success Test. All checks are deterministic.
+Implements the 5 lexical quality gates: Completeness, Clarity, Build
+Readiness, Anti-Vagueness, and Intern Success Test. All lexical checks
+are deterministic regex/keyword matches.
 
 Also implements composite quality scoring (0-100) for enterprise chapters
 across 4 dimensions: word count, subsection coverage, technical density,
 and implementation specificity.
+
+Spec-driven gates (added in Phase B of the spec-driven upgrade) live in
+``run_spec_gates()`` and require Requirement objects from
+``state.features.core[*]`` / ``state.features.optional[*]``:
+
+- Requirement Coverage Gate (structural, no LLM)
+- AC Testability Gate (LLM-judged via ``execution.semantic_judge``)
+- Semantic Intern Test (LLM-judged, replaces the regex Intern Test for
+  per-chapter use; the document-level regex Intern Test remains for
+  backward compatibility in ``run_final_gates``)
 """
 
 import re
 
+from execution import semantic_judge
 from execution.ambiguity_detector import detect_forbidden_phrases
 from execution.build_depth import get_chapter_subsections, get_depth_config
 
@@ -45,14 +57,64 @@ INTERN_TEST_QUESTIONS = [
 ]
 
 
-def check_completeness(chapter_text: str, chapter_title: str = "") -> dict:
+REQ_CITATION_PATTERN = re.compile(r"\[REQ-\d+\]")
+
+
+def check_requirement_citations(
+    chapter_text: str,
+    linked_requirements: list[dict] | None,
+) -> dict:
+    """Verify the chapter cites every linked Requirement at least once.
+
+    Citations use the form ``[REQ-NNN]`` (matched by REQ_CITATION_PATTERN).
+    AC citations (``[AC-NNN-N]``) are not currently required by this gate
+    — the directive recommends them but a missing AC citation is not a
+    completeness failure.
+
+    Args:
+        chapter_text: The chapter text to scan.
+        linked_requirements: Requirements that should be cited. None or
+            empty list short-circuits to passed=True (no requirements
+            were linked, so nothing to cite).
+
+    Returns:
+        Dict with 'passed' bool, 'missing_citations' list of req IDs,
+        and 'issues' list for the report.
+    """
+    if not linked_requirements:
+        return {"passed": True, "missing_citations": [], "issues": []}
+
+    cited = set(REQ_CITATION_PATTERN.findall(chapter_text))
+    missing: list[str] = []
+    for r in linked_requirements:
+        rid = r.get("id", "")
+        if not rid:
+            continue
+        if f"[{rid}]" not in cited:
+            missing.append(rid)
+    issues = [
+        f"Linked requirement {rid} is not cited in the chapter (use [{rid}])"
+        for rid in missing
+    ]
+    return {"passed": len(missing) == 0, "missing_citations": missing, "issues": issues}
+
+
+def check_completeness(
+    chapter_text: str,
+    chapter_title: str = "",
+    linked_requirements: list[dict] | None = None,
+) -> dict:
     """Check a chapter for completeness.
 
-    Verifies required elements are present and no placeholder content exists.
+    Verifies required elements are present, no placeholder content
+    exists, and (when ``linked_requirements`` is provided) that every
+    linked Requirement is cited inline as ``[REQ-NNN]``.
 
     Args:
         chapter_text: The full chapter text.
         chapter_title: Optional chapter title for reporting.
+        linked_requirements: Optional list of Requirement dicts traced to
+            this chapter. When provided, missing citations fail the gate.
 
     Returns:
         Dict with 'passed' bool and 'issues' list.
@@ -81,6 +143,10 @@ def check_completeness(chapter_text: str, chapter_title: str = "") -> dict:
         issues.append(
             f"Chapter has only {len(non_heading_lines)} content lines (minimum 10)"
         )
+
+    # Citation-presence check (only runs when linked_requirements given)
+    citation_result = check_requirement_citations(chapter_text, linked_requirements)
+    issues.extend(citation_result["issues"])
 
     return {
         "gate": "completeness",
@@ -536,4 +602,253 @@ def score_document(chapter_scores: list[dict], depth_mode: str = "enterprise") -
         "chapters_needs_expansion": needs_exp,
         "chapters_incomplete": incomplete,
         "status": doc_status,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Spec-driven gates (Phase B)
+#
+# These gates operate on Requirement objects (from feature_classifier's
+# promoted features) plus chapter text. They are gated behind a separate
+# entry point so existing callers of run_chapter_gates / run_final_gates
+# don't pick them up automatically.
+# ---------------------------------------------------------------------------
+
+
+# AC Testability minimum score for "must"-priority requirements.
+# Scores: 0 = untestable, 1 = weak, 2 = testable, 3 = fully testable.
+AC_TESTABILITY_MIN_SCORE_MUST = 2
+
+
+def check_requirement_coverage(requirements: list[dict]) -> dict:
+    """Verify every must-priority Requirement is referenced by >=1 chapter.
+
+    Pure structural check — no LLM. Reads ``traces_to.chapter_ids`` on
+    each Requirement; the chapter_writer keeps this populated as
+    chapters are approved.
+
+    Args:
+        requirements: List of Requirement dicts (post-promotion).
+
+    Returns:
+        Dict with ``passed`` bool, ``orphaned`` list of Requirement IDs
+        without chapter coverage, and ``issues`` list for the report.
+    """
+    orphaned: list[str] = []
+    for r in requirements:
+        if r.get("priority") != "must":
+            continue
+        traced = (r.get("traces_to") or {}).get("chapter_ids") or []
+        if not traced:
+            orphaned.append(r.get("id", r.get("name", "unknown")))
+
+    issues = [
+        f"Must-priority requirement '{rid}' is not referenced by any chapter"
+        for rid in orphaned
+    ]
+    return {
+        "gate": "requirement_coverage",
+        "passed": len(orphaned) == 0,
+        "orphaned": orphaned,
+        "issues": issues,
+    }
+
+
+def check_ac_testability(requirements: list[dict]) -> dict:
+    """LLM-judged: every must-priority AC scores >= AC_TESTABILITY_MIN_SCORE_MUST.
+
+    Calls ``semantic_judge.score_acceptance_criteria()``. If the LLM is
+    unavailable, the gate is reported as ``skipped`` with passed=True
+    (advisory mode) — a CI environment without OPENAI_API_KEY should not
+    fail builds on this gate alone.
+
+    Args:
+        requirements: List of Requirement dicts.
+
+    Returns:
+        Dict with ``gate``, ``passed``, ``status`` (one of
+        ``ok``/``skipped``/``error``), ``failing`` list of
+        {ac_id, score, reason}, and ``issues`` for the report.
+    """
+    must_acs: list[dict] = []
+    must_ac_owners: dict[str, str] = {}  # ac_id -> req_id
+    for r in requirements:
+        if r.get("priority") != "must":
+            continue
+        for ac in r.get("acceptance_criteria") or []:
+            ac_id = ac.get("id", "")
+            if not ac_id:
+                continue
+            must_acs.append(ac)
+            must_ac_owners[ac_id] = r.get("id", "unknown")
+
+    if not must_acs:
+        return {
+            "gate": "ac_testability",
+            "passed": True,
+            "status": "ok",
+            "failing": [],
+            "issues": [],
+        }
+
+    judge_result = semantic_judge.score_acceptance_criteria(must_acs)
+    if judge_result.status == "skipped":
+        return {
+            "gate": "ac_testability",
+            "passed": True,
+            "status": "skipped",
+            "failing": [],
+            "issues": [f"AC testability gate skipped: {judge_result.reason}"],
+        }
+    if judge_result.status == "error":
+        return {
+            "gate": "ac_testability",
+            "passed": False,
+            "status": "error",
+            "failing": [],
+            "issues": [f"AC testability gate errored: {judge_result.reason}"],
+        }
+
+    failing: list[dict] = []
+    for entry in (judge_result.data or {}).get("results", []):
+        score = entry.get("score")
+        if not isinstance(score, (int, float)) or score < AC_TESTABILITY_MIN_SCORE_MUST:
+            failing.append({
+                "ac_id": entry.get("id", ""),
+                "requirement_id": must_ac_owners.get(entry.get("id", ""), "unknown"),
+                "score": score,
+                "reason": entry.get("reason", ""),
+            })
+
+    issues = [
+        (
+            f"AC '{f['ac_id']}' on requirement '{f['requirement_id']}' "
+            f"scored {f['score']} (< {AC_TESTABILITY_MIN_SCORE_MUST}): {f['reason']}"
+        )
+        for f in failing
+    ]
+    return {
+        "gate": "ac_testability",
+        "passed": len(failing) == 0,
+        "status": "ok",
+        "failing": failing,
+        "issues": issues,
+    }
+
+
+def check_chapter_intern_semantic(
+    chapter_text: str,
+    linked_requirements: list[dict],
+) -> dict:
+    """LLM-judged Intern Test for a chapter.
+
+    Replaces the regex-based Intern Test (``check_intern_test``) for
+    per-chapter use. Asks the judge if the chapter + linked Requirements
+    answer: inputs, outputs, one runnable test scenario, definition of
+    done. Fails if any answer is False.
+
+    Args:
+        chapter_text: Full chapter text.
+        linked_requirements: Requirements traced to this chapter.
+
+    Returns:
+        Dict with ``gate``, ``passed``, ``status``, ``answers`` (per
+        question), and ``issues``.
+    """
+    judge_result = semantic_judge.evaluate_chapter_intern_test(
+        chapter_text, linked_requirements
+    )
+    if judge_result.status == "skipped":
+        return {
+            "gate": "chapter_intern_semantic",
+            "passed": True,
+            "status": "skipped",
+            "answers": {},
+            "issues": [f"Semantic intern test skipped: {judge_result.reason}"],
+        }
+    if judge_result.status == "error":
+        return {
+            "gate": "chapter_intern_semantic",
+            "passed": False,
+            "status": "error",
+            "answers": {},
+            "issues": [f"Semantic intern test errored: {judge_result.reason}"],
+        }
+
+    data = judge_result.data or {}
+    questions = ("inputs", "outputs", "test_scenario", "definition_of_done")
+    answers = {q: data.get(q) or {"answered": False, "evidence": None} for q in questions}
+    unanswered = [q for q in questions if not answers[q].get("answered")]
+    issues = [
+        f"Chapter does not answer '{q.replace('_', ' ')}' (no concrete evidence)"
+        for q in unanswered
+    ]
+    return {
+        "gate": "chapter_intern_semantic",
+        "passed": len(unanswered) == 0,
+        "status": "ok",
+        "answers": answers,
+        "issues": issues,
+    }
+
+
+def run_spec_gates(
+    requirements: list[dict],
+    chapters: list[dict] | None = None,
+) -> dict:
+    """Run all spec-driven gates against a project's Requirements + chapters.
+
+    Args:
+        requirements: Promoted Requirement list (e.g. from
+            ``requirements_writer.collect_requirements(state)``).
+        chapters: Optional list of {"id": str, "text": str} dicts for the
+            per-chapter Semantic Intern Test. If None or empty, the gate
+            is reported as not-applicable (passed=True, status=ok, with
+            an empty per-chapter result list).
+
+    Returns:
+        Dict with the three spec gates plus ``all_passed``::
+
+            {
+                "requirement_coverage": {...},
+                "ac_testability": {...},
+                "chapter_intern_semantic": {
+                    "passed": bool,
+                    "per_chapter": [{"chapter_id": ..., ...}, ...],
+                },
+                "all_passed": bool,
+            }
+    """
+    coverage = check_requirement_coverage(requirements)
+    ac = check_ac_testability(requirements)
+
+    per_chapter_results: list[dict] = []
+    chapters_passed = True
+    for chapter in chapters or []:
+        chapter_id = chapter.get("id", "")
+        text = chapter.get("text", "")
+        linked = [
+            r for r in requirements
+            if chapter_id and chapter_id in (
+                (r.get("traces_to") or {}).get("chapter_ids") or []
+            )
+        ]
+        result = check_chapter_intern_semantic(text, linked)
+        result["chapter_id"] = chapter_id
+        per_chapter_results.append(result)
+        if not result["passed"]:
+            chapters_passed = False
+
+    intern_result = {
+        "gate": "chapter_intern_semantic",
+        "passed": chapters_passed,
+        "per_chapter": per_chapter_results,
+    }
+
+    all_passed = coverage["passed"] and ac["passed"] and chapters_passed
+    return {
+        "requirement_coverage": coverage,
+        "ac_testability": ac,
+        "chapter_intern_semantic": intern_result,
+        "all_passed": all_passed,
     }

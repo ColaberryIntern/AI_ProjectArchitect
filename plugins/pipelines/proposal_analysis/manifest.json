@@ -1,0 +1,59 @@
+{
+  "pipeline_id": "proposal_analysis",
+  "name": "Proposal Analysis (Triage -> Summarize -> Brief)",
+  "description": "End-to-end proposal/RFP triage: summarize the inbound proposal into a one-page executive brief, then emit recommended next actions. Built on the summarize_proposal workflow as the first executable step; future iterations will chain additional steps (risk scoring, legal review trigger, response drafting).",
+  "version": "1.0.0",
+  "created_by": {
+    "name": "Sales Operations",
+    "email": "sales-ops@colaberry.com",
+    "team": "Sales"
+  },
+  "department": "Sales",
+  "execution_strategy": "sequential",
+  "tags": ["sales", "proposal", "rfp", "pipeline", "executive-brief"],
+  "recommended_roles": ["Account Executive", "Sales Leader"],
+  "estimated_time_savings": {
+    "minutes_per_run": 35
+  },
+  "inputs": [
+    {
+      "name": "proposal_text",
+      "type": "text",
+      "description": "The proposal body to analyze.",
+      "required": true
+    },
+    {
+      "name": "client_name",
+      "type": "string",
+      "description": "Optional client name for personalization.",
+      "required": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "executive_brief",
+      "type": "markdown",
+      "description": "One-page summary suitable for leadership review."
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "summarize",
+      "name": "Summarize the proposal",
+      "capability_id": "summarize_proposal",
+      "depends_on": [],
+      "on_failure": "abort",
+      "input_bindings": {
+        "proposal_text": "$pipeline.proposal_text",
+        "client_name": "$pipeline.client_name",
+        "summary_audience": "Sales Leader"
+      }
+    }
+  ],
+  "output_mappings": [
+    {
+      "source": "$step.summarize.summary",
+      "target": "executive_brief"
+    }
+  ]
+}

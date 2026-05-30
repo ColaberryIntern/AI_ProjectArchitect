@@ -1,0 +1,100 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "ingest" %}
+
+{% block title %}Colaberry · Library · Ingest{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">🌐</div>
+  <div>
+    <h1 class="mb-1">Ingest from URL or GitHub</h1>
+    <p class="text-muted mb-0">Paste a webpage URL or a GitHub repo. The pipeline fetches → parses → classifies → enriches → submits.</p>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="library-card">
+      <div class="library-card-header"><h2>🔗 Single URL</h2></div>
+      <div class="p-4">
+        <form method="post" action="/library/ingest/url?ws={{ workspace }}&as={{ actor }}">
+          <div class="mb-3">
+            <label class="form-label">URL</label>
+            <input name="url" class="form-control" required
+                   placeholder="https://github.com/owner/repo/blob/main/skill.json OR https://anysite.com/page" />
+            <div class="form-text">Webpage, raw markdown, JSON manifest, README, any single document.</div>
+          </div>
+          <button class="btn" style="background: var(--accent-library); color: white;">Ingest URL</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="library-card">
+      <div class="library-card-header"><h2>🐙 GitHub repo (batch)</h2></div>
+      <div class="p-4">
+        <form method="post" action="/library/ingest/github?ws={{ workspace }}&as={{ actor }}">
+          <div class="mb-3">
+            <label class="form-label">GitHub repo URL</label>
+            <input name="repo_url" class="form-control" required
+                   placeholder="https://github.com/owner/repo" />
+            <div class="form-text">Walks the tree, processes 1 file at a time (up to 200), submits each to pending review.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Branch / ref</label>
+            <input name="ref" class="form-control" value="main" />
+          </div>
+          <button class="btn" style="background: var(--accent-library); color: white;">Ingest repo</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-5">
+  <div class="library-card">
+    <div class="library-card-header">
+      <h2>🕘 Recent ingest batches</h2>
+      <span class="asset-meta">{{ recent_batches|length }} batch{{ '' if recent_batches|length == 1 else 'es' }}</span>
+    </div>
+    <div>
+      {% for b in recent_batches %}
+      <a class="asset-row" href="/library/ingest/{{ b.batch_id }}?ws={{ workspace }}&as={{ actor }}">
+        <div style="flex: 1;">
+          <div class="asset-name">{{ b.source }}</div>
+          <div class="asset-meta">
+            by {{ b.submitter }} · {{ b.created_at }} · {{ b.total_items }} items
+          </div>
+        </div>
+        <div class="text-end">
+          {% if b.status == 'done' %}
+            <span class="asset-tag" style="background: var(--accent-library-soft); color: var(--accent-library);">✓ done</span>
+          {% elif b.status == 'running' %}
+            <span class="asset-tag" style="background: #fef3c7; color: #92400e;">⏳ running</span>
+          {% else %}
+            <span class="asset-tag" style="background: #fee2e2; color: #991b1b;">✗ {{ b.status }}</span>
+          {% endif %}
+        </div>
+      </a>
+      {% else %}
+      <div class="p-4 text-muted">No batches yet. Try ingesting a URL above.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="mt-4 p-4 rounded" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
+  <h5>🤖 What the pipeline does</h5>
+  <ol class="text-muted mb-2" style="font-size: 14px;">
+    <li><strong>Fetch</strong> — HTTP GET (auto-rewrites <code>github.com/.../blob/</code> → <code>raw.githubusercontent</code>)</li>
+    <li><strong>Parse</strong> — HTML title/meta/h1, Markdown frontmatter/h1/code blocks, JSON manifests</li>
+    <li><strong>Classify</strong> — routes to one of {{ categories|length }} categories with confidence + reason chain</li>
+    <li><strong>Enrich</strong> — extracts name, description, how-to-use, example, tags, version, owner</li>
+    <li><strong>Submit</strong> — lands in pending review queue (or auto-vets if source is in <code>config/library_trusted_sources.json</code>)</li>
+  </ol>
+  <p class="text-muted mb-0" style="font-size: 13px;">Per-item progress is observable on the batch progress page.</p>
+</div>
+
+{% endblock %}

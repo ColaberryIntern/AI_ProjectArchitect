@@ -31,7 +31,7 @@ CHAPTER_SYSTEM_PROMPT = (
 )
 
 CHAPTER_USER_PROMPT = """Write Chapter {chapter_index} of {total_chapters}: "{section_title}"
-
+{frozen_architecture_section}
 ## Project Profile
 - **Problem:** {problem_definition}
 - **Target User:** {target_user}
@@ -57,20 +57,22 @@ CHAPTER_USER_PROMPT = """Write Chapter {chapter_index} of {total_chapters}: "{se
 
 ## Previous Chapters Context
 {previous_context}
-
+{linked_requirements_section}
 {quality_gate_section}
 
 Return ONLY valid JSON:
 {{
   "purpose": "3-5 paragraphs explaining WHY this chapter exists...",
   "design_intent": "3-5 paragraphs on WHY this approach was chosen...",
-  "implementation_guidance": "Detailed step-by-step guidance..."
+  "implementation_guidance": "Detailed step-by-step guidance with [REQ-NNN] citations..."
 }}
 
 Rules for each field:
 - **purpose**: Why this chapter matters, what decision/behavior it supports, how it fits in the overall system. Reference the project profile.
 - **design_intent**: Tradeoffs considered, constraints that shaped the design, alternatives rejected and why. Be specific to THIS project.
 - **implementation_guidance**: Practical, step-by-step instructions. Reference specific file names, component patterns, API endpoints, data models. Assume the developer uses VS Code with Claude Code. Include execution order (first, then, next), input/output definitions, and dependency notes. Detailed enough for an intern to act without guesswork.
+
+**Citation rule (hard requirement):** If a "Linked Requirements" section appears above, you MUST cite each listed `[REQ-NNN]` at least once inline in `implementation_guidance`. Cite acceptance criteria as `[AC-NNN-N]` where they tie to specific implementation choices. Use bracketed IDs verbatim — do not invent new IDs and do not paraphrase them. Citations are inline single-token references woven into prose; do not add a separate "Requirements covered" subsection.
 
 Each field must be at least 200 words. Total response must be at least 800 words.
 Return ONLY the JSON object."""
@@ -142,6 +144,7 @@ def generate_chapter(
     chapter_index: int,
     total_chapters: int,
     previous_summaries: list[str] | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> dict:
     """Generate one chapter's content via LLM.
 
@@ -153,6 +156,10 @@ def generate_chapter(
         chapter_index: 1-based chapter number.
         total_chapters: Total number of chapters.
         previous_summaries: Optional list of purpose summaries from prior chapters.
+        linked_requirements: Optional list of Requirement dicts whose
+            ``traces_to.outline_section_id`` matches this chapter. Injected
+            into the prompt so the chapter cites them inline as
+            ``[REQ-NNN]`` / ``[AC-NNN-N]``.
 
     Returns:
         Dict with 'purpose', 'design_intent', 'implementation_guidance' keys.
@@ -165,6 +172,7 @@ def generate_chapter(
     prompt = _build_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries,
+        linked_requirements=linked_requirements,
     )
 
     try:
@@ -193,6 +201,7 @@ def generate_chapter_with_retry(
     total_chapters: int,
     previous_summaries: list[str] | None = None,
     gate_failures: list[str] | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> dict:
     """Generate chapter content, incorporating gate failure feedback for retries.
 
@@ -201,6 +210,8 @@ def generate_chapter_with_retry(
 
     Args:
         gate_failures: List of issue strings from quality gate results.
+        linked_requirements: Optional list of Requirement dicts traced to
+            this chapter (see ``generate_chapter`` docs).
         (other args same as generate_chapter)
 
     Returns:
@@ -212,6 +223,7 @@ def generate_chapter_with_retry(
     original_prompt = _build_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries,
+        linked_requirements=linked_requirements,
     )
 
     failure_text = "\n".join(f"- {f}" for f in (gate_failures or []))
@@ -251,6 +263,7 @@ def generate_chapter_with_usage(
     chapter_index: int,
     total_chapters: int,
     previous_summaries: list[str] | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> tuple[dict, dict]:
     """Generate one chapter's content via LLM, returning usage data.
 
@@ -265,6 +278,7 @@ def generate_chapter_with_usage(
     prompt = _build_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries,
+        linked_requirements=linked_requirements,
     )
 
     try:
@@ -293,6 +307,7 @@ def generate_chapter_with_retry_and_usage(
     total_chapters: int,
     previous_summaries: list[str] | None = None,
     gate_failures: list[str] | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> tuple[dict, dict]:
     """Generate chapter with retry, returning usage data.
 
@@ -305,6 +320,7 @@ def generate_chapter_with_retry_and_usage(
     original_prompt = _build_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries,
+        linked_requirements=linked_requirements,
     )
 
     failure_text = "\n".join(f"- {f}" for f in (gate_failures or []))
@@ -377,6 +393,107 @@ def _append_blueprint_context(prompt: str, profile: dict) -> str:
     return prompt
 
 
+def _format_frozen_architecture(profile: dict) -> str:
+    """Format the locked architectural decisions as a prompt section.
+
+    Every chapter must use these tech choices verbatim. Without this,
+    gpt-4o-mini independently re-decides per chapter (e.g. MongoDB in
+    ch1, PostgreSQL in ch11 for the same project), producing a
+    self-contradictory build guide.
+
+    Returns empty string when frozen_architecture is missing — older
+    projects keep their existing behavior.
+    """
+    frozen = profile.get("frozen_architecture") or {}
+    if not frozen:
+        return ""
+
+    lines = [
+        "",
+        "## FROZEN ARCHITECTURE DECISIONS (do not propose alternatives)",
+        "",
+        "These technology choices are **locked** for the entire project. Use these",
+        "exact technologies in this chapter's implementation guidance. Do NOT propose",
+        "alternative databases, runtimes, deployment targets, or message buses, even",
+        "if the prior chapter prompted you to. Cross-chapter consistency is a hard",
+        "requirement.",
+        "",
+    ]
+    # Stable key order so identical configs produce identical prompts (cache-friendly).
+    for key in sorted(frozen.keys()):
+        value = frozen[key]
+        if value:
+            label = key.replace("_", " ").title()
+            lines.append(f"- **{label}**: {value}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _format_linked_requirements(linked_requirements: list[dict] | None) -> str:
+    """Format a Requirement list as a prompt section.
+
+    Returns an empty string when there are no linked Requirements, so
+    chapters whose outline section has no traced Requirements get no
+    citation block at all (cleaner than emitting "None").
+
+    Args:
+        linked_requirements: Requirement dicts whose
+            ``traces_to.outline_section_id`` matches this chapter.
+
+    Returns:
+        Markdown-formatted section to inject into the chapter prompt.
+    """
+    if not linked_requirements:
+        return ""
+
+    lines: list[str] = [
+        "",
+        "## Linked Requirements (cite with [REQ-NNN] / [AC-NNN-N])",
+        "",
+        "Cite each Requirement inline in Implementation Guidance using the bracketed",
+        "form `[REQ-NNN]`, and where relevant cite individual acceptance criteria as",
+        "`[AC-NNN-N]`. The Completeness gate enforces that every linked Requirement",
+        "is cited at least once. Do NOT invent IDs — only cite the ones below.",
+        "",
+        "**Length is unchanged.** Do not add a new subsection for these Requirements,",
+        "do not increase the chapter's target word count to accommodate citations,",
+        "and do not append a 'Requirements covered' summary at the end. Citations are",
+        "single-token inline references woven into the existing prose.",
+        "",
+    ]
+    for r in linked_requirements:
+        rid = r.get("id", "REQ-?")
+        name = r.get("name", "")
+        priority = r.get("priority", "?")
+        actor = r.get("actor") or ""
+        action = r.get("action") or ""
+        value = r.get("value") or ""
+        story = ""
+        if actor and action:
+            story = f"As a {actor}, I want {action}"
+            if value:
+                story += f", so that {value}"
+            story = f" — _{story}_"
+        lines.append(f"- **{rid}** ({priority}): {name}{story}")
+        for ac in r.get("acceptance_criteria") or []:
+            ac_id = ac.get("id", "AC-?-?")
+            given = ac.get("given", "")
+            when = ac.get("when", "")
+            then = ac.get("then", "")
+            lines.append(
+                f"    - `{ac_id}` — Given {given}; When {when}; Then {then}"
+            )
+        for nfr in r.get("nfr") or []:
+            cat = nfr.get("category", "")
+            metric = nfr.get("metric", "")
+            threshold = nfr.get("threshold", "")
+            lines.append(
+                f"    - NFR ({cat}): {metric} — {threshold}"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _build_prompt(
     profile: dict,
     features: list[dict],
@@ -385,6 +502,7 @@ def _build_prompt(
     chapter_index: int,
     total_chapters: int,
     previous_summaries: list[str] | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> str:
     """Build the user prompt from project data."""
     # Extract selected values from profile fields
@@ -429,6 +547,8 @@ def _build_prompt(
         intelligence_goals_section=intelligence_goals_section or "No intelligence goals for this project.",
         section_summary=section_summary or "No summary provided",
         previous_context=previous_context,
+        frozen_architecture_section=_format_frozen_architecture(profile),
+        linked_requirements_section=_format_linked_requirements(linked_requirements),
         technical_constraints=", ".join(tc) if tc else "None specified",
         nfrs=", ".join(nfrs) if nfrs else "None specified",
         use_cases=", ".join(ucs) if ucs else "None specified",
@@ -563,7 +683,7 @@ ENTERPRISE_SYSTEM_PROMPT = (
 )
 
 ENTERPRISE_CHAPTER_PROMPT = """Write Chapter {chapter_index} of {total_chapters}: "{section_title}"
-
+{frozen_architecture_section}
 ## Project Profile
 - **Problem:** {problem_definition}
 - **Target User:** {target_user}
@@ -591,7 +711,7 @@ ENTERPRISE_CHAPTER_PROMPT = """Write Chapter {chapter_index} of {total_chapters}
 
 ## Previous Chapters Context
 {previous_context}
-
+{linked_requirements_section}
 ## REQUIRED SUBSECTIONS
 You MUST include ALL of the following subsections as ## headings in your content:
 {required_subsections}
@@ -607,10 +727,12 @@ You MUST include ALL of the following subsections as ## headings in your content
 - Reference VS Code with Claude Code for implementation
 - Include tables, code blocks, and structured lists
 
+**Citation rule (hard requirement):** If a "Linked Requirements" section appears above, you MUST cite each listed `[REQ-NNN]` at least once inline in the chapter body. Cite acceptance criteria as `[AC-NNN-N]` where they tie to specific implementation choices. Use bracketed IDs verbatim — do not invent new IDs and do not paraphrase them. Citations are inline single-token references woven into existing prose; do not add a separate "Requirements covered" subsection. Length is unchanged — citations do not raise the minimum word count.
+
 {quality_gate_section}
 
 Return ONLY valid JSON:
-{{"content": "<full chapter markdown body with ## subsection headings>"}}"""
+{{"content": "<full chapter markdown body with ## subsection headings and [REQ-NNN] citations>"}}"""
 
 ENTERPRISE_RETRY_PROMPT = """Your previous attempt for Chapter {chapter_index}: "{section_title}" scored {score}/100.
 
@@ -641,6 +763,7 @@ def generate_chapter_enterprise(
     total_chapters: int,
     previous_summaries: list[str] | None = None,
     depth_mode: str = "enterprise",
+    linked_requirements: list[dict] | None = None,
 ) -> dict:
     """Generate an enterprise-grade chapter via LLM.
 
@@ -656,6 +779,8 @@ def generate_chapter_enterprise(
         total_chapters: Total number of chapters.
         previous_summaries: Optional list of purpose summaries from prior chapters.
         depth_mode: Build depth mode (lite, standard, enterprise, architect).
+        linked_requirements: Optional list of Requirement dicts traced to
+            this chapter (see ``generate_chapter`` docs).
 
     Returns:
         Dict with 'content' key containing full markdown body.
@@ -668,6 +793,7 @@ def generate_chapter_enterprise(
     prompt = _build_enterprise_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries, depth_mode,
+        linked_requirements=linked_requirements,
     )
 
     config = get_depth_config(depth_mode)
@@ -699,11 +825,14 @@ def generate_chapter_enterprise_with_retry(
     previous_summaries: list[str] | None = None,
     depth_mode: str = "enterprise",
     score_result: dict | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> dict:
     """Regenerate an enterprise chapter incorporating scoring feedback.
 
     Args:
         score_result: Dict from score_chapter() with score details.
+        linked_requirements: Optional list of Requirement dicts traced to
+            this chapter (see ``generate_chapter`` docs).
         (other args same as generate_chapter_enterprise)
 
     Returns:
@@ -717,6 +846,7 @@ def generate_chapter_enterprise_with_retry(
     original_prompt = _build_enterprise_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries, depth_mode,
+        linked_requirements=linked_requirements,
     )
 
     # Build retry message from score result
@@ -772,6 +902,7 @@ def generate_chapter_enterprise_with_usage(
     total_chapters: int,
     previous_summaries: list[str] | None = None,
     depth_mode: str = "enterprise",
+    linked_requirements: list[dict] | None = None,
 ) -> tuple[dict, dict]:
     """Generate an enterprise chapter, returning usage data.
 
@@ -785,6 +916,7 @@ def generate_chapter_enterprise_with_usage(
     prompt = _build_enterprise_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries, depth_mode,
+        linked_requirements=linked_requirements,
     )
     config = get_depth_config(depth_mode)
 
@@ -815,6 +947,7 @@ def generate_chapter_enterprise_with_retry_and_usage(
     previous_summaries: list[str] | None = None,
     depth_mode: str = "enterprise",
     score_result: dict | None = None,
+    linked_requirements: list[dict] | None = None,
 ) -> tuple[dict, dict]:
     """Regenerate an enterprise chapter with scoring feedback, returning usage data.
 
@@ -829,6 +962,7 @@ def generate_chapter_enterprise_with_retry_and_usage(
     original_prompt = _build_enterprise_prompt(
         profile, features, section_title, section_summary,
         chapter_index, total_chapters, previous_summaries, depth_mode,
+        linked_requirements=linked_requirements,
     )
 
     sr = score_result or {}
@@ -883,6 +1017,7 @@ def _build_enterprise_prompt(
     total_chapters: int,
     previous_summaries: list[str] | None = None,
     depth_mode: str = "professional",
+    linked_requirements: list[dict] | None = None,
 ) -> str:
     """Build the enterprise prompt with chapter-specific subsection requirements."""
     # Extract selected values from profile fields
@@ -937,6 +1072,8 @@ def _build_enterprise_prompt(
         intelligence_goals_section=intelligence_goals_section or "No intelligence goals for this project.",
         section_summary=section_summary or "No summary provided",
         previous_context=previous_context,
+        frozen_architecture_section=_format_frozen_architecture(profile),
+        linked_requirements_section=_format_linked_requirements(linked_requirements),
         technical_constraints=", ".join(tc) if tc else "None specified",
         nfrs=", ".join(nfrs) if nfrs else "None specified",
         use_cases=", ".join(ucs) if ucs else "None specified",

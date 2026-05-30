@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Identity Context",
+  "description": "Per-request identity envelope. Replaces the honor-system actor strings used in Phase 1-4. When auth is unavailable (LOCAL_DEV mode), authenticated=false and downstream code degrades to the prior anonymous behavior.",
+  "type": "object",
+  "required": ["user_id", "display_name", "roles", "workspace_ids", "auth_provider", "authenticated"],
+  "properties": {
+    "user_id": { "type": "string", "examples": ["alice@colaberry.com", "anonymous"] },
+    "display_name": { "type": "string" },
+    "email": { "type": "string" },
+    "department": { "type": "string" },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["admin", "operator", "reviewer", "builder", "viewer"] },
+      "description": "Role names this identity holds. Permissions are derived from rbac._ROLE_PERMISSIONS."
+    },
+    "workspace_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Workspaces this identity is a member of."
+    },
+    "auth_provider": {
+      "type": "string",
+      "enum": ["LOCAL_DEV", "HEADER_AUTH", "STATIC_TOKEN", "FUTURE_OIDC_PLACEHOLDER"]
+    },
+    "authenticated": { "type": "boolean" },
+    "session_id": { "type": "string" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

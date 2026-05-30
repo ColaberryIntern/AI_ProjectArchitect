@@ -1,0 +1,8 @@
+{# Cross-product switcher — Architect + Library only.
+   Ops product shell was deprecated; /ops/* routes still resolve for legacy
+   bookmarks but no longer appear in the primary navigation. #}
+{% set _cp = current_product|default('platform') %}
+<div class="product-switcher" role="group" aria-label="Switch product">
+  <a href="/"          {% if _cp == 'architect' %}class="current" aria-current="page"{% endif %} title="Project Architect — design / planning">📐 Architect</a>
+  <a href="/library/"  {% if _cp == 'library'   %}class="current" aria-current="page"{% endif %} title="Library — governed assets">📚 Library</a>
+</div>

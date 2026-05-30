@@ -235,3 +235,230 @@ class TestGenerateQualityReport:
         results = run_chapter_gates(BAD_CHAPTER)
         report = generate_quality_report(results)
         assert "FAIL" in report
+
+
+# ---------------------------------------------------------------------------
+# Spec-driven gates (Phase B)
+# ---------------------------------------------------------------------------
+
+
+from execution import semantic_judge
+from execution.quality_gate_runner import (
+    check_ac_testability,
+    check_chapter_intern_semantic,
+    check_requirement_coverage,
+    run_spec_gates,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_judge_cache():
+    semantic_judge.clear_cache()
+    yield
+    semantic_judge.clear_cache()
+
+
+class TestCheckRequirementCoverage:
+    def test_all_must_traced_passes(self):
+        reqs = [
+            {"id": "REQ-001", "priority": "must", "traces_to": {"chapter_ids": ["1"]}},
+            {"id": "REQ-002", "priority": "should", "traces_to": {"chapter_ids": []}},
+        ]
+        result = check_requirement_coverage(reqs)
+        assert result["passed"] is True
+        assert result["orphaned"] == []
+
+    def test_orphaned_must_fails(self):
+        reqs = [
+            {"id": "REQ-001", "priority": "must", "traces_to": {"chapter_ids": []}},
+            {"id": "REQ-002", "priority": "must", "traces_to": {"chapter_ids": ["1"]}},
+        ]
+        result = check_requirement_coverage(reqs)
+        assert result["passed"] is False
+        assert result["orphaned"] == ["REQ-001"]
+
+    def test_should_priority_not_required(self):
+        reqs = [
+            {"id": "REQ-001", "priority": "should", "traces_to": {"chapter_ids": []}},
+        ]
+        result = check_requirement_coverage(reqs)
+        assert result["passed"] is True
+
+
+class TestCheckAcTestability:
+    def test_no_must_acs_passes(self):
+        reqs = [{"id": "R1", "priority": "should", "acceptance_criteria": []}]
+        result = check_ac_testability(reqs)
+        assert result["passed"] is True
+        assert result["status"] == "ok"
+
+    def test_skipped_when_llm_unavailable(self, monkeypatch):
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: False)
+        reqs = [{
+            "id": "R1",
+            "priority": "must",
+            "acceptance_criteria": [{"id": "AC-1", "given": "g", "when": "w", "then": "t"}],
+        }]
+        result = check_ac_testability(reqs)
+        assert result["passed"] is True
+        assert result["status"] == "skipped"
+
+    def test_failing_score_fails_gate(self, monkeypatch):
+        from execution.llm_client import LLMResponse
+        import json as _json
+
+        def fake_chat(**kwargs):
+            return LLMResponse(
+                content=_json.dumps({
+                    "results": [
+                        {"id": "AC-1", "score": 1, "reason": "vague then"},
+                        {"id": "AC-2", "score": 3, "reason": "fully testable"},
+                    ]
+                }),
+                model="gpt-4o-mini",
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+                stop_reason="stop",
+            )
+
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: True)
+        monkeypatch.setattr(semantic_judge.llm_client, "chat", fake_chat)
+
+        reqs = [{
+            "id": "R1",
+            "priority": "must",
+            "acceptance_criteria": [
+                {"id": "AC-1", "given": "g", "when": "w", "then": "t"},
+                {"id": "AC-2", "given": "g", "when": "w", "then": "t"},
+            ],
+        }]
+        result = check_ac_testability(reqs)
+        assert result["passed"] is False
+        assert len(result["failing"]) == 1
+        assert result["failing"][0]["ac_id"] == "AC-1"
+        assert result["failing"][0]["requirement_id"] == "R1"
+
+
+class TestCheckChapterInternSemantic:
+    def test_passes_when_all_answered(self, monkeypatch):
+        from execution.llm_client import LLMResponse
+        import json as _json
+
+        def fake_chat(**kwargs):
+            return LLMResponse(
+                content=_json.dumps({
+                    "inputs": {"answered": True, "evidence": "x"},
+                    "outputs": {"answered": True, "evidence": "y"},
+                    "test_scenario": {"answered": True, "evidence": "z"},
+                    "definition_of_done": {"answered": True, "evidence": "w"},
+                }),
+                model="gpt-4o-mini",
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+                stop_reason="stop",
+            )
+
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: True)
+        monkeypatch.setattr(semantic_judge.llm_client, "chat", fake_chat)
+
+        result = check_chapter_intern_semantic("chapter", [])
+        assert result["passed"] is True
+        assert result["answers"]["inputs"]["answered"] is True
+
+    def test_fails_when_any_unanswered(self, monkeypatch):
+        from execution.llm_client import LLMResponse
+        import json as _json
+
+        def fake_chat(**kwargs):
+            return LLMResponse(
+                content=_json.dumps({
+                    "inputs": {"answered": True, "evidence": "x"},
+                    "outputs": {"answered": False, "evidence": None},
+                    "test_scenario": {"answered": True, "evidence": "z"},
+                    "definition_of_done": {"answered": True, "evidence": "w"},
+                }),
+                model="gpt-4o-mini",
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+                stop_reason="stop",
+            )
+
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: True)
+        monkeypatch.setattr(semantic_judge.llm_client, "chat", fake_chat)
+
+        result = check_chapter_intern_semantic("chapter", [])
+        assert result["passed"] is False
+        assert any("outputs" in i for i in result["issues"])
+
+
+class TestRunSpecGates:
+    def test_all_pass_no_chapters(self, monkeypatch):
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: False)
+        reqs = [
+            {"id": "R1", "priority": "must", "traces_to": {"chapter_ids": ["c1"]}},
+        ]
+        result = run_spec_gates(reqs, chapters=None)
+        assert result["all_passed"] is True
+        assert result["requirement_coverage"]["passed"] is True
+        assert result["chapter_intern_semantic"]["per_chapter"] == []
+
+    def test_failing_coverage_drops_all_passed(self, monkeypatch):
+        monkeypatch.setattr(semantic_judge.llm_client, "is_available", lambda: False)
+        reqs = [{"id": "R1", "priority": "must", "traces_to": {"chapter_ids": []}}]
+        result = run_spec_gates(reqs)
+        assert result["all_passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# Citation-presence (Phase C.3)
+# ---------------------------------------------------------------------------
+
+
+from execution.quality_gate_runner import check_requirement_citations
+
+
+class TestCheckRequirementCitations:
+    def test_no_linked_requirements_passes(self):
+        result = check_requirement_citations("any text", linked_requirements=None)
+        assert result["passed"] is True
+
+    def test_empty_list_passes(self):
+        result = check_requirement_citations("any text", [])
+        assert result["passed"] is True
+
+    def test_missing_citation_fails(self):
+        text = "This chapter has no citations."
+        reqs = [{"id": "REQ-001"}, {"id": "REQ-002"}]
+        result = check_requirement_citations(text, reqs)
+        assert result["passed"] is False
+        assert sorted(result["missing_citations"]) == ["REQ-001", "REQ-002"]
+
+    def test_partial_citation_reports_remaining(self):
+        text = "Implementation cites [REQ-001] and [REQ-002] but not the third."
+        reqs = [{"id": "REQ-001"}, {"id": "REQ-002"}, {"id": "REQ-003"}]
+        result = check_requirement_citations(text, reqs)
+        assert result["passed"] is False
+        assert result["missing_citations"] == ["REQ-003"]
+
+    def test_all_cited_passes(self):
+        text = "Cites [REQ-001] and [REQ-002]."
+        reqs = [{"id": "REQ-001"}, {"id": "REQ-002"}]
+        result = check_requirement_citations(text, reqs)
+        assert result["passed"] is True
+
+
+class TestCheckCompletenessWithLinkedRequirements:
+    def test_completeness_fails_when_citation_missing(self):
+        # Use the existing GOOD_CHAPTER fixture which passes all other checks.
+        result = check_completeness(
+            GOOD_CHAPTER, linked_requirements=[{"id": "REQ-001"}]
+        )
+        assert result["passed"] is False
+        assert any("REQ-001" in i for i in result["issues"])
+
+    def test_completeness_passes_with_no_linked_requirements(self):
+        # Backward-compat: when no linked_requirements, citation check is skipped.
+        result = check_completeness(GOOD_CHAPTER)
+        assert result["passed"] is True
+
+    def test_completeness_passes_when_citation_present(self):
+        chapter = GOOD_CHAPTER + "\n\nThis section ties back to [REQ-001].\n"
+        result = check_completeness(chapter, linked_requirements=[{"id": "REQ-001"}])
+        assert result["passed"] is True

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workspace",
+  "description": "Lightweight team/department segmentation. A capability that lists a workspace_id is workspace-scoped; otherwise it's global. Workspaces do not introduce auth — they segment the operational lens.",
+  "type": "object",
+  "required": ["workspace_id", "name", "owner", "created_at"],
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "examples": ["sales-na", "ops-2026q2", "engineering"]
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "department": { "type": "string" },
+    "owner": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "team": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "visibility": {
+      "type": "string",
+      "enum": ["private", "internal", "public"],
+      "default": "internal",
+      "description": "private = owner-only listing; internal = listed to all logged-in users; public = listed in the org-wide browse view."
+    },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "capability_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Capabilities scoped to this workspace. Global capabilities are not listed here."
+    },
+    "pipeline_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "description": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pipeline Execution Record",
+  "description": "Persisted record of a single pipeline run. References the per-step RunRecords by ID.",
+  "type": "object",
+  "required": ["pipeline_run_id", "pipeline_id", "started_at", "status", "step_runs"],
+  "properties": {
+    "pipeline_run_id": { "type": "string" },
+    "pipeline_id": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": ["string", "null"], "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "succeeded", "partial_failure", "failed", "aborted"]
+    },
+    "initiator": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "department": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pipeline_inputs": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    },
+    "step_runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_id", "status"],
+        "properties": {
+          "step_id": { "type": "string" },
+          "capability_id": { "type": "string" },
+          "run_id": { "type": ["string", "null"], "description": "Reference to the underlying RunRecord; null if skipped or never started." },
+          "status": {
+            "type": "string",
+            "enum": ["skipped", "succeeded", "contract_failed", "llm_unavailable", "error", "retried_succeeded"]
+          },
+          "started_at": { "type": ["string", "null"], "format": "date-time" },
+          "finished_at": { "type": ["string", "null"], "format": "date-time" },
+          "error_message": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "duration_ms": { "type": ["integer", "null"] },
+    "outputs": {
+      "type": "object",
+      "description": "Pipeline-level outputs surfaced from step outputs via output_mappings.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

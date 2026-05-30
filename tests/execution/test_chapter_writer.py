@@ -367,6 +367,36 @@ class TestBuildPrompt:
         assert "Completeness Gate" in prompt
         assert "Build Readiness Gate" in prompt
 
+    def test_omits_frozen_architecture_when_absent(self, sample_profile, sample_features):
+        prompt = _build_prompt(
+            sample_profile, sample_features, "Architecture", "Overview",
+            1, 10,
+        )
+        assert "FROZEN ARCHITECTURE DECISIONS" not in prompt
+
+    def test_includes_frozen_architecture_when_present(self, sample_features):
+        profile = {
+            "problem_definition": {"selected": "x"},
+            "target_user": {"selected": "y"},
+            "value_proposition": {"selected": "z"},
+            "deployment_type": {"selected": "saas"},
+            "ai_depth": {"selected": "selective"},
+            "monetization_model": {"selected": "subscription"},
+            "mvp_scope": {"selected": "core"},
+            "frozen_architecture": {
+                "database": "PostgreSQL 15 with row-level security",
+                "runtime": "Python 3.11 + FastAPI",
+            },
+        }
+        prompt = _build_prompt(
+            profile, sample_features, "Architecture", "Overview",
+            1, 10,
+        )
+        assert "FROZEN ARCHITECTURE DECISIONS" in prompt
+        assert "PostgreSQL 15 with row-level security" in prompt
+        assert "Python 3.11 + FastAPI" in prompt
+        assert "do not propose alternatives" in prompt.lower()
+
 
 class TestChapterTemperature:
     """Tests for CHAPTER_TEMPERATURE constant."""

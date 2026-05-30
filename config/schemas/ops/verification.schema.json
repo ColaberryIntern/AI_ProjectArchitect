@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verification Agent Response",
+  "description": "Structured output of the verification agent that reviews a workflow execution. Required by every verification run.",
+  "type": "object",
+  "required": [
+    "completed_requirements",
+    "partial_requirements",
+    "missing_requirements",
+    "architecture_issues",
+    "ui_issues",
+    "technical_debt",
+    "recommendations",
+    "deployment_readiness"
+  ],
+  "properties": {
+    "completed_requirements": { "type": "array", "items": { "type": "string" } },
+    "partial_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["requirement"],
+        "properties": {
+          "requirement": { "type": "string" },
+          "missing": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "missing_requirements": { "type": "array", "items": { "type": "string" } },
+    "architecture_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue"],
+        "properties": {
+          "issue": { "type": "string" },
+          "severity": { "type": "string", "enum": ["low", "medium", "high", "blocker"], "default": "medium" },
+          "suggested_fix": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "ui_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue"],
+        "properties": {
+          "issue": { "type": "string" },
+          "page": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "technical_debt": { "type": "array", "items": { "type": "string" } },
+    "recommendations": { "type": "array", "items": { "type": "string" } },
+    "deployment_readiness": {
+      "type": "string",
+      "enum": ["green", "yellow", "red"],
+      "description": "green = ship; yellow = ship with caveats; red = block"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,37 @@
+{% extends "ops/_ops_base.html" %}
+{% block title %}Replay | Colaberry Ops{% endblock %}
+{% block content %}
+
+<h2 class="mb-1">Timeline Replay</h2>
+<p class="text-muted">Every event tied to a correlation_id, ordered chronologically. Use this to walk an operator through an incident, rollback chain, or experiment lifecycle.</p>
+
+<form method="get" action="/ops/replay/page" class="card card-cap p-3 mb-4">
+  <div class="row g-2">
+    <div class="col-md-9"><input name="correlation_id" value="{{ correlation_id or '' }}" placeholder="correlation_id" class="form-control" /></div>
+    <div class="col-md-3"><button class="btn btn-primary w-100">Load replay</button></div>
+  </div>
+</form>
+
+{% if entries %}
+<table class="table card-cap p-2">
+  <thead><tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Entity</th><th>Notes</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="small text-muted">{{ e.timestamp }}</td>
+      <td><code>{{ e.action }}</code></td>
+      <td>{{ e.actor.name if e.actor else 'unknown' }}{% if e.actor and e.actor.system %} <span class="reason-chip">system</span>{% endif %}</td>
+      <td>{{ e.entity_type }}:<code>{{ e.entity_id }}</code></td>
+      <td class="small text-muted">
+        {% if e.previous_state %}was: {{ e.previous_state }}<br>{% endif %}
+        {% if e.new_state %}now: {{ e.new_state }}<br>{% endif %}
+        {% if e.metadata %}meta: {{ e.metadata }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% elif correlation_id %}
+<div class="alert alert-secondary">No audit entries for correlation_id <code>{{ correlation_id }}</code>.</div>
+{% endif %}
+{% endblock %}

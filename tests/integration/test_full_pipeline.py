@@ -504,8 +504,12 @@ class TestAutoBuildPipeline:
         from execution.auto_builder import run_auto_build
         from execution.chapter_writer import _fallback_chapter
 
-        mock_gen.side_effect = lambda *a, **kw: (_fallback_chapter(a[2], f"Details about {a[2]}", a[4]), {})
-        mock_retry.side_effect = lambda *a, **kw: (_fallback_chapter(a[2], f"Details about {a[2]}", a[4]), {})
+        def _mock_chapter(*a, **kw):
+            section_title = kw.get("section_title", a[2] if len(a) > 2 else "Section")
+            min_words = kw.get("min_words", a[4] if len(a) > 4 else 200)
+            return _fallback_chapter(section_title, f"Details about {section_title}", min_words), {}
+        mock_gen.side_effect = _mock_chapter
+        mock_retry.side_effect = _mock_chapter
 
         # Initialize and set up through outline approval
         state = initialize_state("Auto Build Integration Test")

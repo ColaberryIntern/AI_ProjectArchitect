@@ -1,0 +1,14 @@
+[
+  {
+    "pattern": "github\\.com/colaberry/",
+    "reason": "Colaberry-owned GitHub org"
+  },
+  {
+    "pattern": "github\\.com/modelcontextprotocol/servers",
+    "reason": "Official MCP servers org"
+  },
+  {
+    "pattern": "github\\.com/anthropics/anthropic-cookbook",
+    "reason": "Anthropic official cookbook"
+  }
+]
