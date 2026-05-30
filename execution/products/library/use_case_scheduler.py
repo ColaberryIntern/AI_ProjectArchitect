@@ -117,11 +117,19 @@ def start_scheduler():
         f"generating {_daily_count()} use case(s)."
     )
 
-    # Bootstrap immediately if needed
-    try:
-        run_bootstrap()
-    except Exception:
-        logger.warning("[use-case bootstrap] failed", exc_info=True)
+    # Bootstrap in a background thread — NEVER block app startup. Each
+    # generated case is an LLM call; with bootstrap_count=50 the first
+    # cold-start would otherwise hang uvicorn for minutes.
+    import threading
+
+    def _bg_bootstrap():
+        try:
+            run_bootstrap()
+        except Exception:
+            logger.warning("[use-case bootstrap] failed", exc_info=True)
+
+    threading.Thread(target=_bg_bootstrap, daemon=True,
+                          name="library-uc-bootstrap").start()
 
 
 def stop_scheduler():
