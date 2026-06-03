@@ -112,7 +112,23 @@ def per_list(todos: Iterable[OpsTodo]) -> list[ListRollup]:
             r.open_todos[0] if r.open_todos else None,
         )
 
-    return sorted(by_list.values(), key=lambda r: (r.score, -r.overdue_count))
+    # Sort: most-late lists first, then by score (worst first within tied
+    # overdue counts), then by closest next-blocking due date (today before
+    # future). _earliest_due_key turns None into a far-future sentinel so
+    # lists with no due dates fall to the bottom of their score bucket.
+    def _earliest_due_key(r: ListRollup) -> str:
+        if r.next_blocking and r.next_blocking.due_on:
+            return r.next_blocking.due_on
+        # Then check any todo in the list
+        for t in r.open_todos:
+            if t.due_on:
+                return t.due_on
+        return "9999-12-31"
+
+    return sorted(
+        by_list.values(),
+        key=lambda r: (-r.overdue_count, r.score, _earliest_due_key(r)),
+    )
 
 
 @dataclass
