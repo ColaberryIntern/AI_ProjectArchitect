@@ -1,98 +1,244 @@
 {% extends "my_day/_my_day_base.html" %}
-
 {% block title %}My Day · Colaberry{% endblock %}
 
 {% block topbar_extras %}
 <form method="post" action="/my-day/sync" style="margin: 0;">
-  <button type="submit" class="ws-copy-btn" style="background: #0969da;">↻ Sync now</button>
+  <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
 </form>
 {% endblock %}
 
 {% block main %}
+
+{# ── Status strip ─────────────────────────────────────────── #}
+<div class="status-strip {{ status.state }}">
+  <span class="greeting">{{ greeting }}, {{ first_name }} —</span>
+  <span class="headline">{{ status.headline }}</span>
+  <span class="subhead">{{ status.subhead }}</span>
+  {% if state.last_sync_at %}
+  <span style="margin-left: auto; font-size: 12px; color: #57606a;">Synced {{ sync_relative }}</span>
+  {% endif %}
+</div>
+
 {% if state.last_sync_status == 'failed' %}
-<div class="sync-strip error">
+<div class="alert alert-danger" style="background: #ffeef0; border: 1px solid #ffabba; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
   <strong>Sync failed:</strong> {{ state.last_sync_error or 'unknown' }}.
-  Click "Sync now" once your AI clone is set up in <a href="/admin/users">/admin</a>.
-</div>
-{% elif state.last_sync_at %}
-<div class="sync-strip">
-  Last sync: {{ state.last_sync_at }} · status {{ state.last_sync_status }} · {{ state.todos_synced }} todos from {{ state.projects_synced }} project(s)
-  {% if state.last_sync_error %} · <span style="color: #b3261e;">errors: {{ state.last_sync_error }}</span>{% endif %}
-</div>
-{% else %}
-<div class="sync-strip">
-  No sync yet. Click <strong>Sync now</strong> in the top right to mirror your Basecamp todos.
+  Set up your AI clone in <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">/admin</a>.
 </div>
 {% endif %}
 
-<div class="kpi-row">
-  <div class="kpi"><div class="label">Open in queue</div><div class="value">{{ total }}</div></div>
-  <div class="kpi red"><div class="label">Overdue</div><div class="value">{{ overdue }}</div></div>
-  <div class="kpi red"><div class="label">Red (≥70)</div><div class="value">{{ red }}</div></div>
-  <div class="kpi amber"><div class="label">Amber (40-69)</div><div class="value">{{ amber }}</div></div>
-</div>
-
-{% if projects %}
-<div style="margin-bottom: 16px;">
-  <a href="/my-day/" style="margin-right: 12px; font-size: 13px; text-decoration: none; color: {% if not project_filter %}#1a7f37; font-weight: 600{% else %}#57606a{% endif %};">All projects ({{ total }})</a>
-  {% for p in projects %}
-    {% if project_counts.get(p.bc_id, 0) > 0 %}
-    <a href="/my-day/?project={{ p.bc_id }}"
-       style="margin-right: 12px; font-size: 13px; text-decoration: none; color: {% if project_filter == p.bc_id %}#1a7f37; font-weight: 600{% else %}#57606a{% endif %};">
-      {{ p.name }} ({{ project_counts.get(p.bc_id, 0) }})
-    </a>
-    {% endif %}
-  {% endfor %}
+{# ── Big-picture banner (only when there's a single project + description) ──── #}
+{% if project_one and project_one.description %}
+<div class="big-picture">
+  <div class="eyebrow">FOR {{ first_name|upper }} — BIG PICTURE</div>
+  <p>{{ project_one.description }}</p>
+  {% if focus %}
+  <p class="why-line"><strong>Why the next step matters:</strong> {{ focus.title }} —
+     {% if status.overdue %}overdue, in the way of {{ status.human }} other decisions you owe.
+     {% else %}top of the queue, blocks {{ status.human }} downstream decisions.{% endif %}</p>
+  {% endif %}
 </div>
 {% endif %}
 
-{% if todos %}
-{% for t in todos %}
-<div class="task-row {% if t.score_breakdown.get('breakdown', {}).get('due_days') is not none and t.score_breakdown.get('breakdown', {}).get('due_days') < 0 %}overdue{% endif %} {% if t.is_dismissed %}dismissed{% endif %}">
-  <div>
-    <span class="urgency-pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+{# ── YOUR TURN banner ─────────────────────────────────────── #}
+{% if focus %}
+<div class="your-turn">
+  <div class="eyebrow">YOUR TURN — NEXT DECISION</div>
+  <h2>{{ focus.title }}</h2>
+  <div class="meta">
+    List: <strong>{{ focus.bc_todolist_name }}</strong> ·
+    {% if focus.due_on %}Due: <strong>{{ focus.due_on }}</strong>{% else %}No due date{% endif %} ·
+    {% if focus.bc_app_url %}<a href="{{ focus.bc_app_url }}" target="_blank">Open ticket →</a>{% endif %}
   </div>
-  <div>
-    <div class="title">{{ t.title }}</div>
-    <div class="meta">
-      <strong>{{ t.bc_project_name }}</strong> · {{ t.bc_todolist_name }}
-      {% if t.due_on %} · due <strong>{{ t.due_on }}</strong>{% endif %}
-      {% if t.category and t.category != 'unscored' %}
-        · <span class="cat-chip {{ t.category }}">{{ t.category|replace('_', ' ') }}</span>
-      {% endif %}
-    </div>
+</div>
+
+{# ── Steps card ───────────────────────────────────────────── #}
+<div class="steps-card">
+  <div class="head">
+    <h3>STEPS FOR YOU</h3>
+    <span class="pill {{ 'trivial' if focus_suggestion.action_kind in ('reply','schedule','decision') else '' }}">
+      {{ focus_suggestion.action_kind|upper }}
+    </span>
   </div>
+  <div class="goal"><strong>Goal:</strong> {{ focus_suggestion.one_line }}</div>
+  <ol>
+    {% for step in focus_suggestion.steps %}<li>{{ step }}</li>{% endfor %}
+  </ol>
+  {% if focus_suggestion.stop_conditions %}
+  <div class="stops">
+    <strong>⚠ Stop and escalate if:</strong> {{ focus_suggestion.stop_conditions[0] }}
+  </div>
+  {% endif %}
   <div class="actions">
-    <a href="/my-day/todo/{{ t.bc_id }}" class="ws-copy-btn" style="background: #1a7f37; text-decoration: none;">Open workspace →</a>
-    {% if t.is_dismissed %}
-      <form method="post" action="/my-day/todo/{{ t.bc_id }}/undismiss" style="margin: 0;">
-        <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 8px 14px; border-radius: 6px; cursor: pointer;">Undismiss</button>
-      </form>
-    {% else %}
-      <form method="post" action="/my-day/todo/{{ t.bc_id }}/dismiss" style="margin: 0;">
-        <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 8px 14px; border-radius: 6px; cursor: pointer; color: #57606a;">Dismiss</button>
-      </form>
-    {% endif %}
+    <button type="button" class="md-btn md-btn-primary"
+            onclick="copyPrompt('focus-prompt', this)">
+      📋 Copy Claude Code prompt →
+    </button>
+    <form method="post" action="/my-day/todo/{{ focus.bc_id }}/complete" style="display: inline; margin: 0;">
+      <button type="submit" class="md-btn md-btn-success">✓ Mark done</button>
+    </form>
+    <form method="post" action="/my-day/todo/{{ focus.bc_id }}/dismiss" style="display: inline; margin: 0;">
+      <button type="submit" class="md-btn md-btn-quiet">Skip for now</button>
+    </form>
+    <span class="hint">opens the prompt — select all + copy + paste into Claude Code</span>
+  </div>
+  <textarea id="focus-prompt" class="hidden-prompt" readonly>{{ focus_prompt }}</textarea>
+</div>
+{% endif %}
+
+{# ── KPI tiles ────────────────────────────────────────────── #}
+{% if total_open %}
+<div class="kpi-row">
+  <div class="kpi human">
+    <div class="value">{{ status.human }}</div>
+    <div class="label">HUMAN-NEEDED</div>
+  </div>
+  <div class="kpi ai">
+    <div class="value">{{ status.ai }}</div>
+    <div class="label">AI-DOABLE</div>
+  </div>
+  <div class="kpi overdue">
+    <div class="value">{{ status.overdue }}</div>
+    <div class="label">OVERDUE</div>
   </div>
 </div>
+{% endif %}
+
+{# ── Feasibility per list ─────────────────────────────────── #}
+{% if list_rollups %}
+<div class="section-head">Feasibility per list (lowest first)</div>
+<table class="md-table">
+  <thead>
+    <tr>
+      <th>LIST</th>
+      <th>SCORE</th>
+      <th>OPEN</th>
+      <th>TIER MIX</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in list_rollups %}
+    <tr>
+      <td><strong>{{ r.list_name }}</strong></td>
+      <td><span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span></td>
+      <td class="dim">{{ r.open_count }} open{% if r.overdue_count %} · {{ r.overdue_count }} overdue{% endif %}</td>
+      <td class="mix"><span class="h">H {{ r.human_count }}</span> / <span class="a">AI {{ r.ai_count }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# ── Next human step blocking each list ───────────────────── #}
+<div class="section-head">Next human step blocking each list</div>
+<table class="md-table">
+  <thead>
+    <tr>
+      <th>LIST</th>
+      <th>DUE</th>
+      <th>NEXT HUMAN STEP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in list_rollups %}
+    {% if r.next_blocking %}
+    <tr>
+      <td><strong>{{ r.list_name }}</strong></td>
+      <td>
+        {% set dd = r.next_blocking.score_breakdown.get('breakdown', {}).get('due_days') %}
+        {% if dd is not none and dd < 0 %}<span class="due-pill overdue">OVERDUE {{ r.next_blocking.due_on }}</span>
+        {% elif dd == 0 %}<span class="due-pill today">DUE TODAY</span>
+        {% elif r.next_blocking.due_on %}<span class="due-pill normal">due {{ r.next_blocking.due_on }}</span>
+        {% else %}<span class="dim">no due</span>{% endif %}
+      </td>
+      <td>
+        <a href="/my-day/todo/{{ r.next_blocking.bc_id }}">{{ r.next_blocking.title[:90] }}</a>
+      </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{# ── AI tasks peek (collapsed by default — present but not focus) ─ #}
+{% if ai_todos %}
+<div class="section-head">AI-doable items <span style="font-size: 12px; color: #57606a; font-weight: 400;">({{ ai_todos|length }} delegatable — peek only)</span></div>
+<details>
+  <summary style="cursor: pointer; padding: 10px 14px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;">
+    See {{ ai_todos|length }} AI-doable tasks (low-urgency, delegatable, or waiting on others) ▾
+  </summary>
+  <table class="md-table" style="margin-top: 6px;">
+    <tbody>
+      {% for t in ai_todos[:20] %}
+      <tr>
+        <td style="width: 50px;"><span class="score-pill {% if t.urgency_score >= 70 %}at_risk{% elif t.urgency_score >= 40 %}ai_risk{% else %}on_track{% endif %}">{{ t.urgency_score }}</span></td>
+        <td><a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:80] }}</a></td>
+        <td class="dim">{{ t.bc_todolist_name[:30] }}</td>
+        <td class="dim">{% if t.due_on %}{{ t.due_on }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if ai_todos|length > 20 %}
+      <tr><td colspan="4" class="dim" style="text-align: center;">+ {{ ai_todos|length - 20 }} more — open the full list</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+{# ── Lists in detail — collapsed per list ────────────────── #}
+{% if list_rollups %}
+<div class="section-head">Lists in detail</div>
+{% for r in list_rollups %}
+<details class="list-detail">
+  <summary>
+    <span class="name">{{ r.list_name }}</span>
+    <span class="counts">{{ r.open_count }} open · H {{ r.human_count }} / AI {{ r.ai_count }} · {{ r.overdue_count }} overdue</span>
+    <span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span>
+  </summary>
+  <div class="panel">
+    {% set h_in_list = r.open_todos|selectattr('category', 'equalto', 'human_required')|list %}
+    {% if h_in_list %}
+    <div class="group-label">HUMAN-NEEDED ({{ h_in_list|length }})</div>
+    {% for t in h_in_list %}
+    <div class="h-task">
+      <span class="score-pill {% if t.urgency_score >= 70 %}at_risk{% elif t.urgency_score >= 40 %}ai_risk{% else %}on_track{% endif %}">{{ t.urgency_score }}</span>
+      <div>
+        <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:85] }}</a>
+        {% if t.due_on %}<span class="dim" style="font-size: 11px;"> · due {{ t.due_on }}</span>{% endif %}
+      </div>
+      <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="margin: 0;">
+        <button type="submit" class="md-btn md-btn-success" style="padding: 4px 10px; font-size: 11px;">✓ Done</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% set ai_in_list = r.open_todos|rejectattr('category', 'equalto', 'human_required')|list %}
+    {% if ai_in_list %}
+    <div class="group-label" style="margin-top: 12px;">AI-DOABLE / WAITING ({{ ai_in_list|length }})</div>
+    {% for t in ai_in_list[:6] %}
+    <div class="ai-task">
+      <span class="score-pill on_track">{{ t.urgency_score }}</span>
+      <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:85] }}</a>
+      <span class="dim">{% if t.due_on %}{{ t.due_on }}{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% if ai_in_list|length > 6 %}
+    <div class="dim" style="font-size: 11px; padding: 4px 0;">+ {{ ai_in_list|length - 6 }} more AI-doable</div>
+    {% endif %}
+    {% endif %}
+  </div>
+</details>
 {% endfor %}
-{% else %}
+{% endif %}
+
+{% if not focus and total_open == 0 %}
 <div style="text-align: center; padding: 48px; color: #57606a;">
-  <p style="font-size: 16px; margin-bottom: 8px;">No tasks in your queue.</p>
-  <p style="font-size: 13px;">
-    Either you're caught up, sync hasn't run yet, or your AI clone isn't set up.
-    Click <strong>Sync now</strong> to refresh.
+  <h2>No active todos.</h2>
+  <p>Either you're caught up or your AI clone isn't set up.
+    <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">Set up AI clone</a> ·
+    Or click <strong>↻ Sync</strong> above to refresh from Basecamp.
   </p>
 </div>
 {% endif %}
 
-<div style="margin-top: 24px; font-size: 13px;">
-  <a href="?{% if not show_dismissed %}show_dismissed=1{% endif %}" style="color: #57606a;">
-    {% if show_dismissed %}🙈 Hide dismissed{% else %}👁 Show dismissed{% endif %}
-  </a>
-  ·
-  <a href="?{% if not show_completed %}show_completed=1{% endif %}" style="color: #57606a;">
-    {% if show_completed %}🙈 Hide completed{% else %}👁 Show completed{% endif %}
-  </a>
-</div>
 {% endblock %}

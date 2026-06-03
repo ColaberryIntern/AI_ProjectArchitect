@@ -14,8 +14,10 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from datetime import datetime, timezone
+
 from execution.products.library import auth_google, tenancy
-from execution.products.ops import scorer, store, suggestions, sync
+from execution.products.ops import rollup, scorer, store, suggestions, sync
 
 router = APIRouter(prefix="/my-day", tags=["my-day"])
 
@@ -56,52 +58,85 @@ def _ctx(request: Request, user, **extra) -> dict:
     return base
 
 
+def _greeting() -> str:
+    h = datetime.now().hour
+    if h < 12:
+        return "Good morning"
+    if h < 17:
+        return "Good afternoon"
+    return "Good evening"
+
+
+def _sync_relative(last_sync_iso: str) -> str:
+    if not last_sync_iso:
+        return ""
+    try:
+        ts = last_sync_iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        secs = (datetime.now(timezone.utc) - dt).total_seconds()
+        if secs < 60:
+            return "just now"
+        if secs < 3600:
+            return f"{int(secs // 60)} min ago"
+        if secs < 86400:
+            return f"{int(secs // 3600)} hr ago"
+        return f"{int(secs // 86400)} days ago"
+    except (ValueError, TypeError):
+        return ""
+
+
 @router.get("/")
 async def ops_home(request: Request):
     user = _require_user(request)
     state = store.load_state(user.email)
     todos = store.load_todos(user.email)
-
-    show_dismissed = request.query_params.get("show_dismissed") == "1"
-    show_completed = request.query_params.get("show_completed") == "1"
-    project_filter = request.query_params.get("project")
-
-    visible = []
-    for t in todos:
-        if not show_dismissed and t.is_dismissed:
-            continue
-        if not show_completed and t.status == "completed":
-            continue
-        if project_filter and str(t.bc_project_id) != project_filter:
-            continue
-        visible.append(t)
-    visible.sort(key=lambda x: (-x.urgency_score, x.due_on or "9999-12-31", x.title))
-
-    # Stats
-    overdue = sum(1 for t in visible if t.score_breakdown.get("breakdown", {}).get("due_days", 999) is not None
-                  and (t.score_breakdown.get("breakdown", {}).get("due_days") or 999) < 0)
-    red = sum(1 for t in visible if t.urgency_score >= 70)
-    amber = sum(1 for t in visible if 40 <= t.urgency_score < 70)
-
     projects = store.load_projects(user.email)
-    project_counts: dict[int, int] = {}
-    for t in visible:
-        project_counts[t.bc_project_id] = project_counts.get(t.bc_project_id, 0) + 1
+
+    # Pre-compute aggregates: status, per-list rollups, focus task
+    status = rollup.overall(todos)
+    list_rollups = rollup.per_list(todos)
+    active_todos = [t for t in todos if t.status == "active" and not t.is_dismissed]
+    active_sorted = sorted(active_todos, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
+    human_todos = [t for t in active_sorted if rollup.tier(t) == "H"]
+    ai_todos = [t for t in active_sorted if rollup.tier(t) == "AI"]
+
+    # The single "YOUR TURN" focus
+    focus = human_todos[0] if human_todos else (active_sorted[0] if active_sorted else None)
+    focus_suggestion = suggestions.build_suggestion(focus) if focus else None
+    focus_prompt = suggestions.generate_prompt(focus, focus_suggestion) if focus else ""
+
+    # Single-project context (used for big-picture banner)
+    project_one = projects[0] if len(projects) == 1 else None
+
+    # Heat-of-day greeting + relative sync
+    first_name = (user.display_name or user.email).split()[0]
+    greeting = _greeting()
+    sync_rel = _sync_relative(state.last_sync_at) if state.last_sync_at else ""
 
     return request.app.state.templates.TemplateResponse(
         request, "my_day/home.html",
         _ctx(request, user,
-             todos=visible,
-             total=len(visible),
-             overdue=overdue,
-             red=red,
-             amber=amber,
+             # Top-of-page status
+             status=status,
+             greeting=greeting,
+             first_name=first_name,
+             # Sync context
              state=state,
-             projects=projects,
-             project_counts=project_counts,
-             project_filter=int(project_filter) if project_filter and project_filter.isdigit() else None,
-             show_dismissed=show_dismissed,
-             show_completed=show_completed),
+             sync_relative=sync_rel,
+             # Project context
+             project_one=project_one,
+             project_count=len(projects),
+             # Focus card
+             focus=focus,
+             focus_suggestion=focus_suggestion,
+             focus_prompt=focus_prompt,
+             # Lists + tasks
+             list_rollups=list_rollups,
+             human_todos=human_todos,
+             ai_todos=ai_todos,
+             total_open=status.open_count),
     )
 
 
@@ -151,3 +186,46 @@ async def ops_undismiss(bc_id: int, request: Request):
     user = _require_user(request)
     store.update_todo(user.email, bc_id, is_dismissed=False)
     return RedirectResponse(request.headers.get("Referer", "/my-day/?show_dismissed=1"), status_code=303)
+
+
+@router.post("/todo/{bc_id}/complete")
+async def ops_complete(bc_id: int, request: Request):
+    """Mark a todo complete BOTH in BC (write-back via AI clone token)
+    AND locally. If BC write-back fails, we still mark local — operator
+    won't get stuck looking at a stale queue, and the audit row preserves
+    intent. Next sync will reconcile.
+    """
+    user = _require_user(request)
+    todo = store.get_todo(user.email, bc_id)
+    if not todo:
+        raise HTTPException(404, f"Todo {bc_id} not in your queue")
+    # Local first
+    store.update_todo(user.email, bc_id, status="completed")
+    # Then BC
+    import json as _json
+    import urllib.error as _ue
+    import urllib.request as _ur
+    from execution.products.ops import tokens
+    token, _src = tokens.get_user_token(user.email)
+    bc_status = "skipped (no token)"
+    if token:
+        try:
+            req = _ur.Request(
+                f"https://3.basecampapi.com/3945211/buckets/{todo.bc_project_id}/todos/{bc_id}/completion.json",
+                data=b"", method="POST",
+                headers={"Authorization": f"Bearer {token}",
+                         "User-Agent": "Advisor My Day (ali@colaberry.com)"},
+            )
+            with _ur.urlopen(req, timeout=10) as r:
+                bc_status = f"ok ({r.status})"
+        except _ue.HTTPError as e:
+            bc_status = f"http_{e.code}"
+        except Exception as e:  # noqa: BLE001
+            bc_status = f"err: {type(e).__name__}"
+    # Audit (printable in logs for now)
+    import logging as _log
+    _log.getLogger(__name__).info(
+        "my-day complete: user=%s bc_id=%s bc_status=%s",
+        user.email, bc_id, bc_status,
+    )
+    return RedirectResponse(request.headers.get("Referer", "/my-day/"), status_code=303)
