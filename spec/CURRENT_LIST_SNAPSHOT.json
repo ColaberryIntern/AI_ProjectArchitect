@@ -1,0 +1,187 @@
+[
+  {
+    "id": 9956775973,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9956775973",
+    "title": "[00 START HERE] Build Index — read this first to build the entire system",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-08",
+    "assignees": [
+      {
+        "id": 37708014,
+        "name": "CB System"
+      }
+    ],
+    "created_at": "2026-06-03T00:24:13.781Z",
+    "description_markdown": "Single source of truth for the advisor.colaberry.ai buildout. The full plan (mission, architecture, all 33 tickets with dependency-ordered build sequence, repo conventions, open questions with defaults) is in the comment below. A Claude Code agent in the AI_ProjectArchitect repo should be able to read this list cold and build the system end to end. The list is the contract. The repo is the canvas.\n**Build top-down:**\n\n- **Week 1 (foundation):** Infra 1 → Auth 1 → Auth 2 + Provision 2\n\n- **Week 2 (admin + provisioning):** Admin 1 → Admin 3 → Provision 1 → Admin 2\n\n- **Week 3 (data + library UX):** Data 1 → Library 1 + Library 2\n\n- **Week 4 (workflows + sync):** Workflow 1 → Workflow 2 + Infra 2\n\n- **Week 5 (deploy + docs):** Deploy 1 → Infra 3 (refocused)\n\n- **Parallel:** Karun + Kes pilots (Week 1-4) → Phase 2 (Day 31-60) → Phase 3 (Day 61-90) → Day 90 retro + Strategic eval",
+    "comments_count": 5
+  },
+  {
+    "id": 9953889114,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889114",
+    "title": "OVERVIEW: AI_ProjectArchitect company-wide rollout (Karun + Kes pilot first)",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-09-30",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:49.892Z",
+    "description_markdown": "**Mission:** roll out AI_ProjectArchitect ([github.com/ColaberryIntern/AI_ProjectArchitect](https://github.com/ColaberryIntern/AI_ProjectArchitect)) as the canonical company-wide bridge from idea to execution. Library at `http://localhost:8765/library/?ws=global` hosts Use Cases / Skills / Agents. Items marked \"Colaberry approved\" auto-sync to the public company repo for every employee to consume.\n**Pilot (Week 1):** Karun (VP Business Lead) + Kes (AI Systems Architect). Both onboarded fully with per-person rubrics + skills committed to the library, all flagged Colaberry approved.\n**Phase 2 (Days 31-60):** exec team - Ali, Ram, David Lahme, JJ McBride, Sohail.\n**Phase 3 (Days 61-90):** rest of the team - Swati, Sai Tejesh, Jackie, Taiwo, Aleem, Dhee, Vinay, Angie, Rashi.\n**Source spreadsheet:** docs/ai-architect-rubrics-2026-06-02.xlsx (drafted 5 numbers + 10 skills + draft rubric per person; Ali to refine in place).\n**Source plan:** Mandrill email 9303b5d0-45bc-5845-fa32-bdc45b071d82 to Ram + Karun + Ali on 2026-06-02 mapping Alden DoRosario's playbook to our stack.\n**Asks (open):** (a) Ali to refine spreadsheet per pilot person before agent build. (b) Ram to confirm pilot pair + Earn/Learn/Bond/Save framing for the all-hands. (c) Karun + Kes to give Ali 30 min each for PRD writeup.",
+    "comments_count": 20
+  },
+  {
+    "id": 9953889231,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889231",
+    "title": "[Karun] Step 1 - Write Karun PRD (30-min session with Ali)",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-07",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:50.701Z",
+    "description_markdown": "**Goal:** formal Product Requirements Document for \"karun-agent.\" Output: a single page covering systems Karun touches, the 5 numbers he owns, the 10-12 skills that produce those numbers, the rubric for each number.\n**Starting point:** draft in `docs/ai-architect-rubrics-2026-06-02.xlsx` rows tagged \"Karun.\" Ali refines in place; Karun pressure-tests.\n**Format:** 30 minutes, in person or Zoom. Output committed to `docs/personas/karun-prd.md` on this repo. Once Ali signs, this also gets flagged Colaberry approved + auto-syncs to AI_ProjectArchitect.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889261,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889261",
+    "title": "[Karun] Step 2 - Build karun-agent + /karun-dash skill",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-12",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:50.849Z",
+    "description_markdown": "**Goal:** Claude Code skill under `.claude/skills/karun-agent/` that reads BC + Gmail + HubSpot + Apollo + CCPP via MCP, scores Karun's 5 numbers against the PRD rubric, generates an HTML dashboard.\n**Dependencies:** Karun PRD complete (Step 1).\n**Acceptance:** running `/karun-dash` manually produces a clean dashboard within 60s. Critic loop runs over output before \"ship.\"",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889285,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889285",
+    "title": "[Karun] Step 3 - Wire /karun-dash to fire 30 min before each 1:1",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-14",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:50.988Z",
+    "description_markdown": "**Goal:** calendar integration so the dashboard auto-fires 30 minutes before any 1:1 between Ali and Karun. Both inboxes get the same HTML.\n**Acceptance:** 3 consecutive 1:1s land with dashboard delivered on schedule + zero misfires.\n**This is the 4-hour MVP from the Alden plan email. Approve this and v1 lives by EOD next day.**",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889312,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889312",
+    "title": "[Karun] Step 4 - 4-week pilot iteration (two 1:1s/week)",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-02",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.131Z",
+    "description_markdown": "**Goal:** run the karun-agent loop for 4 weeks. Iterate the rubric, the dashboard layout, and the skill list based on what surfaces.\n**Cadence:** two 1:1s/week (Mon + Thu). Dashboard fires 30 min prior. Weekly rubric refinement session with Ali.\n**Output:** at day 30, Karun PRD v2 + ratified skill set + lessons-learned doc.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889339,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889339",
+    "title": "[Karun] Step 5 - 30-day retrospective + commit Colaberry-approved artifacts",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-04",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.313Z",
+    "description_markdown": "**Goal:** retrospective covering what worked, what did not, and a ratified set of Colaberry-approved skills + use cases + agents from Karun's 30 days. Items get flagged in the library + auto-sync to AI_ProjectArchitect.\n**Output:** retro doc, 5-10 Colaberry-approved library entries, updated rollout playbook for Phase 2.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889366,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889366",
+    "title": "[Kes] Step 1 - Write Kes PRD (30-min session with Ali)",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-07",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.453Z",
+    "description_markdown": "**Goal:** formal PRD for \"kes-agent.\" Output: page covering systems Kes touches, 5 numbers (production uptime, live agent count, ship cadence, GHL/CRM coverage, MTTR), 10-12 skills, rubric per number.\n**Starting point:** Kes rows in the spreadsheet. Ali refines; Kes pressure-tests.\n**Output:** `docs/personas/kes-prd.md`, signed by Ali, flagged Colaberry approved.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889389,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889389",
+    "title": "[Kes] Step 2 - Build kes-agent + /kes-dash skill",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-12",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.612Z",
+    "description_markdown": "**Goal:** Claude Code skill under `.claude/skills/kes-agent/` that reads BC + GitHub + production telemetry + GHL/CRM via MCP, scores Kes's 5 numbers, generates dashboard.\n**Dependencies:** Kes PRD (Step 1) + production telemetry endpoint defined.\n**Acceptance:** running `/kes-dash` manually produces dashboard within 60s w/ live uptime + agent counts.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889413,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889413",
+    "title": "[Kes] Step 3 - Wire /kes-dash to fire 30 min before each Ali↔Kes 1:1",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-06-14",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.742Z",
+    "description_markdown": "**Goal:** calendar integration; dashboard fires 30 min prior to any Ali↔Kes 1:1. Both inboxes.\n**Acceptance:** 3 consecutive 1:1s land on time + zero misfires.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889434,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889434",
+    "title": "[Kes] Step 4 - 4-week pilot iteration (two 1:1s/week)",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-02",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:51.881Z",
+    "description_markdown": "**Goal:** run kes-agent loop for 4 weeks. Iterate rubric + dashboard + skill list. Weekly refinement with Ali.\n**Output day 30:** Kes PRD v2 + ratified skill set + lessons-learned doc.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889457,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889457",
+    "title": "[Kes] Step 5 - 30-day retrospective + commit Colaberry-approved artifacts",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-04",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:52.018Z",
+    "description_markdown": "**Goal:** retrospective + ratify Colaberry-approved skills (likely includes \"voice AI integration,\" \"inbox COS deployment,\" \"GHL workflow design,\" \"production incident response,\" etc.). Items flagged + auto-sync.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889475,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889475",
+    "title": "[Phase 2 launch] After Karun+Kes pilot success, generalize karun-agent skill to YAML-per-person",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-07",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:52.155Z",
+    "description_markdown": "**Goal:** replace hardcoded \"karun\"/\"kes\" with YAML config per person. `/person karun`, `/person david`, etc.\n**Dependencies:** Karun + Kes pilot retros complete.\n**Acceptance:** one shared skill can be configured for any DRI just by writing their PRD YAML.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889498,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889498",
+    "title": "[Phase 2] Onboard exec team: Ali, Ram, David Lahme, JJ McBride, Sohail",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-08-01",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:52.307Z",
+    "description_markdown": "**Scope:** 5 PRDs, 5 agents, 5 dashboards, 5 weekly rubric refinements.\n**Dependencies:** Phase 2 launch (YAML generalization) complete.\n**Cadence:** stagger one per week. PRD session w/ Ali + person, agent build, dashboard wired, 30-day iteration.\n**Note:** Sohail may shift earlier given the July 10 launch dependency on marketing instrumentation.",
+    "comments_count": 0
+  },
+  {
+    "id": 9953889521,
+    "app_url": "https://app.basecamp.com/3945211/buckets/7463955/todos/9953889521",
+    "title": "[Phase 2] Adopt DRI framing + $90/$10 budget envelope",
+    "status": "active",
+    "completed": false,
+    "due_on": "2026-07-17",
+    "assignees": [],
+    "created_at": "2026-06-02T13:42:52.457Z",
+    "description_markdown": "**Goal:** formalize the DRI model org-wide. Each direct report becomes a Directly Responsible Individual owning a number + a portfolio of skills (the Yohan answer from Ram's question).\n**Budget side:** $90 human + $10 AI infra per employee. ~$1K/mo per exec on AI tooling (OpenAI, Anthropic, MCP, share-of Mandrill/Twilio). Track quarterly.",
+    "comments_count": 0
+  }
+]
