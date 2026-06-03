@@ -101,6 +101,8 @@ class User:
     roles: list[str] = field(default_factory=lambda: ["consumer"])
     google_subject: str | None = None   # OAuth `sub` (Auth 2)
     workspace_repo: str | None = None   # Provision 1
+    bc_user_id: int | None = None       # Basecamp human identity (My Day sync)
+    bc_ai_clone_name: str | None = None # Display name for the AI clone (e.g. "Ali Clone")
     created_at: str = ""
     last_login_at: str | None = None
     is_active: bool = True
