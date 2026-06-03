@@ -237,18 +237,24 @@ async def ops_home(request: Request):
     if list_filter_id is not None:
         scoped_todos = [t for t in scoped_todos if t.bc_todolist_id == list_filter_id]
 
-    # Apply tier filter
-    if tier == "assigned":
-        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "assigned"]
-    elif tier == "due":
-        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "due"]
-    elif tier == "unassigned":
-        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "unassigned"]
-    elif tier == "human":
-        scoped_todos = [t for t in scoped_todos if t.category == "human_required"]
-    elif tier == "ai":
-        scoped_todos = [t for t in scoped_todos if t.category != "human_required"]
-    # tier == "all" → no filter
+    # Tier filter as a reusable function so the project-chip counts can
+    # apply the SAME filter without re-implementing it. Bug it fixes:
+    # chip showing "17 open · 5 late" but click → 0 todos, because chip
+    # count came from unfiltered todos while the click applies tier filter.
+    def _filter_by_tier(t_list):
+        if tier == "assigned":
+            return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "assigned"]
+        if tier == "due":
+            return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "due"]
+        if tier == "unassigned":
+            return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "unassigned"]
+        if tier == "human":
+            return [t for t in t_list if t.category == "human_required"]
+        if tier == "ai":
+            return [t for t in t_list if t.category != "human_required"]
+        return t_list  # tier == "all"
+
+    scoped_todos = _filter_by_tier(scoped_todos)
 
     # Pre-compute aggregates against the scoped working set
     status = rollup.overall(scoped_todos)
@@ -299,9 +305,31 @@ async def ops_home(request: Request):
     greeting = _greeting()
     sync_rel = _sync_relative(state.last_sync_at) if state.last_sync_at else ""
 
-    # Aggregate the unfiltered projects list for the project-filter chip row
-    # (so user can switch projects even when currently scoped to one)
-    all_project_rollups = rollup.per_project(todos)
+    # Project chip data: tier-filtered (so counts match what user sees
+    # after clicking) but project/list-unfiltered (so all projects can
+    # appear as chips). Bug it fixes: clicking a chip that says "17 open"
+    # showing an empty queue because the 17 are all in other tiers.
+    chip_source = _filter_by_tier(todos)
+    all_project_rollups = rollup.per_project(chip_source)
+
+    # If a project filter is active but the project has 0 in current tier,
+    # inject a synthetic rollup so the chip still shows (otherwise the
+    # active chip just vanishes and the user can't see what they filtered).
+    if project_filter_id is not None and not any(
+        p.project_id == project_filter_id for p in all_project_rollups
+    ):
+        proj_name = next(
+            (t.bc_project_name for t in todos if t.bc_project_id == project_filter_id),
+            f"Project {project_filter_id}",
+        )
+        all_project_rollups.insert(
+            0,
+            rollup.ProjectRollup(
+                project_id=project_filter_id,
+                project_name=proj_name,
+                open_count=0,
+            ),
+        )
 
     template_name = {
         "kanban": "my_day/kanban.html",

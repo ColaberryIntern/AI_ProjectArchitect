@@ -554,11 +554,54 @@
 
 {% if not focus and total_open == 0 %}
 <div style="text-align: center; padding: 48px; color: #57606a;">
+  {% if project_filter or list_filter or tier != 'all' %}
+  {# Filter-induced empty state — tell the user WHY and offer a clear out #}
+  {% set tier_label = {
+    'assigned': 'Assigned to you',
+    'due': 'Due-watching',
+    'unassigned': 'Unassigned',
+    'human': 'Human-needed',
+    'ai': 'AI-doable',
+  }.get(tier, tier) %}
+  {% set active_proj_name = (all_project_rollups | selectattr('project_id', 'equalto', project_filter) | first).project_name if project_filter else None %}
+  <h2>No tasks match these filters.</h2>
+  <p style="font-size: 14px; max-width: 520px; margin: 12px auto;">
+    {% if project_filter and tier != 'all' %}
+    <strong>{{ active_proj_name or 'This project' }}</strong> has 0 tasks in the
+    <strong>{{ tier_label }}</strong> tier.
+    {% elif project_filter %}
+    <strong>{{ active_proj_name or 'This project' }}</strong> has 0 active tasks.
+    {% elif tier != 'all' %}
+    0 tasks match the <strong>{{ tier_label }}</strong> tier across your projects.
+    {% endif %}
+  </p>
+  <p style="font-size: 13px;">
+    {% if tier != 'all' %}
+    <a href="?view={{ view }}&tier=all{% if project_filter %}&project={{ project_filter }}{% endif %}"
+       class="md-btn md-btn-outline" style="display: inline-block; margin: 4px;">
+      Switch to All tiers
+    </a>
+    {% endif %}
+    {% if project_filter %}
+    <a href="?view={{ view }}&tier={{ tier }}"
+       class="md-btn md-btn-outline" style="display: inline-block; margin: 4px;">
+      Clear project filter
+    </a>
+    {% endif %}
+    {% if list_filter %}
+    <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}"
+       class="md-btn md-btn-outline" style="display: inline-block; margin: 4px;">
+      Clear list filter
+    </a>
+    {% endif %}
+  </p>
+  {% else %}
   <h2>No active todos.</h2>
   <p>Either you're caught up or your AI clone isn't set up.
     <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">Set up AI clone</a> ·
     Or click <strong>↻ Sync</strong> above to refresh from Basecamp.
   </p>
+  {% endif %}
 </div>
 {% endif %}
 
