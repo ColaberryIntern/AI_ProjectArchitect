@@ -256,8 +256,34 @@ async def ops_home(request: Request):
     project_rollups = rollup.per_project(scoped_todos)
     overall_health_data = rollup.overall_health(list_rollups)
     kanban_cols = rollup.kanban_columns(scoped_todos)
-    completer_stats, recent_completed = rollup.completions_summary(scoped_todos, limit=30)
+    # Pull ALL completed for the new past-tasks section (full list; UI caps)
+    completer_stats, recent_completed_all = rollup.completions_summary(scoped_todos, limit=1000)
     active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
+
+    # Past/Future view counts (read query params)
+    past_n_raw = request.query_params.get("past_n", "10")
+    if past_n_raw == "all":
+        past_n = len(recent_completed_all)
+    else:
+        try:
+            past_n = max(0, int(past_n_raw))
+        except ValueError:
+            past_n = 10
+    recent_completed = recent_completed_all[:past_n]
+
+    future_n_raw = request.query_params.get("future_n", "10")
+    if future_n_raw == "all":
+        future_n = 9999
+    else:
+        try:
+            future_n = max(0, int(future_n_raw))
+        except ValueError:
+            future_n = 10
+    # Future tasks: active todos with a due date, sorted by due asc
+    future_todos_all = [t for t in scoped_todos
+                        if t.status == "active" and not t.is_dismissed and t.due_on]
+    future_todos_all.sort(key=lambda t: t.due_on)
+    future_todos = future_todos_all[:future_n]
     active_sorted = sorted(active_todos, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
     human_todos = [t for t in active_sorted if rollup.tier(t) == "H"]
     ai_todos = [t for t in active_sorted if rollup.tier(t) == "AI"]
@@ -338,6 +364,11 @@ async def ops_home(request: Request):
              kanban_cols=kanban_cols,
              completer_stats=completer_stats,
              recent_completed=recent_completed,
+             recent_completed_total=len(recent_completed_all),
+             past_n=past_n_raw,
+             future_todos=future_todos,
+             future_todos_total=len(future_todos_all),
+             future_n=future_n_raw,
              human_todos=human_todos,
              ai_todos=ai_todos,
              total_open=status.open_count,

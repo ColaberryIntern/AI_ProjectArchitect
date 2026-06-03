@@ -164,6 +164,20 @@
   .task-seq .due-pill.today   { background: #d4a72c; color: white; }
   .task-seq .due-pill.normal  { background: #ddf4ff; color: #0550ae; }
 
+  /* Show-N count chips (5 / 10 / 15 / All) */
+  .show-n-chips {
+    display: flex; gap: 6px; align-items: center;
+    font-size: 12px; color: #57606a;
+  }
+  .show-n-chip {
+    display: inline-block; padding: 3px 10px;
+    border-radius: 999px; background: #fff;
+    border: 1px solid #d0d7de; color: #1f2328;
+    font-size: 12px; text-decoration: none;
+  }
+  .show-n-chip:hover { background: #f6f8fa; color: #1f2328; }
+  .show-n-chip.active { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
   /* NEXT HUMAN STEP banner — email-style dark callout inside drill-down */
   .next-human-banner {
     background: #1a1a1a; color: #f0e9d4;
