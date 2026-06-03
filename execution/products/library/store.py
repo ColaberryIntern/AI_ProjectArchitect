@@ -85,6 +85,11 @@ class AssetMetadata:
     install_url: str = ""                # e.g. npm/PyPI package page
     docs_url: str = ""                   # external docs link
     homepage_url: str = ""               # project homepage if different from source
+    # ── Multi-tenant ownership ([Auth 1]) ─────────────────────────
+    # Which company owns this asset record. Defaults to "colaberry" for
+    # the legacy/global catalog. Cross-company visibility is governed by
+    # tenancy.ItemApproval rows + visibility tiers.
+    owning_company_id: str = "colaberry"
 
 
 def meta_path(workspace: str, category: str, asset_id: str) -> Path:
