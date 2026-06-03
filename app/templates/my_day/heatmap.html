@@ -1,0 +1,85 @@
+{% extends "my_day/_my_day_base.html" %}
+{% block title %}My Day · Heat map · Colaberry{% endblock %}
+
+{% block topbar_extras %}
+<form method="post" action="/my-day/sync" style="margin: 0;">
+  <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
+</form>
+{% endblock %}
+
+{% block main %}
+
+{% include "my_day/_view_chrome.html" %}
+
+{% macro heat_class(score) -%}
+  {% if score < 40 %}heat-jeopardy
+  {% elif score < 60 %}heat-at_risk
+  {% elif score < 80 %}heat-ai_risk
+  {% else %}heat-on_track{% endif %}
+{%- endmacro %}
+
+{# ── Project-level heat map ─────────────────────────────── #}
+{% if project_rollups and project_rollups|length > 1 %}
+<div class="heatmap-section">
+  <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Projects — most at risk first</h2>
+  <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
+    Each card colored by health: 🔴 jeopardy (&lt;40) · 🟠 at risk (40-59) · 🟡 AI risk (60-79) · 🟢 on track (80+).
+    Click any to drill in.
+  </p>
+  <div class="heatmap-grid">
+    {% for p in project_rollups %}
+    <a href="?view=heatmap&project={{ p.project_id }}" class="heat-card {{ heat_class(p.score) }}">
+      <div class="name">{{ p.project_name }}</div>
+      <div class="score-line">
+        {{ p.score_label }} · score {{ p.score }}
+      </div>
+      <div class="mix-line">
+        {{ p.open_count }} open · {{ p.overdue_count }} overdue · {{ p.list_count }} list{% if p.list_count != 1 %}s{% endif %}<br>
+        H {{ p.human_count }} / AI {{ p.ai_count }}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── List-level heat map (always shown) ─────────────────── #}
+{% if list_rollups %}
+<div class="heatmap-section">
+  <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Lists — most at risk first</h2>
+  <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
+    Cards sized by attention urgency. Click any to drill in (filters Briefing view to that list).
+  </p>
+  <div class="heatmap-grid">
+    {% for r in list_rollups %}
+    <a href="?view=briefing&project={{ r.project_id }}" class="heat-card {{ heat_class(r.score) }}">
+      <div class="name">{{ r.list_name }}</div>
+      <div class="score-line">
+        {{ r.score_label }} · score {{ r.score }}
+        {% if r.project_name and (not project_filter or list_rollups|length > 1) %}
+        <br><span style="opacity: 0.75; font-size: 10px;">{{ r.project_name }}</span>
+        {% endif %}
+      </div>
+      <div class="mix-line">
+        {{ r.open_count }} open{% if r.overdue_count %} · {{ r.overdue_count }} overdue{% endif %}<br>
+        H {{ r.human_count }} / AI {{ r.ai_count }}
+        {% if r.next_blocking %}
+        <div style="margin-top: 8px; font-size: 11px; padding: 6px 8px; background: rgba(0,0,0,0.1); border-radius: 4px;">
+          <strong>Next:</strong> {{ r.next_blocking.title[:70] }}
+        </div>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not list_rollups and not project_rollups %}
+<div style="text-align: center; padding: 48px; color: #57606a;">
+  <h2>No active tasks.</h2>
+  <p>Either you're caught up or sync hasn't run yet. <strong>↻ Sync</strong> above.</p>
+</div>
+{% endif %}
+
+{% endblock %}

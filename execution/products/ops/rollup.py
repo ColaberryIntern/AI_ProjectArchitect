@@ -128,6 +128,80 @@ class OverallStatus:
     open_count: int
 
 
+@dataclass
+class ProjectRollup:
+    project_id: int
+    project_name: str
+    open_count: int = 0
+    overdue_count: int = 0
+    red_count: int = 0
+    amber_count: int = 0
+    human_count: int = 0
+    ai_count: int = 0
+    list_count: int = 0
+    score: int = 100
+    score_label: str = "ON TRACK"
+
+
+def per_project(todos: Iterable[OpsTodo]) -> list[ProjectRollup]:
+    """Aggregate active todos by project. Used by the Heat map view."""
+    by_proj: dict[int, ProjectRollup] = {}
+    list_ids_per_proj: dict[int, set[int]] = {}
+    for t in todos:
+        if t.status != "active" or t.is_dismissed:
+            continue
+        r = by_proj.get(t.bc_project_id)
+        if r is None:
+            r = ProjectRollup(project_id=t.bc_project_id, project_name=t.bc_project_name)
+            by_proj[t.bc_project_id] = r
+            list_ids_per_proj[t.bc_project_id] = set()
+        r.open_count += 1
+        if is_overdue(t):
+            r.overdue_count += 1
+        if t.urgency_score >= 70:
+            r.red_count += 1
+        elif t.urgency_score >= 40:
+            r.amber_count += 1
+        if tier(t) == "H":
+            r.human_count += 1
+        else:
+            r.ai_count += 1
+        list_ids_per_proj[t.bc_project_id].add(t.bc_todolist_id)
+
+    for r in by_proj.values():
+        r.list_count = len(list_ids_per_proj[r.project_id])
+        raw = 100 - 12 * r.overdue_count - 6 * r.red_count - 2 * r.amber_count - 1 * r.open_count
+        r.score = max(0, min(100, raw))
+        r.score_label = _label_for_score(r.score)
+
+    return sorted(by_proj.values(), key=lambda r: (r.score, -r.overdue_count))
+
+
+def kanban_columns(todos: Iterable[OpsTodo]) -> dict[str, list[OpsTodo]]:
+    """Bucket active todos into 4 Kanban columns by urgency window."""
+    cols: dict[str, list[OpsTodo]] = {
+        "now": [], "soon": [], "later": [], "waiting": [],
+    }
+    for t in todos:
+        if t.status != "active" or t.is_dismissed:
+            continue
+        if t.category == "waiting_dependency":
+            cols["waiting"].append(t)
+            continue
+        dd = _days_until(t.due_on)
+        if dd is None:
+            cols["later"].append(t)
+        elif dd <= 0:
+            cols["now"].append(t)
+        elif dd <= 7:
+            cols["soon"].append(t)
+        else:
+            cols["later"].append(t)
+    for col_todos in cols.values():
+        col_todos.sort(key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
+    return cols
+
+
 def overall(todos: Iterable[OpsTodo]) -> OverallStatus:
     """One-line status of the day. The first thing the user sees."""
     open_todos = [t for t in todos if t.status == "active" and not t.is_dismissed]

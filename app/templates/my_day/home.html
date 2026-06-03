@@ -9,22 +9,7 @@
 
 {% block main %}
 
-{# ── Status strip ─────────────────────────────────────────── #}
-<div class="status-strip {{ status.state }}">
-  <span class="greeting">{{ greeting }}, {{ first_name }} —</span>
-  <span class="headline">{{ status.headline }}</span>
-  <span class="subhead">{{ status.subhead }}</span>
-  {% if state.last_sync_at %}
-  <span style="margin-left: auto; font-size: 12px; color: #57606a;">Synced {{ sync_relative }}</span>
-  {% endif %}
-</div>
-
-{% if state.last_sync_status == 'failed' %}
-<div class="alert alert-danger" style="background: #ffeef0; border: 1px solid #ffabba; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
-  <strong>Sync failed:</strong> {{ state.last_sync_error or 'unknown' }}.
-  Set up your AI clone in <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">/admin</a>.
-</div>
-{% endif %}
+{% include "my_day/_view_chrome.html" %}
 
 {# ── Big-picture banner (only when there's a single project + description) ──── #}
 {% if project_one and project_one.description %}

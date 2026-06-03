@@ -1,0 +1,102 @@
+{% extends "my_day/_my_day_base.html" %}
+{% block title %}My Day · Kanban · Colaberry{% endblock %}
+
+{% block topbar_extras %}
+<form method="post" action="/my-day/sync" style="margin: 0;">
+  <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
+</form>
+{% endblock %}
+
+{% block main %}
+
+{% include "my_day/_view_chrome.html" %}
+
+{% set ns = namespace(col_now=kanban_cols.get('now', []),
+                     col_soon=kanban_cols.get('soon', []),
+                     col_later=kanban_cols.get('later', []),
+                     col_waiting=kanban_cols.get('waiting', [])) %}
+
+<div class="kanban-board">
+
+  <div class="kanban-col col-now">
+    <h3>🔴 Now <span class="count">{{ ns.col_now|length }}</span></h3>
+    {% for t in ns.col_now[:30] %}
+      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+      <a href="/my-day/todo/{{ t.bc_id }}"
+         class="kanban-card is-overdue {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
+        <div class="title">{{ t.title[:80] }}</div>
+        <div class="meta">
+          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+          {% if t.due_on %}
+            {% if dd is not none and dd < 0 %}{{ -dd }}d overdue{% elif dd == 0 %}due today{% else %}due {{ t.due_on }}{% endif %}
+          {% endif %}
+          · {{ t.bc_todolist_name[:24] }}
+        </div>
+      </a>
+    {% endfor %}
+    {% if ns.col_now|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_now|length - 30 }} more</div>{% endif %}
+    {% if not ns.col_now %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">Clear. ✓</div>{% endif %}
+  </div>
+
+  <div class="kanban-col col-soon">
+    <h3>🟡 Soon <span class="count">{{ ns.col_soon|length }}</span></h3>
+    {% for t in ns.col_soon[:30] %}
+      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+      <a href="/my-day/todo/{{ t.bc_id }}"
+         class="kanban-card {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
+        <div class="title">{{ t.title[:80] }}</div>
+        <div class="meta">
+          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+          due {{ t.due_on }}{% if dd %} ({{ dd }}d){% endif %}
+          · {{ t.bc_todolist_name[:24] }}
+        </div>
+      </a>
+    {% endfor %}
+    {% if ns.col_soon|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_soon|length - 30 }} more</div>{% endif %}
+    {% if not ns.col_soon %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
+  </div>
+
+  <div class="kanban-col col-later">
+    <h3>🔵 Later <span class="count">{{ ns.col_later|length }}</span></h3>
+    {% for t in ns.col_later[:30] %}
+      <a href="/my-day/todo/{{ t.bc_id }}"
+         class="kanban-card {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
+        <div class="title">{{ t.title[:80] }}</div>
+        <div class="meta">
+          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+          {% if t.due_on %}due {{ t.due_on }}{% else %}no due{% endif %}
+          · {{ t.bc_todolist_name[:24] }}
+        </div>
+      </a>
+    {% endfor %}
+    {% if ns.col_later|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_later|length - 30 }} more</div>{% endif %}
+    {% if not ns.col_later %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
+  </div>
+
+  <div class="kanban-col col-waiting">
+    <h3>⏸ Waiting <span class="count">{{ ns.col_waiting|length }}</span></h3>
+    {% for t in ns.col_waiting[:30] %}
+      <a href="/my-day/todo/{{ t.bc_id }}" class="kanban-card">
+        <div class="title">{{ t.title[:80] }}</div>
+        <div class="meta">
+          <span class="pill gray">{{ t.urgency_score }}</span>
+          stale {{ t.score_breakdown.get('breakdown', {}).get('stale_days', '?') }}d
+          · {{ t.bc_todolist_name[:24] }}
+        </div>
+      </a>
+    {% endfor %}
+    {% if ns.col_waiting|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_waiting|length - 30 }} more</div>{% endif %}
+    {% if not ns.col_waiting %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
+  </div>
+
+</div>
+
+<div style="margin-top: 20px; font-size: 12px; color: #57606a;">
+  <strong>Column rules:</strong>
+  <strong>Now</strong> = overdue or due today ·
+  <strong>Soon</strong> = due within 7 days ·
+  <strong>Later</strong> = due 7+ days out or no due date ·
+  <strong>Waiting</strong> = no due + stale 7+ days (waiting on someone)
+</div>
+
+{% endblock %}

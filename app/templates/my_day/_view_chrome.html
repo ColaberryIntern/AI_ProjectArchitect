@@ -1,0 +1,46 @@
+{# Shared chrome for /my-day/ — status strip + view-mode tabs + project filter.
+   Included from home.html, kanban.html, heatmap.html so they all share the
+   same top-of-page context. #}
+
+<div class="status-strip {{ status.state }}">
+  <span class="greeting">{{ greeting }}, {{ first_name }} —</span>
+  <span class="headline">{{ status.headline }}</span>
+  <span class="subhead">{{ status.subhead }}</span>
+  {% if state.last_sync_at %}
+  <span style="margin-left: auto; font-size: 12px; color: #57606a;">Synced {{ sync_relative }}</span>
+  {% endif %}
+</div>
+
+{% if state.last_sync_status == 'failed' %}
+<div style="background: #ffeef0; border: 1px solid #ffabba; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
+  <strong>Sync failed:</strong> {{ state.last_sync_error or 'unknown' }}.
+  Set up your AI clone in <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">/admin</a>.
+</div>
+{% endif %}
+
+{# ── View-mode tabs ───────────────────────────────────────── #}
+<div class="view-tabs">
+  <a href="?view=briefing{% if project_filter %}&project={{ project_filter }}{% endif %}"
+     class="view-tab {% if view == 'briefing' %}active{% endif %}">📋 Briefing</a>
+  <a href="?view=kanban{% if project_filter %}&project={{ project_filter }}{% endif %}"
+     class="view-tab {% if view == 'kanban' %}active{% endif %}">🗂 Kanban</a>
+  <a href="?view=heatmap{% if project_filter %}&project={{ project_filter }}{% endif %}"
+     class="view-tab {% if view == 'heatmap' %}active{% endif %}">🔥 Heat map</a>
+</div>
+
+{# ── Project filter chips ─────────────────────────────────── #}
+{% if all_project_rollups %}
+<div class="project-chips">
+  <a href="?view={{ view }}" class="proj-chip {% if not project_filter %}active{% endif %}">
+    All <span class="chip-count">{{ status.open_count if not project_filter else (all_project_rollups | sum(attribute='open_count')) }}</span>
+  </a>
+  {% for p in all_project_rollups %}
+  <a href="?view={{ view }}&project={{ p.project_id }}"
+     class="proj-chip {% if project_filter == p.project_id %}active{% endif %} {% if p.overdue_count %}has-overdue{% endif %}">
+    {{ p.project_name[:24] }}
+    <span class="chip-count">{{ p.open_count }}</span>
+    {% if p.overdue_count %}<span class="chip-overdue">{{ p.overdue_count }} late</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

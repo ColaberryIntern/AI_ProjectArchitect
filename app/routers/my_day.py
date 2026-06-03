@@ -96,10 +96,31 @@ async def ops_home(request: Request):
     todos = store.load_todos(user.email)
     projects = store.load_projects(user.email)
 
-    # Pre-compute aggregates: status, per-list rollups, focus task
-    status = rollup.overall(todos)
-    list_rollups = rollup.per_list(todos)
-    active_todos = [t for t in todos if t.status == "active" and not t.is_dismissed]
+    view = request.query_params.get("view", "briefing")
+    if view not in ("briefing", "kanban", "heatmap"):
+        view = "briefing"
+    project_filter_raw = request.query_params.get("project", "")
+
+    # Apply project filter to the working set when set
+    if project_filter_raw:
+        try:
+            project_filter_id = int(project_filter_raw)
+        except ValueError:
+            project_filter_id = None
+    else:
+        project_filter_id = None
+
+    if project_filter_id is not None:
+        scoped_todos = [t for t in todos if t.bc_project_id == project_filter_id]
+    else:
+        scoped_todos = todos
+
+    # Pre-compute aggregates against the scoped working set
+    status = rollup.overall(scoped_todos)
+    list_rollups = rollup.per_list(scoped_todos)
+    project_rollups = rollup.per_project(scoped_todos)
+    kanban_cols = rollup.kanban_columns(scoped_todos)
+    active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
     active_sorted = sorted(active_todos, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
     human_todos = [t for t in active_sorted if rollup.tier(t) == "H"]
     ai_todos = [t for t in active_sorted if rollup.tier(t) == "AI"]
@@ -139,9 +160,21 @@ async def ops_home(request: Request):
     greeting = _greeting()
     sync_rel = _sync_relative(state.last_sync_at) if state.last_sync_at else ""
 
+    # Aggregate the unfiltered projects list for the project-filter chip row
+    # (so user can switch projects even when currently scoped to one)
+    all_project_rollups = rollup.per_project(todos)
+
+    template_name = {
+        "kanban": "my_day/kanban.html",
+        "heatmap": "my_day/heatmap.html",
+    }.get(view, "my_day/home.html")
+
     return request.app.state.templates.TemplateResponse(
-        request, "my_day/home.html",
+        request, template_name,
         _ctx(request, user,
+             # View routing
+             view=view,
+             project_filter=project_filter_id,
              # Top-of-page status
              status=status,
              greeting=greeting,
@@ -152,13 +185,16 @@ async def ops_home(request: Request):
              # Project context
              project_one=project_one,
              project_count=len(projects),
-             # Focus card
+             all_project_rollups=all_project_rollups,
+             # Focus card (briefing only)
              focus=focus,
              focus_suggestion=focus_suggestion,
              focus_prompt=focus_prompt,
              focus_llm_source=focus_llm_source,
              # Lists + tasks
              list_rollups=list_rollups,
+             project_rollups=project_rollups,
+             kanban_cols=kanban_cols,
              human_todos=human_todos,
              ai_todos=ai_todos,
              total_open=status.open_count),
