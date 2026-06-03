@@ -54,15 +54,74 @@
 </div>
 {% endif %}
 
-{# ── YOUR TURN banner ─────────────────────────────────────── #}
+{# ── Flash banner after Mark Done / Skip ─────────────────── #}
+{% set flash_done = request.query_params.get('done') %}
+{% set flash_skip = request.query_params.get('skip') %}
+{% if flash_done %}
+<div style="background: #dafbe1; border: 1px solid #1a7f37; border-radius: 8px; padding: 12px 18px; margin-bottom: 14px; font-size: 14px; color: #114529;">
+  <strong>✓ Marked done:</strong> {{ flash_done[:120] }}
+</div>
+{% endif %}
+{% if flash_skip %}
+<div style="background: #eaeef2; border: 1px solid #d0d7de; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px; font-size: 13px; color: #57606a;">
+  Skipped: {{ flash_skip[:120] }}
+</div>
+{% endif %}
+
+{# ── YOUR TURN banner with prominent due-status pill ───── #}
 {% if focus %}
-<div class="your-turn">
+{% set focus_dd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+{% set focus_is_overdue = (focus_dd is not none and focus_dd < 0) %}
+{% set focus_is_today = (focus_dd == 0) %}
+
+<div class="your-turn" style="{% if focus_is_overdue %}background: #ffeef0; border-color: #cf222e; border-left-width: 6px;{% elif focus_is_today %}background: #fff8d6; border-color: #d4a72c; border-left-width: 6px;{% endif %}">
   <div class="eyebrow">YOUR TURN — NEXT DECISION</div>
-  <h2>{{ focus.title }}</h2>
+
+  {# Big visible due-status pill — primary visual signal #}
+  <div style="margin-bottom: 10px;">
+    {% if focus_is_overdue %}
+      <span style="display: inline-block; background: #cf222e; color: white; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; letter-spacing: 0.6px;">
+        🔴 {{ -focus_dd }} DAY{{ 'S' if focus_dd != -1 else '' }} OVERDUE
+      </span>
+    {% elif focus_is_today %}
+      <span style="display: inline-block; background: #d4a72c; color: white; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; letter-spacing: 0.6px;">
+        🟠 DUE TODAY
+      </span>
+    {% elif focus_dd is not none and focus_dd <= 3 %}
+      <span style="display: inline-block; background: #fff4d5; color: #8a5a00; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; letter-spacing: 0.4px; border: 1px solid #f0d678;">
+        🟡 DUE IN {{ focus_dd }} DAY{{ 'S' if focus_dd != 1 else '' }}
+      </span>
+    {% elif focus_dd is not none %}
+      <span style="display: inline-block; background: #dafbe1; color: #15803d; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; letter-spacing: 0.4px; border: 1px solid #aceebb;">
+        🟢 ON TIME · {{ focus_dd }} days out
+      </span>
+    {% else %}
+      <span style="display: inline-block; background: #eaeef2; color: #57606a; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 13px;">
+        ⚪ NO DUE DATE
+      </span>
+    {% endif %}
+    <span style="margin-left: 10px; font-size: 12px; color: #57606a;">
+      Urgency score <strong>{{ focus.urgency_score }}</strong> · {{ focus.category|replace('_', ' ') }}
+    </span>
+  </div>
+
+  <h2 style="margin: 0 0 6px;">{{ focus.title }}</h2>
   <div class="meta">
     List: <strong>{{ focus.bc_todolist_name }}</strong> ·
     {% if focus.due_on %}Due: <strong>{{ focus.due_on }}</strong>{% else %}No due date{% endif %} ·
     {% if focus.bc_app_url %}<a href="{{ focus.bc_app_url }}" target="_blank">Open ticket →</a>{% endif %}
+  </div>
+
+  {# Why this is at the top — explain the ranking explicitly #}
+  <div style="margin-top: 12px; padding: 10px 14px; background: rgba(255,255,255,0.6); border-radius: 6px; font-size: 12px; color: #4a4a4a;">
+    <strong>Why this is #1:</strong>
+    {% if focus_is_overdue %}{{ -focus_dd }} days past due
+    {%- elif focus_is_today %}due today
+    {%- elif focus_dd is not none and focus_dd <= 3 %}due in {{ focus_dd }} days
+    {%- endif %}
+    {%- if focus.urgency_score >= 70 %} · high-urgency ({{ focus.urgency_score }}){% endif %}
+    {%- if focus.category == 'human_required' %} · classified <strong>HUMAN-NEEDED</strong> (needs your decision){% endif %}.
+    Rank order: due date, then urgency score, then alphabetical.
   </div>
 </div>
 

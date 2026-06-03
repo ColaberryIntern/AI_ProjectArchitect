@@ -340,7 +340,8 @@ async def ops_sync(request: Request):
 @router.post("/todo/{bc_id}/dismiss")
 async def ops_dismiss(bc_id: int, request: Request):
     user = _require_user(request)
-    from datetime import datetime, timezone
+    todo = store.get_todo(user.email, bc_id)
+    title_snippet = (todo.title[:100] if todo else "")
     store.update_todo(
         user.email, bc_id,
         is_dismissed=True,
@@ -348,7 +349,11 @@ async def ops_dismiss(bc_id: int, request: Request):
         dismissed_by=user.email,
         dismissed_reason="manual",
     )
-    return RedirectResponse(request.headers.get("Referer", "/my-day/"), status_code=303)
+    import urllib.parse as _up
+    referer = request.headers.get("Referer", "/my-day/")
+    sep = "&" if "?" in referer else "?"
+    flash = f"{sep}skip={_up.quote(title_snippet)}"
+    return RedirectResponse(referer + flash, status_code=303)
 
 
 @router.post("/todo/{bc_id}/undismiss")
@@ -411,10 +416,16 @@ async def ops_complete(bc_id: int, request: Request):
     won't get stuck looking at a stale queue, and the audit row preserves
     intent. Next sync will reconcile.
     """
+    import logging as _log
     user = _require_user(request)
     todo = store.get_todo(user.email, bc_id)
     if not todo:
+        _log.getLogger(__name__).warning(
+            "my-day complete: user=%s bc_id=%s NOT IN QUEUE (404)",
+            user.email, bc_id,
+        )
         raise HTTPException(404, f"Todo {bc_id} not in your queue")
+    title_snippet = todo.title[:100]
     # Local first
     store.update_todo(user.email, bc_id, status="completed")
     # Then BC
@@ -438,10 +449,15 @@ async def ops_complete(bc_id: int, request: Request):
             bc_status = f"http_{e.code}"
         except Exception as e:  # noqa: BLE001
             bc_status = f"err: {type(e).__name__}"
-    # Audit (printable in logs for now)
-    import logging as _log
     _log.getLogger(__name__).info(
-        "my-day complete: user=%s bc_id=%s bc_status=%s",
-        user.email, bc_id, bc_status,
+        "my-day complete: user=%s bc_id=%s title=%r bc_status=%s",
+        user.email, bc_id, title_snippet, bc_status,
     )
-    return RedirectResponse(request.headers.get("Referer", "/my-day/"), status_code=303)
+    # Build redirect URL: preserve filter state via Referer + append
+    # ?done=<title> so the next render shows a green flash confirming
+    # the action actually fired.
+    import urllib.parse as _up
+    referer = request.headers.get("Referer", "/my-day/")
+    sep = "&" if "?" in referer else "?"
+    flash = f"{sep}done={_up.quote(title_snippet)}"
+    return RedirectResponse(referer + flash, status_code=303)
