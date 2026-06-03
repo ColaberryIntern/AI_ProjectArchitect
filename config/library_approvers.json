@@ -1,0 +1,41 @@
+{
+  "_doc": "Who can stamp 'Colaberry approved' on a Library asset. Per [Infra 1] criterion 2.",
+  "_format": "Each approver entry has an `email`, `display_name`, role (`sales` | `tech` | `lead`), and the asset categories they can approve.",
+  "_categories_legend": {
+    "all": "any category",
+    "sales": "use_cases, prompts, agents (sales-facing)",
+    "tech": "skills, mcp, capabilities, workflows, projections, recovery, chaos, governance, evals, connectors, adapters, templates, policies",
+    "use_cases": "library use cases only"
+  },
+  "approvers": [
+    {
+      "email": "ali@colaberry.com",
+      "display_name": "Ali Muwwakkil",
+      "role": "lead",
+      "can_approve": ["all"]
+    },
+    {
+      "email": "ram@colaberry.com",
+      "display_name": "Ram",
+      "role": "sales",
+      "can_approve": ["sales", "use_cases"]
+    },
+    {
+      "email": "karun@colaberry.com",
+      "display_name": "Karun",
+      "role": "sales",
+      "can_approve": ["sales", "use_cases"]
+    },
+    {
+      "email": "kes@colaberry.com",
+      "display_name": "Kes",
+      "role": "tech",
+      "can_approve": ["tech"]
+    }
+  ],
+  "approval_target_repo": "ColaberryIntern/AI_ProjectArchitect",
+  "sync_path_template": "library/{type}/{slug}.md",
+  "default_branch": "main",
+  "sync_commit_author_name": "Colaberry Library Sync",
+  "sync_commit_author_email": "library-sync@colaberry.com"
+}
