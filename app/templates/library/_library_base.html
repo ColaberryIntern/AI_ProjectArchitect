@@ -318,15 +318,65 @@
         ⏳ {{ pending_count|default(0) }}
       </a>
 
-      <select class="lib-badge" onchange="window.location.href='/library/?ws=' + this.value" aria-label="Workspace">
-        {% for ws in (workspaces|default(['global'])) %}
-          <option value="{{ ws }}" {% if ws == workspace %}selected{% endif %}>🏢 {{ ws }}</option>
-        {% endfor %}
+      {# [Library 2] workspace scope switcher — identity-aware #}
+      <select class="lib-badge"
+              onchange="window.location.href = (function(v){
+                const u = new URL(window.location.href);
+                if (v === 'all') { u.searchParams.delete('scope'); u.searchParams.set('ws', 'global'); }
+                else { u.searchParams.set('scope', v); }
+                return u.toString();
+              })(this.value)"
+              aria-label="Library scope"
+              title="What to show: all / my company / mine">
+        <option value="all" {% if (scope|default('all')) == 'all' %}selected{% endif %}>🌐 All</option>
+        {% if current_session_user %}
+        <option value="my-company" {% if scope == 'my-company' %}selected{% endif %}>🏢 My company ({{ current_session_user.company_id }})</option>
+        <option value="mine" {% if scope == 'mine' %}selected{% endif %}>👤 Mine</option>
+        {% endif %}
       </select>
+
+      {# [Library 2] user identity badge #}
+      {% if current_session_user %}
+        <div style="position: relative;" id="user-menu">
+          <button class="lib-action-btn outline"
+                  onclick="document.getElementById('user-menu').classList.toggle('open')"
+                  title="{{ current_session_user.email }}">
+            👤 {{ current_session_user.display_name }} ·
+            <span style="color: var(--accent-library);">{{ current_session_user.company_id }}</span>
+          </button>
+          <div class="add-menu-panel" style="position:absolute; right:0; top:110%; min-width:220px; display:none;"
+               id="user-menu-panel">
+            <a href="/admin/users/{{ current_session_user.user_id }}">👤 My profile</a>
+            <a href="/admin/" {% if 'admin' in (current_session_user.roles|default([])) %}{% else %}style="opacity: 0.4;"{% endif %}>🛠️ Admin console</a>
+            <hr style="margin:4px 0;border:0;border-top:1px solid var(--border-muted);">
+            <form method="post" action="/auth/logout" style="margin:0;padding:0;">
+              <button type="submit" style="background:none;border:0;padding:8px 12px;width:100%;text-align:left;font:inherit;color:var(--fg-default);cursor:pointer;">🚪 Sign out</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <a href="/auth/login?next=/library/" class="lib-action-btn outline" title="Sign in">
+          🔑 Sign in
+        </a>
+      {% endif %}
 
       <a href="/" class="lib-action-btn outline" title="Project Architect">📐</a>
     </div>
   </div>
+
+  <script>
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('user-menu');
+      if (m && !m.contains(e.target)) {
+        m.classList.remove('open');
+        const p = document.getElementById('user-menu-panel');
+        if (p) p.style.display = 'none';
+      } else if (m && document.getElementById('user-menu-panel')) {
+        document.getElementById('user-menu-panel').style.display =
+          m.classList.contains('open') ? 'block' : 'none';
+      }
+    });
+  </script>
 
   <!-- Sidebar -->
   <aside class="lib-sidebar">

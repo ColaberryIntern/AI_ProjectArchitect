@@ -19,8 +19,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from execution.products.library import (
-    enrichment_job, featured, ingest, inventory,
-    scanner, search as search_mod, store,
+    auth_google, enrichment_job, featured, ingest, inventory,
+    scanner, search as search_mod, store, tenancy,
     use_case_generator, use_cases, word_cloud,
 )
 
@@ -40,11 +40,40 @@ def _user(request: Request) -> str:
     return request.query_params.get("as") or request.headers.get("X-User") or "anonymous"
 
 
+def _session_user(request: Request) -> "tenancy.User | None":
+    """[Library 2] Resolve logged-in user from the SSO cookie."""
+    cookie = request.cookies.get(auth_google.SESSION_COOKIE_NAME)
+    return auth_google.current_user_from_cookie(cookie)
+
+
+def _scope(request: Request, session_user) -> str:
+    """[Library 2] Resolve effective scope: all | my-company | mine.
+
+    Default: 'my-company' when logged in, 'all' when anonymous.
+    URL param 'scope' overrides.
+    """
+    explicit = request.query_params.get("scope")
+    if explicit in ("all", "my-company", "mine"):
+        return explicit
+    return "my-company" if session_user else "all"
+
+
+def _viewer_company_id(session_user, scope: str) -> "str | None":
+    """[Library 1] Resolve which company_id to apply filter_for_company with."""
+    if not session_user:
+        return None
+    if scope == "my-company" or scope == "mine":
+        return session_user.company_id
+    return None   # "all" → unscoped
+
+
 def _ctx(request: Request, **extra) -> dict:
-    """Shared template context — every page gets counts + pending badge."""
+    """Shared template context — every page gets counts + identity + scope."""
     counts = inventory.inventory_counts() if "counts" not in extra else extra["counts"]
     pending_count = len(store.list_submissions(status="pending"))
     ws = _ws(request)
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
     base = {
         "current_product": "library",
         "workspace": ws,
@@ -53,6 +82,10 @@ def _ctx(request: Request, **extra) -> dict:
         "counts": counts,
         "pending_count": pending_count,
         "use_case_count": use_cases.count(ws),
+        # [Library 2] identity-aware context
+        "current_session_user": session_user,
+        "scope": scope,
+        "viewer_company_id": _viewer_company_id(session_user, scope),
     }
     base.update(extra)
     return base
@@ -608,6 +641,39 @@ async def library_category(request: Request, category_key: str):
     tag_filter = request.query_params.get("tag")
     mode = request.query_params.get("mode") or "frequency"
 
+    # [Library 1] Per-company filter — applied BEFORE per-item vetted/tag filters
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
+    viewer_co = _viewer_company_id(session_user, scope)
+    items = inventory.filter_for_company(items, cat.key, viewer_co)
+
+    # [Library 2] "mine" scope = items the user submitted
+    if scope == "mine" and session_user:
+        items = [
+            it for it in items
+            if store.get_metadata(workspace, cat.key,
+                                          it.get("name") or it.get("id") or "")
+            .submitted_by == session_user.email
+        ]
+
+    # [Library 1] approved-by filter (?approved=company:colaberry,patriot)
+    approved_filter = request.query_params.get("approved", "")
+    approved_companies: list[str] = []
+    if approved_filter.startswith("company:"):
+        approved_companies = [c.strip() for c in approved_filter[8:].split(",") if c.strip()]
+    if approved_companies:
+        narrowed = []
+        for it in items:
+            aid = it.get("name") or it.get("id") or ""
+            their_approvals = tenancy.list_approvals(
+                item_kind="library_asset", item_id=aid, category=cat.key,
+                status="approved",
+            )
+            approver_companies = {a.company_id for a in their_approvals}
+            if approver_companies.intersection(approved_companies):
+                narrowed.append(it)
+        items = narrowed
+
     enriched = []
     for it in items:
         asset_id = it.get("name") or it.get("id") or ""
@@ -616,14 +682,31 @@ async def library_category(request: Request, category_key: str):
             continue
         if tag_filter and tag_filter not in (it.get("tags") or []):
             continue
-        enriched.append({**it, "_meta": meta})
+        # [Library 1] per-item approval badges — collect all companies that approved
+        item_approvals = tenancy.list_approvals(
+            item_kind="library_asset", item_id=asset_id,
+            category=cat.key, status="approved",
+        )
+        enriched.append({
+            **it, "_meta": meta,
+            "_approving_companies": [
+                {"company_id": a.company_id, "approved_at": a.approved_at,
+                  "company_name": (tenancy.get_company(a.company_id).display_name
+                                          if tenancy.get_company(a.company_id) else a.company_id)}
+                for a in item_approvals
+            ],
+        })
 
-    # Asset tag cloud (top 50)
     cat_cloud = word_cloud.cloud_for_assets(
         workspace=workspace, mode=mode, category=cat.key,
         current={"tag": tag_filter} if tag_filter else {},
         base_url=f"/library/{cat.key}", limit=50,
     )
+
+    # List of companies the user can filter by ("other company approved")
+    all_companies = [c for c in tenancy.list_companies()
+                            if c.company_id != (viewer_co or "")]
+
     return request.app.state.templates.TemplateResponse(
         request, "library/category.html",
         _ctx(request,
@@ -635,5 +718,7 @@ async def library_category(request: Request, category_key: str):
                   only_vetted=only_vetted,
                   tag_filter=tag_filter,
                   cat_cloud=cat_cloud,
-                  mode=mode),
+                  mode=mode,
+                  approved_filter_companies=approved_companies,
+                  all_companies=all_companies),
     )

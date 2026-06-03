@@ -35,15 +35,53 @@
 </div>
 {% endif %}
 
-{# Filter chips #}
+{# [Library 1] Filter chips #}
 <div class="d-flex gap-2 mb-4 align-items-center flex-wrap">
   <span class="text-muted small">Filter:</span>
-  <a class="filter-chip {% if not only_vetted %}active{% endif %}" href="/library/{{ category.key }}?ws={{ workspace }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">All</a>
-  <a class="filter-chip {% if only_vetted %}active{% endif %}" href="/library/{{ category.key }}?ws={{ workspace }}&vetted=1{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">✓ Colaberry vetted only</a>
+  <a class="filter-chip {% if not only_vetted and not approved_filter_companies %}active{% endif %}"
+     href="/library/{{ category.key }}?ws={{ workspace }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">All</a>
+  <a class="filter-chip {% if only_vetted %}active{% endif %}"
+     href="/library/{{ category.key }}?ws={{ workspace }}&vetted=1{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">✓ Colaberry vetted only</a>
+
+  {# [Library 1] Per-tenant approval filter — visible when logged in #}
+  {% if current_session_user %}
+    {% set my_co = current_session_user.company_id %}
+    {% set is_my_co_active = my_co in approved_filter_companies %}
+    <a class="filter-chip {% if is_my_co_active %}active{% endif %}"
+       href="/library/{{ category.key }}?ws={{ workspace }}&approved=company:{{ my_co }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">
+      ✓ {{ my_co }} approved
+    </a>
+    {% if all_companies %}
+    <div class="dropdown" style="display: inline-block; position: relative;">
+      <button class="filter-chip"
+              onclick="this.nextElementSibling.style.display = (this.nextElementSibling.style.display === 'block' ? 'none' : 'block')">
+        Other company approved ▾
+      </button>
+      <div style="display:none; position:absolute; background:var(--bg-canvas); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:8px; min-width:200px; z-index:10; max-height:300px; overflow-y:auto;">
+        {% for c in all_companies %}
+        <a style="display:block;padding:4px 8px;color:var(--fg-default);text-decoration:none;"
+           href="/library/{{ category.key }}?ws={{ workspace }}&approved=company:{{ c.company_id }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}">
+          {{ c.display_name }} ({{ c.company_id }})
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endif %}
+
   <span class="asset-tag ms-auto">📁 source: <code>{{ category.source }}</code></span>
   <a href="/library/ingest?ws={{ workspace }}" class="btn btn-sm btn-outline-success">🌐 Ingest URL</a>
   <a href="/library/submit?ws={{ workspace }}" class="btn btn-sm" style="background: var(--accent-library); color: white;">+ Submit manually</a>
 </div>
+
+{# [Library 1] Active approval filter strip #}
+{% if approved_filter_companies %}
+<div style="background: var(--accent-library-soft); border-left: 3px solid var(--accent-library); padding: 8px 12px; border-radius: var(--radius-md); margin-bottom: var(--space-3); font-size: 13px;">
+  <strong>Filtering by approval:</strong>
+  {% for c in approved_filter_companies %}<span class="asset-tag" style="background:var(--accent-library); color:white; margin: 0 4px;">✓ {{ c }} approved</span>{% endfor %}
+  <a href="/library/{{ category.key }}?ws={{ workspace }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}" style="margin-left: 8px; color: var(--accent-library);">clear ✕</a>
+</div>
+{% endif %}
 
 {% if items %}
 
@@ -61,6 +99,15 @@
           {{ asset_id }}
           {% if item._meta and item._meta.vetted %}
             <span class="vetted-badge ms-1">Colaberry vetted</span>
+          {% endif %}
+          {# [Library 1] per-company approval badges (stacked, most recent first) #}
+          {% if item._approving_companies %}
+            {% for ac in item._approving_companies %}
+              <span class="vetted-badge ms-1" style="background: rgba(31, 111, 235, 0.1); color: #1f6feb; border-color: #1f6feb;"
+                    title="Approved by {{ ac.company_name }} on {{ ac.approved_at[:10] }}">
+                ✓ {{ ac.company_name }} approved
+              </span>
+            {% endfor %}
           {% endif %}
         </div>
         {% if item.description %}
