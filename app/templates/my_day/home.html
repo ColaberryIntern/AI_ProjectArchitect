@@ -304,43 +304,18 @@
             {% endif %}
           </div>
 
-          {# Previous 5 completed tasks in THIS list — collapsed by default #}
-          {% set prev_completed = recent_completed_all|selectattr('bc_todolist_id', 'equalto', r.list_id)|list %}
-          {% if prev_completed %}
-          <details style="margin-bottom: 14px;">
-            <summary style="cursor: pointer; padding: 8px 14px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12px; color: #57606a; font-weight: 600;">
-              ◀ Show previous {{ [prev_completed|length, 5]|min }} completed task{% if prev_completed|length != 1 %}s{% endif %} in this list
-            </summary>
-            <table class="task-seq" style="margin-top: 6px;">
-              <thead>
-                <tr>
-                  <th style="width: 40px;">✓</th>
-                  <th>TASK</th>
-                  <th style="width: 130px;">COMPLETED</th>
-                  <th style="width: 70px;">TIER</th>
-                  <th style="width: 130px;">COMPLETED BY</th>
-                  <th style="width: 90px;">CYCLE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for pt in prev_completed[:5] %}
-                <tr class="task-seq-row" style="opacity: 0.85;">
-                  <td class="seq-num">✓</td>
-                  <td class="seq-task">
-                    <a href="{{ pt.bc_app_url }}" target="_blank">{{ pt.title[:120] }} ↗</a>
-                  </td>
-                  <td><span class="due-pill normal" style="padding: 2px 8px;">{{ pt.completed_at[:10] }}</span></td>
-                  <td>{% if pt.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
-                  <td class="seq-owner">{% if pt.completed_by_name %}✓ {{ pt.completed_by_name[:18] }}{% else %}<span class="dim">—</span>{% endif %}</td>
-                  <td class="dim" style="font-size: 12px;">{% if pt.cycle_seconds %}{{ (pt.cycle_seconds / 86400)|round(1) }}d{% else %}—{% endif %}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </details>
-          {% endif %}
+          {# ============ UNIFIED CHRONOLOGICAL TIMELINE ============
+             Past completed → NEXT HUMAN STEP → upcoming, all in one
+             continuous table. Past rendered oldest-first (so the most
+             recent completion sits right above the next human step).
+             User ask: 'embedded in one big string' (one continuous flow). #}
+          {% set prev_completed_all = recent_completed_all|selectattr('bc_todolist_id', 'equalto', r.list_id)|list %}
+          {# recent_completed_all is desc by completed_at; reverse → asc #}
+          {% set prev_completed_asc = prev_completed_all|reverse|list %}
+          {% set past_cap = 5 %}
+          {% set past_shown = prev_completed_asc[-past_cap:] %}{# last N (most recent N), still asc #}
+          {% set past_hidden = prev_completed_asc[:-past_cap] if prev_completed_asc|length > past_cap else [] %}
 
-          {# Full task sequence — email-style table, capped at 15 by default #}
           {% set _with_due = r.open_todos|selectattr('due_on')|list %}
           {% set _no_due   = r.open_todos|rejectattr('due_on')|list %}
           {% set _wd = _with_due|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
@@ -348,108 +323,176 @@
           {% set seq = _wd + _nd %}
           {% set seq_cap = 15 %}
 
-          <div class="task-seq-header">TASK SEQUENCE ({{ r.open_count }} OPEN, ORDERED BY DUE DATE{% if seq|length > seq_cap %}, SHOWING {{ seq_cap }}{% endif %})</div>
+          <div class="task-seq-header">
+            PROJECT TIMELINE
+            <span style="font-size: 10px; font-weight: 600; color: #8b949e; margin-left: 8px;">
+              {{ prev_completed_all|length }} done · 1 next · {{ seq|length - 1 if seq|length > 1 else seq|length }} upcoming
+            </span>
+          </div>
           <table class="task-seq">
             <thead>
               <tr>
                 <th style="width: 40px;">#</th>
                 <th>TASK</th>
-                <th style="width: 130px;">DUE</th>
+                <th style="width: 130px;">WHEN</th>
                 <th style="width: 70px;">TIER</th>
-                <th style="width: 130px;">OWNER</th>
-                <th style="width: 110px;"></th>
+                <th style="width: 140px;">OWNER</th>
+                <th style="width: 110px;">ACTION</th>
               </tr>
             </thead>
             <tbody>
-            {% for t in seq[:seq_cap] %}
-            {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
-            {% set t_overdue = (tdd is not none and tdd < 0) %}
-            {% set t_today = (tdd == 0) %}
-            {% set t_human = (t.category == 'human_required') %}
-            {% set is_next_human = (nb and t.bc_id == nb.bc_id) %}
-            {% set is_blocked = (t_human and not is_next_human and h_in_list|length > 1) %}
-            <tr class="task-seq-row {% if is_next_human %}is-next-human{% elif t_overdue %}is-overdue{% endif %}">
-              <td class="seq-num">{{ loop.index }}</td>
-              <td class="seq-task">
-                <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
-                <div class="seq-task-sub">
-                  {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
-                  {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
-                  {% elif t.inclusion_reason == 'unassigned' %}UNASSIGNED — NEEDS A CLAIM
-                  {% else %}{{ t.bc_todolist_name[:30] }}{% endif %}
-                  {% if is_next_human %}<span class="next-human-arrow">← NEXT HUMAN STEP</span>
-                  {% elif is_blocked %}<span class="blocked-arrow">BLOCKED on upstream</span>{% endif %}
-                </div>
-              </td>
-              <td>
-                {% if t_overdue %}<span class="due-pill overdue">OVERDUE<br><small>{{ t.due_on }}</small></span>
-                {% elif t_today %}<span class="due-pill today">DUE TODAY</span>
-                {% elif t.due_on %}<span class="due-pill normal">DUE<br><small>{{ t.due_on }}</small></span>
-                {% else %}<span class="dim">no due</span>{% endif %}
-              </td>
-              <td>
-                {% if t_human %}<span class="tier-pill human">HUMAN</span>
-                {% else %}<span class="tier-pill ai">AI</span>{% endif %}
-              </td>
-              <td class="seq-owner">
-                {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% if t.assignee_names|length > 1 %} <span class="dim">+{{ t.assignee_names|length - 1 }}</span>{% endif %}
-                {% else %}<span class="dim">unassigned</span>{% endif %}
-              </td>
-              <td style="text-align: center;">
-                <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
-                   style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                  🪄 prompt
-                </a>
-              </td>
-            </tr>
-            {% endfor %}
+              {# ─── PAST: hidden expand row (oldest items) ─── #}
+              {% if past_hidden %}
+              <tr class="task-seq-row is-expander">
+                <td colspan="6" style="text-align: center; padding: 8px; background: #fff;">
+                  <button type="button" class="md-btn md-btn-quiet"
+                          onclick="this.closest('table').querySelectorAll('.past-hidden').forEach(el => el.hidden = !el.hidden); this.textContent = (this.textContent.startsWith('▲')) ? '▼ Show ' + {{ past_hidden|length }} + ' earlier completed' : '▲ Hide earlier completed';"
+                          style="font-size: 11px; color: #57606a;">
+                    ▼ Show {{ past_hidden|length }} earlier completed
+                  </button>
+                </td>
+              </tr>
+              {% for pt in past_hidden %}
+              <tr class="task-seq-row is-completed past-hidden" hidden>
+                <td class="seq-num">✓</td>
+                <td class="seq-task">
+                  <a href="{{ pt.bc_app_url }}" target="_blank">{{ pt.title[:120] }} ↗</a>
+                  <div class="seq-task-sub">COMPLETED · {{ pt.bc_todolist_name[:30] }}</div>
+                </td>
+                <td><span class="due-pill done">✓ {{ pt.completed_at[:10] }}</span></td>
+                <td>{% if pt.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
+                <td class="seq-owner">
+                  {% if pt.completed_by_name %}✓ {{ pt.completed_by_name[:18] }}
+                  {% elif pt.assignee_names %}{{ pt.assignee_names[0][:18] }}
+                  {% else %}<span class="dim">—</span>{% endif %}
+                </td>
+                <td class="dim" style="font-size: 11px; text-align: center;">
+                  {% if pt.cycle_seconds %}{{ (pt.cycle_seconds / 86400)|round(1) }}d cycle{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              {% endif %}
+
+              {# ─── PAST: visible recent completed (oldest of the 5 first) ─── #}
+              {% for pt in past_shown %}
+              <tr class="task-seq-row is-completed">
+                <td class="seq-num">✓</td>
+                <td class="seq-task">
+                  <a href="{{ pt.bc_app_url }}" target="_blank">{{ pt.title[:120] }} ↗</a>
+                  <div class="seq-task-sub">COMPLETED · {{ pt.bc_todolist_name[:30] }}</div>
+                </td>
+                <td><span class="due-pill done">✓ {{ pt.completed_at[:10] }}</span></td>
+                <td>{% if pt.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
+                <td class="seq-owner">
+                  {% if pt.completed_by_name %}✓ {{ pt.completed_by_name[:18] }}
+                  {% elif pt.assignee_names %}{{ pt.assignee_names[0][:18] }}
+                  {% else %}<span class="dim">—</span>{% endif %}
+                </td>
+                <td class="dim" style="font-size: 11px; text-align: center;">
+                  {% if pt.cycle_seconds %}{{ (pt.cycle_seconds / 86400)|round(1) }}d cycle{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+
+              {# ─── PAST → FUTURE divider ─── #}
+              {% if past_shown or past_hidden %}
+              <tr class="seq-divider">
+                <td colspan="6">↑ COMPLETED · UPCOMING ↓</td>
+              </tr>
+              {% endif %}
+
+              {# ─── FUTURE: next 15, NEXT HUMAN STEP highlighted ─── #}
+              {% for t in seq[:seq_cap] %}
+              {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+              {% set t_overdue = (tdd is not none and tdd < 0) %}
+              {% set t_today = (tdd == 0) %}
+              {% set t_human = (t.category == 'human_required') %}
+              {% set is_next_human = (nb and t.bc_id == nb.bc_id) %}
+              {% set is_blocked = (t_human and not is_next_human and h_in_list|length > 1) %}
+              <tr class="task-seq-row {% if is_next_human %}is-next-human{% elif t_overdue %}is-overdue{% endif %}">
+                <td class="seq-num">{{ loop.index }}</td>
+                <td class="seq-task">
+                  <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
+                  <div class="seq-task-sub">
+                    {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
+                    {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
+                    {% elif t.inclusion_reason == 'unassigned' %}UNASSIGNED — NEEDS A CLAIM
+                    {% else %}{{ t.bc_todolist_name[:30] }}{% endif %}
+                    {% if is_next_human %}<span class="next-human-arrow">← NEXT HUMAN STEP</span>
+                    {% elif is_blocked %}<span class="blocked-arrow">BLOCKED on upstream</span>{% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if t_overdue %}<span class="due-pill overdue">OVERDUE<br><small>{{ t.due_on }}</small></span>
+                  {% elif t_today %}<span class="due-pill today">DUE TODAY</span>
+                  {% elif t.due_on %}<span class="due-pill normal">DUE<br><small>{{ t.due_on }}</small></span>
+                  {% else %}<span class="dim">no due</span>{% endif %}
+                </td>
+                <td>
+                  {% if t_human %}<span class="tier-pill human">HUMAN</span>
+                  {% else %}<span class="tier-pill ai">AI</span>{% endif %}
+                </td>
+                <td class="seq-owner">
+                  {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% if t.assignee_names|length > 1 %} <span class="dim">+{{ t.assignee_names|length - 1 }}</span>{% endif %}
+                  {% else %}<span class="dim">unassigned</span>{% endif %}
+                </td>
+                <td style="text-align: center;">
+                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
+                     style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
+                    🪄 prompt
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+
+              {# ─── FUTURE: hidden expand row (beyond 15) ─── #}
+              {% if seq|length > seq_cap %}
+              <tr class="task-seq-row is-expander">
+                <td colspan="6" style="text-align: center; padding: 8px; background: #fff;">
+                  <button type="button" class="md-btn md-btn-quiet"
+                          onclick="this.closest('table').querySelectorAll('.future-hidden').forEach(el => el.hidden = !el.hidden); this.textContent = (this.textContent.startsWith('▼')) ? '▲ Hide remaining upcoming' : '▼ Show ' + {{ seq|length - seq_cap }} + ' more upcoming';"
+                          style="font-size: 11px; color: #57606a;">
+                    ▼ Show {{ seq|length - seq_cap }} more upcoming
+                  </button>
+                </td>
+              </tr>
+              {% for t in seq[seq_cap:] %}
+              {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+              {% set t_overdue = (tdd is not none and tdd < 0) %}
+              {% set t_today = (tdd == 0) %}
+              {% set t_human = (t.category == 'human_required') %}
+              <tr class="task-seq-row future-hidden {% if t_overdue %}is-overdue{% endif %}" hidden>
+                <td class="seq-num">{{ loop.index + seq_cap }}</td>
+                <td class="seq-task">
+                  <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
+                  <div class="seq-task-sub">
+                    {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
+                    {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
+                    {% elif t.inclusion_reason == 'unassigned' %}UNASSIGNED — NEEDS A CLAIM
+                    {% else %}{{ t.bc_todolist_name[:30] }}{% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if t_overdue %}<span class="due-pill overdue">OVERDUE<br><small>{{ t.due_on }}</small></span>
+                  {% elif t_today %}<span class="due-pill today">DUE TODAY</span>
+                  {% elif t.due_on %}<span class="due-pill normal">DUE<br><small>{{ t.due_on }}</small></span>
+                  {% else %}<span class="dim">no due</span>{% endif %}
+                </td>
+                <td>{% if t_human %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
+                <td class="seq-owner">
+                  {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% else %}<span class="dim">unassigned</span>{% endif %}
+                </td>
+                <td style="text-align: center;">
+                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
+                     style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
+                    🪄 prompt
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
-          {% if seq|length > seq_cap %}
-          <details style="margin-top: 8px;">
-            <summary style="cursor: pointer; padding: 8px 14px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12px; color: #57606a; font-weight: 600;">
-              Show remaining {{ seq|length - seq_cap }} task{% if seq|length - seq_cap != 1 %}s{% endif %} ▾
-            </summary>
-            <table class="task-seq" style="margin-top: 6px;">
-              <tbody>
-                {% for t in seq[seq_cap:] %}
-                {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
-                {% set t_overdue = (tdd is not none and tdd < 0) %}
-                {% set t_today = (tdd == 0) %}
-                {% set t_human = (t.category == 'human_required') %}
-                <tr class="task-seq-row {% if t_overdue %}is-overdue{% endif %}">
-                  <td class="seq-num">{{ loop.index + seq_cap }}</td>
-                  <td class="seq-task">
-                    <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
-                    <div class="seq-task-sub">
-                      {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
-                      {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
-                      {% elif t.inclusion_reason == 'unassigned' %}UNASSIGNED — NEEDS A CLAIM
-                      {% else %}{{ t.bc_todolist_name[:30] }}{% endif %}
-                    </div>
-                  </td>
-                  <td>
-                    {% if t_overdue %}<span class="due-pill overdue">OVERDUE<br><small>{{ t.due_on }}</small></span>
-                    {% elif t_today %}<span class="due-pill today">DUE TODAY</span>
-                    {% elif t.due_on %}<span class="due-pill normal">DUE<br><small>{{ t.due_on }}</small></span>
-                    {% else %}<span class="dim">no due</span>{% endif %}
-                  </td>
-                  <td>{% if t_human %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
-                  <td class="seq-owner">
-                    {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% else %}<span class="dim">unassigned</span>{% endif %}
-                  </td>
-                  <td style="text-align: center;">
-                    <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
-                       style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                      🪄 prompt
-                    </a>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </details>
-          {% endif %}
         </div>
       </td>
     </tr>
@@ -489,92 +532,10 @@
 
 {% endif %}{# /list_rollups #}
 
-{# ── Look ahead: next N upcoming tasks ─────────────────── #}
-{% if future_todos_total > 0 %}
-{% set qs_base = '?view=' ~ view ~ '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') ~ ('&list=' ~ list_filter if list_filter else '') ~ '&past_n=' ~ past_n %}
-<div class="section-head">
-  Look ahead · next {{ future_todos|length }} upcoming task{% if future_todos|length != 1 %}s{% endif %}
-  <span style="font-size: 12px; color: #57606a; font-weight: 400;">({{ future_todos_total }} total with due dates)</span>
-</div>
-<div class="show-n-chips" style="margin-bottom: 8px;">
-  Show:
-  <a href="{{ qs_base }}&future_n=10" class="show-n-chip {% if future_n == '10' %}active{% endif %}">10</a>
-  <a href="{{ qs_base }}&future_n=25" class="show-n-chip {% if future_n == '25' %}active{% endif %}">25</a>
-  <a href="{{ qs_base }}&future_n=all" class="show-n-chip {% if future_n == 'all' %}active{% endif %}">All ({{ future_todos_total }})</a>
-</div>
-<table class="md-table">
-  <thead>
-    <tr><th>TASK</th><th>LIST</th><th>DUE</th><th>TIER</th><th>OWNER</th></tr>
-  </thead>
-  <tbody>
-    {% for t in future_todos %}
-    {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
-    {% set t_overdue = (dd is not none and dd < 0) %}
-    {% set t_today = (dd == 0) %}
-    <tr class="{% if t_overdue %}row-overdue{% elif t_today %}row-today{% endif %}">
-      <td><a href="{{ t.bc_app_url or ('/my-day/todo/' ~ t.bc_id) }}" target="_blank">{{ t.title[:80] }} ↗</a></td>
-      <td class="dim" style="font-size: 12px;">{{ t.bc_todolist_name[:30] }}</td>
-      <td style="white-space: nowrap;">
-        {% if t_overdue %}<span class="due-pill overdue" style="padding: 2px 8px;">{{ -dd }}d late</span>
-        {% elif t_today %}<span class="due-pill today" style="padding: 2px 8px;">today</span>
-        {% else %}<span class="due-pill normal" style="padding: 2px 8px;">in {{ dd }}d</span>{% endif %}
-        <div style="font-size: 10px; color: #57606a; margin-top: 2px;">{{ t.due_on }}</div>
-      </td>
-      <td>{% if t.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
-      <td style="font-size: 12px;">
-        {% if t.assignee_names %}👤 {{ t.assignee_names[0][:18] }}
-        {% elif t.inclusion_reason == 'unassigned' %}<span style="color: #8a5a00;">🤝 unclaimed</span>
-        {% else %}<span class="dim">—</span>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-
-{# ── Look behind: recently completed (with tier + owner) ── #}
-{% if recent_completed %}
-{% set qs_base_past = '?view=' ~ view ~ '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') ~ ('&list=' ~ list_filter if list_filter else '') ~ '&future_n=' ~ future_n %}
-<div class="section-head">
-  Look behind · recently completed
-  <span style="font-size: 12px; color: #57606a; font-weight: 400;">({{ recent_completed_total }} total in last 30d)</span>
-</div>
-<div class="show-n-chips" style="margin-bottom: 8px;">
-  Show:
-  <a href="{{ qs_base_past }}&past_n=5" class="show-n-chip {% if past_n == '5' %}active{% endif %}">5</a>
-  <a href="{{ qs_base_past }}&past_n=10" class="show-n-chip {% if past_n == '10' %}active{% endif %}">10</a>
-  <a href="{{ qs_base_past }}&past_n=15" class="show-n-chip {% if past_n == '15' %}active{% endif %}">15</a>
-  <a href="{{ qs_base_past }}&past_n=all" class="show-n-chip {% if past_n == 'all' %}active{% endif %}">All ({{ recent_completed_total }})</a>
-</div>
-<table class="md-table">
-  <thead>
-    <tr><th>TASK</th><th>TIER</th><th>OWNER</th><th>COMPLETED BY</th><th>CYCLE</th><th>WHEN</th></tr>
-  </thead>
-  <tbody>
-    {% for t in recent_completed %}
-    <tr>
-      <td><a href="{{ t.bc_app_url }}" target="_blank">{{ t.title[:80] }} ↗</a>
-        <div style="font-size: 10px; color: #57606a;">{{ t.bc_project_name[:30] }} · {{ t.bc_todolist_name[:24] }}</div>
-      </td>
-      <td>{% if t.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
-      <td style="font-size: 12px;">
-        {% if t.assignee_names %}👤 {{ t.assignee_names[0][:18] }}
-        {% else %}<span class="dim">—</span>{% endif %}
-      </td>
-      <td style="font-size: 12px; white-space: nowrap;">
-        {% if t.completed_by_name %}✓ {{ t.completed_by_name[:18] }}{% else %}<span class="dim">—</span>{% endif %}
-      </td>
-      <td class="dim" style="font-size: 12px;">{% if t.cycle_seconds %}{{ (t.cycle_seconds / 86400)|round(1) }}d{% else %}—{% endif %}</td>
-      <td class="dim" style="font-size: 11px;">{{ t.completed_at[:10] }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-
-{# 'Lists in detail' standalone section removed — drill-down inside the
-   Feasibility table now renders the full email-style task sequence per
-   list when the user clicks 'See all N'. #}
+{# Look-ahead + Look-behind page-level sections were merged INTO the
+   drill-down's unified PROJECT TIMELINE table (per user feedback —
+   'everything embedded in one big string'). All per-list past/present/
+   future tasks live in one continuous chain inside the drill-down. #}
 
 
 {% if not focus and total_open == 0 %}

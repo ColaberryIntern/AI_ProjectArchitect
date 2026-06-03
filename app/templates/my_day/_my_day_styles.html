@@ -164,19 +164,27 @@
   .task-seq .due-pill.today   { background: #d4a72c; color: white; }
   .task-seq .due-pill.normal  { background: #ddf4ff; color: #0550ae; }
 
-  /* Show-N count chips (5 / 10 / 15 / All) */
-  .show-n-chips {
-    display: flex; gap: 6px; align-items: center;
-    font-size: 12px; color: #57606a;
+  /* PROJECT TIMELINE: past (completed) rows + past/future divider + inline expanders */
+  .task-seq-row.is-completed { background: #fafbfc; opacity: 0.78; }
+  .task-seq-row.is-completed:hover { opacity: 1; background: #f0f3f6; }
+  .task-seq-row.is-completed .seq-task a { color: #57606a; text-decoration: line-through; }
+  .task-seq-row.is-completed .seq-num { color: #1a7f37; font-weight: 700; }
+
+  .task-seq .due-pill.done {
+    background: #dafbe1; color: #15803d; border: 1px solid #aceebb;
+    padding: 2px 8px; font-size: 11px;
   }
-  .show-n-chip {
-    display: inline-block; padding: 3px 10px;
-    border-radius: 999px; background: #fff;
-    border: 1px solid #d0d7de; color: #1f2328;
-    font-size: 12px; text-decoration: none;
+
+  tr.seq-divider td {
+    background: linear-gradient(180deg, #fafbfc 0%, #fff 50%, #fafbfc 100%);
+    text-align: center; font-size: 10px; font-weight: 700;
+    letter-spacing: 1.2px; color: #8b949e;
+    padding: 8px 12px !important;
+    border-top: 1px solid #d0d7de !important;
+    border-bottom: 1px solid #d0d7de !important;
   }
-  .show-n-chip:hover { background: #f6f8fa; color: #1f2328; }
-  .show-n-chip.active { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
+  .task-seq-row.is-expander td { padding: 6px 12px !important; }
 
   /* NEXT HUMAN STEP banner — email-style dark callout inside drill-down */
   .next-human-banner {
