@@ -1,0 +1,56 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div class="admin-card">
+  <form method="post" action="/admin/users/new">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Email</label>
+        <input name="email" type="email" class="form-control" required
+               placeholder="alice@example.com" />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Display name</label>
+        <input name="display_name" class="form-control" required
+               placeholder="Alice Smith" />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Company</label>
+        <select name="company_id" class="form-select" required>
+          {% for c in companies %}
+          <option value="{{ c.company_id }}"
+                  {% if c.company_id == current_user.company_id %}selected{% endif %}>
+            {{ c.display_name }} ({{ c.company_id }})
+          </option>
+          {% endfor %}
+        </select>
+        {% if not is_super_admin %}
+        <div class="form-text">You can only provision users into <code>{{ current_user.company_id }}</code>.</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Roles (comma-separated)</label>
+        <input name="roles" class="form-control" value="consumer" />
+        <div class="form-text">Subset of: admin, contributor, consumer</div>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input type="checkbox" id="cwr" name="create_workspace_repo" value="true" class="form-check-input">
+          <label for="cwr" class="form-check-label">
+            Also create their GitHub workspace repo (per [Provision 1])
+          </label>
+          <div class="form-text">
+            Creates <code>ColaberryIntern/{username}-workspace</code> from the
+            <code>workspace-template</code> repo with this user as a collaborator.
+            Skips if the repo already exists. Requires <code>GITHUB_ADMIN_TOKEN</code>
+            in env, else logs a noop.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: var(--space-4);">
+      <button class="btn btn-primary">Provision user</button>
+      <a href="/admin/users" class="btn btn-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

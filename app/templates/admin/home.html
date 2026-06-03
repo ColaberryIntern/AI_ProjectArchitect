@@ -1,0 +1,21 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<p>One-stop admin console for the Colaberry AI Operating System.</p>
+
+<div class="admin-card">
+  <h2>🏢 Tenancy</h2>
+  <p><a href="/admin/companies">View all companies</a>
+    {% if is_super_admin %} · <a href="/admin/companies/new">add new</a>{% endif %}</p>
+</div>
+
+<div class="admin-card">
+  <h2>👤 People</h2>
+  <p><a href="/admin/users">View users</a> · <a href="/admin/users/new">provision new</a></p>
+</div>
+
+<div class="admin-card">
+  <h2>📚 Library</h2>
+  <p>Public library for end users: <a href="/library/" target="_blank">/library/</a>
+    {% if current_user %} (logged in as you){% endif %}</p>
+</div>
+{% endblock %}

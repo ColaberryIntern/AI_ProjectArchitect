@@ -1,0 +1,64 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div class="admin-card">
+  <h2>{{ target_user.display_name }}</h2>
+  <p>
+    <code>{{ target_user.email }}</code> ·
+    Company: <a href="/admin/companies/{{ target_user.company_id }}">{{ target_user.company_id }}</a> ·
+    Created: {{ target_user.created_at[:10] }} ·
+    Last login: {{ target_user.last_login_at[:10] if target_user.last_login_at else "never" }}
+  </p>
+
+  <h4 style="margin-top: var(--space-4);">Roles</h4>
+  <form method="post" action="/admin/users/{{ target_user.user_id }}/role" class="row g-2 align-items-end">
+    <div class="col-md-8">
+      <input name="roles" class="form-control"
+             value="{{ target_user.roles|join(', ') }}" />
+      <div class="form-text">comma-separated; subset of admin / contributor / consumer</div>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-sm btn-primary w-100">Update roles</button>
+    </div>
+  </form>
+
+  <h4 style="margin-top: var(--space-4);">Workspace repo</h4>
+  {% if target_user.workspace_repo %}
+    <p>📦 <a href="https://github.com/{{ target_user.workspace_repo }}" target="_blank">
+      {{ target_user.workspace_repo }}</a></p>
+  {% else %}
+    <p style="color: var(--fg-muted);">Not yet provisioned.
+      <em>Use [Provision 1] to create the workspace repo.</em></p>
+  {% endif %}
+</div>
+
+<div class="admin-card">
+  <h3>🔧 Tool access</h3>
+  <p><a href="/admin/users/{{ target_user.user_id }}/scopes" class="btn btn-sm btn-outline-primary">
+    Manage tools-access matrix →</a></p>
+  {% if scopes %}
+  <p>Currently granted: {% for s in scopes %}<span class="badge">{{ s }}</span> {% endfor %}</p>
+  {% else %}
+  <p style="color: var(--fg-muted);">No tools granted yet.</p>
+  {% endif %}
+</div>
+
+<div class="admin-card">
+  <h3>🔐 Stored credentials</h3>
+  <table class="admin-table">
+    <thead><tr><th>Tool</th><th>Status</th><th>Last rotated</th><th>TTL</th><th>Alg</th></tr></thead>
+    <tbody>
+      {% for c in creds %}
+      <tr>
+        <td>{{ c.tool_name }}</td>
+        <td><span class="badge status-{{ 'active' if c.status == 'active' else 'suspended' }}">{{ c.status }}</span></td>
+        <td>{{ c.last_rotated_at[:10] }}</td>
+        <td>{{ c.ttl_days if c.ttl_days is not none else "—" }}</td>
+        <td><code>{{ c.encryption_alg }}</code></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color: var(--fg-muted);">No credentials stored.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div style="margin-bottom: var(--space-4);">
+  <a href="/admin/users/new" class="btn btn-primary">+ Provision new user</a>
+  {% if is_super_admin %}
+  <span style="margin-left: var(--space-3); color: var(--fg-muted); font-size: 13px;">
+    {% if company_id %}Filter: <code>{{ company_id }}</code> · <a href="/admin/users">show all tenants</a>
+    {% else %}Showing all tenants{% endif %}
+  </span>
+  {% endif %}
+</div>
+
+<div class="admin-card" style="padding: 0;">
+<table class="admin-table">
+  <thead><tr>
+    <th>Email</th><th>Name</th><th>Company</th><th>Roles</th>
+    <th>Last login</th><th>Workspace repo</th><th>Status</th>
+  </tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td><a href="/admin/users/{{ u.user_id }}">{{ u.email }}</a></td>
+      <td>{{ u.display_name }}</td>
+      <td><a href="/admin/companies/{{ u.company_id }}">{{ u.company_id }}</a></td>
+      <td>{% for r in u.roles %}<span class="badge role-{{ r }}">{{ r }}</span>&nbsp;{% endfor %}</td>
+      <td>{{ u.last_login_at[:10] if u.last_login_at else "—" }}</td>
+      <td>{% if u.workspace_repo %}<a href="https://github.com/{{ u.workspace_repo }}" target="_blank">↗ repo</a>{% else %}—{% endif %}</td>
+      <td>
+        {% if u.is_active %}<span class="badge status-active">active</span>
+        {% else %}<span class="badge status-suspended">inactive</span>{% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" style="color: var(--fg-muted); text-align: center; padding: var(--space-5);">
+      No users yet.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

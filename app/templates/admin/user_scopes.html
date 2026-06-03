@@ -1,0 +1,92 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div class="admin-card">
+  <h2>Tools-access matrix — {{ target_user.display_name }}</h2>
+  <p style="color: var(--fg-muted);">
+    Check tools to grant; uncheck to revoke. After granting, set the credential below.
+  </p>
+
+  <table class="admin-table">
+    <thead><tr>
+      <th>Tool</th><th>Granted</th><th>Credential</th>
+      <th>Last rotated</th><th>Expires</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.tool }}</strong></td>
+        <td>
+          {% if r.granted %}<span class="badge status-active">granted</span>
+          {% else %}<span class="badge">no</span>{% endif %}
+        </td>
+        <td>
+          {% if r.credential_status == 'active' %}
+            <span class="badge status-active">active</span>
+          {% elif r.credential_status == 'no-credential' %}
+            <span class="badge" style="color:var(--fg-muted);">none</span>
+          {% else %}
+            <span class="badge status-suspended">{{ r.credential_status }}</span>
+          {% endif %}
+        </td>
+        <td>{{ r.last_rotated_at[:10] if r.last_rotated_at else "—" }}</td>
+        <td>
+          {% if r.days_remaining is none %}—
+          {% elif r.days_remaining < 0 %}<span style="color:#cf222e;">expired</span>
+          {% elif r.days_remaining <= 7 %}<span style="color:#9a6700;">{{ r.days_remaining }}d</span>
+          {% else %}{{ r.days_remaining }}d{% endif %}
+        </td>
+        <td style="white-space: nowrap;">
+          {% if r.granted %}
+            <form method="post" action="/admin/users/{{ target_user.user_id }}/scopes/revoke" style="display:inline;">
+              <input type="hidden" name="tool" value="{{ r.tool }}">
+              <button class="btn btn-sm btn-outline-danger">Revoke</button>
+            </form>
+          {% else %}
+            <form method="post" action="/admin/users/{{ target_user.user_id }}/scopes/grant" style="display:inline;">
+              <input type="hidden" name="tool" value="{{ r.tool }}">
+              <button class="btn btn-sm btn-outline-success">Grant</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="admin-card">
+  <h3>🔐 Store a credential</h3>
+  <form method="post" action="/admin/users/{{ target_user.user_id }}/scopes/credential">
+    <div class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label">Tool</label>
+        <select name="tool" class="form-select" required>
+          {% for t in all_tools %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Token / credential (plaintext — encrypted on save)</label>
+        <input name="plaintext_token" type="password" class="form-control" required />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">TTL (days)</label>
+        <input name="ttl_days" type="number" class="form-control"
+               placeholder="14, 90…" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary w-100">Save credential</button>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notes (optional)</label>
+        <input name="notes" class="form-control" placeholder="e.g. PAT scoped to repo:write" />
+      </div>
+    </div>
+  </form>
+  <p style="color: var(--fg-muted); font-size: 12px; margin-top: var(--space-3);">
+    Stored encrypted (AES-GCM) in the vault. Decrypted only by backend services
+    that pass an auditable <code>purpose</code> string. Plaintext is NEVER
+    returned over HTTP.
+  </p>
+</div>
+{% endblock %}

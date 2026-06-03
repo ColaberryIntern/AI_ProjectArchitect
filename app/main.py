@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.advisory.routes import router as advisory_router
 from app.routers import (
+    admin,
     auth,
     auto_build,
     chapter_build,
@@ -89,6 +90,7 @@ app.include_router(advisory_router)
 app.include_router(ops_platform.router)
 app.include_router(library.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 
 @app.exception_handler(ValueError)
