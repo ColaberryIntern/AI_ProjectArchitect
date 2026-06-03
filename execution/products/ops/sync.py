@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 BC_ACCOUNT_ID = os.environ.get("BC_ACCOUNT_ID", "3945211")
 BC_API_BASE = f"https://3.basecampapi.com/{BC_ACCOUNT_ID}"
 USER_AGENT = "Advisor Ops Command Center (ali@colaberry.com)"
-FRESHNESS_DAYS = int(os.environ.get("OPS_FRESHNESS_DAYS", "90"))
+# "Past month" semantics: only pull tasks with activity in the last N days.
+FRESHNESS_DAYS = int(os.environ.get("OPS_FRESHNESS_DAYS", "30"))
+# Skip projects whose own updated_at is older than this — saves a lot of
+# API calls walking dead projects.
+PROJECT_FRESHNESS_DAYS = int(os.environ.get("OPS_PROJECT_FRESHNESS_DAYS", "30"))
 HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
 
 
@@ -79,13 +83,34 @@ def _paginate(path: str, token: str, max_pages: int = 50):
 
 
 def discover_projects(token: str) -> list[dict]:
-    """Active projects the token can see. May be empty for narrowly-scoped
-    tokens (e.g. CB System in Phase A only sees Ali Personal).
+    """All projects the token has access to.
+
+    Note: BC's `/projects.json` does NOT accept `?status=active` — that
+    returns HTTP 400. The bare endpoint returns all active projects with
+    natural pagination. To get archived projects use `?status=archived`
+    explicitly.
     """
     out: list[dict] = []
     for proj in _paginate("/projects.json", token):
         out.append(proj)
     return out
+
+
+def _project_is_recently_active(proj: dict, cutoff: datetime) -> bool:
+    """True iff the project's own updated_at is at-or-after the cutoff.
+    Used to skip walking projects that have been quiet for the freshness
+    window. Conservative: returns True if we can't parse the timestamp
+    so we don't accidentally drop projects."""
+    raw = proj.get("updated_at") or ""
+    if not raw:
+        return True
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt >= cutoff
+    except (ValueError, TypeError):
+        return True
 
 
 def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -> dict:
@@ -113,21 +138,27 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
         return {"status": "bc_user_id_missing", "todos": 0, "projects": 0}
 
     # 1. Project discovery
-    #    Strategy:
-    #      a. Try projects.json (works when the token has full visibility).
-    #      b. Always add the user's explicitly-configured extra buckets
-    #         (User.bc_extra_buckets) — needed when the token is narrowly
-    #         scoped (e.g. CB System sees 0 via projects.json).
-    #      c. If ali_legacy_bucket is supplied (Phase A demo), include it too.
+    #    a. /projects.json returns everything the token can see (50+ for CB System).
+    #    b. Skip projects whose own updated_at is older than PROJECT_FRESHNESS_DAYS
+    #       — they're quiet, no point walking their todolists.
+    #    c. Always include the user's explicitly-configured extra buckets even
+    #       if they aren't in /projects.json (legacy private buckets).
+    #    d. Include ali_legacy_bucket if supplied (Phase A demo).
+    project_cutoff = datetime.now(timezone.utc) - timedelta(days=PROJECT_FRESHNESS_DAYS)
     projects_raw: list[dict] = []
     seen_buckets: set[int] = set()
+    skipped_quiet = 0
 
     discovered = discover_projects(token)
     for p in discovered:
         bid = p.get("id")
-        if bid and bid not in seen_buckets:
-            seen_buckets.add(bid)
-            projects_raw.append(p)
+        if not bid or bid in seen_buckets:
+            continue
+        if not _project_is_recently_active(p, project_cutoff):
+            skipped_quiet += 1
+            continue
+        seen_buckets.add(bid)
+        projects_raw.append(p)
 
     extra_buckets: list[int] = []
     try:
@@ -229,7 +260,9 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
     return {
         "status": state.last_sync_status,
         "token_source": source,
-        "projects_seen": len(fresh_projects),
+        "projects_discovered": len(discovered) if 'discovered' in locals() else 0,
+        "projects_quiet_skipped": skipped_quiet,
+        "projects_walked": len(projects_raw),
         "projects_created": p_created,
         "projects_updated": p_updated,
         "todos_assigned_to_user": len(fresh_todos),
