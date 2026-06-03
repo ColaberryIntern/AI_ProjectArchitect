@@ -223,6 +223,57 @@
 </table>
 {% endif %}
 
+{# ── Recently completed + per-person cycle times ────────── #}
+{% if completer_stats %}
+<div class="section-head">Approval throughput · who's completing what · last 30d</div>
+<table class="md-table">
+  <thead>
+    <tr>
+      <th>WHO</th>
+      <th>COMPLETED</th>
+      <th>AVG CYCLE</th>
+      <th>MEDIAN</th>
+      <th>FASTEST</th>
+      <th>SLOWEST</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in completer_stats[:12] %}
+    <tr>
+      <td>👤 <strong>{{ s.name }}</strong></td>
+      <td>{{ s.count }}</td>
+      <td>{% if s.avg_cycle_days %}{{ s.avg_cycle_days }}d{% else %}—{% endif %}</td>
+      <td>{% if s.median_cycle_days %}{{ s.median_cycle_days }}d{% else %}—{% endif %}</td>
+      <td class="dim">{% if s.fastest_cycle_days %}{{ s.fastest_cycle_days }}d{% else %}—{% endif %}</td>
+      <td class="dim">{% if s.slowest_cycle_days %}{{ s.slowest_cycle_days }}d{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<details style="margin-top: 10px;">
+  <summary style="cursor: pointer; padding: 10px 14px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;">
+    See {{ recent_completed|length }} recently completed tasks ▾
+  </summary>
+  <table class="md-table" style="margin-top: 6px;">
+    <thead>
+      <tr><th>WHO</th><th>CYCLE</th><th>TASK</th><th>PROJECT</th><th>WHEN</th></tr>
+    </thead>
+    <tbody>
+      {% for t in recent_completed %}
+      <tr>
+        <td style="white-space: nowrap;">👤 {{ t.completed_by_name[:18] }}</td>
+        <td class="dim">{% if t.cycle_seconds %}{{ (t.cycle_seconds / 86400)|round(1) }}d{% else %}—{% endif %}</td>
+        <td><a href="{{ t.bc_app_url }}" target="_blank">{{ t.title[:70] }}</a></td>
+        <td class="dim">{{ t.bc_project_name[:24] }}</td>
+        <td class="dim">{{ t.completed_at[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
 {# ── AI tasks peek (collapsed by default — present but not focus) ─ #}
 {% if ai_todos %}
 <div class="section-head">AI-doable items <span style="font-size: 12px; color: #57606a; font-weight: 400;">({{ ai_todos|length }} delegatable — peek only)</span></div>

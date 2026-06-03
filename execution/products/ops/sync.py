@@ -145,10 +145,11 @@ def _classify_for_user(todo: dict, bc_user_id: int) -> str | None:
     return None
 
 
-def _paginate(path: str, token: str, max_pages: int = 50):
+def _paginate(path: str, token: str, max_pages: int = 50, params: dict | None = None):
     """Yield items from a paginated BC list endpoint until empty/400."""
+    base = dict(params or {})
     for page in range(1, max_pages + 1):
-        chunk = _bc_get(path, token, {"page": page})
+        chunk = _bc_get(path, token, {**base, "page": page})
         if not chunk:
             return
         yield from chunk
@@ -283,17 +284,43 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
                 lst_name = lst.get("name") or "?"
                 if not lst_id:
                     continue
-                todos = list(_paginate(
+                # Walk ACTIVE todos
+                active_todos = list(_paginate(
                     f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
                     token, max_pages=10,
                 ))
-                for t in todos:
+                # Walk COMPLETED todos (BC requires ?completed=true; freshness-filtered below)
+                completed_todos = list(_paginate(
+                    f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
+                    token, max_pages=5, params={"completed": "true"},
+                ))
+                for t in active_todos + completed_todos:
+                    is_completed = bool(t.get("completed"))
                     reason = _classify_for_user(t, bc_user_id)
-                    if reason is None:
+                    # For completed: include even when not classified-as-relevant
+                    # if assigned-to-user OR completed-by-user (so we capture
+                    # cycle times across the team in CB-connected projects).
+                    if not is_completed and reason is None:
                         continue
                     if not _todo_is_relevant(t):
                         continue
+
                     assignee_objs = t.get("assignees") or []
+                    completion = t.get("completion") or {}
+                    cby = completion.get("creator") or {}
+                    completed_at = completion.get("created_at") or ""
+                    created_at = t.get("created_at") or ""
+                    cycle_seconds = 0
+                    if completed_at and created_at:
+                        try:
+                            c_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+                            cr_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                            if c_dt.tzinfo is None: c_dt = c_dt.replace(tzinfo=timezone.utc)
+                            if cr_dt.tzinfo is None: cr_dt = cr_dt.replace(tzinfo=timezone.utc)
+                            cycle_seconds = max(0, int((c_dt - cr_dt).total_seconds()))
+                        except (ValueError, TypeError):
+                            pass
+
                     fresh_todos.append(store.OpsTodo(
                         bc_id=t["id"],
                         bc_project_id=bucket,
@@ -302,14 +329,18 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
                         bc_todolist_name=lst_name,
                         title=t.get("title") or t.get("content") or "(untitled)",
                         description=(t.get("description") or "")[:5000],
-                        status="completed" if t.get("completed") else "active",
+                        status="completed" if is_completed else "active",
                         due_on=t.get("due_on"),
                         assignee_ids=[a.get("id") for a in assignee_objs],
                         assignee_names=[a.get("name") for a in assignee_objs if a.get("name")],
-                        inclusion_reason=reason,
+                        inclusion_reason=reason or "assigned",
                         bc_app_url=t.get("app_url", ""),
-                        bc_created_at=t.get("created_at") or "",
+                        bc_created_at=created_at,
                         bc_updated_at=t.get("updated_at") or "",
+                        completed_by_id=cby.get("id") if is_completed else None,
+                        completed_by_name=cby.get("name", "") if is_completed else "",
+                        completed_at=completed_at if is_completed else "",
+                        cycle_seconds=cycle_seconds if is_completed else 0,
                         last_synced_at=_now_iso(),
                     ))
         except Exception as e:  # noqa: BLE001 — per-project resilience

@@ -18,7 +18,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 logger = logging.getLogger(__name__)
 
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
+MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 JOB_ID = "ops_sync_all_users"
+MENTION_JOB_ID = "ops_cb_mentions_all_users"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -63,8 +65,16 @@ def _sync_all_users() -> None:
     )
 
 
+def _scan_cb_mentions() -> None:
+    from . import cb_mention_worker
+    try:
+        cb_mention_worker.scan_all_users()
+    except Exception:
+        logger.warning("ops_cb_mentions: scan_all_users threw", exc_info=True)
+
+
 def start_scheduler() -> None:
-    """Add the job to the background scheduler. Idempotent."""
+    """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
     if _scheduler is not None:
         logger.info("ops sync scheduler already running")
@@ -76,12 +86,21 @@ def start_scheduler() -> None:
         id=JOB_ID,
         name="My Day BC sync (per user with vault token)",
         replace_existing=True,
-        # Don't fire on app startup — first sync runs INTERVAL_MINUTES after start
-        # so we don't slow down container boot.
+        next_run_time=None,
+    )
+    _scheduler.add_job(
+        _scan_cb_mentions,
+        trigger=IntervalTrigger(minutes=MENTION_INTERVAL_MINUTES),
+        id=MENTION_JOB_ID,
+        name="CB System @-mention auto-response (per user with vault token)",
+        replace_existing=True,
         next_run_time=None,
     )
     _scheduler.start()
-    logger.info("ops sync scheduler started: every %d min", INTERVAL_MINUTES)
+    logger.info(
+        "ops schedulers started: sync every %d min, mentions every %d min",
+        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES,
+    )
 
 
 def stop_scheduler() -> None:

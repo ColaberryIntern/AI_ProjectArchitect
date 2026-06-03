@@ -92,12 +92,54 @@ def _sync_relative(last_sync_iso: str) -> str:
         return ""
 
 
+def _maybe_async_sync(user_email: str, state) -> None:
+    """If the last sync is more than 3 min old, kick a background thread
+    to refresh. Non-blocking — the page renders with current data and the
+    next refresh shows the fresh state. Cheap idempotency via a module-
+    level lock dict.
+    """
+    import threading
+    last = state.last_sync_at or ""
+    if last:
+        try:
+            ts = last.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - dt).total_seconds()
+            if age < 180:  # < 3 min — recent enough
+                return
+        except (ValueError, TypeError):
+            pass
+    # One in-flight per user
+    if getattr(_maybe_async_sync, "_locks", None) is None:
+        _maybe_async_sync._locks = {}
+    locks = _maybe_async_sync._locks
+    if locks.get(user_email):
+        return
+    locks[user_email] = True
+
+    def _run():
+        try:
+            r = sync.pull_todos_for_user(user_email)
+            if r.get("status") in ("ok", "partial"):
+                scorer.score_all_todos(user_email)
+        except Exception:
+            pass
+        finally:
+            locks[user_email] = False
+
+    threading.Thread(target=_run, daemon=True, name=f"sync-{user_email}").start()
+
+
 @router.get("/")
 async def ops_home(request: Request):
     user = _require_user(request)
     state = store.load_state(user.email)
     todos = store.load_todos(user.email)
     projects = store.load_projects(user.email)
+    # Nudge: if data is stale, kick a background sync.
+    _maybe_async_sync(user.email, state)
 
     view = request.query_params.get("view", "briefing")
     if view not in ("briefing", "kanban", "heatmap"):
@@ -155,6 +197,7 @@ async def ops_home(request: Request):
     project_rollups = rollup.per_project(scoped_todos)
     overall_health_data = rollup.overall_health(list_rollups)
     kanban_cols = rollup.kanban_columns(scoped_todos)
+    completer_stats, recent_completed = rollup.completions_summary(scoped_todos, limit=30)
     active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
     active_sorted = sorted(active_todos, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
     human_todos = [t for t in active_sorted if rollup.tier(t) == "H"]
@@ -234,6 +277,8 @@ async def ops_home(request: Request):
              list_rollups=list_rollups,
              project_rollups=project_rollups,
              kanban_cols=kanban_cols,
+             completer_stats=completer_stats,
+             recent_completed=recent_completed,
              human_todos=human_todos,
              ai_todos=ai_todos,
              total_open=status.open_count),

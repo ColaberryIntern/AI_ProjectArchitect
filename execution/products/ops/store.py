@@ -43,6 +43,11 @@ class OpsTodo:
     bc_app_url: str = ""
     bc_created_at: str = ""
     bc_updated_at: str = ""
+    # Completion metadata (only populated when status == "completed")
+    completed_by_id: int | None = None
+    completed_by_name: str = ""
+    completed_at: str = ""
+    cycle_seconds: int = 0          # completed_at - bc_created_at, in seconds
     last_synced_at: str = ""
     # Enriched by scorer
     urgency_score: int = 0

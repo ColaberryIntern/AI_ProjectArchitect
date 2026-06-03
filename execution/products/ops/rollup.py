@@ -177,6 +177,57 @@ def per_project(todos: Iterable[OpsTodo]) -> list[ProjectRollup]:
     return sorted(by_proj.values(), key=lambda r: (r.score, -r.overdue_count))
 
 
+@dataclass
+class CompleterStats:
+    """Per-person completion rollup: count + cycle-time stats in days."""
+    name: str
+    count: int
+    avg_cycle_days: float
+    median_cycle_days: float
+    fastest_cycle_days: float
+    slowest_cycle_days: float
+
+
+def completions_summary(todos: Iterable[OpsTodo], limit: int = 50) -> tuple[list[CompleterStats], list[OpsTodo]]:
+    """Returns (per-completer stats sorted by count desc, recent completed todos sorted by completed_at desc).
+
+    Only completed todos with cycle_seconds > 0 contribute. Names without
+    cycle data still appear in the list but with avg=0.
+    """
+    completed = [t for t in todos if t.status == "completed" and t.completed_at]
+    completed.sort(key=lambda x: x.completed_at, reverse=True)
+
+    by_person: dict[str, list[int]] = {}
+    for t in completed:
+        if not t.completed_by_name:
+            continue
+        by_person.setdefault(t.completed_by_name, []).append(t.cycle_seconds)
+
+    stats: list[CompleterStats] = []
+    for name, cycles in by_person.items():
+        valid = sorted(c / 86400 for c in cycles if c > 0)
+        if valid:
+            mid = len(valid) // 2
+            median = (valid[mid] if len(valid) % 2 == 1
+                      else (valid[mid - 1] + valid[mid]) / 2)
+            stats.append(CompleterStats(
+                name=name,
+                count=len(cycles),
+                avg_cycle_days=round(sum(valid) / len(valid), 1),
+                median_cycle_days=round(median, 1),
+                fastest_cycle_days=round(min(valid), 1),
+                slowest_cycle_days=round(max(valid), 1),
+            ))
+        else:
+            stats.append(CompleterStats(
+                name=name, count=len(cycles),
+                avg_cycle_days=0, median_cycle_days=0,
+                fastest_cycle_days=0, slowest_cycle_days=0,
+            ))
+    stats.sort(key=lambda s: -s.count)
+    return stats, completed[:limit]
+
+
 def overall_health(rollups: list[ListRollup]) -> dict:
     """Aggregate score across lists, weighted by open_count.
     Returns {'score': 0-100, 'label': 'ON TRACK|AI RISK|AT RISK', 'list_count': N,
