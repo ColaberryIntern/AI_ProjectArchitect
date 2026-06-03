@@ -48,6 +48,18 @@
      class="proj-chip {% if tier == 'unassigned' %}active{% endif %}">
     🤝 Unassigned <span class="chip-count">{{ tier_counts.get('unassigned', 0) }}</span>
   </a>
+  <span style="display: inline-block; width: 1px; height: 18px; background: #d0d7de; margin: 0 4px; align-self: center;"></span>
+  <a href="?view={{ view }}&tier=human{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'human' %}active{% endif %}"
+     style="{% if tier != 'human' %}background: #fff4d5; border-color: #f0d678; color: #8a5a00;{% endif %}">
+    🧑 Human-needed <span class="chip-count">{{ tier_counts.get('human', 0) }}</span>
+  </a>
+  <a href="?view={{ view }}&tier=ai{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'ai' %}active{% endif %}"
+     style="{% if tier != 'ai' %}background: #ddf4ff; border-color: #c6e2ff; color: #0550ae;{% endif %}">
+    🤖 AI-doable <span class="chip-count">{{ tier_counts.get('ai', 0) }}</span>
+  </a>
+  <span style="display: inline-block; width: 1px; height: 18px; background: #d0d7de; margin: 0 4px; align-self: center;"></span>
   <a href="?view={{ view }}&tier=all{{ qs_no_tier }}"
      class="proj-chip {% if tier == 'all' %}active{% endif %}">
     🌍 All <span class="chip-count">{{ tier_counts.get('all', 0) }}</span>

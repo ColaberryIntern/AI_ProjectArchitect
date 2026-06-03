@@ -196,18 +196,22 @@ async def ops_home(request: Request):
     if view not in ("briefing", "kanban", "heatmap"):
         view = "briefing"
     project_filter_raw = request.query_params.get("project", "")
-    # Tier filter: 'assigned' (default) | 'due' | 'unassigned' | 'all'
+    # Tier filter: assignment-based (assigned|due|unassigned|all) OR
+    # kind-based (human|ai). The 6 values are mutually exclusive in the UI.
     tier = request.query_params.get("tier", "assigned")
-    if tier not in ("assigned", "due", "unassigned", "all"):
+    if tier not in ("assigned", "due", "unassigned", "all", "human", "ai"):
         tier = "assigned"
 
     # Pre-compute counts per tier for the chip row (BEFORE filtering)
     from collections import Counter
+    active_unfiltered = [t for t in todos if t.status == "active" and not t.is_dismissed]
     tier_counts_total = Counter(
-        getattr(t, "inclusion_reason", "assigned") for t in todos
-        if t.status == "active" and not t.is_dismissed
+        getattr(t, "inclusion_reason", "assigned") for t in active_unfiltered
     )
     tier_counts_total["all"] = sum(tier_counts_total.values())
+    # Kind-based counts (Human vs AI — orthogonal to assignment)
+    tier_counts_total["human"] = sum(1 for t in active_unfiltered if t.category == "human_required")
+    tier_counts_total["ai"] = sum(1 for t in active_unfiltered if t.category != "human_required")
 
     # Apply project filter
     if project_filter_raw:
@@ -240,6 +244,10 @@ async def ops_home(request: Request):
         scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "due"]
     elif tier == "unassigned":
         scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "unassigned"]
+    elif tier == "human":
+        scoped_todos = [t for t in scoped_todos if t.category == "human_required"]
+    elif tier == "ai":
+        scoped_todos = [t for t in scoped_todos if t.category != "human_required"]
     # tier == "all" → no filter
 
     # Pre-compute aggregates against the scoped working set
