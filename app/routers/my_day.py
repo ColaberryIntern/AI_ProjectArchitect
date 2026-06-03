@@ -66,11 +66,29 @@ def _ctx(request: Request, user, **extra) -> dict:
         use_case_count = 0
         pending_count = 0
 
+    # Library base also reads these — give safe defaults so it doesn't crash
+    bell_count = 0
+    queue_count = 0
+    is_reviewer = False
+    try:
+        from execution.products.library import notifications as _notif
+        bell_count = _notif.unread_count_for_user(user.user_id, user.company_id)
+    except Exception:
+        pass
+    try:
+        if tenancy.can_review(user):
+            is_reviewer = True
+            q = tenancy.queue_counts(user.company_id)
+            queue_count = q.get("submitted", 0) + q.get("under_review", 0)
+    except Exception:
+        pass
+
     base = {
         "request": request,
         "current_product": "library",
         "library_nav_active": "my_day",
         "workspace": "global",
+        "workspaces": [],   # avoid library workspace-switcher AttributeError
         "current_session_user": user,
         "actor": (user.display_name or user.email) if user else None,
         "counts": counts,
@@ -78,11 +96,20 @@ def _ctx(request: Request, user, **extra) -> dict:
         "pending_count": pending_count,
         "scope": "my-company",
         "viewer_company_id": user.company_id if user else None,
+        "bell_count": bell_count,
+        "queue_count": queue_count,
+        "is_reviewer": is_reviewer,
         "company_id": user.company_id,
         "company_display": (tenancy.get_company(user.company_id).display_name
                             if tenancy.get_company(user.company_id) else user.company_id),
         "my_day_total_open": None,
     }
+    # workspaces (list of strings) is read by the library workspace switcher
+    try:
+        from execution.products.library import store as _lib_store
+        base["workspaces"] = _lib_store.list_workspaces()
+    except Exception:
+        pass
     base.update(extra)
     return base
 
