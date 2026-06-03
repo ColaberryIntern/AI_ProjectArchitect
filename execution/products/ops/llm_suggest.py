@@ -29,7 +29,7 @@ from .store import OpsTodo
 logger = logging.getLogger(__name__)
 
 MODEL = os.environ.get("OPS_LLM_MODEL", "gpt-4o")
-MAX_TOKENS = int(os.environ.get("OPS_LLM_MAX_TOKENS", "1400"))
+MAX_TOKENS = int(os.environ.get("OPS_LLM_MAX_TOKENS", "2800"))
 CACHE_FILENAME = "_llm_cache.json"
 
 _client = None
