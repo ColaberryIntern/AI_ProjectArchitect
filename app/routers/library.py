@@ -69,11 +69,15 @@ def _viewer_company_id(session_user, scope: str) -> "str | None":
 
 def _ctx(request: Request, **extra) -> dict:
     """Shared template context — every page gets counts + identity + scope."""
-    counts = inventory.inventory_counts() if "counts" not in extra else extra["counts"]
-    pending_count = len(store.list_submissions(status="pending"))
     ws = _ws(request)
     session_user = _session_user(request)
     scope = _scope(request, session_user)
+    viewer_co = _viewer_company_id(session_user, scope)
+    # Counts honor the viewer's scope so left-nav numbers match what's
+    # actually rendered on the category pages.
+    counts = (inventory.inventory_counts(viewer_company_id=viewer_co)
+              if "counts" not in extra else extra["counts"])
+    pending_count = len(store.list_submissions(status="pending"))
 
     # [Workflow 1] bell counter + reviewer queue count
     bell_count = 0
@@ -106,7 +110,7 @@ def _ctx(request: Request, **extra) -> dict:
         # [Library 2] identity-aware context
         "current_session_user": session_user,
         "scope": scope,
-        "viewer_company_id": _viewer_company_id(session_user, scope),
+        "viewer_company_id": viewer_co,
         # [Workflow 1] notifications + queue
         "bell_count": bell_count,
         "queue_count": queue_count,
@@ -191,7 +195,10 @@ async def notifications_mark_read(request: Request):
 @router.get("/")
 async def library_home(request: Request):
     workspace = _ws(request)
-    counts = inventory.inventory_counts()
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
+    viewer_co = _viewer_company_id(session_user, scope)
+    counts = inventory.inventory_counts(viewer_company_id=viewer_co)
     total = sum(counts.values())
     feat = featured.pick_featured(workspace=workspace)
     last_scan = scanner.last_scan_summary()
@@ -849,6 +856,7 @@ async def library_category(request: Request, category_key: str):
         workspace=workspace, mode=mode, category=cat.key,
         current={"tag": tag_filter} if tag_filter else {},
         base_url=f"/library/{cat.key}", limit=50,
+        viewer_company_id=viewer_co,
     )
 
     # List of companies the user can filter by ("other company approved")

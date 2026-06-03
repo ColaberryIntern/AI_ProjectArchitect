@@ -483,9 +483,15 @@ def load_category(key: str) -> list[dict[str, Any]]:
     return fn() if fn else []
 
 
-def inventory_counts() -> dict[str, int]:
-    """Used by overview page — returns one count per category."""
+def inventory_counts(viewer_company_id: str | None = None) -> dict[str, int]:
+    """One count per category. If viewer_company_id is set, count only the
+    items that tenant can see (per filter_for_company) — so the left-nav
+    numbers match what's actually rendered on the category pages.
+    """
     out: dict[str, int] = {}
     for c in CATEGORIES:
-        out[c.key] = len(load_category(c.key))
+        rows = load_category(c.key)
+        if viewer_company_id:
+            rows = filter_for_company(rows, c.key, viewer_company_id)
+        out[c.key] = len(rows)
     return out

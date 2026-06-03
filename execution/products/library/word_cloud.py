@@ -372,10 +372,14 @@ def cloud_for_assets(workspace: str = "global",
                               category: str | None = None,
                               current: dict[str, str] | None = None,
                               base_url: str | None = None,
-                              limit: int = 60) -> list[Term]:
+                              limit: int = 60,
+                              viewer_company_id: str | None = None) -> list[Term]:
     """Word cloud across asset tags within a category (or all categories).
 
     Encodes: count, vetted ratio, avg rating, last-enriched age.
+
+    If viewer_company_id is set, rows are pre-filtered via filter_for_company
+    so the cloud only surfaces tags from items the viewer can actually see.
     """
     current = current or {}
     base_url = base_url or (f"/library/{category}" if category else "/library")
@@ -388,6 +392,8 @@ def cloud_for_assets(workspace: str = "global",
 
     for cat in cats:
         rows = inventory.load_category(cat) or []
+        if viewer_company_id:
+            rows = inventory.filter_for_company(rows, cat, viewer_company_id)
         for row in rows:
             asset_id = row.get("name") or row.get("id") or ""
             if not asset_id:
