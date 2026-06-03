@@ -1,0 +1,36 @@
+{
+  "_doc": "[Auth 2] Email-domain → company mapping. When a Google SSO login arrives, the user's email domain is looked up here to decide which tenant they belong to. Per BUILD_INDEX default #2, an unmatched domain routes to the no-company admin approval queue rather than auto-creating a tenant.",
+  "_format": {
+    "domain": "the lowercase part after the @ in the email",
+    "company_id": "must match a row in companies.json",
+    "default_roles": "roles assigned on first-login provisioning",
+    "auto_provision": "if true, create the User row on first login; if false, hold in admin queue"
+  },
+  "mappings": [
+    {
+      "domain": "colaberry.com",
+      "company_id": "colaberry",
+      "default_roles": ["consumer"],
+      "auto_provision": true
+    },
+    {
+      "domain": "demo-tenant.local",
+      "company_id": "demo-tenant",
+      "default_roles": ["consumer"],
+      "auto_provision": true
+    }
+  ],
+  "unmatched_policy": "queue_for_admin_review",
+  "anonymous_paths": [
+    "/",
+    "/projects/",
+    "/advisory/",
+    "/auth/",
+    "/static/",
+    "/docs",
+    "/openapi.json"
+  ],
+  "login_required_paths": [
+    "/library/"
+  ]
+}
