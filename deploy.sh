@@ -62,6 +62,23 @@ if [ ! -f "$APP_DIR/.env.prod" ]; then
 fi
 REMOTE_SCRIPT
 
+echo "[1.5/4] Running Deploy 1 multi-tenant preflight..."
+# Exit codes from scripts/deploy_preflight.py:
+#   0 = green, 1 = HARD FAIL (do not deploy), 2 = soft warnings (proceed)
+# Script absent or missing python is treated as soft-warn (legacy deploy path stays usable).
+PRE_RC=$(ssh "$SERVER" "cd $APP_DIR && (python3 scripts/deploy_preflight.py >&2; echo \$?) | tail -1") || true
+if [ "$PRE_RC" = "1" ]; then
+    echo ""
+    echo "ABORT: deploy_preflight returned exit 1 (hard failure)."
+    echo "Fix the missing env vars above before retrying."
+    exit 1
+fi
+if [ "$PRE_RC" = "2" ]; then
+    echo ""
+    echo "WARNING: deploy_preflight returned exit 2 (soft warnings)."
+    echo "Deploy will proceed but some features will be in degraded mode."
+fi
+
 echo "[2/4] Building Docker image..."
 ssh "$SERVER" "cd $APP_DIR && docker compose build"
 
