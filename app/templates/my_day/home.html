@@ -361,7 +361,7 @@
 </details>
 {% endif %}
 
-{# ── Lists in detail — collapsed per list ────────────────── #}
+{# ── Lists in detail — email-style task sequence per list ─── #}
 {% if list_rollups %}
 <div class="section-head">Lists in detail</div>
 {% for r in list_rollups %}
@@ -371,7 +371,85 @@
     <span class="counts">{{ r.open_count }} open · H {{ r.human_count }} / AI {{ r.ai_count }} · {{ r.overdue_count }} overdue</span>
     <span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span>
   </summary>
-  <div class="panel">
+  <div class="panel" style="padding: 0;">
+    <div class="task-seq-header">TASK SEQUENCE ({{ r.open_count }} OPEN, ORDERED BY DUE DATE)</div>
+    {# Order by due (ascending — overdue first), then by urgency (desc) within same date #}
+    {% set sorted_todos = r.open_todos|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
+    {# Find first human-needed task that's NOT overdue to mark as NEXT HUMAN STEP #}
+    {% set ns = namespace(next_human_id=None) %}
+    {% for t in sorted_todos %}
+      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+      {% if ns.next_human_id is none and t.category == 'human_required' and dd is not none and dd >= 0 %}
+        {% set ns.next_human_id = t.bc_id %}
+      {% endif %}
+    {% endfor %}
+    <table class="task-seq">
+      <thead>
+        <tr>
+          <th style="width: 40px;">#</th>
+          <th>TASK</th>
+          <th style="width: 130px;">DUE</th>
+          <th style="width: 70px;">TIER</th>
+          <th style="width: 130px;">OWNER</th>
+          <th style="width: 90px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for t in sorted_todos %}
+      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+      {% set is_overdue = (dd is not none and dd < 0) %}
+      {% set is_today = (dd == 0) %}
+      {% set is_human = (t.category == 'human_required') %}
+      {% set is_next_human = (t.bc_id == ns.next_human_id) %}
+      <tr class="task-seq-row {% if is_next_human %}is-next-human{% elif is_overdue %}is-overdue{% endif %}">
+        <td class="seq-num">{{ loop.index }}</td>
+        <td class="seq-task">
+          <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
+          <div class="seq-task-sub">
+            {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
+            {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
+            {% elif t.inclusion_reason == 'unassigned' %}UNASSIGNED — NEEDS A CLAIM
+            {% else %}{{ t.bc_todolist_name[:30] }}{% endif %}
+            {% if is_next_human %}<span class="next-human-arrow">← NEXT HUMAN STEP</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if is_overdue %}<span class="due-pill overdue">OVERDUE<br><small>{{ t.due_on }}</small></span>
+          {% elif is_today %}<span class="due-pill today">DUE TODAY</span>
+          {% elif t.due_on %}<span class="due-pill normal">DUE<br><small>{{ t.due_on }}</small></span>
+          {% else %}<span class="dim">no due</span>{% endif %}
+        </td>
+        <td>
+          {% if is_human %}
+          <span class="tier-pill human">HUMAN</span>
+          {% else %}
+          <span class="tier-pill ai">AI</span>
+          {% endif %}
+        </td>
+        <td class="seq-owner">
+          {% if t.assignee_names %}
+            {{ t.assignee_names[0][:18] }}
+            {% if t.assignee_names|length > 1 %}<span class="dim">+{{ t.assignee_names|length - 1 }}</span>{% endif %}
+          {% else %}
+            <span class="dim">unassigned</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="margin: 0;">
+            <button type="submit" class="md-btn md-btn-success" style="padding: 4px 10px; font-size: 11px;">✓ Done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endfor %}
+{% endif %}
+
+{# ── (Legacy detail panel — no longer rendered, kept stub for future) ── #}
+{% if False %}
     {% set h_in_list = r.open_todos|selectattr('category', 'equalto', 'human_required')|list %}
     {% if h_in_list %}
     <div class="group-label">HUMAN-NEEDED ({{ h_in_list|length }})</div>
@@ -407,6 +485,7 @@
 </details>
 {% endfor %}
 {% endif %}
+{% endif %}{# end legacy {% if False %} stub #}
 
 {% if not focus and total_open == 0 %}
 <div style="text-align: center; padding: 48px; color: #57606a;">

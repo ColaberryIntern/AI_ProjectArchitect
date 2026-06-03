@@ -121,6 +121,57 @@
   .kanban-card .meta .pill.amber { background: #fff4d5; color: #8a5a00; }
   .kanban-card .meta .pill.gray  { background: #eaeef2; color: #57606a; }
 
+  /* Email-style task sequence table inside Lists in detail */
+  .task-seq-header {
+    background: #1a1a1a; color: #fff; padding: 10px 16px;
+    font-size: 11px; letter-spacing: 0.8px; font-weight: 700;
+    border-radius: 0;
+  }
+  .task-seq { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+  .task-seq thead { background: #f6f8fa; color: #4a4a4a; }
+  .task-seq th {
+    padding: 8px 12px; text-align: left; font-size: 10px;
+    letter-spacing: 0.6px; text-transform: uppercase; font-weight: 700;
+    border-bottom: 1px solid #d0d7de;
+  }
+  .task-seq-row td {
+    padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle;
+  }
+  .task-seq-row:hover td { background: #fafbfc; }
+  .task-seq-row.is-overdue td { background: #fff5f6; }
+  .task-seq-row.is-next-human td { background: #fff8d6; border-left: 3px solid #d4a72c; }
+  .task-seq-row.is-next-human td:first-child { border-left: 0; }
+  .task-seq-row .seq-num { color: #57606a; font-weight: 600; text-align: center; }
+  .task-seq-row .seq-task a { color: #0969da; text-decoration: none; font-weight: 600; }
+  .task-seq-row .seq-task-sub {
+    color: #57606a; font-size: 10px; letter-spacing: 0.4px;
+    text-transform: uppercase; font-weight: 600; margin-top: 2px;
+  }
+  .task-seq-row .seq-task-sub .next-human-arrow {
+    color: #8a5a00; font-weight: 800; margin-left: 6px;
+  }
+  .task-seq-row .seq-owner { font-size: 12px; color: #1f2328; }
+  .task-seq-row .seq-owner .dim { color: #8a8a8a; }
+
+  /* Due pills inside task-seq (multi-line: label + date stacked) */
+  .task-seq .due-pill {
+    display: inline-block; padding: 5px 10px; border-radius: 4px;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.6px; line-height: 1.2;
+    text-align: center; min-width: 90px;
+  }
+  .task-seq .due-pill small { font-size: 9px; font-weight: 600; letter-spacing: 0.3px; opacity: 0.95; }
+  .task-seq .due-pill.overdue { background: #cf222e; color: white; }
+  .task-seq .due-pill.today   { background: #d4a72c; color: white; }
+  .task-seq .due-pill.normal  { background: #ddf4ff; color: #0550ae; }
+
+  /* Tier pill (AI vs HUMAN, like the email) */
+  .tier-pill {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.6px;
+  }
+  .tier-pill.ai    { background: #ddf4ff; color: #0550ae; }
+  .tier-pill.human { background: #fff4d5; color: #8a5a00; }
+
   /* KPI tiles (3-up) */
   .kpi-row {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
