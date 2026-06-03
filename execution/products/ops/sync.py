@@ -99,11 +99,7 @@ def _is_fresh(updated_at: str | None) -> bool:
 
 
 def _todo_is_relevant(todo: dict) -> bool:
-    """Include a todo if it has recent activity OR a future due date.
-
-    Past fix would drop a todo that hadn't been touched in 30 days even
-    if its due_on was next week. That hid tasks Ali cares about most.
-    """
+    """Include a todo if it has recent activity OR a future due date."""
     if _is_fresh(todo.get("updated_at")):
         return True
     due_on = todo.get("due_on")
@@ -114,6 +110,39 @@ def _todo_is_relevant(todo: dict) -> bool:
         except ValueError:
             pass
     return False
+
+
+def _has_future_due(todo: dict) -> bool:
+    due_on = todo.get("due_on")
+    if not due_on:
+        return False
+    try:
+        return datetime.strptime(due_on, "%Y-%m-%d").date() >= datetime.now(timezone.utc).date()
+    except ValueError:
+        return False
+
+
+def _classify_for_user(todo: dict, bc_user_id: int) -> str | None:
+    """Return inclusion_reason if this todo belongs in the user's queue, else None.
+
+    Tiers (most-direct first):
+      'assigned'   - assigned to the user's BC id (or their AI clone)
+      'due'        - has a future due date in a project the token sees,
+                     even if assigned to someone else (the user follows
+                     because their AI clone is on the project)
+      'unassigned' - no assignees + recent activity (someone needs to claim)
+    """
+    assignees = [a.get("id") for a in (todo.get("assignees") or [])]
+    if bc_user_id in assignees:
+        return "assigned"
+    # CB System (37708014) clone is included as "assigned" too — same user
+    if 37708014 in assignees:
+        return "assigned"
+    if _has_future_due(todo):
+        return "due"
+    if not assignees and _is_fresh(todo.get("updated_at")):
+        return "unassigned"
+    return None
 
 
 def _paginate(path: str, token: str, max_pages: int = 50):
@@ -259,11 +288,12 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
                     token, max_pages=10,
                 ))
                 for t in todos:
-                    assignees = [a.get("id") for a in (t.get("assignees") or [])]
-                    if bc_user_id not in assignees:
+                    reason = _classify_for_user(t, bc_user_id)
+                    if reason is None:
                         continue
                     if not _todo_is_relevant(t):
                         continue
+                    assignee_objs = t.get("assignees") or []
                     fresh_todos.append(store.OpsTodo(
                         bc_id=t["id"],
                         bc_project_id=bucket,
@@ -274,7 +304,9 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
                         description=(t.get("description") or "")[:5000],
                         status="completed" if t.get("completed") else "active",
                         due_on=t.get("due_on"),
-                        assignee_ids=assignees,
+                        assignee_ids=[a.get("id") for a in assignee_objs],
+                        assignee_names=[a.get("name") for a in assignee_objs if a.get("name")],
+                        inclusion_reason=reason,
                         bc_app_url=t.get("app_url", ""),
                         bc_created_at=t.get("created_at") or "",
                         bc_updated_at=t.get("updated_at") or "",

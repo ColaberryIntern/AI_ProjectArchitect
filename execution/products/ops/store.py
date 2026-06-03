@@ -34,6 +34,12 @@ class OpsTodo:
     status: str = "active"            # active | archived | trashed | completed
     due_on: str | None = None         # YYYY-MM-DD
     assignee_ids: list[int] = field(default_factory=list)
+    assignee_names: list[str] = field(default_factory=list)
+    # How this todo got into the user's queue:
+    #   "assigned"   - assigned to the user directly
+    #   "due"        - has a future due date in a project they're on
+    #   "unassigned" - unassigned + recent activity in a project they're on
+    inclusion_reason: str = "assigned"
     bc_app_url: str = ""
     bc_created_at: str = ""
     bc_updated_at: str = ""
