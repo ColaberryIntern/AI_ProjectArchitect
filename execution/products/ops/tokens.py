@@ -33,27 +33,44 @@ def _ccpp_token() -> str | None:
         return None
 
 
-def get_user_token(user_id: str) -> tuple[str | None, str]:
+def _resolve_user_id(email_or_id: str) -> str | None:
+    """Map email -> tenancy user_id (vault keys by user_id, not email).
+    If `email_or_id` already looks like a user_id (`usr-...`), return as-is.
+    """
+    if email_or_id.startswith("usr-"):
+        return email_or_id
+    try:
+        from execution.products.library import tenancy
+        u = tenancy.get_user(email_or_id)
+        return u.user_id if u else None
+    except Exception:
+        return None
+
+
+def get_user_token(email_or_id: str) -> tuple[str | None, str]:
     """Return (token, source) where source is one of:
         'vault'    — per-user AI clone token from the vault (preferred)
         'ccpp'     — legacy CB System token (Ali-only transition)
         'missing'  — neither available; sync should skip
-    """
-    # 1. Per-user vault entry
-    try:
-        from execution.products.library import vault
-        t = vault.read_secret(
-            user_id=user_id,
-            tool_name="basecamp_ai_clone",
-            caller_id="ops.sync",
-            purpose="Basecamp todo sync for the AI Ops Command Center",
-        )
-        if t:
-            return t, "vault"
-    except Exception:
-        pass
 
-    # 2. CCPP fallback (transitional)
+    Accepts either an email or a tenancy user_id; vault is keyed on user_id.
+    """
+    uid = _resolve_user_id(email_or_id)
+    if uid:
+        try:
+            from execution.products.library import vault
+            t = vault.read_secret(
+                user_id=uid,
+                tool_name="basecamp_ai_clone",
+                caller_id="ops.sync",
+                purpose="Basecamp todo sync for the AI Ops Command Center",
+            )
+            if t:
+                return t, "vault"
+        except Exception:
+            pass
+
+    # CCPP fallback (transitional, only useful when run against the BC MCP cache locally)
     t = _ccpp_token()
     if t:
         return t, "ccpp"
