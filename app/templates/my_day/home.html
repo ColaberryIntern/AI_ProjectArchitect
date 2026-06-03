@@ -374,12 +374,11 @@
               </tr>
               {% endfor %}
 
-              {# ─── PAST → FUTURE divider (only shown when past is expanded) ─── #}
-              {% if prev_completed_asc %}
+              {# ─── PAST → FUTURE divider (only shown when past chips reveal rows) ─── #}
               <tr class="seq-divider past-divider-{{ r.list_id }}" hidden>
                 <td colspan="6">↑ COMPLETED · UPCOMING ↓</td>
               </tr>
-              {% endif %}
+              {% endif %}{# /prev_completed_asc #}
 
               {# ─── FUTURE: next 15, NEXT HUMAN STEP highlighted ─── #}
               {% for t in seq[:seq_cap] %}
