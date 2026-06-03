@@ -137,6 +137,38 @@ class TestSaveRegistry:
         data = json.loads((tmp_path / "registry.json").read_text())
         assert len(data["skills"]) == MAX_SKILLS
 
+    def test_skips_write_when_unchanged(self, tmp_path, monkeypatch):
+        """Repeating _save_registry with identical content must not rewrite the file."""
+        monkeypatch.setattr("execution.skill_scanner.REGISTRY_PATH", tmp_path / "registry.json")
+        skills = [{"id": "test", "name": "Test", "description": "d", "category": "c"}]
+        _save_registry(skills, "success", 3)
+        mtime1 = (tmp_path / "registry.json").stat().st_mtime_ns
+        ts1 = json.loads((tmp_path / "registry.json").read_text())["last_updated"]
+
+        _save_registry(skills, "success", 3)
+        mtime2 = (tmp_path / "registry.json").stat().st_mtime_ns
+        ts2 = json.loads((tmp_path / "registry.json").read_text())["last_updated"]
+
+        assert mtime1 == mtime2
+        assert ts1 == ts2
+
+    def test_writes_when_status_changes(self, tmp_path, monkeypatch):
+        """Same skills but different scan_status should still write."""
+        monkeypatch.setattr("execution.skill_scanner.REGISTRY_PATH", tmp_path / "registry.json")
+        skills = [{"id": "test", "name": "Test"}]
+        _save_registry(skills, "success", 3)
+        _save_registry(skills, "partial", 3)
+        data = json.loads((tmp_path / "registry.json").read_text())
+        assert data["last_scan_status"] == "partial"
+
+    def test_writes_when_skills_change(self, tmp_path, monkeypatch):
+        """Adding a skill should produce a write."""
+        monkeypatch.setattr("execution.skill_scanner.REGISTRY_PATH", tmp_path / "registry.json")
+        _save_registry([{"id": "a", "name": "A"}], "success", 1)
+        _save_registry([{"id": "a", "name": "A"}, {"id": "b", "name": "B"}], "success", 1)
+        data = json.loads((tmp_path / "registry.json").read_text())
+        assert len(data["skills"]) == 2
+
 
 class TestLoadExistingSkills:
     """Test loading existing skills from registry."""
