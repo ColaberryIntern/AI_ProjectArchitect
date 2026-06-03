@@ -215,6 +215,13 @@
           {{ r.list_name[:38] }} →
         </a>
         <div style="font-size: 10px; color: #57606a;">{{ r.project_name[:32] }}</div>
+        {% if r.open_todos|length > 1 %}
+        <button type="button" class="md-btn md-btn-quiet see-all-btn"
+                onclick="document.querySelectorAll('[data-group-id=\'g-{{ r.list_id }}\'] .blocking-chain').forEach(el => el.hidden = !el.hidden); this.querySelector('.arrow').textContent = (this.querySelector('.arrow').textContent === '▼') ? '▶' : '▼';"
+                style="margin-top: 6px; padding: 4px 10px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; color: #1f2328;">
+          <span class="arrow">▶</span> See all {{ r.open_todos|length }}
+        </button>
+        {% endif %}
       </td>
       <td><span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span></td>
       <td class="dim" style="font-size: 12px;">
@@ -248,13 +255,6 @@
            style="background: #1f1f1f; color: white; padding: 5px 10px; font-size: 11px; text-decoration: none;">
           🪄 Get prompt
         </a>
-        {% if r.open_todos|length > 1 %}
-        <button type="button" class="md-btn md-btn-quiet"
-                onclick="document.querySelectorAll('[data-group-id=\'g-{{ r.list_id }}\'] .blocking-chain').forEach(el => el.hidden = !el.hidden); this.querySelector('.arrow').textContent = (this.querySelector('.arrow').textContent === '▼') ? '▶' : '▼';"
-                style="padding: 5px 8px; font-size: 11px; margin-top: 3px;">
-          <span class="arrow">▶</span> See all {{ r.open_todos|length }}
-        </button>
-        {% endif %}
         {% endif %}
       </td>
     </tr>
