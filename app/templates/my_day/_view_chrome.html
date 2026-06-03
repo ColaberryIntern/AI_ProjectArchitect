@@ -48,6 +48,10 @@
      class="proj-chip {% if tier == 'unassigned' %}active{% endif %}">
     🤝 Unassigned <span class="chip-count">{{ tier_counts.get('unassigned', 0) }}</span>
   </a>
+  <a href="?view={{ view }}&tier=watching{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'watching' %}active{% endif %}">
+    👀 Watching <span class="chip-count">{{ tier_counts.get('watching', 0) }}</span>
+  </a>
   <span style="display: inline-block; width: 1px; height: 18px; background: #d0d7de; margin: 0 4px; align-self: center;"></span>
   <a href="?view={{ view }}&tier=human{{ qs_no_tier }}"
      class="proj-chip {% if tier == 'human' %}active{% endif %}"

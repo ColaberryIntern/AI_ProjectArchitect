@@ -203,7 +203,7 @@ async def ops_home(request: Request):
     # assigned to Ali's BC user id) get hidden under the 'assigned' tier,
     # which surprised the user when AI Pathway projects appeared empty.
     tier = request.query_params.get("tier", "all")
-    if tier not in ("assigned", "due", "unassigned", "all", "human", "ai"):
+    if tier not in ("assigned", "due", "unassigned", "watching", "all", "human", "ai"):
         tier = "all"
 
     # Pre-compute counts per tier for the chip row (BEFORE filtering)
@@ -252,6 +252,8 @@ async def ops_home(request: Request):
             return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "due"]
         if tier == "unassigned":
             return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "unassigned"]
+        if tier == "watching":
+            return [t for t in t_list if getattr(t, "inclusion_reason", "assigned") == "watching"]
         if tier == "human":
             return [t for t in t_list if t.category == "human_required"]
         if tier == "ai":

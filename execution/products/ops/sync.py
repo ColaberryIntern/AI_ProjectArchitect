@@ -131,6 +131,12 @@ def _classify_for_user(todo: dict, bc_user_id: int) -> str | None:
                      even if assigned to someone else (the user follows
                      because their AI clone is on the project)
       'unassigned' - no assignees + recent activity (someone needs to claim)
+      'watching'   - assigned to someone else + recent activity in a
+                     project the user's token sees. Per user spec:
+                     'everything @CB has access to that has tasks
+                     unopened with activity in the past 30 days'.
+                     Without this, tasks owned by Ram/Luda/etc. in
+                     active projects get silently dropped at sync time.
     """
     assignees = [a.get("id") for a in (todo.get("assignees") or [])]
     if bc_user_id in assignees:
@@ -142,6 +148,8 @@ def _classify_for_user(todo: dict, bc_user_id: int) -> str | None:
         return "due"
     if not assignees and _is_fresh(todo.get("updated_at")):
         return "unassigned"
+    if assignees and _is_fresh(todo.get("updated_at")):
+        return "watching"
     return None
 
 
