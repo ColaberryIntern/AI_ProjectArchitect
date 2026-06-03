@@ -1,0 +1,64 @@
+{% extends "library/_library_base.html" %}
+{% set library_nav_active = "notifications" %}
+
+{% block title %}Colaberry · Library · Notifications{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div style="font-size: 48px; line-height: 1; margin-right: 16px;">🔔</div>
+  <div class="flex-grow-1">
+    <h1 class="mb-1">Notifications</h1>
+    <p class="text-muted mb-0">Library activity for <strong>{{ inbox_user.email }}</strong></p>
+  </div>
+  {% if inbox_count > 0 %}
+  <form method="post" action="/library/notifications/mark-read">
+    <button class="btn btn-sm btn-outline-success">Mark all as read</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not inbox %}
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📭 Nothing unread</h2>
+  </div>
+  <div class="p-4">
+    <p class="text-muted">When a colleague submits or decides on a library item in your company,
+    you'll see it here. We roll these up into a daily digest email — no per-event spam.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="library-card">
+  <div class="library-card-header">
+    <h2>📥 Inbox</h2>
+    <span class="asset-meta">{{ inbox_count }} unread</span>
+  </div>
+  <div>
+    {% for n in inbox %}
+    <div class="asset-row" style="cursor: default;">
+      <div style="flex: 1; min-width: 0;">
+        <div class="asset-name">{{ n.summary }}</div>
+        {% if n.detail %}
+        <div class="asset-meta"><em>"{{ n.detail }}"</em></div>
+        {% endif %}
+        <div class="asset-meta">
+          <code>{{ n.category }}</code> · {{ n.kind }} · {{ n.at[:16].replace('T', ' ') }}
+        </div>
+      </div>
+      <div class="text-end" style="min-width: 120px;">
+        {% if n.kind == 'submission' %}
+        <a href="/admin/{{ n.company_id }}/queue" class="btn btn-sm btn-outline-success">Review →</a>
+        {% else %}
+        <a href="/library/{{ n.category }}/{{ n.item_id }}" class="btn btn-sm btn-outline-success">View →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

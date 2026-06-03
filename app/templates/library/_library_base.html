@@ -335,6 +335,34 @@
         {% endif %}
       </select>
 
+      {# [Workflow 1] notification bell + reviewer queue counter #}
+      {% if current_session_user %}
+        {% if is_reviewer and queue_count > 0 %}
+        <a href="/admin/{{ current_session_user.company_id }}/queue"
+           class="lib-action-btn outline"
+           title="{{ queue_count }} item{% if queue_count != 1 %}s{% endif %} awaiting your review"
+           style="position: relative;">
+          📥
+          <span style="position:absolute; top:-4px; right:-4px; background:#cf222e; color:white;
+                       border-radius:999px; min-width:18px; height:18px; padding:0 5px;
+                       font-size:11px; font-weight:700; display:inline-flex; align-items:center;
+                       justify-content:center;">{{ queue_count }}</span>
+        </a>
+        {% endif %}
+        {% if bell_count > 0 %}
+        <a href="/library/notifications"
+           class="lib-action-btn outline"
+           title="{{ bell_count }} unread notification{% if bell_count != 1 %}s{% endif %}"
+           style="position: relative;">
+          🔔
+          <span style="position:absolute; top:-4px; right:-4px; background:#1f6feb; color:white;
+                       border-radius:999px; min-width:18px; height:18px; padding:0 5px;
+                       font-size:11px; font-weight:700; display:inline-flex; align-items:center;
+                       justify-content:center;">{{ bell_count }}</span>
+        </a>
+        {% endif %}
+      {% endif %}
+
       {# [Library 2] user identity badge #}
       {% if current_session_user %}
         <div style="position: relative;" id="user-menu">

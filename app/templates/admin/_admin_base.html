@@ -74,6 +74,11 @@
     <a href="/admin/users">👤 Users</a>
     <a href="/admin/users/new">  ➕ Provision user</a>
 
+    <div class="group-label">Workflow</div>
+    {% if company %}
+    <a href="/admin/{{ company.company_id }}/queue">📥 {{ company.company_id }} queue</a>
+    {% endif %}
+
     <div class="group-label">Library</div>
     <a href="/library/" target="_blank">📚 Open Library ↗</a>
 

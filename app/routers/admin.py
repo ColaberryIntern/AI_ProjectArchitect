@@ -26,7 +26,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from execution.products.library import auth_google, tenancy, vault
+from execution.products.library import auth_google, notifications, tenancy, vault
 
 router = APIRouter(prefix="/admin")
 
@@ -362,3 +362,124 @@ async def set_user_credential(request: Request, user_id: str,
     _audit(admin.user_id, "credential.set",
               target=user_id, notes=f"tool={tool} ttl={ttl_days}")
     return RedirectResponse(url=f"/admin/users/{user_id}/scopes", status_code=303)
+
+
+# ════════════════════════════════════════════════════════════════════
+# [Workflow 1] Per-company moderation queue
+# ════════════════════════════════════════════════════════════════════
+
+
+def _require_reviewer_for(request: Request, company_id: str) -> tenancy.User:
+    """A user is a reviewer for company X if they're an admin in X,
+    OR if they're a Colaberry super_admin (cross-tenant override)."""
+    user = _require_admin(request)
+    if user.company_id == company_id:
+        return user
+    if user.company_id == "colaberry":  # super_admin override
+        return user
+    raise HTTPException(403, f"reviewer authority for {company_id} required")
+
+
+@router.get("/{company_id}/queue")
+async def moderation_queue(request: Request, company_id: str,
+                                          status: str = "submitted,under_review"):
+    reviewer = _require_reviewer_for(request, company_id)
+    co = tenancy.get_company(company_id)
+    if not co:
+        raise HTTPException(404, f"Unknown company: {company_id}")
+    status_filter = tuple(s.strip() for s in status.split(",") if s.strip())
+    items = tenancy.queue_for_company(company_id, status_filter=status_filter)
+    counts = tenancy.queue_counts(company_id)
+
+    # enrich each row with author display name + last transition
+    enriched = []
+    for a in items:
+        author = tenancy.get_user(a.approved_by_user_id)
+        transitions = tenancy.list_transitions(
+            item_kind=a.item_kind, item_id=a.item_id,
+            category=a.category, company_id=a.company_id,
+        )
+        enriched.append({
+            "approval": a,
+            "author_name": author.display_name if author else a.approved_by_user_id,
+            "author_email": author.email if author else "",
+            "transitions": transitions,
+        })
+    return request.app.state.templates.TemplateResponse(
+        request, "admin/moderation_queue.html",
+        _ctx(request, company=co, items=enriched, counts=counts,
+                 status_filter=status_filter, reviewer=reviewer),
+    )
+
+
+@router.post("/{company_id}/queue/{item_id}/claim")
+async def queue_claim(request: Request, company_id: str, item_id: str,
+                              category: str = Form(...),
+                              item_kind: str = Form("library_asset")):
+    reviewer = _require_reviewer_for(request, company_id)
+    tenancy.claim_for_review(item_kind=item_kind, item_id=item_id,
+                                          category=category, company_id=company_id,
+                                          reviewer_user_id=reviewer.user_id)
+    _audit(reviewer.user_id, "queue.claim",
+              target=f"{company_id}/{category}/{item_id}", notes="")
+    return RedirectResponse(url=f"/admin/{company_id}/queue", status_code=303)
+
+
+@router.post("/{company_id}/queue/{item_id}/decide")
+async def queue_decide(request: Request, company_id: str, item_id: str,
+                                category: str = Form(...),
+                                item_kind: str = Form("library_asset"),
+                                decision: str = Form(...),
+                                notes: str = Form(""),
+                                visibility: Optional[str] = Form(None)):
+    reviewer = _require_reviewer_for(request, company_id)
+    if decision not in ("approved", "rejected", "changes_requested"):
+        raise HTTPException(400, f"bad decision {decision}")
+    ev = tenancy.decide_review(item_kind=item_kind, item_id=item_id,
+                                              category=category, company_id=company_id,
+                                              reviewer_user_id=reviewer.user_id,
+                                              decision=decision, notes=notes,
+                                              visibility=visibility)
+    # Notify the original author
+    transitions = tenancy.list_transitions(
+        item_kind=item_kind, item_id=item_id, category=category,
+        company_id=company_id,
+    )
+    # first transition's actor is the author
+    if transitions:
+        author_id = transitions[0].get("actor_id", reviewer.user_id)
+        notifications.notify_decision(
+            company_id=company_id, reviewer_user_id=reviewer.user_id,
+            author_user_id=author_id, item_kind=item_kind, item_id=item_id,
+            category=category, decision=decision, notes=notes,
+        )
+    _audit(reviewer.user_id, f"queue.{decision}",
+              target=f"{company_id}/{category}/{item_id}", notes=notes)
+    return RedirectResponse(url=f"/admin/{company_id}/queue", status_code=303)
+
+
+# Author-facing: submit a draft to the queue (called from library submit form)
+@router.post("/{company_id}/queue/submit")
+async def queue_submit(request: Request, company_id: str,
+                                item_id: str = Form(...),
+                                category: str = Form(...),
+                                item_kind: str = Form("library_asset"),
+                                notes: str = Form("")):
+    user = _current_user(request)
+    if not user or user.company_id != company_id:
+        # Dev fallback: when SSO disabled, allow as ali for colaberry
+        if not auth_google.is_enabled() and company_id == "colaberry":
+            user = tenancy.get_user("ali@colaberry.com")
+        else:
+            raise HTTPException(401, "must be logged in as a member of this company")
+    tenancy.submit_for_review(item_kind=item_kind, item_id=item_id,
+                                          category=category, company_id=company_id,
+                                          author_user_id=user.user_id, notes=notes)
+    notifications.notify_submission(company_id=company_id,
+                                                       author_user_id=user.user_id,
+                                                       item_kind=item_kind, item_id=item_id,
+                                                       category=category)
+    _audit(user.user_id, "queue.submit",
+              target=f"{company_id}/{category}/{item_id}", notes=notes)
+    return RedirectResponse(url=f"/admin/{company_id}/queue?status=submitted",
+                                       status_code=303)

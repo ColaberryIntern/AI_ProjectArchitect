@@ -18,4 +18,17 @@
   <p>Public library for end users: <a href="/library/" target="_blank">/library/</a>
     {% if current_user %} (logged in as you){% endif %}</p>
 </div>
+
+<div class="admin-card">
+  <h2>📥 Moderation queue</h2>
+  {% if company %}
+  <p><a href="/admin/{{ company.company_id }}/queue">{{ company.display_name }} queue</a> —
+    review submissions from your team</p>
+  {% endif %}
+  {% if is_super_admin %}
+  <p style="font-size:12px; color: var(--fg-muted);">
+    Super-admin: queues for any tenant — append <code>/admin/{company_id}/queue</code>
+  </p>
+  {% endif %}
+</div>
 {% endblock %}

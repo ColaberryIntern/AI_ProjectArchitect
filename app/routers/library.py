@@ -74,6 +74,27 @@ def _ctx(request: Request, **extra) -> dict:
     ws = _ws(request)
     session_user = _session_user(request)
     scope = _scope(request, session_user)
+
+    # [Workflow 1] bell counter + reviewer queue count
+    bell_count = 0
+    queue_count = 0
+    is_reviewer = False
+    if session_user:
+        try:
+            from execution.products.library import notifications as _notif
+            bell_count = _notif.unread_count_for_user(
+                session_user.user_id, session_user.company_id,
+            )
+        except Exception:
+            bell_count = 0
+        try:
+            if tenancy.can_review(session_user):
+                is_reviewer = True
+                q = tenancy.queue_counts(session_user.company_id)
+                queue_count = q.get("submitted", 0) + q.get("under_review", 0)
+        except Exception:
+            pass
+
     base = {
         "current_product": "library",
         "workspace": ws,
@@ -86,9 +107,48 @@ def _ctx(request: Request, **extra) -> dict:
         "current_session_user": session_user,
         "scope": scope,
         "viewer_company_id": _viewer_company_id(session_user, scope),
+        # [Workflow 1] notifications + queue
+        "bell_count": bell_count,
+        "queue_count": queue_count,
+        "is_reviewer": is_reviewer,
     }
     base.update(extra)
     return base
+
+
+# ── [Workflow 1] Notifications inbox ─────────────────────────────
+
+
+@router.get("/notifications")
+async def notifications_page(request: Request):
+    from execution.products.library import notifications as _notif
+    user = _session_user(request)
+    if not user:
+        # Dev fallback
+        if not auth_google.is_enabled():
+            user = tenancy.get_user("ali@colaberry.com")
+        if not user:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse("/auth/login?next=/library/notifications", status_code=303)
+    items = _notif.unread_for_user(user.user_id, user.company_id)
+    return request.app.state.templates.TemplateResponse(
+        request, "library/notifications.html",
+        _ctx(request, library_nav_active="notifications",
+                 inbox=items, inbox_count=len(items),
+                 inbox_user=user),
+    )
+
+
+@router.post("/notifications/mark-read")
+async def notifications_mark_read(request: Request):
+    from execution.products.library import notifications as _notif
+    from fastapi.responses import RedirectResponse
+    user = _session_user(request)
+    if not user and not auth_google.is_enabled():
+        user = tenancy.get_user("ali@colaberry.com")
+    if user:
+        _notif.mark_all_read(user.user_id, user.company_id)
+    return RedirectResponse("/library/notifications", status_code=303)
 
 
 @router.get("/")

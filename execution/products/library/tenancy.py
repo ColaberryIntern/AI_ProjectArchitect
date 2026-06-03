@@ -34,8 +34,29 @@ TENANT_ROOT = ROOT / "output" / "library" / "_tenants"
 # Canonical roles + visibility tiers
 ROLES = ("admin", "contributor", "consumer")
 VISIBILITIES = ("same-company-only", "shared-public", "shared-with-allowlist")
-APPROVAL_STATUSES = ("approved", "rejected", "pending", "withdrawn", "deprecated")
+APPROVAL_STATUSES = (
+    # Legacy (pre-Workflow 1)
+    "approved", "rejected", "pending", "withdrawn", "deprecated",
+    # [Workflow 1] state-machine values
+    "draft",              # author wrote it but hasn't submitted to queue yet
+    "submitted",          # in their company's queue, not yet claimed
+    "under_review",       # a reviewer has claimed it
+    "changes_requested",  # reviewer asked for revisions; back to author
+)
 ITEM_KINDS = ("library_asset", "use_case")
+
+# [Workflow 1] valid state transitions — guards in submit/claim/decide
+SUBMISSION_TRANSITIONS = {
+    "draft":              {"submitted"},
+    "submitted":          {"under_review", "withdrawn"},
+    "under_review":       {"approved", "rejected", "changes_requested"},
+    "changes_requested":  {"draft", "submitted", "withdrawn"},
+    "rejected":           {"draft"},                  # author can revise
+    "approved":           {"withdrawn", "deprecated"},
+    "withdrawn":          {"draft"},
+    "deprecated":         set(),
+    "pending":            {"submitted", "under_review"},  # legacy compat
+}
 
 DEFAULT_VISIBILITY = "same-company-only"
 
@@ -461,3 +482,171 @@ def seed_initial_companies_and_users() -> dict[str, int]:
         upsert_company(colaberry)
 
     return counts
+
+
+# ════════════════════════════════════════════════════════════════════
+# [Workflow 1] Per-company publish workflow + moderation queue
+# ════════════════════════════════════════════════════════════════════
+#
+# State machine (per (item, company)):
+#   draft → submitted → under_review → approved | rejected | changes_requested
+#   approved → withdrawn → draft (resubmit cycle)
+#   rejected / changes_requested → draft
+#
+# The state lives on ItemApproval.status. The same join key
+# (item_kind, item_id, category, company_id) is used as in [Auth 1] —
+# this is intentional: one record per (item, company), and updates
+# mutate that single row + append to a history log.
+
+
+def _transitions_path() -> Path:
+    """Append-only history of every state change. Audit trail."""
+    return _root() / "approval_transitions.jsonl"
+
+
+def _log_transition(item_kind: str, item_id: str, category: str,
+                              company_id: str, from_status: str | None,
+                              to_status: str, actor_id: str,
+                              notes: str = "") -> None:
+    rec = {
+        "at": _now(),
+        "item_kind": item_kind, "item_id": item_id,
+        "category": category, "company_id": company_id,
+        "from_status": from_status, "to_status": to_status,
+        "actor_id": actor_id, "notes": notes,
+    }
+    with _transitions_path().open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+def list_transitions(item_kind: str | None = None,
+                              item_id: str | None = None,
+                              category: str | None = None,
+                              company_id: str | None = None) -> list[dict]:
+    path = _transitions_path()
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line: continue
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if item_kind and rec.get("item_kind") != item_kind: continue
+        if item_id and rec.get("item_id") != item_id: continue
+        if category and rec.get("category") != category: continue
+        if company_id and rec.get("company_id") != company_id: continue
+        out.append(rec)
+    return out
+
+
+def can_transition(from_status: str | None, to_status: str) -> bool:
+    """Is from→to a legal move? `from_status=None` means brand-new submission."""
+    if from_status is None:
+        return to_status in ("draft", "submitted")
+    allowed = SUBMISSION_TRANSITIONS.get(from_status, set())
+    return to_status in allowed
+
+
+def submit_for_review(item_kind: str, item_id: str, category: str,
+                                company_id: str, author_user_id: str,
+                                notes: str = "") -> "ItemApproval":
+    """Author submits an item to their company's moderation queue.
+    Idempotent: re-submitting a draft moves it to submitted; re-submitting
+    a submitted item is a no-op."""
+    existing = get_approval(item_kind, item_id, category, company_id)
+    from_status = existing.status if existing else None
+    if from_status == "submitted":
+        return existing
+    if not can_transition(from_status, "submitted"):
+        raise ValueError(f"Cannot submit from {from_status}: "
+                                 f"legal transitions = "
+                                 f"{SUBMISSION_TRANSITIONS.get(from_status or 'None', set())}")
+    ev = record_approval(
+        item_kind=item_kind, item_id=item_id, category=category,
+        company_id=company_id, approved_by_user_id=author_user_id,
+        status="submitted",
+        visibility=existing.visibility if existing else DEFAULT_VISIBILITY,
+        notes=notes,
+    )
+    _log_transition(item_kind, item_id, category, company_id,
+                            from_status, "submitted", author_user_id, notes)
+    return ev
+
+
+def claim_for_review(item_kind: str, item_id: str, category: str,
+                              company_id: str, reviewer_user_id: str) -> "ItemApproval":
+    """Reviewer claims a submitted item — moves submitted → under_review."""
+    existing = get_approval(item_kind, item_id, category, company_id)
+    if not existing:
+        raise ValueError(f"No submission for {item_id} in {company_id}")
+    if not can_transition(existing.status, "under_review"):
+        raise ValueError(f"Cannot claim from {existing.status}")
+    ev = record_approval(
+        item_kind=item_kind, item_id=item_id, category=category,
+        company_id=company_id, approved_by_user_id=reviewer_user_id,
+        status="under_review", visibility=existing.visibility,
+        notes=f"claimed by {reviewer_user_id}",
+    )
+    _log_transition(item_kind, item_id, category, company_id,
+                            existing.status, "under_review", reviewer_user_id)
+    return ev
+
+
+def decide_review(item_kind: str, item_id: str, category: str,
+                          company_id: str, reviewer_user_id: str,
+                          decision: str,             # "approved" | "rejected" | "changes_requested"
+                          notes: str = "",
+                          visibility: str | None = None) -> "ItemApproval":
+    """Reviewer decides — moves under_review → {approved|rejected|changes_requested}.
+    `visibility` only used when decision='approved'; otherwise inherits existing."""
+    assert decision in ("approved", "rejected", "changes_requested"), \
+        f"bad decision {decision}"
+    existing = get_approval(item_kind, item_id, category, company_id)
+    if not existing:
+        raise ValueError(f"No submission for {item_id} in {company_id}")
+    if not can_transition(existing.status, decision):
+        raise ValueError(f"Cannot {decision} from {existing.status}")
+    ev = record_approval(
+        item_kind=item_kind, item_id=item_id, category=category,
+        company_id=company_id, approved_by_user_id=reviewer_user_id,
+        status=decision,
+        visibility=visibility or existing.visibility,
+        notes=notes,
+    )
+    _log_transition(item_kind, item_id, category, company_id,
+                            existing.status, decision, reviewer_user_id, notes)
+    return ev
+
+
+def queue_for_company(company_id: str,
+                                status_filter: tuple[str, ...] = ("submitted", "under_review")
+                                ) -> list["ItemApproval"]:
+    """Moderation queue: items submitted within this company awaiting decision.
+    Sorted by approved_at (which is the submitted_at for submitted items)."""
+    all_approvals = list_approvals(company_id=company_id)
+    queue = [a for a in all_approvals if a.status in status_filter]
+    queue.sort(key=lambda a: a.approved_at)
+    return queue
+
+
+def queue_counts(company_id: str) -> dict[str, int]:
+    """Bell counter helper — counts per state in the queue."""
+    queue = list_approvals(company_id=company_id)
+    out = {"submitted": 0, "under_review": 0, "changes_requested": 0}
+    for a in queue:
+        if a.status in out:
+            out[a.status] += 1
+    return out
+
+
+def can_review(user: "User", category: str | None = None) -> bool:
+    """Reviewer authorization check for [Workflow 1].
+    v1 rule: any user with role='admin' can review for their company.
+    Future: hook into config/library_approvers.json for category-aware
+    sub-approver delegation."""
+    if not user or not user.is_active:
+        return False
+    return "admin" in (user.roles or [])
