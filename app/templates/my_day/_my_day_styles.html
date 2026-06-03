@@ -121,6 +121,25 @@
   .kanban-card .meta .pill.amber { background: #fff4d5; color: #8a5a00; }
   .kanban-card .meta .pill.gray  { background: #eaeef2; color: #57606a; }
 
+  /* KPI tiles (3-up) */
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    margin-bottom: 24px;
+  }
+  .kpi {
+    border-radius: 10px; padding: 22px 26px; text-align: center;
+    border: 1px solid;
+  }
+  .kpi .value { font-size: 38px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .kpi .label { font-size: 11px; letter-spacing: 1.2px; margin-top: 8px;
+                color: #4a4a4a; font-weight: 700; }
+  .kpi.human   { background: #fff8d6; border-color: #f0d678; }
+  .kpi.human .value   { color: #8a5a00; }
+  .kpi.ai      { background: #ddf4ff; border-color: #c6e2ff; }
+  .kpi.ai .value      { color: #0550ae; }
+  .kpi.overdue { background: #ffeef0; border-color: #ffabba; }
+  .kpi.overdue .value { color: #cf222e; }
+
   /* Heatmap */
   .heatmap-section { margin-bottom: 28px; }
   .heatmap-grid {
