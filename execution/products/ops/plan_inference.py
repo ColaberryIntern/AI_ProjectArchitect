@@ -158,4 +158,8 @@ def infer(user_feedback: str, basecamp_url: str, output_type: str,
     out.setdefault("inferred_success_criteria", [])
     out.setdefault("missing_information", [])
     out.setdefault("summary_paragraph", "")
+
+    # Append standing orders deterministically.
+    from .standing_orders import append_orders
+    out["claude_code_prompt"] = append_orders(out["claude_code_prompt"])
     return out

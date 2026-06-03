@@ -2,13 +2,20 @@
    Included from home.html, kanban.html, heatmap.html so they all share the
    same top-of-page context. #}
 
+{% set sync_stale = state.last_sync_at and ('hr ago' in sync_relative or 'days ago' in sync_relative) %}
 <div class="status-strip {{ status.state }}">
   <span class="greeting">{{ greeting }}, {{ first_name }} —</span>
   <span class="headline">{{ status.headline }}</span>
   <span class="subhead">{{ status.subhead }}</span>
-  {% if state.last_sync_at %}
-  <span style="margin-left: auto; font-size: 12px; color: #57606a;">Synced {{ sync_relative }}</span>
-  {% endif %}
+  <span style="margin-left: auto; font-size: 12px; color: #57606a;">
+    {% if state.last_sync_at %}
+      Synced {{ sync_relative }}
+      {% if sync_stale %}<span style="color: #cf222e;"> · stale</span>{% endif %}
+      <span style="opacity: 0.6;"> · auto every 5 min</span>
+    {% else %}
+      Not synced yet
+    {% endif %}
+  </span>
 </div>
 
 {% if state.last_sync_status == 'failed' %}

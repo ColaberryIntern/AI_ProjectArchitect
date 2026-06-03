@@ -57,6 +57,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to start use-case scheduler", exc_info=True)
 
+    try:
+        from execution.products.ops.scheduler import (
+            start_scheduler as ops_start, stop_scheduler as ops_stop,
+        )
+        ops_start()
+        stops.append(ops_stop)
+    except Exception:
+        logger.warning("Failed to start ops sync scheduler", exc_info=True)
+
     yield
 
     for stop in stops:

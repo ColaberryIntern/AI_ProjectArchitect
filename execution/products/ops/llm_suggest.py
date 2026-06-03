@@ -217,6 +217,11 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
     out.setdefault("stop_conditions", [])
     out.setdefault("summary_paragraph", "")
 
+    # Append standing orders deterministically so EVERY prompt has them,
+    # regardless of whether the LLM remembered to include them.
+    from .standing_orders import append_orders
+    out["claude_code_prompt"] = append_orders(out["claude_code_prompt"])
+
     cache[key] = out
     try:
         _save_cache(user_id, cache)
