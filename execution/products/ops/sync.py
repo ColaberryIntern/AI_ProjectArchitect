@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -35,13 +36,24 @@ FRESHNESS_DAYS = int(os.environ.get("OPS_FRESHNESS_DAYS", "30"))
 # API calls walking dead projects.
 PROJECT_FRESHNESS_DAYS = int(os.environ.get("OPS_PROJECT_FRESHNESS_DAYS", "30"))
 HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
+# Throttle: BC allows ~50 req/10s = ~5 req/s sustained. Sleep between
+# every call to stay well under the limit (200ms = 5 req/s).
+HTTP_THROTTLE_SECONDS = float(os.environ.get("OPS_HTTP_THROTTLE_SECONDS", "0.22"))
+# Retry-after ceiling on 429 — never sleep more than this even if BC says so.
+MAX_RETRY_AFTER = int(os.environ.get("OPS_MAX_RETRY_AFTER", "30"))
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _bc_get(path: str, token: str, params: dict | None = None):
+def _bc_get(path: str, token: str, params: dict | None = None, _retry: int = 1):
+    """GET a BC endpoint. Returns parsed JSON, or None on 400/404.
+
+    Throttles by HTTP_THROTTLE_SECONDS before each call so we don't
+    sprint through BC's 50-req-per-10-second budget. On 429 we honor
+    Retry-After (capped at MAX_RETRY_AFTER) and retry once.
+    """
     url = f"{BC_API_BASE}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
@@ -49,12 +61,25 @@ def _bc_get(path: str, token: str, params: dict | None = None):
         url,
         headers={"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT},
     )
+    if HTTP_THROTTLE_SECONDS > 0:
+        time.sleep(HTTP_THROTTLE_SECONDS)
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
         if e.code in (400, 404):
             return None
+        if e.code == 429 and _retry > 0:
+            # Respect Retry-After header (BC sends a number of seconds);
+            # fall back to a sensible default if missing.
+            try:
+                wait_for = int(e.headers.get("Retry-After", "5"))
+            except (ValueError, TypeError):
+                wait_for = 5
+            wait_for = min(MAX_RETRY_AFTER, max(1, wait_for))
+            logger.info("BC 429 on %s — sleeping %ds then retrying", path, wait_for)
+            time.sleep(wait_for)
+            return _bc_get(path, token, params, _retry=_retry - 1)
         raise
 
 
