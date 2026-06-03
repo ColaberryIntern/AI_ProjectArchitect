@@ -1,7 +1,7 @@
 # [Auth 2] Google SSO on advisor.colaberry.ai/library/
 
 **Ticket:** Basecamp [9956730973](https://app.basecamp.com/3945211/buckets/7463955/todos/9956730973) · due 2026-06-13
-**Status:** Shipped (scaffold); requires Ali to register OAuth app in Google Cloud Console before live
+**Status:** Shipped (gate enforced via middleware); requires Ali to register OAuth app + populate `.env.prod` before identity gate activates in prod
 **Depends on:** [Auth 1] ✅
 **Unblocks:** [Library 1], [Library 2], [Workflow 1]
 
@@ -14,15 +14,17 @@
 | 1 | Google OAuth via @colaberry.com workspace | `execution/products/library/auth_google.py::build_login_url()` + `exchange_code_for_userinfo()` |
 | 2 | First-login provisions a User row if their domain matches a configured tenant | `provision_or_lookup_user()` — uses `config/library_tenant_domains.json` for domain→company mapping |
 | 3 | Top-right identity badge | Library `_library_base.html` reads `/auth/whoami` (Library 2 wires the visual badge) |
-| 4 | Anonymous browsing allowed for marketing/landing; library requires login | `path_is_anonymous()` + `path_requires_login()` enforced by middleware (route layer) |
+| 4 | Anonymous browsing allowed for marketing/landing; library requires login | `app/middleware/auth_gate.py` — checks `path_requires_login()`, redirects unauthenticated requests to `/auth/login?next=<original>`. No-op when `is_enabled()` returns False (preserves dev + unregistered prod). |
 | 5 | Session cookie + JWT (same pattern as enterprise.colaberry.ai/portal/) | `issue_session_token()` HS256, set on `library_session` httpOnly secure samesite=lax cookie, 24h TTL |
 
 ## What ships in this ticket
 
 - **`execution/products/library/auth_google.py`** — OAuth URL building, code-exchange, userinfo fetch, user provisioning, session JWT issue/verify, cookie-resolution helper
 - **`app/routers/auth.py`** — HTTP routes `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/whoami`, `/auth/status`
-- **`config/library_tenant_domains.json`** — domain → company mapping
+- **`app/middleware/auth_gate.py`** — HTTP middleware that gates `login_required_paths`; redirects unauthenticated requests to `/auth/login?next=<original-path+query>`. Wired in `app/main.py`. No-op when `is_enabled()` returns False.
+- **`config/library_tenant_domains.json`** — domain → company mapping + `anonymous_paths` + `login_required_paths`
 - **`tests/execution/products/test_auth_google.py`** — 18 tests, fully offline
+- **`tests/app/test_auth_gate_middleware.py`** — 10 tests covering the four decision branches (SSO disabled, anonymous, login-required + no session, login-required + valid session)
 
 ## Activation steps (Ali, after merge)
 

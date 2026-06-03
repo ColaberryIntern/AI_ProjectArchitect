@@ -75,6 +75,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
 
+# [Auth 2] Identity gate. No-op when SSO env vars are absent; gates
+# /library/ once Ali registers the OAuth app and populates .env.prod
+# (see docs/specs/auth-02-google-sso.md activation steps).
+from app.middleware import auth_gate_middleware
+app.middleware("http")(auth_gate_middleware)
+
 # Templates and static files
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
