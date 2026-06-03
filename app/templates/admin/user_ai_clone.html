@@ -1,0 +1,77 @@
+{% extends "admin/_admin_base.html" %}
+
+{% block main %}
+<h1 style="font-size: 22px; margin-bottom: 4px;">AI clone setup — {{ target_user.display_name }}</h1>
+<div style="color: #57606a; font-size: 13px; margin-bottom: 24px;">
+  Register the Basecamp identity this user posts as via their My Day workspace.
+  The clone is what posts comments / write-backs / sync touches — the human user
+  still posts as themselves when they reply directly.
+</div>
+
+{% if existing_credential %}
+<div style="background: #ddf4ff; border: 1px solid #54aeff; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px;">
+  <strong>Already configured.</strong> Last set: {{ existing_credential.last_rotated_at }} ·
+  status: {{ existing_credential.status }} ·
+  {% if existing_credential.ttl_days %}TTL: {{ existing_credential.ttl_days }} days · {% endif %}
+  saving below will rotate the token.
+</div>
+{% endif %}
+
+<form method="post" action="/admin/users/{{ target_user.user_id }}/ai-clone" style="background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 24px; max-width: 720px;">
+
+  <div style="margin-bottom: 18px;">
+    <label style="display: block; font-weight: 600; margin-bottom: 6px;">User's Basecamp ID (the human, not the clone)</label>
+    <input type="number" name="bc_user_id" value="{{ target_user.bc_user_id or '' }}" required
+           style="width: 240px; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-family: ui-monospace, monospace;">
+    <div style="color: #57606a; font-size: 12px; margin-top: 6px;">
+      Find this via <code>/people.json</code> on the BC API, or from the BC profile URL.
+      For Ali this is <code>17454835</code>.
+    </div>
+  </div>
+
+  <div style="margin-bottom: 18px;">
+    <label style="display: block; font-weight: 600; margin-bottom: 6px;">AI clone display name</label>
+    <input type="text" name="bc_ai_clone_name" value="{{ target_user.bc_ai_clone_name or (target_user.display_name + ' Clone') }}" required
+           style="width: 360px; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px;">
+    <div style="color: #57606a; font-size: 12px; margin-top: 6px;">
+      Shown in comment write-backs. E.g. "Ali Clone" or "CB System".
+    </div>
+  </div>
+
+  <div style="margin-bottom: 18px;">
+    <label style="display: block; font-weight: 600; margin-bottom: 6px;">Basecamp OAuth access token</label>
+    <textarea name="bc_ai_clone_token" rows="4" required
+              placeholder="BAhbB0kiAbB7..."
+              style="width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;"></textarea>
+    <div style="color: #57606a; font-size: 12px; margin-top: 6px;">
+      Get from BC OAuth flow (manual for now). The token is encrypted in the vault — it never leaves prod, never appears in logs.
+      <br><strong>Next session</strong>: this gets replaced by an in-app OAuth button so admins don't paste tokens.
+    </div>
+  </div>
+
+  <div style="margin-bottom: 24px;">
+    <label style="display: block; font-weight: 600; margin-bottom: 6px;">TTL (days)</label>
+    <input type="number" name="ttl_days" value="14" min="1" max="365"
+           style="width: 100px; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px;">
+    <div style="color: #57606a; font-size: 12px; margin-top: 6px;">
+      BC OAuth tokens rotate every 14 days. The vault will flag when this is near expiry.
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 12px;">
+    <button type="submit" style="background: #1a7f37; color: white; border: 0; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+      Save AI clone identity
+    </button>
+    <a href="/admin/users/{{ target_user.user_id }}" style="padding: 10px 20px; color: #57606a; text-decoration: none;">Cancel</a>
+  </div>
+</form>
+
+<div style="margin-top: 24px; max-width: 720px; font-size: 13px; color: #57606a;">
+  <h3 style="font-size: 14px; margin: 0 0 8px;">After saving</h3>
+  <ol style="padding-left: 22px;">
+    <li>The user can go to <a href="/my-day/">/my-day/</a> and click <strong>Sync now</strong> to mirror their BC todos.</li>
+    <li>The clone's token expires after the TTL above. The vault flags it; you'll get a warning to rotate.</li>
+    <li>To change clones later, just save this form again — it rotates the stored token.</li>
+  </ol>
+</div>
+{% endblock %}

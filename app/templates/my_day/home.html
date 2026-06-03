@@ -1,0 +1,98 @@
+{% extends "my_day/_my_day_base.html" %}
+
+{% block title %}My Day · Colaberry{% endblock %}
+
+{% block topbar_extras %}
+<form method="post" action="/my-day/sync" style="margin: 0;">
+  <button type="submit" class="ws-copy-btn" style="background: #0969da;">↻ Sync now</button>
+</form>
+{% endblock %}
+
+{% block main %}
+{% if state.last_sync_status == 'failed' %}
+<div class="sync-strip error">
+  <strong>Sync failed:</strong> {{ state.last_sync_error or 'unknown' }}.
+  Click "Sync now" once your AI clone is set up in <a href="/admin/users">/admin</a>.
+</div>
+{% elif state.last_sync_at %}
+<div class="sync-strip">
+  Last sync: {{ state.last_sync_at }} · status {{ state.last_sync_status }} · {{ state.todos_synced }} todos from {{ state.projects_synced }} project(s)
+  {% if state.last_sync_error %} · <span style="color: #b3261e;">errors: {{ state.last_sync_error }}</span>{% endif %}
+</div>
+{% else %}
+<div class="sync-strip">
+  No sync yet. Click <strong>Sync now</strong> in the top right to mirror your Basecamp todos.
+</div>
+{% endif %}
+
+<div class="kpi-row">
+  <div class="kpi"><div class="label">Open in queue</div><div class="value">{{ total }}</div></div>
+  <div class="kpi red"><div class="label">Overdue</div><div class="value">{{ overdue }}</div></div>
+  <div class="kpi red"><div class="label">Red (≥70)</div><div class="value">{{ red }}</div></div>
+  <div class="kpi amber"><div class="label">Amber (40-69)</div><div class="value">{{ amber }}</div></div>
+</div>
+
+{% if projects %}
+<div style="margin-bottom: 16px;">
+  <a href="/my-day/" style="margin-right: 12px; font-size: 13px; text-decoration: none; color: {% if not project_filter %}#1a7f37; font-weight: 600{% else %}#57606a{% endif %};">All projects ({{ total }})</a>
+  {% for p in projects %}
+    {% if project_counts.get(p.bc_id, 0) > 0 %}
+    <a href="/my-day/?project={{ p.bc_id }}"
+       style="margin-right: 12px; font-size: 13px; text-decoration: none; color: {% if project_filter == p.bc_id %}#1a7f37; font-weight: 600{% else %}#57606a{% endif %};">
+      {{ p.name }} ({{ project_counts.get(p.bc_id, 0) }})
+    </a>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if todos %}
+{% for t in todos %}
+<div class="task-row {% if t.score_breakdown.get('breakdown', {}).get('due_days') is not none and t.score_breakdown.get('breakdown', {}).get('due_days') < 0 %}overdue{% endif %} {% if t.is_dismissed %}dismissed{% endif %}">
+  <div>
+    <span class="urgency-pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+  </div>
+  <div>
+    <div class="title">{{ t.title }}</div>
+    <div class="meta">
+      <strong>{{ t.bc_project_name }}</strong> · {{ t.bc_todolist_name }}
+      {% if t.due_on %} · due <strong>{{ t.due_on }}</strong>{% endif %}
+      {% if t.category and t.category != 'unscored' %}
+        · <span class="cat-chip {{ t.category }}">{{ t.category|replace('_', ' ') }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="actions">
+    <a href="/my-day/todo/{{ t.bc_id }}" class="ws-copy-btn" style="background: #1a7f37; text-decoration: none;">Open workspace →</a>
+    {% if t.is_dismissed %}
+      <form method="post" action="/my-day/todo/{{ t.bc_id }}/undismiss" style="margin: 0;">
+        <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 8px 14px; border-radius: 6px; cursor: pointer;">Undismiss</button>
+      </form>
+    {% else %}
+      <form method="post" action="/my-day/todo/{{ t.bc_id }}/dismiss" style="margin: 0;">
+        <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 8px 14px; border-radius: 6px; cursor: pointer; color: #57606a;">Dismiss</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div style="text-align: center; padding: 48px; color: #57606a;">
+  <p style="font-size: 16px; margin-bottom: 8px;">No tasks in your queue.</p>
+  <p style="font-size: 13px;">
+    Either you're caught up, sync hasn't run yet, or your AI clone isn't set up.
+    Click <strong>Sync now</strong> to refresh.
+  </p>
+</div>
+{% endif %}
+
+<div style="margin-top: 24px; font-size: 13px;">
+  <a href="?{% if not show_dismissed %}show_dismissed=1{% endif %}" style="color: #57606a;">
+    {% if show_dismissed %}🙈 Hide dismissed{% else %}👁 Show dismissed{% endif %}
+  </a>
+  ·
+  <a href="?{% if not show_completed %}show_completed=1{% endif %}" style="color: #57606a;">
+    {% if show_completed %}🙈 Hide completed{% else %}👁 Show completed{% endif %}
+  </a>
+</div>
+{% endblock %}

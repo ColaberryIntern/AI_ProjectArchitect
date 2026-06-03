@@ -534,3 +534,59 @@ async def queue_submit(request: Request, company_id: str,
               target=f"{company_id}/{category}/{item_id}", notes=notes)
     return RedirectResponse(url=f"/admin/{company_id}/queue?status=submitted",
                                        status_code=303)
+
+
+# ── My Day — AI clone identity setup ────────────────────────────────
+
+
+@router.get("/users/{user_id}/ai-clone")
+async def ai_clone_form(request: Request, user_id: str):
+    """Paste-form to register a user's Basecamp AI clone identity + token.
+
+    Phase D: manual paste. Phase E (next session) replaces this with a real
+    BC OAuth flow the admin (or user) walks through in-app.
+    """
+    _require_admin(request)
+    u = tenancy.get_user(user_id)
+    if not u:
+        raise HTTPException(404, "user not found")
+    # Is there already a vault credential for basecamp_ai_clone?
+    existing = next(
+        (c for c in vault.list_for_user(u.user_id, caller_id="admin-ui")
+         if c.tool_name == "basecamp_ai_clone"),
+        None,
+    )
+    return request.app.state.templates.TemplateResponse(
+        request, "admin/user_ai_clone.html",
+        _ctx(request, page_title=f"AI clone — {u.display_name}",
+             target_user=u, existing_credential=existing),
+    )
+
+
+@router.post("/users/{user_id}/ai-clone")
+async def ai_clone_save(request: Request, user_id: str,
+                        bc_user_id: int = Form(...),
+                        bc_ai_clone_name: str = Form(...),
+                        bc_ai_clone_token: str = Form(...),
+                        ttl_days: Optional[int] = Form(14)):
+    admin = _require_admin(request)
+    u = tenancy.get_user(user_id)
+    if not u:
+        raise HTTPException(404, "user not found")
+    if admin.company_id != "colaberry" and u.company_id != admin.company_id:
+        raise HTTPException(403, "can only modify users in your own company")
+    # 1. Update User record with the human's BC id + clone display name
+    u.bc_user_id = int(bc_user_id)
+    u.bc_ai_clone_name = bc_ai_clone_name.strip() or f"{u.display_name} Clone"
+    tenancy.upsert_user(u)
+    # 2. Grant scope + store the token in the vault
+    if "basecamp_ai_clone" not in tenancy.current_scopes(u.user_id):
+        tenancy.grant_scope(u.user_id, "basecamp_ai_clone", granted_by_user_id=admin.user_id)
+    vault.store_secret(
+        u.user_id, "basecamp_ai_clone", bc_ai_clone_token.strip(),
+        caller_id=admin.user_id, ttl_days=ttl_days,
+        notes=f"AI clone {u.bc_ai_clone_name} (BC user id {bc_user_id})",
+    )
+    _audit(admin.user_id, "ai_clone.set",
+           target=user_id, notes=f"bc_user_id={bc_user_id} clone={u.bc_ai_clone_name}")
+    return RedirectResponse(url=f"/admin/users/{user_id}?ai_clone_saved=1", status_code=303)

@@ -32,6 +32,17 @@
 </div>
 
 <div class="admin-card">
+  <h3>🤖 My Day AI clone</h3>
+  <p>Basecamp identity this user posts as via /my-day/ workflows.</p>
+  <p>
+    BC user id: <code>{{ target_user.bc_user_id or '(not set)' }}</code> ·
+    Clone: <code>{{ target_user.bc_ai_clone_name or '(not set)' }}</code>
+  </p>
+  <p><a href="/admin/users/{{ target_user.user_id }}/ai-clone" class="btn btn-sm btn-outline-primary">
+    {% if target_user.bc_user_id %}Update AI clone identity →{% else %}Set up AI clone identity →{% endif %}</a></p>
+</div>
+
+<div class="admin-card">
   <h3>🔧 Tool access</h3>
   <p><a href="/admin/users/{{ target_user.user_id }}/scopes" class="btn btn-sm btn-outline-primary">
     Manage tools-access matrix →</a></p>

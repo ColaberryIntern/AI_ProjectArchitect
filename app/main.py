@@ -24,6 +24,7 @@ from app.routers import (
     generate,
     idea_intake,
     library,
+    my_day,
     ops_platform,
     outline_approval,
     outline_generation,
@@ -89,6 +90,7 @@ app.include_router(generate.router)
 app.include_router(advisory_router)
 app.include_router(ops_platform.router)
 app.include_router(library.router)
+app.include_router(my_day.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 
