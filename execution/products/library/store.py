@@ -122,6 +122,9 @@ def get_metadata(workspace: str, category: str, asset_id: str) -> AssetMetadata:
 
 def save_metadata(meta: AssetMetadata) -> None:
     p = meta_path(meta.workspace, meta.category, meta.asset_id)
+    # asset_id may contain path separators (e.g. "n8n Cron/Schedule Trigger");
+    # ensure the nested directory exists before write.
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(asdict(meta), indent=2), encoding="utf-8")
 
 
