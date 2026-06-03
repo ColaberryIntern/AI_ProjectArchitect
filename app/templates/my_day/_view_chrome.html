@@ -82,3 +82,33 @@
   {% endfor %}
 </div>
 {% endif %}
+
+{# ── Dim-overlay loader (shown on filter chip / view tab click) ───────
+   /my-day/ takes 3–5s on filter change (BC sync nudge + LLM enhance).
+   Without this overlay it looks frozen. We listen for any chip/tab
+   click and reveal a dim+spinner; browser navigation continues normally
+   and the next page load discards this overlay automatically. #}
+<div id="md-page-loader" hidden>
+  <div class="md-loader-content">
+    <div class="md-spinner"></div>
+    <div class="md-loader-text">Loading…</div>
+    <div class="md-loader-sub">filtering tasks + syncing with Basecamp</div>
+  </div>
+</div>
+<script>
+(function() {
+  var loader = document.getElementById('md-page-loader');
+  if (!loader) return;
+  document.addEventListener('click', function(e) {
+    var el = e.target.closest('.proj-chip, .view-tab');
+    if (!el || el.tagName !== 'A') return;
+    // Let modifier-clicks (new tab/window) and middle-click pass through silently
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
+    loader.hidden = false;
+  }, true);
+  // bfcache restore: page came back from history with overlay still up
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted) loader.hidden = true;
+  });
+})();
+</script>
