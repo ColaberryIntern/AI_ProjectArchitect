@@ -99,12 +99,35 @@
 (function() {
   var loader = document.getElementById('md-page-loader');
   if (!loader) return;
+  var textEl = loader.querySelector('.md-loader-text');
+  var subEl  = loader.querySelector('.md-loader-sub');
+  function show(title, sub) {
+    if (textEl && title) textEl.textContent = title;
+    if (subEl)  subEl.textContent  = sub || '';
+    loader.hidden = false;
+  }
+  // Filter chips + view tabs → page reload
   document.addEventListener('click', function(e) {
     var el = e.target.closest('.proj-chip, .view-tab');
     if (!el || el.tagName !== 'A') return;
-    // Let modifier-clicks (new tab/window) and middle-click pass through silently
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
-    loader.hidden = false;
+    show('Loading…', 'filtering tasks + syncing with Basecamp');
+  }, true);
+  // Form submits for /my-day/ actions (Mark done, Skip, Sync, etc.)
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    var action = form.getAttribute('action') || '';
+    if (action.indexOf('/my-day/') !== 0) return;
+    if (action.indexOf('/complete') !== -1) {
+      show('Marking done…', 'updating Basecamp + refreshing your queue');
+    } else if (action.indexOf('/dismiss') !== -1) {
+      show('Skipping…', 'hiding from your queue');
+    } else if (action === '/my-day/sync') {
+      show('Syncing…', 'pulling latest from Basecamp');
+    } else {
+      show('Working…', '');
+    }
   }, true);
   // bfcache restore: page came back from history with overlay still up
   window.addEventListener('pageshow', function(e) {
