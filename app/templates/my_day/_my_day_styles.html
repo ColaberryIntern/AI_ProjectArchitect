@@ -164,6 +164,39 @@
   .task-seq .due-pill.today   { background: #d4a72c; color: white; }
   .task-seq .due-pill.normal  { background: #ddf4ff; color: #0550ae; }
 
+  /* NEXT HUMAN STEP banner — email-style dark callout inside drill-down */
+  .next-human-banner {
+    background: #1a1a1a; color: #f0e9d4;
+    border-radius: 10px; padding: 18px 22px; margin-bottom: 14px;
+  }
+  .next-human-banner .eyebrow {
+    font-size: 11px; color: #f0d678; letter-spacing: 1.2px;
+    font-weight: 700; margin-bottom: 8px;
+  }
+  .next-human-banner h3 { color: white; font-size: 17px; margin: 0 0 10px; font-weight: 700; }
+  .next-human-banner .meta { font-size: 13px; color: #d6cfb6; margin-bottom: 12px; }
+  .next-human-banner .meta strong { color: white; }
+  .next-human-banner .banner-due {
+    display: inline-block; padding: 3px 9px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+  }
+  .next-human-banner .banner-due.overdue { background: #cf222e; color: white; }
+  .next-human-banner .banner-due.today { background: #d4a72c; color: white; }
+  .next-human-banner .banner-due.normal { background: rgba(255,255,255,0.18); color: white; }
+  .next-human-banner .open-ticket-btn {
+    display: inline-block; background: #d4a72c; color: #1a1a1a;
+    padding: 9px 18px; border-radius: 6px; text-decoration: none;
+    font-weight: 700; font-size: 13px;
+  }
+  .next-human-banner .open-ticket-btn:hover { background: #f0d678; color: #1a1a1a; }
+
+  /* BLOCKED on upstream marker — small red arrow text on a sequence row */
+  .task-seq-row .blocked-arrow {
+    background: #ffeef0; color: #cf222e; font-weight: 800;
+    padding: 1px 7px; border-radius: 3px; font-size: 9px;
+    letter-spacing: 0.4px; margin-left: 6px;
+  }
+
   /* Tier pill (AI vs HUMAN, like the email) */
   .tier-pill {
     display: inline-block; padding: 4px 12px; border-radius: 999px;
