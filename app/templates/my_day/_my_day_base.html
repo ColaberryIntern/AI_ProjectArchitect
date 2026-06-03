@@ -53,6 +53,35 @@
   /* ── Main column ──────────────────────────────────────── */
   .md-main { max-width: 980px; margin: 0 auto; padding: 24px 28px 80px; }
 
+  /* ── Grand-score banner ───────────────────────────────── */
+  .grand-score-banner {
+    display: flex; align-items: center; gap: 24px;
+    border-radius: 10px; padding: 16px 24px; margin-bottom: 16px;
+    border: 1px solid;
+  }
+  .grand-score-banner.on_track  { background: #dafbe1; border-color: #aceebb; color: #114529; }
+  .grand-score-banner.ai_risk   { background: #fff4d5; border-color: #f0d678; color: #4a3500; }
+  .grand-score-banner.at_risk   { background: #ffeef0; border-color: #ffabba; color: #82071e; }
+  .grand-score-banner.no_data   { background: #f6f8fa; border-color: #d0d7de; color: #57606a; }
+  .grand-score-banner .gs-eyebrow {
+    font-size: 11px; letter-spacing: 1.2px; font-weight: 700;
+    opacity: 0.7; margin-right: 8px;
+  }
+  .grand-score-banner .gs-score { display: flex; align-items: baseline; gap: 10px; }
+  .grand-score-banner .gs-number { font-size: 36px; font-weight: 800; line-height: 1; }
+  .grand-score-banner .gs-label { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
+  .grand-score-banner .gs-detail {
+    margin-left: auto; font-size: 12px; opacity: 0.85;
+  }
+
+  /* ── Enhanced blocking-table row colors ───────────────── */
+  .blocking-table tr.row-overdue td { background: #ffeef0; }
+  .blocking-table tr.row-overdue td:first-child { border-left: 3px solid #cf222e; }
+  .blocking-table tr.row-today td { background: #fff4d5; }
+  .blocking-table tr.row-today td:first-child { border-left: 3px solid #d4a72c; }
+  .blocking-table tr.row-red td:first-child { border-left: 3px solid #cf222e; }
+  .blocking-table tr.row-amber td:first-child { border-left: 3px solid #f0d678; }
+
   /* ── Status strip (am I in jeopardy?) ─────────────────── */
   .status-strip {
     border-radius: 10px; padding: 18px 24px; margin-bottom: 20px;

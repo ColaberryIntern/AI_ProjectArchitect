@@ -177,6 +177,26 @@ def per_project(todos: Iterable[OpsTodo]) -> list[ProjectRollup]:
     return sorted(by_proj.values(), key=lambda r: (r.score, -r.overdue_count))
 
 
+def overall_health(rollups: list[ListRollup]) -> dict:
+    """Aggregate score across lists, weighted by open_count.
+    Returns {'score': 0-100, 'label': 'ON TRACK|AI RISK|AT RISK', 'list_count': N,
+             'total_open': N, 'total_overdue': N}.
+    """
+    if not rollups:
+        return {"score": 100, "label": "NO DATA", "list_count": 0,
+                "total_open": 0, "total_overdue": 0}
+    total_weight = sum(r.open_count for r in rollups) or 1
+    weighted_sum = sum(r.score * r.open_count for r in rollups)
+    score = int(weighted_sum / total_weight)
+    return {
+        "score": score,
+        "label": _label_for_score(score),
+        "list_count": len(rollups),
+        "total_open": sum(r.open_count for r in rollups),
+        "total_overdue": sum(r.overdue_count for r in rollups),
+    }
+
+
 def kanban_columns(todos: Iterable[OpsTodo]) -> dict[str, list[OpsTodo]]:
     """Bucket active todos into 4 Kanban columns by urgency window."""
     cols: dict[str, list[OpsTodo]] = {

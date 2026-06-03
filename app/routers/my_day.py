@@ -125,10 +125,20 @@ async def ops_home(request: Request):
     else:
         project_filter_id = None
 
+    # List filter (drill-in from Feasibility table)
+    list_filter_raw = request.query_params.get("list", "")
+    try:
+        list_filter_id = int(list_filter_raw) if list_filter_raw else None
+    except ValueError:
+        list_filter_id = None
+
     if project_filter_id is not None:
         scoped_todos = [t for t in todos if t.bc_project_id == project_filter_id]
     else:
         scoped_todos = todos
+
+    if list_filter_id is not None:
+        scoped_todos = [t for t in scoped_todos if t.bc_todolist_id == list_filter_id]
 
     # Apply tier filter
     if tier == "assigned":
@@ -143,6 +153,7 @@ async def ops_home(request: Request):
     status = rollup.overall(scoped_todos)
     list_rollups = rollup.per_list(scoped_todos)
     project_rollups = rollup.per_project(scoped_todos)
+    overall_health_data = rollup.overall_health(list_rollups)
     kanban_cols = rollup.kanban_columns(scoped_todos)
     active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
     active_sorted = sorted(active_todos, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
@@ -199,8 +210,10 @@ async def ops_home(request: Request):
              # View routing
              view=view,
              project_filter=project_filter_id,
+             list_filter=list_filter_id,
              tier=tier,
              tier_counts=tier_counts_total,
+             overall_health=overall_health_data,
              # Top-of-page status
              status=status,
              greeting=greeting,

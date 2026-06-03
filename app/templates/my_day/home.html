@@ -9,7 +9,34 @@
 
 {% block main %}
 
+{# ── Grand score banner ─────────────────────────────────── #}
+{% if overall_health and overall_health.list_count > 0 %}
+<div class="grand-score-banner {{ overall_health.label.lower().replace(' ', '_') }}">
+  <div class="gs-eyebrow">PORTFOLIO HEALTH</div>
+  <div class="gs-score">
+    <span class="gs-number">{{ overall_health.score }}</span>
+    <span class="gs-label">{{ overall_health.label }}</span>
+  </div>
+  <div class="gs-detail">
+    Weighted across {{ overall_health.list_count }} list{% if overall_health.list_count != 1 %}s{% endif %} ·
+    {{ overall_health.total_open }} open ·
+    {% if overall_health.total_overdue %}<strong style="color: #cf222e;">{{ overall_health.total_overdue }} overdue</strong>{% else %}0 overdue{% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% include "my_day/_view_chrome.html" %}
+
+{# ── Filter-active strip ────────────────────────────────── #}
+{% if list_filter %}
+{% set active_list = (list_rollups | selectattr('list_id', 'equalto', list_filter) | first) %}
+{% if active_list %}
+<div style="background: #fff8d6; border: 1px solid #f0d678; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px;">
+  Filtered to list: <strong>{{ active_list.list_name }}</strong> in {{ active_list.project_name }}
+  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}" style="color: #8a5a00;">× clear list filter</a>
+</div>
+{% endif %}
+{% endif %}
 
 {# ── Big-picture banner (only when there's a single project + description) ──── #}
 {% if project_one and project_one.description %}
@@ -99,7 +126,7 @@
 </div>
 {% endif %}
 
-{# ── Feasibility per list ─────────────────────────────────── #}
+{# ── Feasibility per list (clickable to drill-in) ───────── #}
 {% if list_rollups %}
 <div class="section-head">Feasibility per list (lowest first)</div>
 <table class="md-table">
@@ -114,39 +141,80 @@
   <tbody>
     {% for r in list_rollups %}
     <tr>
-      <td><strong>{{ r.list_name }}</strong></td>
+      <td>
+        <a href="?view=briefing&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}&list={{ r.list_id }}"
+           style="color: #1f2328; text-decoration: none; font-weight: 600;">
+          {{ r.list_name }} →
+        </a>
+        <div style="font-size: 11px; color: #57606a;">{{ r.project_name }}</div>
+      </td>
       <td><span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span></td>
-      <td class="dim">{{ r.open_count }} open{% if r.overdue_count %} · {{ r.overdue_count }} overdue{% endif %}</td>
+      <td class="dim">{{ r.open_count }} open{% if r.overdue_count %} · <strong style="color:#cf222e;">{{ r.overdue_count }} overdue</strong>{% endif %}</td>
       <td class="mix"><span class="h">H {{ r.human_count }}</span> / <span class="a">AI {{ r.ai_count }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-{# ── Next human step blocking each list ───────────────────── #}
+{# ── Next human step blocking each list (enhanced KPIs) ──── #}
 <div class="section-head">Next human step blocking each list</div>
-<table class="md-table">
+<table class="md-table blocking-table">
   <thead>
     <tr>
+      <th>URG</th>
       <th>LIST</th>
-      <th>DUE</th>
-      <th>NEXT HUMAN STEP</th>
+      <th>STATUS</th>
+      <th>OWNER</th>
+      <th>NEXT STEP</th>
     </tr>
   </thead>
   <tbody>
     {% for r in list_rollups %}
     {% if r.next_blocking %}
-    <tr>
-      <td><strong>{{ r.list_name }}</strong></td>
-      <td>
-        {% set dd = r.next_blocking.score_breakdown.get('breakdown', {}).get('due_days') %}
-        {% if dd is not none and dd < 0 %}<span class="due-pill overdue">OVERDUE {{ r.next_blocking.due_on }}</span>
-        {% elif dd == 0 %}<span class="due-pill today">DUE TODAY</span>
-        {% elif r.next_blocking.due_on %}<span class="due-pill normal">due {{ r.next_blocking.due_on }}</span>
-        {% else %}<span class="dim">no due</span>{% endif %}
+    {% set nb = r.next_blocking %}
+    {% set dd = nb.score_breakdown.get('breakdown', {}).get('due_days') %}
+    {% set is_overdue = (dd is not none and dd < 0) %}
+    {% set is_today = (dd == 0) %}
+    <tr class="{% if is_overdue %}row-overdue{% elif is_today %}row-today{% elif nb.urgency_score >= 70 %}row-red{% elif nb.urgency_score >= 40 %}row-amber{% endif %}">
+      <td style="width: 60px; text-align: center;">
+        {% if is_overdue %}🔴
+        {% elif is_today %}🟠
+        {% elif nb.urgency_score >= 70 %}🟡
+        {% elif nb.urgency_score >= 40 %}🟢
+        {% else %}⚪{% endif %}
+        <div style="font-size: 11px; color: #57606a; font-weight: 600;">{{ nb.urgency_score }}</div>
+      </td>
+      <td style="min-width: 160px;">
+        <a href="?view=briefing&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}&list={{ r.list_id }}"
+           style="color: #1f2328; text-decoration: none; font-weight: 600; font-size: 13px;">
+          {{ r.list_name[:35] }} →
+        </a>
+        <div style="font-size: 10px; color: #57606a;">{{ r.project_name[:30] }}</div>
+      </td>
+      <td style="white-space: nowrap;">
+        {% if is_overdue %}
+          <span class="due-pill overdue">⚠ {{ -dd }}d OVERDUE</span>
+          <div style="font-size: 10px; color: #57606a;">{{ nb.due_on }}</div>
+        {% elif is_today %}
+          <span class="due-pill today">⏰ DUE TODAY</span>
+        {% elif nb.due_on %}
+          <span class="due-pill normal">📅 in {{ dd }}d</span>
+          <div style="font-size: 10px; color: #57606a;">{{ nb.due_on }}</div>
+        {% else %}
+          <span class="dim" style="font-size: 11px;">no due</span>
+        {% endif %}
+      </td>
+      <td style="font-size: 12px;">
+        {% if nb.assignee_names %}
+          👤 {{ nb.assignee_names[0][:18] }}{% if nb.assignee_names|length > 1 %} +{{ nb.assignee_names|length - 1 }}{% endif %}
+        {% elif nb.inclusion_reason == 'unassigned' %}
+          <span style="color: #8a5a00;">🤝 unclaimed</span>
+        {% else %}
+          <span class="dim">—</span>
+        {% endif %}
       </td>
       <td>
-        <a href="/my-day/todo/{{ r.next_blocking.bc_id }}">{{ r.next_blocking.title[:90] }}</a>
+        <a href="/my-day/todo/{{ nb.bc_id }}" style="font-size: 13px;">{{ nb.title[:80] }}</a>
       </td>
     </tr>
     {% endif %}
