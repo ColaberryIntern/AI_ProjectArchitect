@@ -1,0 +1,96 @@
+{% extends "my_day/_my_day_base.html" %}
+
+{% block title %}{{ todo.title }} · My Day{% endblock %}
+
+{% block topbar_extras %}
+<a href="/my-day/" class="md-product-link">← Back to queue</a>
+{% endblock %}
+
+{% block main %}
+<div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px;">
+  <div>
+    <h1 class="ws-title">{{ todo.title }}</h1>
+    <div class="ws-meta">
+      <strong>{{ todo.bc_project_name }}</strong> · {{ todo.bc_todolist_name }}
+      {% if todo.due_on %} · due <strong>{{ todo.due_on }}</strong>{% endif %}
+      {% if todo.bc_app_url %} · <a href="{{ todo.bc_app_url }}" target="_blank">View in Basecamp ↗</a>{% endif %}
+    </div>
+  </div>
+  <div>
+    <span class="urgency-pill {% if todo.urgency_score >= 70 %}red{% elif todo.urgency_score >= 40 %}amber{% else %}gray{% endif %}" style="font-size: 14px; padding: 6px 16px;">
+      {{ todo.urgency_score }}
+    </span>
+  </div>
+</div>
+
+{% if todo.description %}
+<div class="ws-section">
+  <h3>Description (from Basecamp)</h3>
+  <div style="font-size: 14px; white-space: pre-wrap; color: #1f2328;">{{ todo.description }}</div>
+</div>
+{% endif %}
+
+<div class="ws-section">
+  <h3>Suggested approach</h3>
+  <div style="margin-bottom: 12px;">
+    <span class="action-kind-badge">{{ suggestion.action_kind }}</span>
+    &nbsp; <span style="font-weight: 600;">{{ suggestion.one_line }}</span>
+  </div>
+  <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
+    {% for step in suggestion.steps %}<li style="margin-bottom: 6px;">{{ step }}</li>{% endfor %}
+  </ol>
+  {% if suggestion.resources %}
+  <div style="margin-top: 14px;">
+    <strong style="font-size: 13px;">Lean on:</strong>
+    {% for r in suggestion.resources %}
+      <span class="resource-chip"><span class="kind">{{ r.kind }}</span> <code>{{ r.name }}</code> — {{ r.why }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if suggestion.stop_conditions %}
+  <div style="margin-top: 16px;">
+    <strong style="font-size: 13px; color: #8a5a00;">Stop and escalate if:</strong>
+    <ul class="stop-list" style="margin-top: 6px;">
+      {% for c in suggestion.stop_conditions %}<li>{{ c }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+
+<div class="ws-section">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h3 style="margin: 0;">Claude Code prompt</h3>
+    <button id="copyPromptBtn" class="ws-copy-btn" onclick="copyPrompt()">📋 Copy prompt</button>
+  </div>
+  <div style="font-size: 12px; color: #57606a; margin-bottom: 12px;">
+    Paste this into a fresh Claude Code session. It contains the task context + your suggested approach + stop conditions.
+  </div>
+  <div id="promptText" class="ws-prompt">{{ prompt }}</div>
+</div>
+
+<div style="margin-top: 16px;">
+  <form method="post" action="/my-day/todo/{{ todo.bc_id }}/dismiss" style="display: inline; margin-right: 8px;">
+    <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 10px 16px; border-radius: 6px; cursor: pointer; color: #57606a;">
+      Dismiss (local only — doesn't touch Basecamp)
+    </button>
+  </form>
+  {% if todo.bc_app_url %}
+  <a href="{{ todo.bc_app_url }}" target="_blank" style="background: #fff; border: 1px solid #d0d7de; padding: 10px 16px; border-radius: 6px; text-decoration: none; color: #0969da;">
+    Open in Basecamp ↗
+  </a>
+  {% endif %}
+</div>
+
+<script>
+function copyPrompt() {
+  const text = document.getElementById('promptText').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyPromptBtn');
+    const orig = btn.innerText;
+    btn.innerText = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerText = orig; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+{% endblock %}
