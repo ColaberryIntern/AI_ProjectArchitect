@@ -198,9 +198,13 @@ async def ops_home(request: Request):
     project_filter_raw = request.query_params.get("project", "")
     # Tier filter: assignment-based (assigned|due|unassigned|all) OR
     # kind-based (human|ai). The 6 values are mutually exclusive in the UI.
-    tier = request.query_params.get("tier", "assigned")
+    # Default is 'all' so projects show every task they actually have —
+    # otherwise tasks tagged with [Ali] in BC title (but not formally
+    # assigned to Ali's BC user id) get hidden under the 'assigned' tier,
+    # which surprised the user when AI Pathway projects appeared empty.
+    tier = request.query_params.get("tier", "all")
     if tier not in ("assigned", "due", "unassigned", "all", "human", "ai"):
-        tier = "assigned"
+        tier = "all"
 
     # Pre-compute counts per tier for the chip row (BEFORE filtering)
     from collections import Counter
