@@ -32,6 +32,34 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TENANT_ROOT = REPO_ROOT / "output" / "library" / "_tenants"
 
+
+def _load_env_prod() -> int:
+    """Load REPO_ROOT/.env.prod into os.environ if not already set.
+
+    The preflight is invoked from the host (not inside the container),
+    so docker-compose's env-file plumbing hasn't happened yet. Without
+    this, every check fails because os.environ is the host's bare env.
+    Process env wins over .env.prod for testability.
+    """
+    env_file = REPO_ROOT / ".env.prod"
+    if not env_file.exists():
+        return 0
+    loaded = 0
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        # Strip a single matching pair of surrounding quotes; preserve everything else.
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            v = v[1:-1]
+        if k and k not in os.environ:
+            os.environ[k] = v
+            loaded += 1
+    return loaded
+
 # Hard required (deploy fails)
 HARD_REQUIRED = [
     ("OPENAI_API_KEY", "Project Architect generation pipeline"),
@@ -115,6 +143,10 @@ def main() -> int:
     print("=" * 60)
     print("[Deploy 1] Multi-tenant cut-over preflight")
     print("=" * 60)
+
+    loaded = _load_env_prod()
+    if loaded:
+        print(f"\nLoaded {loaded} vars from .env.prod (process env still wins)")
 
     print("\n[1/4] Hard-required environment")
     for name, why in HARD_REQUIRED:
