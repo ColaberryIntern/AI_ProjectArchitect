@@ -66,7 +66,9 @@ def get_user_token(email_or_id: str) -> tuple[str | None, str]:
                 purpose="Basecamp todo sync for the AI Ops Command Center",
             )
             if t:
-                return t, "vault"
+                # Belt-and-suspenders: strip whitespace tokens may pick up
+                # along the way (echo, bash interpolation, heredocs, etc.).
+                return t.strip(), "vault"
         except Exception:
             pass
 

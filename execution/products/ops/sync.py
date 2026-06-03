@@ -136,8 +136,15 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
             last_synced_at=_now_iso(),
         ))
         try:
-            ts = _bc_get(f"/buckets/{bucket}/todosets.json", token)
-            ts_id = ts.get("id") if isinstance(ts, dict) else None
+            # BC API v3: the todoset id lives in the project's `dock` array,
+            # not under a /buckets/{id}/todosets.json collection endpoint.
+            # We need the full project payload to extract it.
+            proj_full = _bc_get(f"/projects/{bucket}.json", token) or {}
+            todoset_dock = next(
+                (d for d in proj_full.get("dock", []) if d.get("name") == "todoset"),
+                None,
+            )
+            ts_id = todoset_dock.get("id") if todoset_dock else None
             if not ts_id:
                 continue
             lists = _bc_get(f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token) or []
