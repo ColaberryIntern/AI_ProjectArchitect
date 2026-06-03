@@ -1,0 +1,52 @@
+name: Library sync smoke
+
+# [Infra 2] CI gate for PRs created by the library sync flow.
+# Fails the PR if any markdown file under library/ does not satisfy:
+#   - valid UTF-8
+#   - YAML frontmatter with required keys (title, kind, slug, version, owner)
+#   - non-empty body
+#   - no leaked secrets (bearer tokens, ghp_ PATs, AWS keys, private keys)
+
+on:
+  pull_request:
+    paths:
+      - 'library/**/*.md'
+      - 'scripts/library_sync_smoke.py'
+      - '.github/workflows/library-sync-check.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Find changed library files
+        id: changed
+        run: |
+          set -e
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'library/**/*.md' | tr '\n' ' ')
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "Files to smoke-test: $FILES"
+
+      - name: Run library sync smoke test
+        if: steps.changed.outputs.files != ''
+        run: |
+          python scripts/library_sync_smoke.py ${{ steps.changed.outputs.files }}
+
+      - name: No-op (no library files changed)
+        if: steps.changed.outputs.files == ''
+        run: echo "No library/**/*.md files in this PR — smoke test not required."

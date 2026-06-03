@@ -1,0 +1,52 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div class="admin-card">
+  <p>Create a new tenant. Once added, you can provision its first admin user from <a href="/admin/users/new">Users → New</a>.</p>
+  <form method="post" action="/admin/companies/new">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Tenant slug (used in URLs / API)</label>
+        <input name="company_id" class="form-control" required
+               pattern="[a-z][a-z0-9-]{1,40}"
+               placeholder="patriot, ship-ces, demo-tenant…" />
+        <div class="form-text">lowercase, alphanumeric + dashes, max 40 chars</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Display name</label>
+        <input name="display_name" class="form-control" required
+               placeholder="Patriot Inc." />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Plan</label>
+        <select name="plan" class="form-select">
+          <option value="free">free</option>
+          <option value="team">team</option>
+          <option value="enterprise">enterprise</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Default visibility</label>
+        <select name="default_visibility" class="form-select">
+          <option value="same-company-only">same-company-only</option>
+          <option value="shared-public">shared-public</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Primary email domain (for SSO mapping)</label>
+        <input name="primary_domain" class="form-control"
+               placeholder="patriot.com" />
+        <div class="form-text">If set, new logins from this domain auto-route to this tenant.</div>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" rows="3" class="form-control"
+                  placeholder="Why this tenant exists, billing contact, etc."></textarea>
+      </div>
+    </div>
+    <div style="margin-top: var(--space-4);">
+      <button class="btn btn-primary">Create company</button>
+      <a href="/admin/companies" class="btn btn-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

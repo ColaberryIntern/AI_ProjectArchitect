@@ -244,13 +244,33 @@ async def scan_github_search(
 
 
 def _save_registry(skills: list[dict], scan_status: str, sources_scanned: int) -> None:
-    """Atomic write of the skill registry file."""
+    """Atomic write of the skill registry file.
+
+    Skips the write entirely when the on-disk skills/status/source-count are
+    identical to what we'd write — so daily no-op scans don't churn the file's
+    mtime or produce a timestamp-only git diff.
+    """
+    skills_capped = skills[:MAX_SKILLS]
+
+    if REGISTRY_PATH.exists():
+        try:
+            existing = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+            if (
+                existing.get("last_scan_status") == scan_status
+                and existing.get("sources_scanned") == sources_scanned
+                and existing.get("skills") == skills_capped
+            ):
+                logger.debug("Skill registry unchanged; skipping write")
+                return
+        except (json.JSONDecodeError, OSError):
+            pass  # corrupt or unreadable — fall through and overwrite
+
     registry = {
         "version": 1,
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "last_scan_status": scan_status,
         "sources_scanned": sources_scanned,
-        "skills": skills[:MAX_SKILLS],
+        "skills": skills_capped,
     }
 
     # Atomic write via temp file

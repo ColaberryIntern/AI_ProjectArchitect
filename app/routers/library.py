@@ -19,8 +19,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from execution.products.library import (
-    enrichment_job, featured, ingest, inventory,
-    scanner, search as search_mod, store,
+    auth_google, enrichment_job, featured, ingest, inventory,
+    scanner, search as search_mod, store, tenancy,
     use_case_generator, use_cases, word_cloud,
 )
 
@@ -40,11 +40,61 @@ def _user(request: Request) -> str:
     return request.query_params.get("as") or request.headers.get("X-User") or "anonymous"
 
 
+def _session_user(request: Request) -> "tenancy.User | None":
+    """[Library 2] Resolve logged-in user from the SSO cookie."""
+    cookie = request.cookies.get(auth_google.SESSION_COOKIE_NAME)
+    return auth_google.current_user_from_cookie(cookie)
+
+
+def _scope(request: Request, session_user) -> str:
+    """[Library 2] Resolve effective scope: all | my-company | mine.
+
+    Default: 'my-company' when logged in, 'all' when anonymous.
+    URL param 'scope' overrides.
+    """
+    explicit = request.query_params.get("scope")
+    if explicit in ("all", "my-company", "mine"):
+        return explicit
+    return "my-company" if session_user else "all"
+
+
+def _viewer_company_id(session_user, scope: str) -> "str | None":
+    """[Library 1] Resolve which company_id to apply filter_for_company with."""
+    if not session_user:
+        return None
+    if scope == "my-company" or scope == "mine":
+        return session_user.company_id
+    return None   # "all" → unscoped
+
+
 def _ctx(request: Request, **extra) -> dict:
-    """Shared template context — every page gets counts + pending badge."""
+    """Shared template context — every page gets counts + identity + scope."""
     counts = inventory.inventory_counts() if "counts" not in extra else extra["counts"]
     pending_count = len(store.list_submissions(status="pending"))
     ws = _ws(request)
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
+
+    # [Workflow 1] bell counter + reviewer queue count
+    bell_count = 0
+    queue_count = 0
+    is_reviewer = False
+    if session_user:
+        try:
+            from execution.products.library import notifications as _notif
+            bell_count = _notif.unread_count_for_user(
+                session_user.user_id, session_user.company_id,
+            )
+        except Exception:
+            bell_count = 0
+        try:
+            if tenancy.can_review(session_user):
+                is_reviewer = True
+                q = tenancy.queue_counts(session_user.company_id)
+                queue_count = q.get("submitted", 0) + q.get("under_review", 0)
+        except Exception:
+            pass
+
     base = {
         "current_product": "library",
         "workspace": ws,
@@ -53,9 +103,89 @@ def _ctx(request: Request, **extra) -> dict:
         "counts": counts,
         "pending_count": pending_count,
         "use_case_count": use_cases.count(ws),
+        # [Library 2] identity-aware context
+        "current_session_user": session_user,
+        "scope": scope,
+        "viewer_company_id": _viewer_company_id(session_user, scope),
+        # [Workflow 1] notifications + queue
+        "bell_count": bell_count,
+        "queue_count": queue_count,
+        "is_reviewer": is_reviewer,
     }
     base.update(extra)
     return base
+
+
+# ── [Workflow 2] Follow author ───────────────────────────────────
+
+
+@router.post("/follow")
+async def follow_author(request: Request,
+                                  target_email: str = Form(...),
+                                  action: str = Form("follow")):
+    from fastapi.responses import RedirectResponse
+    from execution.products.library import notifications as _notif
+    user = _session_user(request)
+    if not user and not auth_google.is_enabled():
+        user = tenancy.get_user("ali@colaberry.com")
+    if not user:
+        return RedirectResponse("/auth/login", status_code=303)
+    target = tenancy.get_user(target_email)
+    if not target:
+        raise HTTPException(404, f"Unknown author: {target_email}")
+    # Permission check using same can_follow_author logic
+    provenance = {"author_email": target.email, "author_company": target.company_id}
+    if not tenancy.can_follow_author(user, provenance):
+        raise HTTPException(403, f"{target.company_id} does not allow inbound follows")
+    if action == "unfollow":
+        tenancy.unfollow_author(user.user_id, target.email)
+    else:
+        tenancy.follow_author(user.user_id, target.email)
+        # Optional notification to the author that someone followed them
+        _notif.emit(_notif.NotificationEvent(
+            kind="follow", company_id=target.company_id,
+            actor_user_id=user.user_id, target_user_id=target.user_id,
+            item_kind="user", item_id=user.email, category="follows",
+            summary=f"{user.display_name} ({user.company_id}) followed you",
+        ))
+    return RedirectResponse(
+        request.headers.get("Referer", "/library/"), status_code=303,
+    )
+
+
+# ── [Workflow 1] Notifications inbox ─────────────────────────────
+
+
+@router.get("/notifications")
+async def notifications_page(request: Request):
+    from execution.products.library import notifications as _notif
+    user = _session_user(request)
+    if not user:
+        # Dev fallback
+        if not auth_google.is_enabled():
+            user = tenancy.get_user("ali@colaberry.com")
+        if not user:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse("/auth/login?next=/library/notifications", status_code=303)
+    items = _notif.unread_for_user(user.user_id, user.company_id)
+    return request.app.state.templates.TemplateResponse(
+        request, "library/notifications.html",
+        _ctx(request, library_nav_active="notifications",
+                 inbox=items, inbox_count=len(items),
+                 inbox_user=user),
+    )
+
+
+@router.post("/notifications/mark-read")
+async def notifications_mark_read(request: Request):
+    from execution.products.library import notifications as _notif
+    from fastapi.responses import RedirectResponse
+    user = _session_user(request)
+    if not user and not auth_google.is_enabled():
+        user = tenancy.get_user("ali@colaberry.com")
+    if user:
+        _notif.mark_all_read(user.user_id, user.company_id)
+    return RedirectResponse("/library/notifications", status_code=303)
 
 
 @router.get("/")
@@ -576,6 +706,55 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
     ratings = store.list_ratings(workspace, cat.key, asset_id)
     comments = store.list_comments(workspace, cat.key, asset_id)
     linked_use_cases = use_cases.find_by_tool(workspace, cat.key, asset_id)
+
+    # [Workflow 2] Provenance — collect all companies that approved + author + visibility
+    approvals = tenancy.list_approvals(
+        item_kind="library_asset", item_id=asset_id,
+        category=cat.key, status="approved",
+    )
+    provenance = {
+        "approving_companies": [
+            {
+                "company_id": a.company_id,
+                "company_name": (tenancy.get_company(a.company_id).display_name
+                                          if tenancy.get_company(a.company_id) else a.company_id),
+                "approved_at": a.approved_at,
+                "approver_user_id": a.approved_by_user_id,
+                "approver_name": (tenancy.get_user(a.approved_by_user_id).display_name
+                                          if tenancy.get_user(a.approved_by_user_id) else "—"),
+                "visibility": a.visibility,
+                "shared_with": a.shared_with or [],
+                "notes": a.notes,
+            }
+            for a in approvals
+        ],
+        "author_email": meta.submitted_by or "",
+        "owning_company_id": getattr(meta, "owning_company_id", "colaberry"),
+    }
+    # If author is a known user, attach display_name + company
+    if provenance["author_email"]:
+        author_user = tenancy.get_user(provenance["author_email"])
+        if author_user:
+            provenance["author_name"] = author_user.display_name
+            provenance["author_company"] = author_user.company_id
+            author_company = tenancy.get_company(author_user.company_id)
+            provenance["author_company_name"] = (author_company.display_name
+                                                                          if author_company else author_user.company_id)
+
+    # [Workflow 2] Follow-author state for the viewing user
+    session_user = _session_user(request)
+    follow_state = None
+    if session_user and provenance.get("author_company"):
+        follow_state = {
+            "can_follow": tenancy.can_follow_author(session_user, provenance),
+            "already_following": tenancy.is_following(
+                follower_user_id=session_user.user_id,
+                target_email=provenance["author_email"],
+            ),
+            "target_email": provenance["author_email"],
+            "target_name": provenance.get("author_name", ""),
+        }
+
     return request.app.state.templates.TemplateResponse(
         request, "library/asset.html",
         _ctx(request,
@@ -586,7 +765,9 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
                   meta=meta,
                   ratings=ratings,
                   comments=comments,
-                  linked_use_cases=linked_use_cases),
+                  linked_use_cases=linked_use_cases,
+                  provenance=provenance,
+                  follow_state=follow_state),
     )
 
 
@@ -608,6 +789,39 @@ async def library_category(request: Request, category_key: str):
     tag_filter = request.query_params.get("tag")
     mode = request.query_params.get("mode") or "frequency"
 
+    # [Library 1] Per-company filter — applied BEFORE per-item vetted/tag filters
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
+    viewer_co = _viewer_company_id(session_user, scope)
+    items = inventory.filter_for_company(items, cat.key, viewer_co)
+
+    # [Library 2] "mine" scope = items the user submitted
+    if scope == "mine" and session_user:
+        items = [
+            it for it in items
+            if store.get_metadata(workspace, cat.key,
+                                          it.get("name") or it.get("id") or "")
+            .submitted_by == session_user.email
+        ]
+
+    # [Library 1] approved-by filter (?approved=company:colaberry,patriot)
+    approved_filter = request.query_params.get("approved", "")
+    approved_companies: list[str] = []
+    if approved_filter.startswith("company:"):
+        approved_companies = [c.strip() for c in approved_filter[8:].split(",") if c.strip()]
+    if approved_companies:
+        narrowed = []
+        for it in items:
+            aid = it.get("name") or it.get("id") or ""
+            their_approvals = tenancy.list_approvals(
+                item_kind="library_asset", item_id=aid, category=cat.key,
+                status="approved",
+            )
+            approver_companies = {a.company_id for a in their_approvals}
+            if approver_companies.intersection(approved_companies):
+                narrowed.append(it)
+        items = narrowed
+
     enriched = []
     for it in items:
         asset_id = it.get("name") or it.get("id") or ""
@@ -616,14 +830,31 @@ async def library_category(request: Request, category_key: str):
             continue
         if tag_filter and tag_filter not in (it.get("tags") or []):
             continue
-        enriched.append({**it, "_meta": meta})
+        # [Library 1] per-item approval badges — collect all companies that approved
+        item_approvals = tenancy.list_approvals(
+            item_kind="library_asset", item_id=asset_id,
+            category=cat.key, status="approved",
+        )
+        enriched.append({
+            **it, "_meta": meta,
+            "_approving_companies": [
+                {"company_id": a.company_id, "approved_at": a.approved_at,
+                  "company_name": (tenancy.get_company(a.company_id).display_name
+                                          if tenancy.get_company(a.company_id) else a.company_id)}
+                for a in item_approvals
+            ],
+        })
 
-    # Asset tag cloud (top 50)
     cat_cloud = word_cloud.cloud_for_assets(
         workspace=workspace, mode=mode, category=cat.key,
         current={"tag": tag_filter} if tag_filter else {},
         base_url=f"/library/{cat.key}", limit=50,
     )
+
+    # List of companies the user can filter by ("other company approved")
+    all_companies = [c for c in tenancy.list_companies()
+                            if c.company_id != (viewer_co or "")]
+
     return request.app.state.templates.TemplateResponse(
         request, "library/category.html",
         _ctx(request,
@@ -635,5 +866,7 @@ async def library_category(request: Request, category_key: str):
                   only_vetted=only_vetted,
                   tag_filter=tag_filter,
                   cat_cloud=cat_cloud,
-                  mode=mode),
+                  mode=mode,
+                  approved_filter_companies=approved_companies,
+                  all_companies=all_companies),
     )

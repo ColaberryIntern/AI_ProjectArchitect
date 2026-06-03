@@ -177,6 +177,43 @@ def reset_catalog_cache() -> None:
     _CATALOG_CACHE = None
 
 
+def filter_for_company(rows: list[dict[str, Any]], category: str,
+                              viewer_company_id: str | None) -> list[dict[str, Any]]:
+    """[Auth 1] tenant filter — narrow `rows` to what `viewer_company_id`
+    is allowed to see.
+
+    Returns all rows when `viewer_company_id` is None (legacy/admin view).
+
+    Inclusion rules per row:
+      - viewer's company owns the asset (owning_company_id == viewer)
+      - viewer's company has its own approval row for this asset
+      - someone has approved with visibility=shared-public
+      - someone has approved with visibility=shared-with-allowlist
+        and the viewer's company is in the allowlist
+    """
+    if not viewer_company_id:
+        return rows
+    try:
+        from . import tenancy, store
+    except Exception:
+        return rows   # tenancy module unavailable; degrade open
+
+    out = []
+    for row in rows:
+        asset_id = row.get("name") or row.get("id") or ""
+        if not asset_id:
+            continue
+        meta = store.get_metadata("global", category, asset_id)
+        owning = getattr(meta, "owning_company_id", "colaberry")
+        if owning == viewer_company_id:
+            out.append(row)
+            continue
+        if tenancy.companies_with_access("library_asset", asset_id,
+                                                    category, viewer_company_id):
+            out.append(row)
+    return out
+
+
 def list_skills() -> list[dict[str, Any]]:
     return [_normalize(s) for s in _load_classified_catalog().get("skills", [])]
 

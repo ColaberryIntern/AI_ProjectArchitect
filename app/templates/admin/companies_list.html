@@ -1,0 +1,45 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+{% if is_super_admin %}
+<div style="margin-bottom: var(--space-4);">
+  <a href="/admin/companies/new" class="btn btn-primary">+ Add new company</a>
+</div>
+{% endif %}
+
+<div class="admin-card" style="padding: 0;">
+<table class="admin-table">
+  <thead>
+    <tr>
+      <th>Company</th><th>Plan</th><th>Users</th><th>Approved items</th>
+      <th>Default visibility</th><th>Status</th><th>Created</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>
+        <a href="/admin/companies/{{ row.company.company_id }}"><strong>{{ row.company.display_name }}</strong></a>
+        <div style="color: var(--fg-muted); font-size: 12px;">{{ row.company.company_id }}</div>
+      </td>
+      <td><span class="badge">{{ row.company.plan }}</span></td>
+      <td>{{ row.user_count }}</td>
+      <td>{{ row.approval_count }}</td>
+      <td>{{ row.company.default_visibility }}</td>
+      <td>
+        {% if row.company.is_active %}
+          <span class="badge status-active">active</span>
+        {% else %}
+          <span class="badge status-suspended">suspended</span>
+        {% endif %}
+      </td>
+      <td>{{ row.company.created_at[:10] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="color: var(--fg-muted); padding: var(--space-5); text-align: center;">
+      No companies yet. {% if is_super_admin %}<a href="/admin/companies/new">Add the first one</a>.{% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

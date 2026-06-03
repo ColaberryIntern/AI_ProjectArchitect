@@ -1,0 +1,105 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+<div class="admin-card">
+  <h2>{{ company_row.display_name }}</h2>
+  <div style="color: var(--fg-muted);">
+    <code>{{ company_row.company_id }}</code> · plan: <strong>{{ company_row.plan }}</strong> ·
+    default visibility: <strong>{{ company_row.default_visibility }}</strong> ·
+    created {{ company_row.created_at[:10] }}
+    {% if company_row.is_active %}
+      · <span class="badge status-active">active</span>
+    {% else %}
+      · <span class="badge status-suspended">suspended</span>
+    {% endif %}
+  </div>
+  {% if company_row.notes %}<p style="margin-top: var(--space-3);">{{ company_row.notes }}</p>{% endif %}
+
+  {% if is_super_admin and company_row.is_active %}
+  <form method="post" action="/admin/companies/{{ company_row.company_id }}/suspend"
+        onsubmit="return confirm('Suspend this tenant? It will be hidden but not deleted.');"
+        style="display: inline; margin-top: var(--space-3);">
+    <button class="btn btn-sm btn-outline-danger">Suspend tenant</button>
+  </form>
+  {% endif %}
+</div>
+
+{# [Workflow 2] Cross-company sharing policy #}
+<div class="admin-card">
+  <h3>🌐 Sharing policy</h3>
+  <p class="text-muted">
+    Controls whether this tenant's approved items can be exposed to OTHER tenants,
+    and whether outsiders can follow your authors. Defaults are conservative
+    (same-company-only); flip these on intentionally.
+  </p>
+  <form method="post" action="/admin/companies/{{ company_row.company_id }}/sharing">
+    <div style="margin-bottom: var(--space-3);">
+      <label>
+        <input type="checkbox" name="allow_cross_company_shares" value="on"
+               {% if company_row.allow_cross_company_shares %}checked{% endif %}>
+        <strong>Allow cross-company shares</strong> — admins of this tenant can
+        flip individual approved items to <code>shared-public</code> or
+        <code>shared-with-allowlist</code> so they appear in other tenants' libraries.
+      </label>
+    </div>
+    <div style="margin-bottom: var(--space-3);">
+      <label>
+        <input type="checkbox" name="allow_inbound_follows" value="on"
+               {% if company_row.allow_inbound_follows %}checked{% endif %}>
+        <strong>Allow inbound follows</strong> — users in OTHER tenants can
+        follow your authors to get notified of new approved publications.
+        Off = follow button is hidden from outsiders.
+      </label>
+    </div>
+    <button class="btn btn-sm btn-primary">Save policy</button>
+  </form>
+</div>
+
+<div class="admin-card">
+  <h3>Users ({{ users|length }})</h3>
+  <table class="admin-table">
+    <thead>
+      <tr><th>Email</th><th>Name</th><th>Roles</th><th>Last login</th><th>Workspace repo</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td><a href="/admin/users/{{ u.user_id }}">{{ u.email }}</a></td>
+        <td>{{ u.display_name }}</td>
+        <td>{% for r in u.roles %}<span class="badge role-{{ r }}">{{ r }}</span>&nbsp;{% endfor %}</td>
+        <td>{{ u.last_login_at[:10] if u.last_login_at else "—" }}</td>
+        <td>
+          {% if u.workspace_repo %}
+            <a href="https://github.com/{{ u.workspace_repo }}" target="_blank">{{ u.workspace_repo }}</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color: var(--fg-muted);">No users yet. <a href="/admin/users/new">Provision one →</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="admin-card">
+  <h3>Approved items ({{ approvals|length }})</h3>
+  <table class="admin-table">
+    <thead>
+      <tr><th>Item</th><th>Category</th><th>Status</th><th>Visibility</th><th>By</th><th>At</th></tr>
+    </thead>
+    <tbody>
+      {% for a in approvals %}
+      <tr>
+        <td>{{ a.item_id }}</td>
+        <td><span class="badge">{{ a.category }}</span></td>
+        <td>{{ a.status }}</td>
+        <td>{{ a.visibility }}</td>
+        <td>{{ a.approved_by_user_id }}</td>
+        <td>{{ a.approved_at[:10] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="color: var(--fg-muted);">No approvals recorded for this tenant.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "basecamp": {
+      "command": "python",
+      "args": ["-m", "tools.bc_mcp.server"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
