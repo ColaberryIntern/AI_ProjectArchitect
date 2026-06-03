@@ -116,6 +116,43 @@ def _ctx(request: Request, **extra) -> dict:
     return base
 
 
+# ── [Workflow 2] Follow author ───────────────────────────────────
+
+
+@router.post("/follow")
+async def follow_author(request: Request,
+                                  target_email: str = Form(...),
+                                  action: str = Form("follow")):
+    from fastapi.responses import RedirectResponse
+    from execution.products.library import notifications as _notif
+    user = _session_user(request)
+    if not user and not auth_google.is_enabled():
+        user = tenancy.get_user("ali@colaberry.com")
+    if not user:
+        return RedirectResponse("/auth/login", status_code=303)
+    target = tenancy.get_user(target_email)
+    if not target:
+        raise HTTPException(404, f"Unknown author: {target_email}")
+    # Permission check using same can_follow_author logic
+    provenance = {"author_email": target.email, "author_company": target.company_id}
+    if not tenancy.can_follow_author(user, provenance):
+        raise HTTPException(403, f"{target.company_id} does not allow inbound follows")
+    if action == "unfollow":
+        tenancy.unfollow_author(user.user_id, target.email)
+    else:
+        tenancy.follow_author(user.user_id, target.email)
+        # Optional notification to the author that someone followed them
+        _notif.emit(_notif.NotificationEvent(
+            kind="follow", company_id=target.company_id,
+            actor_user_id=user.user_id, target_user_id=target.user_id,
+            item_kind="user", item_id=user.email, category="follows",
+            summary=f"{user.display_name} ({user.company_id}) followed you",
+        ))
+    return RedirectResponse(
+        request.headers.get("Referer", "/library/"), status_code=303,
+    )
+
+
 # ── [Workflow 1] Notifications inbox ─────────────────────────────
 
 
@@ -669,6 +706,55 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
     ratings = store.list_ratings(workspace, cat.key, asset_id)
     comments = store.list_comments(workspace, cat.key, asset_id)
     linked_use_cases = use_cases.find_by_tool(workspace, cat.key, asset_id)
+
+    # [Workflow 2] Provenance — collect all companies that approved + author + visibility
+    approvals = tenancy.list_approvals(
+        item_kind="library_asset", item_id=asset_id,
+        category=cat.key, status="approved",
+    )
+    provenance = {
+        "approving_companies": [
+            {
+                "company_id": a.company_id,
+                "company_name": (tenancy.get_company(a.company_id).display_name
+                                          if tenancy.get_company(a.company_id) else a.company_id),
+                "approved_at": a.approved_at,
+                "approver_user_id": a.approved_by_user_id,
+                "approver_name": (tenancy.get_user(a.approved_by_user_id).display_name
+                                          if tenancy.get_user(a.approved_by_user_id) else "—"),
+                "visibility": a.visibility,
+                "shared_with": a.shared_with or [],
+                "notes": a.notes,
+            }
+            for a in approvals
+        ],
+        "author_email": meta.submitted_by or "",
+        "owning_company_id": getattr(meta, "owning_company_id", "colaberry"),
+    }
+    # If author is a known user, attach display_name + company
+    if provenance["author_email"]:
+        author_user = tenancy.get_user(provenance["author_email"])
+        if author_user:
+            provenance["author_name"] = author_user.display_name
+            provenance["author_company"] = author_user.company_id
+            author_company = tenancy.get_company(author_user.company_id)
+            provenance["author_company_name"] = (author_company.display_name
+                                                                          if author_company else author_user.company_id)
+
+    # [Workflow 2] Follow-author state for the viewing user
+    session_user = _session_user(request)
+    follow_state = None
+    if session_user and provenance.get("author_company"):
+        follow_state = {
+            "can_follow": tenancy.can_follow_author(session_user, provenance),
+            "already_following": tenancy.is_following(
+                follower_user_id=session_user.user_id,
+                target_email=provenance["author_email"],
+            ),
+            "target_email": provenance["author_email"],
+            "target_name": provenance.get("author_name", ""),
+        }
+
     return request.app.state.templates.TemplateResponse(
         request, "library/asset.html",
         _ctx(request,
@@ -679,7 +765,9 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
                   meta=meta,
                   ratings=ratings,
                   comments=comments,
-                  linked_use_cases=linked_use_cases),
+                  linked_use_cases=linked_use_cases,
+                  provenance=provenance,
+                  follow_state=follow_state),
     )
 
 

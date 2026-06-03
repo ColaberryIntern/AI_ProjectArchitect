@@ -23,6 +23,37 @@
   {% endif %}
 </div>
 
+{# [Workflow 2] Cross-company sharing policy #}
+<div class="admin-card">
+  <h3>🌐 Sharing policy</h3>
+  <p class="text-muted">
+    Controls whether this tenant's approved items can be exposed to OTHER tenants,
+    and whether outsiders can follow your authors. Defaults are conservative
+    (same-company-only); flip these on intentionally.
+  </p>
+  <form method="post" action="/admin/companies/{{ company_row.company_id }}/sharing">
+    <div style="margin-bottom: var(--space-3);">
+      <label>
+        <input type="checkbox" name="allow_cross_company_shares" value="on"
+               {% if company_row.allow_cross_company_shares %}checked{% endif %}>
+        <strong>Allow cross-company shares</strong> — admins of this tenant can
+        flip individual approved items to <code>shared-public</code> or
+        <code>shared-with-allowlist</code> so they appear in other tenants' libraries.
+      </label>
+    </div>
+    <div style="margin-bottom: var(--space-3);">
+      <label>
+        <input type="checkbox" name="allow_inbound_follows" value="on"
+               {% if company_row.allow_inbound_follows %}checked{% endif %}>
+        <strong>Allow inbound follows</strong> — users in OTHER tenants can
+        follow your authors to get notified of new approved publications.
+        Off = follow button is hidden from outsiders.
+      </label>
+    </div>
+    <button class="btn btn-sm btn-primary">Save policy</button>
+  </form>
+</div>
+
 <div class="admin-card">
   <h3>Users ({{ users|length }})</h3>
   <table class="admin-table">

@@ -87,6 +87,9 @@ class Company:
     created_at: str = ""
     is_active: bool = True
     notes: str = ""
+    # [Workflow 2] cross-company share policy
+    allow_cross_company_shares: bool = False    # can admins flip items to shared-public?
+    allow_inbound_follows: bool = True           # can outsiders follow this co's authors?
 
 
 @dataclass
@@ -650,3 +653,148 @@ def can_review(user: "User", category: str | None = None) -> bool:
     if not user or not user.is_active:
         return False
     return "admin" in (user.roles or [])
+
+
+# ════════════════════════════════════════════════════════════════════
+# [Workflow 2] Cross-company visibility + follow-author
+# ════════════════════════════════════════════════════════════════════
+#
+# Visibility rules ALREADY live in companies_with_access (see Auth 1).
+# What Workflow 2 adds:
+#   - Per-company opt-in for cross-company shares (Company.allow_cross_company_shares)
+#   - "Follow this author" affordance with notification fan-out
+#   - Bulk "upgrade approved item to shared-public" admin action
+
+
+def can_publish_cross_company(approving_company: "Company | None") -> bool:
+    """Can this company stamp an item with visibility=shared-public or
+    shared-with-allowlist? Off by default for new tenants (safer)."""
+    if not approving_company:
+        return False
+    return bool(getattr(approving_company, "allow_cross_company_shares", False))
+
+
+def can_follow_author(viewer: "User", provenance: dict) -> bool:
+    """Can the viewer follow this author?
+
+    Rules:
+      - Same-company always allowed (your colleagues).
+      - Cross-company allowed only when the AUTHOR's company has
+        allow_inbound_follows=True.
+    """
+    if not viewer:
+        return False
+    author_co = provenance.get("author_company")
+    if not author_co:
+        return False
+    if author_co == viewer.company_id:
+        return True
+    co = get_company(author_co)
+    if not co:
+        return False
+    return bool(getattr(co, "allow_inbound_follows", True))
+
+
+# ── Follows — append-only event log ──────────────────────────────
+
+
+@dataclass
+class FollowEvent:
+    event_id: str
+    follower_user_id: str
+    target_email: str
+    action: str        # "follow" | "unfollow"
+    at: str
+    notes: str = ""
+
+
+def _follows_path() -> Path:
+    return _root() / "follows.jsonl"
+
+
+def follow_author(follower_user_id: str, target_email: str,
+                          notes: str = "") -> FollowEvent:
+    ev = FollowEvent(
+        event_id=_new_id("flw"),
+        follower_user_id=follower_user_id,
+        target_email=target_email.lower().strip(),
+        action="follow", at=_now(), notes=notes,
+    )
+    with _follows_path().open("a", encoding="utf-8") as f:
+        f.write(json.dumps(asdict(ev)) + "\n")
+    return ev
+
+
+def unfollow_author(follower_user_id: str, target_email: str,
+                              notes: str = "") -> FollowEvent:
+    ev = FollowEvent(
+        event_id=_new_id("flw"),
+        follower_user_id=follower_user_id,
+        target_email=target_email.lower().strip(),
+        action="unfollow", at=_now(), notes=notes,
+    )
+    with _follows_path().open("a", encoding="utf-8") as f:
+        f.write(json.dumps(asdict(ev)) + "\n")
+    return ev
+
+
+def _read_follow_events() -> list[FollowEvent]:
+    path = _follows_path()
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip(): continue
+        try:
+            out.append(FollowEvent(**_drop_unknown(FollowEvent, json.loads(line))))
+        except Exception:
+            continue
+    return out
+
+
+def is_following(follower_user_id: str, target_email: str) -> bool:
+    """Most-recent action wins (collapse follow/unfollow toggles)."""
+    target = target_email.lower().strip()
+    last = None
+    for ev in _read_follow_events():
+        if ev.follower_user_id == follower_user_id and ev.target_email == target:
+            last = ev.action
+    return last == "follow"
+
+
+def followers_of(target_email: str) -> list[str]:
+    """Return user_ids currently following this author."""
+    target = target_email.lower().strip()
+    state: dict[str, str] = {}   # follower_user_id → "follow" | "unfollow"
+    for ev in _read_follow_events():
+        if ev.target_email == target:
+            state[ev.follower_user_id] = ev.action
+    return [uid for uid, a in state.items() if a == "follow"]
+
+
+def upgrade_item_visibility(item_kind: str, item_id: str, category: str,
+                                          company_id: str, admin_user_id: str,
+                                          new_visibility: str,
+                                          shared_with: list[str] | None = None,
+                                          notes: str = "") -> "ItemApproval":
+    """[Workflow 2] Bulk action: upgrade an already-approved item's visibility.
+    Guarded by can_publish_cross_company."""
+    co = get_company(company_id)
+    if new_visibility in ("shared-public", "shared-with-allowlist"):
+        if not can_publish_cross_company(co):
+            raise PermissionError(
+                f"{company_id} does not have cross-company shares enabled. "
+                f"Toggle allow_cross_company_shares=True in admin first."
+            )
+    existing = get_approval(item_kind, item_id, category, company_id)
+    if not existing:
+        raise ValueError(f"No approval record for {item_id} @ {company_id}")
+    if existing.status != "approved":
+        raise ValueError(f"Item is {existing.status}, must be approved to share")
+    return record_approval(
+        item_kind=item_kind, item_id=item_id, category=category,
+        company_id=company_id, approved_by_user_id=admin_user_id,
+        status="approved", visibility=new_visibility,
+        shared_with=shared_with or existing.shared_with,
+        notes=notes or f"visibility upgraded to {new_visibility}",
+    )

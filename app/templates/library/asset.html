@@ -84,6 +84,86 @@
   </div>
 </div>
 
+{# [Workflow 2] Provenance + follow author #}
+{% if provenance %}
+<div class="library-card" style="border-left: 3px solid var(--accent-library); margin-bottom: var(--space-4);">
+  <div class="library-card-header" style="background: var(--accent-library-soft);">
+    <h2>🧾 Provenance</h2>
+  </div>
+  <div class="p-4">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="asset-meta" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;">Authored by</div>
+        {% if provenance.author_name %}
+          <div style="font-size: 15px;">
+            <strong>{{ provenance.author_name }}</strong>
+            {% if provenance.author_company_name %}
+              <span class="asset-tag">{{ provenance.author_company_name }}</span>
+            {% endif %}
+          </div>
+          {% if provenance.author_email %}
+            <div class="asset-meta">{{ provenance.author_email }}</div>
+          {% endif %}
+        {% elif provenance.author_email %}
+          <div>{{ provenance.author_email }}</div>
+        {% else %}
+          <div class="asset-meta"><em>External or anonymous source</em></div>
+        {% endif %}
+
+        {# follow / unfollow control — only when viewer is logged in + author known #}
+        {% if follow_state and follow_state.can_follow %}
+          <form method="post" action="/library/follow" style="margin-top: 8px; display:inline;">
+            <input type="hidden" name="target_email" value="{{ follow_state.target_email }}">
+            <input type="hidden" name="action" value="{% if follow_state.already_following %}unfollow{% else %}follow{% endif %}">
+            <button class="btn btn-sm {% if follow_state.already_following %}btn-outline-secondary{% else %}btn-outline-success{% endif %}">
+              {% if follow_state.already_following %}✓ Following{% else %}+ Follow author{% endif %}
+            </button>
+          </form>
+        {% elif follow_state and not follow_state.can_follow %}
+          <div class="asset-meta" style="margin-top: 8px;">
+            <em>This author's company does not allow follows from outside their tenant.</em>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <div class="asset-meta" style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;">
+          Approved by
+        </div>
+        {% if provenance.approving_companies %}
+          {% for ac in provenance.approving_companies %}
+          <div style="font-size: 14px; margin-bottom: 6px;">
+            <span class="vetted-badge" style="background: rgba(31, 111, 235, 0.1); color: #1f6feb; border-color: #1f6feb;">
+              ✓ {{ ac.company_name }}
+            </span>
+            <span class="asset-meta">
+              by {{ ac.approver_name }} · {{ ac.approved_at[:10] }}
+              {% if ac.visibility == 'shared-public' %}
+                · <span style="color: #1a7f37;">🌐 shared-public</span>
+              {% elif ac.visibility == 'shared-with-allowlist' %}
+                · <span style="color: #9a6700;">🔒 allowlist ({{ ac.shared_with|length }} co)</span>
+              {% endif %}
+            </span>
+            {% if ac.notes %}
+              <div class="asset-meta" style="margin-left: 12px;"><em>"{{ ac.notes }}"</em></div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="asset-meta"><em>Not yet approved by any company.</em></div>
+        {% endif %}
+
+        {% if provenance.owning_company_id %}
+          <div class="asset-meta" style="margin-top: 6px;">
+            Owned by tenant: <code>{{ provenance.owning_company_id }}</code>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-4">
   <div class="col-lg-8">
 

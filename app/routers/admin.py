@@ -458,6 +458,57 @@ async def queue_decide(request: Request, company_id: str, item_id: str,
     return RedirectResponse(url=f"/admin/{company_id}/queue", status_code=303)
 
 
+# [Workflow 2] Per-company sharing policy + bulk visibility upgrade
+
+
+@router.post("/companies/{slug}/sharing")
+async def update_sharing_policy(request: Request, slug: str,
+                                            allow_cross_company_shares: str = Form("off"),
+                                            allow_inbound_follows: str = Form("on")):
+    """Toggle a company's cross-company share + follow policies."""
+    admin = _require_admin(request)
+    co = tenancy.get_company(slug)
+    if not co:
+        raise HTTPException(404, f"Unknown company: {slug}")
+    # Authorisation: only company's own admin or super_admin
+    if admin.company_id != slug and admin.company_id != "colaberry":
+        raise HTTPException(403, "not your company")
+    co.allow_cross_company_shares = (allow_cross_company_shares == "on")
+    co.allow_inbound_follows = (allow_inbound_follows == "on")
+    tenancy.upsert_company(co)
+    _audit(admin.user_id, "company.sharing.update", target=slug,
+              notes=f"cross_co={co.allow_cross_company_shares},follows={co.allow_inbound_follows}")
+    return RedirectResponse(url=f"/admin/companies/{slug}", status_code=303)
+
+
+@router.post("/{company_id}/queue/{item_id}/share")
+async def upgrade_share(request: Request, company_id: str, item_id: str,
+                                category: str = Form(...),
+                                item_kind: str = Form("library_asset"),
+                                new_visibility: str = Form(...),
+                                shared_with: str = Form(""),
+                                notes: str = Form("")):
+    admin = _require_reviewer_for(request, company_id)
+    if new_visibility not in ("same-company-only", "shared-public", "shared-with-allowlist"):
+        raise HTTPException(400, f"bad visibility {new_visibility}")
+    allowlist = [s.strip() for s in shared_with.split(",") if s.strip()]
+    try:
+        tenancy.upgrade_item_visibility(
+            item_kind=item_kind, item_id=item_id, category=category,
+            company_id=company_id, admin_user_id=admin.user_id,
+            new_visibility=new_visibility, shared_with=allowlist, notes=notes,
+        )
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    _audit(admin.user_id, "item.visibility.upgrade",
+              target=f"{company_id}/{category}/{item_id}",
+              notes=f"new_visibility={new_visibility} allowlist={allowlist}")
+    return RedirectResponse(url=f"/admin/{company_id}/queue?status=approved",
+                                       status_code=303)
+
+
 # Author-facing: submit a draft to the queue (called from library submit form)
 @router.post("/{company_id}/queue/submit")
 async def queue_submit(request: Request, company_id: str,
