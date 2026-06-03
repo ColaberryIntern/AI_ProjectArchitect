@@ -103,8 +103,20 @@ async def ops_home(request: Request):
     if view not in ("briefing", "kanban", "heatmap"):
         view = "briefing"
     project_filter_raw = request.query_params.get("project", "")
+    # Tier filter: 'assigned' (default) | 'due' | 'unassigned' | 'all'
+    tier = request.query_params.get("tier", "assigned")
+    if tier not in ("assigned", "due", "unassigned", "all"):
+        tier = "assigned"
 
-    # Apply project filter to the working set when set
+    # Pre-compute counts per tier for the chip row (BEFORE filtering)
+    from collections import Counter
+    tier_counts_total = Counter(
+        getattr(t, "inclusion_reason", "assigned") for t in todos
+        if t.status == "active" and not t.is_dismissed
+    )
+    tier_counts_total["all"] = sum(tier_counts_total.values())
+
+    # Apply project filter
     if project_filter_raw:
         try:
             project_filter_id = int(project_filter_raw)
@@ -117,6 +129,15 @@ async def ops_home(request: Request):
         scoped_todos = [t for t in todos if t.bc_project_id == project_filter_id]
     else:
         scoped_todos = todos
+
+    # Apply tier filter
+    if tier == "assigned":
+        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "assigned"]
+    elif tier == "due":
+        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "due"]
+    elif tier == "unassigned":
+        scoped_todos = [t for t in scoped_todos if getattr(t, "inclusion_reason", "assigned") == "unassigned"]
+    # tier == "all" → no filter
 
     # Pre-compute aggregates against the scoped working set
     status = rollup.overall(scoped_todos)
@@ -178,6 +199,8 @@ async def ops_home(request: Request):
              # View routing
              view=view,
              project_filter=project_filter_id,
+             tier=tier,
+             tier_counts=tier_counts_total,
              # Top-of-page status
              status=status,
              greeting=greeting,

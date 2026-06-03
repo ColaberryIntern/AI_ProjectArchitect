@@ -19,23 +19,42 @@
 {% endif %}
 
 {# ── View-mode tabs ───────────────────────────────────────── #}
+{% set qs_tail = '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') %}
 <div class="view-tabs">
-  <a href="?view=briefing{% if project_filter %}&project={{ project_filter }}{% endif %}"
-     class="view-tab {% if view == 'briefing' %}active{% endif %}">📋 Briefing</a>
-  <a href="?view=kanban{% if project_filter %}&project={{ project_filter }}{% endif %}"
-     class="view-tab {% if view == 'kanban' %}active{% endif %}">🗂 Kanban</a>
-  <a href="?view=heatmap{% if project_filter %}&project={{ project_filter }}{% endif %}"
-     class="view-tab {% if view == 'heatmap' %}active{% endif %}">🔥 Heat map</a>
+  <a href="?view=briefing{{ qs_tail }}" class="view-tab {% if view == 'briefing' %}active{% endif %}">📋 Briefing</a>
+  <a href="?view=kanban{{ qs_tail }}" class="view-tab {% if view == 'kanban' %}active{% endif %}">🗂 Kanban</a>
+  <a href="?view=heatmap{{ qs_tail }}" class="view-tab {% if view == 'heatmap' %}active{% endif %}">🔥 Heat map</a>
+</div>
+
+{# ── Tier filter chips ─────────────────────────────────── #}
+{% set qs_no_tier = '&project=' ~ project_filter if project_filter else '' %}
+<div class="project-chips" style="border-top: 0; padding-top: 0; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 0;">
+  <a href="?view={{ view }}&tier=assigned{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'assigned' %}active{% endif %}">
+    👤 Assigned to you <span class="chip-count">{{ tier_counts.get('assigned', 0) }}</span>
+  </a>
+  <a href="?view={{ view }}&tier=due{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'due' %}active{% endif %}">
+    📅 Due-watching <span class="chip-count">{{ tier_counts.get('due', 0) }}</span>
+  </a>
+  <a href="?view={{ view }}&tier=unassigned{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'unassigned' %}active{% endif %}">
+    🤝 Unassigned <span class="chip-count">{{ tier_counts.get('unassigned', 0) }}</span>
+  </a>
+  <a href="?view={{ view }}&tier=all{{ qs_no_tier }}"
+     class="proj-chip {% if tier == 'all' %}active{% endif %}">
+    🌍 All <span class="chip-count">{{ tier_counts.get('all', 0) }}</span>
+  </a>
 </div>
 
 {# ── Project filter chips ─────────────────────────────────── #}
 {% if all_project_rollups %}
 <div class="project-chips">
-  <a href="?view={{ view }}" class="proj-chip {% if not project_filter %}active{% endif %}">
-    All <span class="chip-count">{{ status.open_count if not project_filter else (all_project_rollups | sum(attribute='open_count')) }}</span>
+  <a href="?view={{ view }}&tier={{ tier }}" class="proj-chip {% if not project_filter %}active{% endif %}">
+    All projects <span class="chip-count">{{ status.open_count if not project_filter else (all_project_rollups | sum(attribute='open_count')) }}</span>
   </a>
   {% for p in all_project_rollups %}
-  <a href="?view={{ view }}&project={{ p.project_id }}"
+  <a href="?view={{ view }}&tier={{ tier }}&project={{ p.project_id }}"
      class="proj-chip {% if project_filter == p.project_id %}active{% endif %} {% if p.overdue_count %}has-overdue{% endif %}">
     {{ p.project_name[:24] }}
     <span class="chip-count">{{ p.open_count }}</span>
