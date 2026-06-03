@@ -51,13 +51,37 @@ def _require_user(request: Request):
 
 
 def _ctx(request: Request, user, **extra) -> dict:
+    # Pull just enough from the library product to render the shared shell:
+    # category counts, use-case count, workspace, pending_count. None of
+    # these are critical to my-day rendering but the library base reads them.
+    try:
+        from execution.products.library import inventory
+        from execution.products.library import store as lib_store
+        from execution.products.library import use_cases
+        counts = inventory.inventory_counts(viewer_company_id=user.company_id)
+        use_case_count = use_cases.count("global")
+        pending_count = len(lib_store.list_submissions(status="pending"))
+    except Exception:
+        counts = {}
+        use_case_count = 0
+        pending_count = 0
+
     base = {
         "request": request,
-        "current_product": "ops",
+        "current_product": "library",
+        "library_nav_active": "my_day",
+        "workspace": "global",
         "current_session_user": user,
+        "actor": (user.display_name or user.email) if user else None,
+        "counts": counts,
+        "use_case_count": use_case_count,
+        "pending_count": pending_count,
+        "scope": "my-company",
+        "viewer_company_id": user.company_id if user else None,
         "company_id": user.company_id,
         "company_display": (tenancy.get_company(user.company_id).display_name
                             if tenancy.get_company(user.company_id) else user.company_id),
+        "my_day_total_open": None,
     }
     base.update(extra)
     return base
@@ -281,7 +305,8 @@ async def ops_home(request: Request):
              recent_completed=recent_completed,
              human_todos=human_todos,
              ai_todos=ai_todos,
-             total_open=status.open_count),
+             total_open=status.open_count,
+             my_day_total_open=status.open_count),
     )
 
 

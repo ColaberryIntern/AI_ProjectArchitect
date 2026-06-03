@@ -1,13 +1,16 @@
-{% extends "my_day/_my_day_base.html" %}
+{% extends "library/_library_base.html" %}
 {% block title %}My Day · Heat map · Colaberry{% endblock %}
 
-{% block topbar_extras %}
-<form method="post" action="/my-day/sync" style="margin: 0;">
-  <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
-</form>
-{% endblock %}
+{% block content %}
+{% include "my_day/_my_day_styles.html" %}
 
-{% block main %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+  <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day · Heat map</h1>
+  <form method="post" action="/my-day/sync" style="margin: 0;">
+    <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
+  </form>
+</div>
+
 
 {% include "my_day/_view_chrome.html" %}
 

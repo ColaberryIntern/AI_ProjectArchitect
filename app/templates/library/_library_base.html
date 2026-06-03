@@ -304,11 +304,6 @@
     </form>
 
     <div class="lib-top-actions">
-      <a href="/my-day/" class="lib-action-btn outline" title="Your daily task triage briefing"
-         style="background: #fff; border: 1px solid var(--border-default); color: var(--fg-default); padding: 6px 12px;">
-        ☀ My Day
-      </a>
-
       <div class="add-menu" id="add-menu">
         <button class="lib-action-btn" onclick="document.getElementById('add-menu').classList.toggle('open')">+ Add ▾</button>
         <div class="add-menu-panel">
@@ -413,6 +408,10 @@
 
   <!-- Sidebar -->
   <aside class="lib-sidebar">
+    <a href="/my-day/" {% if library_nav_active == 'my_day' %}class="active"{% endif %}>
+      <span class="nav-icon">☀</span> My Day
+      {% if my_day_total_open is not none %}<span class="nav-count">{{ my_day_total_open }}</span>{% endif %}
+    </a>
     <a href="/library/use-cases?ws={{ workspace|default('global') }}" {% if library_nav_active == 'use_cases' %}class="active"{% endif %}>
       <span class="nav-icon">🎯</span> Use Cases
       {% if use_case_count is not none %}<span class="nav-count">{{ use_case_count }}</span>{% endif %}

@@ -1,12 +1,14 @@
-{% extends "my_day/_my_day_base.html" %}
+{% extends "library/_library_base.html" %}
 
 {% block title %}{{ todo.title }} · My Day{% endblock %}
 
-{% block topbar_extras %}
-<a href="/my-day/" class="md-product-link">← Back to queue</a>
-{% endblock %}
+{% block content %}
+{% include "my_day/_my_day_styles.html" %}
 
-{% block main %}
+<div style="margin-bottom: 14px;">
+  <a href="/my-day/" style="font-size: 13px; color: #57606a; text-decoration: none;">← Back to queue</a>
+</div>
+
 <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px;">
   <div>
     <h1 class="ws-title">{{ todo.title }}</h1>
