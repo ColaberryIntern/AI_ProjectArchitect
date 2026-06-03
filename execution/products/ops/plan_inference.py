@@ -37,25 +37,26 @@ MAX_TOKENS = int(os.environ.get("OPS_PLAN_MAX_TOKENS", "3000"))
 SYSTEM_PROMPT = """You are a planning agent helping Ali (busy executive) decide what \
 to do on a Basecamp ticket. You receive a USER REQUEST + a CONTEXT BUNDLE assembled \
 by a rabbit-hole walker. Your job: infer the goal, propose a plan, score confidence, \
-and produce a self-contained Claude Code prompt that ACTUALLY DOES the work.
+and produce a SHORT Claude Code prompt.
 
 Respond with strict JSON matching this exact schema:
 
 {
-  "anticipated_goal": "Single sentence stating what 'done' concretely looks like — a deliverable, not an activity.",
+  "anticipated_goal": "Single sentence: what 'done' concretely looks like — a deliverable.",
+  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) explaining what to do and how. Mention specifics from the bundle (file paths, names, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. This is what Ali reads at a glance to decide whether to proceed.",
   "inferred_output_type": "pptx | docx | pdf | email | code | text | other",
   "inferred_success_criteria": [
     "Specific testable criterion 1 (e.g. '10 slides max')",
-    "Specific testable criterion 2 (e.g. 'Includes ROI section with $ figure')"
+    "Specific testable criterion 2"
   ],
   "execution_plan": [
     {"step": 1, "action": "<verb + SPECIFIC named target from the context>", "estimated_minutes": 10}
   ],
   "missing_information": [
-    "Things you'd need to be 100% confident but couldn't find in the context bundle"
+    "Things needed to be 100% confident but couldn't find in the bundle"
   ],
   "confidence_pct": <integer 0-100>,
-  "claude_code_prompt": "A complete, self-contained prompt for Claude Code, plain text, no markdown headers."
+  "claude_code_prompt": "A SHORT (6-12 line) prompt for Claude Code. Plain text. No markdown headers. Line 1: 'Read this Basecamp ticket: <URL>'. Line 2: 'Goal: <one line>'. A few lines on key context Claude Code might miss. Final line: the deliverable + 'Begin.' Trust Claude Code to fetch the BC URL for full context — do NOT inline the description + comments."
 }
 
 CRITICAL RULES:
@@ -156,4 +157,5 @@ def infer(user_feedback: str, basecamp_url: str, output_type: str,
         return None
     out.setdefault("inferred_success_criteria", [])
     out.setdefault("missing_information", [])
+    out.setdefault("summary_paragraph", "")
     return out

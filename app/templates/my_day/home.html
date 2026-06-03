@@ -36,10 +36,10 @@
   </div>
 </div>
 
-{# ── Steps card ───────────────────────────────────────────── #}
+{# ── Steps card (paragraph form per user feedback) ───────── #}
 <div class="steps-card">
   <div class="head">
-    <h3>STEPS FOR YOU</h3>
+    <h3>WHAT TO DO</h3>
     <span class="pill {{ 'trivial' if focus_suggestion.action_kind in ('reply','schedule','decision') else '' }}">
       {{ focus_suggestion.action_kind|upper }}
     </span>
@@ -49,13 +49,19 @@
     </span>
     {% endif %}
   </div>
-  <div class="goal"><strong>Goal:</strong> {{ focus_suggestion.one_line }}</div>
-  <ol>
+  {% if focus_suggestion.summary_paragraph %}
+  <p style="margin: 0 0 14px; font-size: 14px; line-height: 1.65; color: #1f2328;">
+    {{ focus_suggestion.summary_paragraph }}
+  </p>
+  {% else %}
+  <p style="margin: 0 0 8px; font-size: 14px; color: #1f2328;"><strong>Goal:</strong> {{ focus_suggestion.one_line }}</p>
+  <ol style="margin-bottom: 14px; padding-left: 20px;">
     {% for step in focus_suggestion.steps %}<li>{{ step }}</li>{% endfor %}
   </ol>
+  {% endif %}
   {% if focus_suggestion.stop_conditions %}
-  <div class="stops">
-    <strong>⚠ Stop and escalate if:</strong> {{ focus_suggestion.stop_conditions[0] }}
+  <div class="stops" style="font-size: 12px;">
+    <strong>⚠ Stop if:</strong> {{ focus_suggestion.stop_conditions[0] }}
   </div>
   {% endif %}
   <div class="actions">

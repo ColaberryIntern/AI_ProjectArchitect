@@ -98,6 +98,24 @@ def _is_fresh(updated_at: str | None) -> bool:
         return True
 
 
+def _todo_is_relevant(todo: dict) -> bool:
+    """Include a todo if it has recent activity OR a future due date.
+
+    Past fix would drop a todo that hadn't been touched in 30 days even
+    if its due_on was next week. That hid tasks Ali cares about most.
+    """
+    if _is_fresh(todo.get("updated_at")):
+        return True
+    due_on = todo.get("due_on")
+    if due_on:
+        try:
+            d = datetime.strptime(due_on, "%Y-%m-%d").date()
+            return d >= datetime.now(timezone.utc).date()
+        except ValueError:
+            pass
+    return False
+
+
 def _paginate(path: str, token: str, max_pages: int = 50):
     """Yield items from a paginated BC list endpoint until empty/400."""
     for page in range(1, max_pages + 1):
@@ -164,23 +182,21 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
 
     # 1. Project discovery
     #    a. /projects.json returns everything the token can see (50+ for CB System).
-    #    b. Skip projects whose own updated_at is older than PROJECT_FRESHNESS_DAYS
-    #       — they're quiet, no point walking their todolists.
+    #    b. NO project-level freshness skip. A "quiet" project at the project
+    #       level can still have a todo with a future due date Ali cares about.
+    #       Filtering happens at the todo level (_todo_is_relevant) so we keep
+    #       any task with recent activity OR an upcoming due date.
     #    c. Always include the user's explicitly-configured extra buckets even
     #       if they aren't in /projects.json (legacy private buckets).
     #    d. Include ali_legacy_bucket if supplied (Phase A demo).
-    project_cutoff = datetime.now(timezone.utc) - timedelta(days=PROJECT_FRESHNESS_DAYS)
     projects_raw: list[dict] = []
     seen_buckets: set[int] = set()
-    skipped_quiet = 0
+    skipped_quiet = 0  # kept in result for backward compat; always 0 now
 
     discovered = discover_projects(token)
     for p in discovered:
         bid = p.get("id")
         if not bid or bid in seen_buckets:
-            continue
-        if not _project_is_recently_active(p, project_cutoff):
-            skipped_quiet += 1
             continue
         seen_buckets.add(bid)
         projects_raw.append(p)
@@ -246,7 +262,7 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
                     assignees = [a.get("id") for a in (t.get("assignees") or [])]
                     if bc_user_id not in assignees:
                         continue
-                    if not _is_fresh(t.get("updated_at")):
+                    if not _todo_is_relevant(t):
                         continue
                     fresh_todos.append(store.OpsTodo(
                         bc_id=t["id"],

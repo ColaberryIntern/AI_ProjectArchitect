@@ -70,30 +70,38 @@
 </div>
 {% endif %}
 
-{# ── Execution Plan ───────────────────────────────────── #}
+{# ── What to do (paragraph form, per user feedback) ───── #}
+{% if plan.summary_paragraph %}
 <div class="steps-card">
   <div class="head">
-    <h3>EXECUTION PLAN</h3>
+    <h3>WHAT TO DO</h3>
   </div>
-  <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
-    {% for s in plan.execution_plan %}
-    <li style="margin-bottom: 8px;">
-      {{ s.action }}
-      {% if s.estimated_minutes %}
-      <span style="color: #57606a; font-size: 11px;"> · ~{{ s.estimated_minutes }} min</span>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ol>
+  <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #1f2328;">
+    {{ plan.summary_paragraph }}
+  </p>
   {% if plan.missing_information %}
-  <div class="stops" style="margin-top: 16px;">
-    <strong>⚠ Missing info — confidence dropped because:</strong>
-    <ul style="margin: 6px 0 0 16px; padding: 0;">
-      {% for m in plan.missing_information %}<li>{{ m }}</li>{% endfor %}
-    </ul>
+  <div class="stops" style="margin-top: 14px; font-size: 12px;">
+    <strong>⚠ Missing info:</strong>
+    {{ plan.missing_information | join(' · ') }}
   </div>
   {% endif %}
 </div>
+{% endif %}
+
+{# ── Detailed step list (collapsed by default) ─────────── #}
+<details style="background: #fff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 16px; padding: 14px 18px;">
+  <summary style="cursor: pointer; font-size: 12px; color: #57606a; font-weight: 600;">
+    ▸ Detailed step list ({{ plan.execution_plan|length }} steps · ~{% set ns = namespace(t=0) %}{% for s in plan.execution_plan %}{% set ns.t = ns.t + (s.estimated_minutes or 0) %}{% endfor %}{{ ns.t }} min)
+  </summary>
+  <ol style="padding-left: 22px; font-size: 13px; line-height: 1.6; margin-top: 10px;">
+    {% for s in plan.execution_plan %}
+    <li style="margin-bottom: 6px;">
+      {{ s.action }}
+      {% if s.estimated_minutes %}<span style="color: #57606a; font-size: 11px;"> · ~{{ s.estimated_minutes }} min</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</details>
 
 {# ── Claude Code Prompt ──────────────────────────────── #}
 <div class="steps-card">

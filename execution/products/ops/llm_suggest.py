@@ -95,6 +95,7 @@ Respond with strict JSON matching this exact schema:
 {
   "action_kind": "decision|reply|email|build|research|meeting|schedule|review|default",
   "goal_line": "One sentence: what 'done' concretely looks like — a deliverable, not an activity.",
+  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) describing what to do AND how to do it. Mention specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. Just a clear paragraph a smart human can read in 15 seconds and know exactly what to do.",
   "specific_steps": [
     "<verb> <specific named thing>",
     "<verb> <specific named thing>",
@@ -103,7 +104,7 @@ Respond with strict JSON matching this exact schema:
   "stop_conditions": [
     "Specific named conditions that should pause the work and get a human in the loop"
   ],
-  "claude_code_prompt": "A complete, self-contained prompt the user can paste into a fresh Claude Code session..."
+  "claude_code_prompt": "A SHORT (5-12 line) prompt the user pastes into a fresh Claude Code session. Plain text, no markdown headers. Just: BC URL on line 1, goal on line 2, key context on lines 3-4, what to deliver on the last line. Trust Claude Code to read the BC URL for full context — do NOT inline the full description + comments in the prompt."
 }
 
 ABSOLUTE RULES — these are violations of the contract:
@@ -214,6 +215,7 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
     if not isinstance(out["specific_steps"], list) or not out["specific_steps"]:
         return None
     out.setdefault("stop_conditions", [])
+    out.setdefault("summary_paragraph", "")
 
     cache[key] = out
     try:
