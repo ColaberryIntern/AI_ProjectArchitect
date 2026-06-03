@@ -39,6 +39,18 @@
   </div>
 
   <div style="margin-bottom: 18px;">
+    <label style="display: block; font-weight: 600; margin-bottom: 6px;">Extra Basecamp project IDs to sync (optional)</label>
+    <textarea name="bc_extra_buckets" rows="2"
+              placeholder="e.g. 7463955, 8123456, 8789012"
+              style="width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;">{{ target_user.bc_extra_buckets|join(', ') if target_user.bc_extra_buckets else '' }}</textarea>
+    <div style="color: #57606a; font-size: 12px; margin-top: 6px;">
+      Comma- or space-separated. <strong>Required when the AI clone token's <code>/projects.json</code> returns 0</strong> (e.g. CB System
+      narrow-scope tokens). Find a project's ID from its Basecamp URL: <code>https://3.basecamp.com/3945211/buckets/<strong>12345678</strong>/...</code>
+      <br>If left blank, sync uses whatever projects the token sees natively.
+    </div>
+  </div>
+
+  <div style="margin-bottom: 18px;">
     <label style="display: block; font-weight: 600; margin-bottom: 6px;">Basecamp OAuth access token</label>
     <textarea name="bc_ai_clone_token" rows="4" required
               placeholder="BAhbB0kiAbB7..."

@@ -568,6 +568,7 @@ async def ai_clone_save(request: Request, user_id: str,
                         bc_user_id: int = Form(...),
                         bc_ai_clone_name: str = Form(...),
                         bc_ai_clone_token: str = Form(...),
+                        bc_extra_buckets: str = Form(""),
                         ttl_days: Optional[int] = Form(14)):
     admin = _require_admin(request)
     u = tenancy.get_user(user_id)
@@ -575,9 +576,17 @@ async def ai_clone_save(request: Request, user_id: str,
         raise HTTPException(404, "user not found")
     if admin.company_id != "colaberry" and u.company_id != admin.company_id:
         raise HTTPException(403, "can only modify users in your own company")
-    # 1. Update User record with the human's BC id + clone display name
+    # Parse extra bucket ids (comma- or whitespace-separated)
+    parsed_buckets: list[int] = []
+    for chunk in bc_extra_buckets.replace(",", " ").split():
+        try:
+            parsed_buckets.append(int(chunk.strip()))
+        except ValueError:
+            continue
+    # 1. Update User record with the human's BC id + clone display name + extra buckets
     u.bc_user_id = int(bc_user_id)
     u.bc_ai_clone_name = bc_ai_clone_name.strip() or f"{u.display_name} Clone"
+    u.bc_extra_buckets = parsed_buckets
     tenancy.upsert_user(u)
     # 2. Grant scope + store the token in the vault
     if "basecamp_ai_clone" not in tenancy.current_scopes(u.user_id):

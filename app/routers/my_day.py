@@ -17,7 +17,9 @@ from fastapi.responses import RedirectResponse
 from datetime import datetime, timezone
 
 from execution.products.library import auth_google, tenancy
-from execution.products.ops import rollup, scorer, store, suggestions, sync
+from execution.products.ops import (
+    bc_comments, llm_suggest, rollup, scorer, store, suggestions, sync, tokens,
+)
 
 router = APIRouter(prefix="/my-day", tags=["my-day"])
 
@@ -104,8 +106,30 @@ async def ops_home(request: Request):
 
     # The single "YOUR TURN" focus
     focus = human_todos[0] if human_todos else (active_sorted[0] if active_sorted else None)
-    focus_suggestion = suggestions.build_suggestion(focus) if focus else None
-    focus_prompt = suggestions.generate_prompt(focus, focus_suggestion) if focus else ""
+    focus_suggestion = None
+    focus_prompt = ""
+    focus_llm_source = "deterministic"
+    if focus:
+        # Try LLM enhancement first: pull recent comments, send to GPT,
+        # get specific steps + Claude Code prompt back. Cached per ticket.
+        token, _src = tokens.get_user_token(user.email)
+        comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
+        enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
+        if enhanced:
+            focus_suggestion = {
+                "action_kind": enhanced.get("action_kind", "default"),
+                "one_line": enhanced.get("goal_line", ""),
+                "steps": enhanced.get("specific_steps", []),
+                "stop_conditions": enhanced.get("stop_conditions", []),
+                "resources": [],
+                "urgency_summary": f"score {focus.urgency_score}" + (f" · due {focus.due_on}" if focus.due_on else ""),
+            }
+            focus_prompt = enhanced.get("claude_code_prompt", "")
+            focus_llm_source = "llm"
+        else:
+            # Deterministic fallback when OpenAI is unavailable or errors
+            focus_suggestion = suggestions.build_suggestion(focus)
+            focus_prompt = suggestions.generate_prompt(focus, focus_suggestion)
 
     # Single-project context (used for big-picture banner)
     project_one = projects[0] if len(projects) == 1 else None
@@ -132,6 +156,7 @@ async def ops_home(request: Request):
              focus=focus,
              focus_suggestion=focus_suggestion,
              focus_prompt=focus_prompt,
+             focus_llm_source=focus_llm_source,
              # Lists + tasks
              list_rollups=list_rollups,
              human_todos=human_todos,

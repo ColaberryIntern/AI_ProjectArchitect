@@ -58,6 +58,11 @@
     <span class="pill {{ 'trivial' if focus_suggestion.action_kind in ('reply','schedule','decision') else '' }}">
       {{ focus_suggestion.action_kind|upper }}
     </span>
+    {% if focus_llm_source == 'llm' %}
+    <span style="font-size: 10px; color: #1a7f37; background: #dafbe1; padding: 2px 8px; border-radius: 999px; font-weight: 600; letter-spacing: 0.4px;">
+      🤖 AI-ENHANCED
+    </span>
+    {% endif %}
   </div>
   <div class="goal"><strong>Goal:</strong> {{ focus_suggestion.one_line }}</div>
   <ol>

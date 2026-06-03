@@ -112,12 +112,41 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
         store.save_state(state)
         return {"status": "bc_user_id_missing", "todos": 0, "projects": 0}
 
-    # 1. Project discovery (or legacy single-bucket)
-    if ali_legacy_bucket is not None:
-        single = _bc_get(f"/projects/{ali_legacy_bucket}.json", token)
-        projects_raw = [single] if single else []
-    else:
-        projects_raw = discover_projects(token)
+    # 1. Project discovery
+    #    Strategy:
+    #      a. Try projects.json (works when the token has full visibility).
+    #      b. Always add the user's explicitly-configured extra buckets
+    #         (User.bc_extra_buckets) — needed when the token is narrowly
+    #         scoped (e.g. CB System sees 0 via projects.json).
+    #      c. If ali_legacy_bucket is supplied (Phase A demo), include it too.
+    projects_raw: list[dict] = []
+    seen_buckets: set[int] = set()
+
+    discovered = discover_projects(token)
+    for p in discovered:
+        bid = p.get("id")
+        if bid and bid not in seen_buckets:
+            seen_buckets.add(bid)
+            projects_raw.append(p)
+
+    extra_buckets: list[int] = []
+    try:
+        from execution.products.library import tenancy as _tenancy
+        u = _tenancy.get_user(user_id)
+        if u and getattr(u, "bc_extra_buckets", None):
+            extra_buckets = list(u.bc_extra_buckets)
+    except Exception:
+        pass
+    if ali_legacy_bucket and ali_legacy_bucket not in extra_buckets:
+        extra_buckets.append(ali_legacy_bucket)
+
+    for bid in extra_buckets:
+        if bid in seen_buckets:
+            continue
+        single = _bc_get(f"/projects/{bid}.json", token)
+        if single:
+            seen_buckets.add(bid)
+            projects_raw.append(single)
 
     fresh_projects: list[store.OpsProject] = []
     fresh_todos: list[store.OpsTodo] = []

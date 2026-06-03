@@ -103,6 +103,7 @@ class User:
     workspace_repo: str | None = None   # Provision 1
     bc_user_id: int | None = None       # Basecamp human identity (My Day sync)
     bc_ai_clone_name: str | None = None # Display name for the AI clone (e.g. "Ali Clone")
+    bc_extra_buckets: list[int] = field(default_factory=list)  # Extra BC project ids to sync
     created_at: str = ""
     last_login_at: str | None = None
     is_active: bool = True
