@@ -419,8 +419,13 @@
   </summary>
   <div class="panel" style="padding: 0;">
     <div class="task-seq-header">TASK SEQUENCE ({{ r.open_count }} OPEN, ORDERED BY DUE DATE)</div>
-    {# Order by due (ascending — overdue first), then by urgency (desc) within same date #}
-    {% set sorted_todos = r.open_todos|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
+    {# Order by due (ascending — overdue first), then by urgency (desc).
+       Split by due-or-not because Jinja's sort can't compare None to strings. #}
+    {% set _with_due = r.open_todos|selectattr('due_on')|list %}
+    {% set _no_due   = r.open_todos|rejectattr('due_on')|list %}
+    {% set _with_due_sorted = _with_due|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
+    {% set _no_due_sorted   = _no_due|sort(attribute='urgency_score', reverse=True) %}
+    {% set sorted_todos = _with_due_sorted + _no_due_sorted %}
     {# Find first human-needed task that's NOT overdue to mark as NEXT HUMAN STEP #}
     {% set ns = namespace(next_human_id=None) %}
     {% for t in sorted_todos %}
