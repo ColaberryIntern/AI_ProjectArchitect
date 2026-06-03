@@ -16,9 +16,12 @@ from fastapi.responses import RedirectResponse
 
 from datetime import datetime, timezone
 
+from fastapi import Form
+
 from execution.products.library import auth_google, tenancy
 from execution.products.ops import (
-    bc_comments, llm_suggest, rollup, scorer, store, suggestions, sync, tokens,
+    bc_comments, context_collector, llm_suggest, plan_inference,
+    rollup, scorer, store, suggestions, sync, tokens,
 )
 
 router = APIRouter(prefix="/my-day", tags=["my-day"])
@@ -247,6 +250,52 @@ async def ops_undismiss(bc_id: int, request: Request):
     user = _require_user(request)
     store.update_todo(user.email, bc_id, is_dismissed=False)
     return RedirectResponse(request.headers.get("Referer", "/my-day/?show_dismissed=1"), status_code=303)
+
+
+@router.get("/submit")
+async def submit_form(request: Request):
+    """Magic Input form: paste a BC URL + what you need, get back a plan."""
+    user = _require_user(request)
+    return request.app.state.templates.TemplateResponse(
+        request, "my_day/submit.html",
+        _ctx(request, user),
+    )
+
+
+@router.post("/submit")
+async def submit_handle(request: Request,
+                        basecamp_url: str = Form(...),
+                        user_feedback: str = Form(...),
+                        output_type: str = Form(""),
+                        success_criteria: str = Form("")):
+    """Crawl the BC URL, infer goal + plan via LLM, render preview."""
+    user = _require_user(request)
+    token, _src = tokens.get_user_token(user.email)
+    if not token:
+        raise HTTPException(400, "No BC token configured for this user")
+
+    # Step 1: crawl
+    bundle = context_collector.collect(basecamp_url.strip(), token)
+
+    # Step 2: infer plan
+    plan = plan_inference.infer(
+        user_feedback=user_feedback.strip(),
+        basecamp_url=basecamp_url.strip(),
+        output_type=output_type.strip(),
+        success_criteria=success_criteria.strip(),
+        context_bundle=bundle,
+    )
+
+    return request.app.state.templates.TemplateResponse(
+        request, "my_day/plan_preview.html",
+        _ctx(request, user,
+             basecamp_url=basecamp_url.strip(),
+             user_feedback=user_feedback.strip(),
+             output_type_input=output_type.strip(),
+             success_criteria_input=success_criteria.strip(),
+             bundle=bundle,
+             plan=plan),
+    )
 
 
 @router.post("/todo/{bc_id}/complete")

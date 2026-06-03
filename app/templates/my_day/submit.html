@@ -1,0 +1,82 @@
+{% extends "my_day/_my_day_base.html" %}
+{% block title %}Submit a request · My Day · Colaberry{% endblock %}
+
+{% block topbar_extras %}
+<a href="/my-day/" class="md-btn md-btn-outline">← Back to queue</a>
+{% endblock %}
+
+{% block main %}
+<div style="max-width: 720px; margin: 0 auto;">
+  <h1 style="font-size: 22px; margin: 0 0 6px;">Submit a request</h1>
+  <p style="color: #57606a; font-size: 14px; margin: 0 0 24px;">
+    Paste a Basecamp URL + tell me what you need. The system will crawl the ticket + linked
+    items, propose a plan with a confidence score, and give you a ready-to-fire Claude Code prompt.
+  </p>
+
+  <form method="post" action="/my-day/submit" style="background: #fff; border: 1px solid #d0d7de; border-radius: 10px; padding: 24px;">
+
+    <div style="margin-bottom: 18px;">
+      <label style="display: block; font-weight: 600; margin-bottom: 6px;">Basecamp URL <span style="color: #cf222e;">*</span></label>
+      <input type="url" name="basecamp_url" required
+             placeholder="https://3.basecamp.com/3945211/buckets/.../todos/..."
+             style="width: 100%; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;">
+      <div style="color: #57606a; font-size: 11px; margin-top: 6px;">
+        Any BC todo, message, document, or upload URL works. The crawler will recursively walk linked items (depth 2, time 25s, max 20 items).
+      </div>
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label style="display: block; font-weight: 600; margin-bottom: 6px;">What I need <span style="color: #cf222e;">*</span></label>
+      <textarea name="user_feedback" rows="2" required
+                placeholder="e.g. Create executive PowerPoint summarizing the Patriot proposal"
+                style="width: 100%; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;"></textarea>
+      <div style="color: #57606a; font-size: 11px; margin-top: 6px;">
+        One sentence is enough. The system figures out the rest.
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 18px; margin-bottom: 18px;">
+      <div>
+        <label style="display: block; font-weight: 600; margin-bottom: 6px;">Output type</label>
+        <select name="output_type" style="width: 100%; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 6px;">
+          <option value="">(infer from context)</option>
+          <option value="pptx">PowerPoint (pptx)</option>
+          <option value="docx">Word doc (docx)</option>
+          <option value="pdf">PDF</option>
+          <option value="email">Email</option>
+          <option value="code">Code</option>
+          <option value="text">Text report</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label style="display: block; font-weight: 600; margin-bottom: 6px;">Success criteria <span style="color: #57606a; font-weight: 400;">(optional)</span></label>
+        <textarea name="success_criteria" rows="3"
+                  placeholder="One per line, e.g.&#10;10 slides max&#10;Include ROI section with $ figures&#10;Colaberry brand colors"
+                  style="width: 100%; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;"></textarea>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+      <button type="submit" class="md-btn md-btn-primary" style="background: #1f1f1f;">
+        🔍 Crawl + plan
+      </button>
+      <span style="color: #57606a; font-size: 12px; align-self: center;">
+        Takes 15-30 seconds. You'll review the plan before anything is posted to Basecamp.
+      </span>
+    </div>
+  </form>
+
+  <div style="margin-top: 24px; padding: 16px 20px; background: #f6f8fa; border-radius: 8px; font-size: 13px; color: #57606a;">
+    <strong>How this works:</strong>
+    <ol style="margin: 8px 0 0 20px; padding: 0;">
+      <li>System fetches your BC ticket + last 5 comments.</li>
+      <li>Walks every BC link inside the ticket recursively (depth 2).</li>
+      <li>Captures external URLs (Google Drive, Notion, etc.) — just the URLs, not their content.</li>
+      <li>Feeds the full bundle to GPT-4o with the Magic Input contract.</li>
+      <li>GPT-4o returns: anticipated_goal · success_criteria · execution_plan · confidence_pct · ready-to-fire Claude Code prompt.</li>
+      <li>You review on the next page, copy the prompt, paste into Claude Code.</li>
+    </ol>
+  </div>
+</div>
+{% endblock %}
