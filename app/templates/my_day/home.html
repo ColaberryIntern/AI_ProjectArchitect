@@ -448,44 +448,6 @@
 {% endfor %}
 {% endif %}
 
-{# ── (Legacy detail panel — no longer rendered, kept stub for future) ── #}
-{% if False %}
-    {% set h_in_list = r.open_todos|selectattr('category', 'equalto', 'human_required')|list %}
-    {% if h_in_list %}
-    <div class="group-label">HUMAN-NEEDED ({{ h_in_list|length }})</div>
-    {% for t in h_in_list %}
-    <div class="h-task">
-      <span class="score-pill {% if t.urgency_score >= 70 %}at_risk{% elif t.urgency_score >= 40 %}ai_risk{% else %}on_track{% endif %}">{{ t.urgency_score }}</span>
-      <div>
-        <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:85] }}</a>
-        {% if t.due_on %}<span class="dim" style="font-size: 11px;"> · due {{ t.due_on }}</span>{% endif %}
-      </div>
-      <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="margin: 0;">
-        <button type="submit" class="md-btn md-btn-success" style="padding: 4px 10px; font-size: 11px;">✓ Done</button>
-      </form>
-    </div>
-    {% endfor %}
-    {% endif %}
-
-    {% set ai_in_list = r.open_todos|rejectattr('category', 'equalto', 'human_required')|list %}
-    {% if ai_in_list %}
-    <div class="group-label" style="margin-top: 12px;">AI-DOABLE / WAITING ({{ ai_in_list|length }})</div>
-    {% for t in ai_in_list[:6] %}
-    <div class="ai-task">
-      <span class="score-pill on_track">{{ t.urgency_score }}</span>
-      <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:85] }}</a>
-      <span class="dim">{% if t.due_on %}{{ t.due_on }}{% endif %}</span>
-    </div>
-    {% endfor %}
-    {% if ai_in_list|length > 6 %}
-    <div class="dim" style="font-size: 11px; padding: 4px 0;">+ {{ ai_in_list|length - 6 }} more AI-doable</div>
-    {% endif %}
-    {% endif %}
-  </div>
-</details>
-{% endfor %}
-{% endif %}
-{% endif %}{# end legacy {% if False %} stub #}
 
 {% if not focus and total_open == 0 %}
 <div style="text-align: center; padding: 48px; color: #57606a;">
