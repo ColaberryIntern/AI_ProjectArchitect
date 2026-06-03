@@ -266,11 +266,15 @@
       <td colspan="6" style="background: #f6f8fa; padding: 0;">
         <div style="padding: 18px 22px;">
 
-          {# NEXT HUMAN STEP banner — email-style dark banner #}
+          {# NEXT HUMAN STEP banner — email-style dark banner; title links to BC #}
           {% if nb %}
           <div class="next-human-banner">
             <div class="eyebrow">NEXT HUMAN STEP BLOCKING THIS AREA</div>
-            <h3>{{ nb.title }}</h3>
+            <h3>
+              {% if nb.bc_app_url %}
+              <a href="{{ nb.bc_app_url }}" target="_blank" style="color: inherit; text-decoration: none;">{{ nb.title }} <span style="opacity: 0.6; font-size: 16px;">↗</span></a>
+              {% else %}{{ nb.title }}{% endif %}
+            </h3>
             <div class="meta">
               {% if nb.due_on %}
                 {% if is_overdue %}<span class="banner-due overdue">OVERDUE {{ nb.due_on }}</span>
@@ -308,13 +312,11 @@
              Past completed → NEXT HUMAN STEP → upcoming, all in one
              continuous table. Past rendered oldest-first (so the most
              recent completion sits right above the next human step).
-             User ask: 'embedded in one big string' (one continuous flow). #}
+             User ask: 'embedded in one big string' (one continuous flow).
+             Default past visible: 0. Chips toggle 0/5/10/All. #}
           {% set prev_completed_all = recent_completed_all|selectattr('bc_todolist_id', 'equalto', r.list_id)|list %}
           {# recent_completed_all is desc by completed_at; reverse → asc #}
           {% set prev_completed_asc = prev_completed_all|reverse|list %}
-          {% set past_cap = 5 %}
-          {% set past_shown = prev_completed_asc[-past_cap:] %}{# last N (most recent N), still asc #}
-          {% set past_hidden = prev_completed_asc[:-past_cap] if prev_completed_asc|length > past_cap else [] %}
 
           {% set _with_due = r.open_todos|selectattr('due_on')|list %}
           {% set _no_due   = r.open_todos|rejectattr('due_on')|list %}
@@ -341,41 +343,19 @@
               </tr>
             </thead>
             <tbody>
-              {# ─── PAST: hidden expand row (oldest items) ─── #}
-              {% if past_hidden %}
-              <tr class="task-seq-row is-expander">
-                <td colspan="6" style="text-align: center; padding: 8px; background: #fff;">
-                  <button type="button" class="md-btn md-btn-quiet"
-                          onclick="this.closest('table').querySelectorAll('.past-hidden').forEach(el => el.hidden = !el.hidden); this.textContent = (this.textContent.startsWith('▲')) ? '▼ Show ' + {{ past_hidden|length }} + ' earlier completed' : '▲ Hide earlier completed';"
-                          style="font-size: 11px; color: #57606a;">
-                    ▼ Show {{ past_hidden|length }} earlier completed
-                  </button>
+              {# ─── PAST: chip row (0/5/10/All) + all past rows hidden by default ─── #}
+              {% if prev_completed_asc %}
+              <tr class="task-seq-row is-expander past-chip-row">
+                <td colspan="6" style="text-align: center; padding: 8px 12px; background: #fff;">
+                  <span style="font-size: 11px; color: #57606a; margin-right: 8px; letter-spacing: 0.6px;">SHOW PAST COMPLETED:</span>
+                  <button type="button" class="past-chip active" data-n="0" data-list="{{ r.list_id }}">0</button>
+                  <button type="button" class="past-chip" data-n="5" data-list="{{ r.list_id }}" {% if prev_completed_asc|length < 1 %}disabled{% endif %}>5</button>
+                  <button type="button" class="past-chip" data-n="10" data-list="{{ r.list_id }}" {% if prev_completed_asc|length < 6 %}disabled{% endif %}>10</button>
+                  <button type="button" class="past-chip" data-n="all" data-list="{{ r.list_id }}">All ({{ prev_completed_asc|length }})</button>
                 </td>
               </tr>
-              {% for pt in past_hidden %}
-              <tr class="task-seq-row is-completed past-hidden" hidden>
-                <td class="seq-num">✓</td>
-                <td class="seq-task">
-                  <a href="{{ pt.bc_app_url }}" target="_blank">{{ pt.title[:120] }} ↗</a>
-                  <div class="seq-task-sub">COMPLETED · {{ pt.bc_todolist_name[:30] }}</div>
-                </td>
-                <td><span class="due-pill done">✓ {{ pt.completed_at[:10] }}</span></td>
-                <td>{% if pt.category == 'human_required' %}<span class="tier-pill human">HUMAN</span>{% else %}<span class="tier-pill ai">AI</span>{% endif %}</td>
-                <td class="seq-owner">
-                  {% if pt.completed_by_name %}✓ {{ pt.completed_by_name[:18] }}
-                  {% elif pt.assignee_names %}{{ pt.assignee_names[0][:18] }}
-                  {% else %}<span class="dim">—</span>{% endif %}
-                </td>
-                <td class="dim" style="font-size: 11px; text-align: center;">
-                  {% if pt.cycle_seconds %}{{ (pt.cycle_seconds / 86400)|round(1) }}d cycle{% else %}—{% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-              {% endif %}
-
-              {# ─── PAST: visible recent completed (oldest of the 5 first) ─── #}
-              {% for pt in past_shown %}
-              <tr class="task-seq-row is-completed">
+              {% for pt in prev_completed_asc %}
+              <tr class="task-seq-row is-completed past-row-{{ r.list_id }}" hidden data-idx="{{ loop.index0 }}">
                 <td class="seq-num">✓</td>
                 <td class="seq-task">
                   <a href="{{ pt.bc_app_url }}" target="_blank">{{ pt.title[:120] }} ↗</a>
@@ -394,9 +374,9 @@
               </tr>
               {% endfor %}
 
-              {# ─── PAST → FUTURE divider ─── #}
-              {% if past_shown or past_hidden %}
-              <tr class="seq-divider">
+              {# ─── PAST → FUTURE divider (only shown when past is expanded) ─── #}
+              {% if prev_completed_asc %}
+              <tr class="seq-divider past-divider-{{ r.list_id }}" hidden>
                 <td colspan="6">↑ COMPLETED · UPCOMING ↓</td>
               </tr>
               {% endif %}
@@ -412,7 +392,11 @@
               <tr class="task-seq-row {% if is_next_human %}is-next-human{% elif t_overdue %}is-overdue{% endif %}">
                 <td class="seq-num">{{ loop.index }}</td>
                 <td class="seq-task">
+                  {% if is_next_human %}
+                  <a href="{{ t.bc_app_url or ('/my-day/todo/' ~ t.bc_id) }}" target="_blank">{{ t.title[:120] }} ↗</a>
+                  {% else %}
                   <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
+                  {% endif %}
                   <div class="seq-task-sub">
                     {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
                     {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
@@ -537,6 +521,37 @@
    'everything embedded in one big string'). All per-list past/present/
    future tasks live in one continuous chain inside the drill-down. #}
 
+
+{# Past-count chip handler: shows the most-recent N completed rows per list.
+   Rows are rendered oldest-first, so for "show 5" we reveal the LAST 5
+   (indices >= total - 5). Divider auto-shows when any past row is visible. #}
+<script>
+(function() {
+  document.querySelectorAll('.past-chip').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var listId = this.dataset.list;
+      var n = this.dataset.n;
+      // De-activate sibling chips for this list
+      document.querySelectorAll('.past-chip[data-list="' + listId + '"]').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      this.classList.add('active');
+      // Show/hide past rows for this list
+      var rows = document.querySelectorAll('.past-row-' + listId);
+      var total = rows.length;
+      var visibleCount = 0;
+      rows.forEach(function(row, idx) {
+        var show = (n === 'all') || (idx >= total - parseInt(n, 10));
+        row.hidden = !show;
+        if (show) visibleCount++;
+      });
+      // Divider only appears when at least one past row is visible
+      var divider = document.querySelector('.past-divider-' + listId);
+      if (divider) divider.hidden = (visibleCount === 0);
+    });
+  });
+})();
+</script>
 
 {% if not focus and total_open == 0 %}
 <div style="text-align: center; padding: 48px; color: #57606a;">
