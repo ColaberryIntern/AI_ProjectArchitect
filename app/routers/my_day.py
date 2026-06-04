@@ -342,6 +342,24 @@ async def ops_home(request: Request):
     project_rollups = rollup.per_project(scoped_todos)
     overall_health_data = rollup.overall_health(list_rollups)
     kanban_cols = rollup.kanban_columns(scoped_todos)
+
+    # Pre-compute deterministic Claude Code prompts for the kanban view
+    # (the 30 visible cards per column × 4 columns = up to 120 prompts).
+    # Deterministic builder is fast (no LLM round trip); user can click
+    # 📋 on any kanban card to copy without leaving the board.
+    kanban_prompts: dict[int, str] = {}
+    if view == "kanban":
+        seen_ids: set[int] = set()
+        for col_todos in kanban_cols.values():
+            for t in col_todos[:30]:
+                if t.bc_id in seen_ids:
+                    continue
+                seen_ids.add(t.bc_id)
+                try:
+                    s = suggestions.build_suggestion(t)
+                    kanban_prompts[t.bc_id] = suggestions.generate_prompt(t, s)
+                except Exception:
+                    kanban_prompts[t.bc_id] = ""
     # Pull ALL completed — drill-down filters per-list for the unified PROJECT TIMELINE
     completer_stats, recent_completed_all = rollup.completions_summary(scoped_todos, limit=1000)
     active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
@@ -456,6 +474,7 @@ async def ops_home(request: Request):
              list_rollups=list_rollups,
              project_rollups=project_rollups,
              kanban_cols=kanban_cols,
+             kanban_prompts=kanban_prompts,
              completer_stats=completer_stats,
              recent_completed_all=recent_completed_all,
              human_todos=human_todos,

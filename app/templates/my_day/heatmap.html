@@ -21,17 +21,21 @@
   {% else %}heat-on_track{% endif %}
 {%- endmacro %}
 
+{# Heatmap cards drill into Briefing (not back to Heatmap) — user wants
+   the click-through to land where the action surface lives. #}
+{% set qs_carry = '&tier=' ~ tier ~ ('&person=' ~ (person_filter|urlencode) if person_filter else '') %}
+
 {# ── Project-level heat map ─────────────────────────────── #}
 {% if project_rollups and project_rollups|length > 1 %}
 <div class="heatmap-section">
   <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Projects — most at risk first</h2>
   <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
     Each card colored by health: 🔴 jeopardy (&lt;40) · 🟠 at risk (40-59) · 🟡 AI risk (60-79) · 🟢 on track (80+).
-    Click any to drill in.
+    Click any to drill into the Briefing view filtered to that project.
   </p>
   <div class="heatmap-grid">
     {% for p in project_rollups %}
-    <a href="?view=heatmap&project={{ p.project_id }}" class="heat-card {{ heat_class(p.score) }}">
+    <a href="?view=briefing&project={{ p.project_id }}{{ qs_carry }}" class="heat-card {{ heat_class(p.score) }}">
       <div class="name">{{ p.project_name }}</div>
       <div class="score-line">
         {{ p.score_label }} · score {{ p.score }}
@@ -51,11 +55,11 @@
 <div class="heatmap-section">
   <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Lists — most at risk first</h2>
   <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
-    Cards sized by attention urgency. Click any to drill in (filters Briefing view to that list).
+    Cards sized by attention urgency. Click any to drill into the Briefing view filtered to that specific list.
   </p>
   <div class="heatmap-grid">
     {% for r in list_rollups %}
-    <a href="?view=briefing&project={{ r.project_id }}" class="heat-card {{ heat_class(r.score) }}">
+    <a href="?view=briefing&project={{ r.project_id }}&list={{ r.list_id }}{{ qs_carry }}" class="heat-card {{ heat_class(r.score) }}">
       <div class="name">{{ r.list_name }}</div>
       <div class="score-line">
         {{ r.score_label }} · score {{ r.score }}

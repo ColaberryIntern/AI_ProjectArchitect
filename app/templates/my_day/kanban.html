@@ -4,6 +4,28 @@
 {% block content %}
 {% include "my_day/_my_day_styles.html" %}
 
+<style>
+  /* Kanban card click → BC ticket (new tab); per-card 📋 Prompt + ✓ Done
+     buttons. The card is now a <div> not an <a> so nested actions work.
+     Title is the only thing that links out. */
+  .kanban-card { position: relative; }
+  .kanban-card .title a { color: inherit; text-decoration: none; }
+  .kanban-card .title a:hover { text-decoration: underline; }
+  .kanban-card .card-actions {
+    margin-top: 8px; display: flex; gap: 6px; align-items: center;
+  }
+  .kanban-card .ka-btn {
+    background: #fff; border: 1px solid #d0d7de; color: #1f2328;
+    padding: 3px 8px; border-radius: 999px; font-size: 10px;
+    font-weight: 600; cursor: pointer; line-height: 1.4;
+  }
+  .kanban-card .ka-btn:hover { background: #f6f8fa; }
+  .kanban-card .ka-btn.copied { background: #dafbe1; color: #15803d; border-color: #aceebb; }
+  .kanban-card .ka-btn-done { background: #1a7f37; color: #fff; border-color: #1a7f37; }
+  .kanban-card .ka-btn-done:hover { background: #15803d; color: #fff; }
+  .kanban-card .ka-prompt { display: none; width: 100%; height: 50px; }
+</style>
+
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day · Kanban</h1>
   <form method="post" action="/my-day/sync" style="margin: 0;">
@@ -14,6 +36,49 @@
 
 {% include "my_day/_view_chrome.html" %}
 
+{% macro kanban_card(t, force_overdue=false) %}
+  {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+  <div class="kanban-card {% if force_overdue %}is-overdue{% endif %} {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
+    <div class="title">
+      {# Title links to BC ticket (new tab) — user ask: 'when you click on
+         it, it should take you to the ticket' #}
+      {% if t.bc_app_url %}
+        <a href="{{ t.bc_app_url }}" target="_blank" rel="noopener">{{ t.title[:80] }} ↗</a>
+      {% else %}
+        {{ t.title[:80] }}
+      {% endif %}
+    </div>
+    <div class="meta">
+      <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
+      {% if t.due_on %}
+        {% if dd is not none and dd < 0 %}{{ -dd }}d overdue
+        {% elif dd == 0 %}due today
+        {% else %}due {{ t.due_on }}{% if dd %} ({{ dd }}d){% endif %}{% endif %}
+      {% elif force_overdue %}—{% else %}no due{% endif %}
+      · {{ t.bc_todolist_name[:24] }}
+    </div>
+    {% if t.assignee_names %}
+    <div class="meta" style="margin-top: 3px; font-size: 11px;">
+      👤 {{ t.assignee_names[0][:24] }}{% if t.assignee_names|length > 1 %} <span class="dim">+{{ t.assignee_names|length - 1 }}</span>{% endif %}
+    </div>
+    {% endif %}
+    <div class="card-actions">
+      <button type="button" class="ka-btn"
+              onclick="kanbanCopy('kp-{{ t.bc_id }}', this); event.stopPropagation();"
+              title="Copy Claude Code prompt for this task">
+        📋 Prompt
+      </button>
+      <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="margin: 0;" onclick="event.stopPropagation();">
+        <button type="submit" class="ka-btn ka-btn-done" title="Mark this task done in BC + locally">✓ Done</button>
+      </form>
+      <a href="/my-day/todo/{{ t.bc_id }}" class="ka-btn" title="Open the workspace for this task (LLM-enhanced prompt + steps)" style="text-decoration: none;">
+        ⚙ Workspace
+      </a>
+    </div>
+    <textarea id="kp-{{ t.bc_id }}" class="ka-prompt" readonly>{{ kanban_prompts.get(t.bc_id, '') }}</textarea>
+  </div>
+{% endmacro %}
+
 {% set ns = namespace(col_now=kanban_cols.get('now', []),
                      col_soon=kanban_cols.get('soon', []),
                      col_later=kanban_cols.get('later', []),
@@ -23,71 +88,28 @@
 
   <div class="kanban-col col-now">
     <h3>🔴 Now <span class="count">{{ ns.col_now|length }}</span></h3>
-    {% for t in ns.col_now[:30] %}
-      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
-      <a href="/my-day/todo/{{ t.bc_id }}"
-         class="kanban-card is-overdue {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
-        <div class="title">{{ t.title[:80] }}</div>
-        <div class="meta">
-          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
-          {% if t.due_on %}
-            {% if dd is not none and dd < 0 %}{{ -dd }}d overdue{% elif dd == 0 %}due today{% else %}due {{ t.due_on }}{% endif %}
-          {% endif %}
-          · {{ t.bc_todolist_name[:24] }}
-        </div>
-      </a>
-    {% endfor %}
+    {% for t in ns.col_now[:30] %}{{ kanban_card(t, force_overdue=true) }}{% endfor %}
     {% if ns.col_now|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_now|length - 30 }} more</div>{% endif %}
     {% if not ns.col_now %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">Clear. ✓</div>{% endif %}
   </div>
 
   <div class="kanban-col col-soon">
     <h3>🟡 Soon <span class="count">{{ ns.col_soon|length }}</span></h3>
-    {% for t in ns.col_soon[:30] %}
-      {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
-      <a href="/my-day/todo/{{ t.bc_id }}"
-         class="kanban-card {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
-        <div class="title">{{ t.title[:80] }}</div>
-        <div class="meta">
-          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
-          due {{ t.due_on }}{% if dd %} ({{ dd }}d){% endif %}
-          · {{ t.bc_todolist_name[:24] }}
-        </div>
-      </a>
-    {% endfor %}
+    {% for t in ns.col_soon[:30] %}{{ kanban_card(t) }}{% endfor %}
     {% if ns.col_soon|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_soon|length - 30 }} more</div>{% endif %}
     {% if not ns.col_soon %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
   </div>
 
   <div class="kanban-col col-later">
     <h3>🔵 Later <span class="count">{{ ns.col_later|length }}</span></h3>
-    {% for t in ns.col_later[:30] %}
-      <a href="/my-day/todo/{{ t.bc_id }}"
-         class="kanban-card {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
-        <div class="title">{{ t.title[:80] }}</div>
-        <div class="meta">
-          <span class="pill {% if t.urgency_score >= 70 %}red{% elif t.urgency_score >= 40 %}amber{% else %}gray{% endif %}">{{ t.urgency_score }}</span>
-          {% if t.due_on %}due {{ t.due_on }}{% else %}no due{% endif %}
-          · {{ t.bc_todolist_name[:24] }}
-        </div>
-      </a>
-    {% endfor %}
+    {% for t in ns.col_later[:30] %}{{ kanban_card(t) }}{% endfor %}
     {% if ns.col_later|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_later|length - 30 }} more</div>{% endif %}
     {% if not ns.col_later %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
   </div>
 
   <div class="kanban-col col-waiting">
     <h3>⏸ Waiting <span class="count">{{ ns.col_waiting|length }}</span></h3>
-    {% for t in ns.col_waiting[:30] %}
-      <a href="/my-day/todo/{{ t.bc_id }}" class="kanban-card">
-        <div class="title">{{ t.title[:80] }}</div>
-        <div class="meta">
-          <span class="pill gray">{{ t.urgency_score }}</span>
-          stale {{ t.score_breakdown.get('breakdown', {}).get('stale_days', '?') }}d
-          · {{ t.bc_todolist_name[:24] }}
-        </div>
-      </a>
-    {% endfor %}
+    {% for t in ns.col_waiting[:30] %}{{ kanban_card(t) }}{% endfor %}
     {% if ns.col_waiting|length > 30 %}<div style="text-align: center; color: #57606a; font-size: 11px; padding: 6px;">+ {{ ns.col_waiting|length - 30 }} more</div>{% endif %}
     {% if not ns.col_waiting %}<div style="color: #57606a; font-size: 12px; text-align: center; padding: 24px 0;">—</div>{% endif %}
   </div>
@@ -101,5 +123,21 @@
   <strong>Later</strong> = due 7+ days out or no due date ·
   <strong>Waiting</strong> = no due + stale 7+ days (waiting on someone)
 </div>
+
+<script>
+  // Copy a card's pre-baked prompt to clipboard without leaving the board.
+  function kanbanCopy(id, btn) {
+    var ta = document.getElementById(id);
+    if (!ta) return;
+    ta.style.display = 'block';
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.style.display = 'none';
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
+  }
+</script>
 
 {% endblock %}
