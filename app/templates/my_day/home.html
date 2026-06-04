@@ -157,6 +157,26 @@
       </span>
     {% endif %}
 
+    {# Assignee badge — who's actually on the hook for this ticket.
+       Lets the viewer decide at a glance whether to act, nudge the
+       assignee, or skip. Without this, project names like 'Christian
+       Persecution Analysis' can be misread as person assignment. #}
+    {% set me_first = ('Ali' in (focus.assignee_names|join(' ')) or 'Muwwakkil' in (focus.assignee_names|join(' '))) %}
+    {% if focus.assignee_names %}
+      <span style="display: inline-block; margin-left: 6px; background: {% if me_first %}#dafbe1{% else %}#f6f8fa{% endif %}; color: {% if me_first %}#15803d{% else %}#1f2328{% endif %}; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 12px; border: 1px solid {% if me_first %}#aceebb{% else %}#d0d7de{% endif %};"
+            title="Assigned to: {{ focus.assignee_names|join(', ') }}">
+        👤 {{ focus.assignee_names[0] }}{% if focus.assignee_names|length > 1 %} <span class="dim">+{{ focus.assignee_names|length - 1 }}</span>{% endif %}
+      </span>
+    {% elif focus.inclusion_reason == 'unassigned' %}
+      <span style="display: inline-block; margin-left: 6px; background: #fff4d5; color: #8a5a00; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 12px; border: 1px solid #f0d678;">
+        🤝 UNASSIGNED
+      </span>
+    {% else %}
+      <span style="display: inline-block; margin-left: 6px; background: #f6f8fa; color: #57606a; padding: 6px 14px; border-radius: 999px; font-weight: 500; font-size: 12px; border: 1px solid #d0d7de;">
+        👻 no assignee on BC
+      </span>
+    {% endif %}
+
     <span style="margin-left: 10px; font-size: 12px; color: #57606a;">
       Urgency score <strong>{{ focus.urgency_score }}</strong>
     </span>
