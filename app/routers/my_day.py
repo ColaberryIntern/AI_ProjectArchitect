@@ -350,7 +350,7 @@ async def ops_home(request: Request):
         "heatmap": "my_day/heatmap.html",
     }.get(view, "my_day/home.html")
 
-    return request.app.state.templates.TemplateResponse(
+    response = request.app.state.templates.TemplateResponse(
         request, template_name,
         _ctx(request, user,
              # View routing
@@ -387,6 +387,13 @@ async def ops_home(request: Request):
              total_open=status.open_count,
              my_day_total_open=status.open_count),
     )
+    # Disable browser caching so post-action redirects (?done=, ?skip=) and
+    # background-sync refreshes always see fresh state. Without this, hitting
+    # the back button or refresh could replay a cached page where the
+    # just-completed task is still shown as next focus.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.get("/todo/{bc_id}")
@@ -488,12 +495,58 @@ async def submit_handle(request: Request,
     )
 
 
+def _sync_with_budget(user_email: str, budget_seconds: float = 6.0) -> bool:
+    """Kick a fresh BC sync + scorer pass, wait up to `budget_seconds` for it
+    to finish. Returns True if it completed in time. Used by Mark Done so
+    the next focus task is computed from fresh data — previously the local
+    store could lag BC by up to 5 min (auto-sync interval) causing already-
+    completed tasks to surface as the next 'YOUR TURN'.
+
+    Reuses the per-user lock dict from _maybe_async_sync so we don't race
+    the background scheduler — if a sync is already in flight, we poll the
+    lock until it clears or the budget runs out.
+    """
+    import threading
+    import time as _time
+
+    if getattr(_maybe_async_sync, "_locks", None) is None:
+        _maybe_async_sync._locks = {}
+    locks = _maybe_async_sync._locks
+
+    # If a background sync is already running, just wait for it.
+    if locks.get(user_email):
+        deadline = _time.time() + budget_seconds
+        while locks.get(user_email) and _time.time() < deadline:
+            _time.sleep(0.2)
+        return not locks.get(user_email)
+
+    locks[user_email] = True
+    done = threading.Event()
+
+    def _run():
+        try:
+            from execution.products.ops import scorer as _scorer
+            r = sync.pull_todos_for_user(user_email)
+            if r.get("status") in ("ok", "partial"):
+                _scorer.score_all_todos(user_email)
+        except Exception:
+            pass
+        finally:
+            locks[user_email] = False
+            done.set()
+
+    threading.Thread(target=_run, daemon=True, name=f"force-sync-{user_email}").start()
+    done.wait(timeout=budget_seconds)
+    return done.is_set()
+
+
 @router.post("/todo/{bc_id}/complete")
 async def ops_complete(bc_id: int, request: Request):
     """Mark a todo complete BOTH in BC (write-back via AI clone token)
     AND locally. If BC write-back fails, we still mark local — operator
     won't get stuck looking at a stale queue, and the audit row preserves
-    intent. Next sync will reconcile.
+    intent. Then kick a fresh sync so the next focus task is computed
+    against current BC state (not a 5-min-stale cache).
     """
     import logging as _log
     user = _require_user(request)
@@ -528,9 +581,13 @@ async def ops_complete(bc_id: int, request: Request):
             bc_status = f"http_{e.code}"
         except Exception as e:  # noqa: BLE001
             bc_status = f"err: {type(e).__name__}"
+    # Force a sync so the next focus task isn't a stale-already-completed
+    # one. 6s wall-clock budget: enough for most syncs; if BC is slow we
+    # proceed with what we have rather than blocking the user further.
+    synced_in_time = _sync_with_budget(user.email, budget_seconds=6.0)
     _log.getLogger(__name__).info(
-        "my-day complete: user=%s bc_id=%s title=%r bc_status=%s",
-        user.email, bc_id, title_snippet, bc_status,
+        "my-day complete: user=%s bc_id=%s title=%r bc_status=%s sync_in_time=%s",
+        user.email, bc_id, title_snippet, bc_status, synced_in_time,
     )
     # Build redirect URL: preserve filter state via Referer + append
     # ?done=<title> so the next render shows a green flash confirming
