@@ -54,6 +54,33 @@
 </div>
 {% endif %}
 
+{# ── Sync-started banner with auto-refresh ──────────────── #}
+{% if request.query_params.get('sync_started') %}
+<div id="md-sync-banner"
+     style="background: #ddf4ff; border: 1px solid #c6e2ff; border-radius: 8px;
+            padding: 10px 16px; margin-bottom: 14px; font-size: 13px; color: #0550ae;
+            display: flex; align-items: center; gap: 10px;">
+  <div class="md-spinner" style="width: 16px; height: 16px; border-width: 2px; margin: 0;"></div>
+  <span><strong>Sync started.</strong> Pulling latest from Basecamp in the background.
+    This page will refresh automatically in <span id="md-sync-countdown">25</span>s.</span>
+  <a href="/my-day/" style="margin-left: auto; color: #0550ae; text-decoration: underline; font-size: 12px;">Stop waiting</a>
+</div>
+<script>
+(function() {
+  var sec = 25;
+  var cd = document.getElementById('md-sync-countdown');
+  var tick = setInterval(function() {
+    sec -= 1;
+    if (cd) cd.textContent = String(sec);
+    if (sec <= 0) {
+      clearInterval(tick);
+      window.location.href = '/my-day/';
+    }
+  }, 1000);
+})();
+</script>
+{% endif %}
+
 {# ── Flash banner after Mark Done / Skip ─────────────────── #}
 {% set flash_done = request.query_params.get('done') %}
 {% set flash_skip = request.query_params.get('skip') %}

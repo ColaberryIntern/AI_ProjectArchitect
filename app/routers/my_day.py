@@ -412,15 +412,43 @@ async def ops_todo(bc_id: int, request: Request):
 
 @router.post("/sync")
 async def ops_sync(request: Request):
+    """Kick a background sync and redirect immediately.
+
+    User feedback: the previous blocking sync left the dim 'Syncing…'
+    overlay up for 30+ seconds while we walked all 50 projects with
+    220ms throttle per HTTP call. Now we redirect right away with
+    ?sync_started=1; the home page shows an in-progress banner and
+    auto-refreshes 25s later so fresh data is visible without the
+    user having to click refresh.
+
+    Reuses the per-user lock dict from _maybe_async_sync so we don't
+    race the background scheduler — if a sync is already in flight,
+    the request just acknowledges and lets the existing one finish.
+    """
+    import threading as _th
     user = _require_user(request)
-    # For Ali: bypass projects.json (CB System sees 0) and walk bucket 7463955.
-    # Other users: rely on projects.json discovery (their AI clone token).
     legacy = ALI_LEGACY_BUCKET if user.email == "ali@colaberry.com" else None
-    result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
-    if result.get("status") not in ("token_missing", "bc_user_id_missing"):
-        # Re-score everything immediately after sync
-        scorer.score_all_todos(user.email)
-    return RedirectResponse("/my-day/?synced=1", status_code=303)
+
+    if getattr(_maybe_async_sync, "_locks", None) is None:
+        _maybe_async_sync._locks = {}
+    locks = _maybe_async_sync._locks
+
+    if not locks.get(user.email):
+        locks[user.email] = True
+
+        def _bg():
+            try:
+                result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
+                if result.get("status") not in ("token_missing", "bc_user_id_missing"):
+                    scorer.score_all_todos(user.email)
+            except Exception:
+                pass
+            finally:
+                locks[user.email] = False
+
+        _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
+
+    return RedirectResponse("/my-day/?sync_started=1", status_code=303)
 
 
 @router.post("/todo/{bc_id}/dismiss")
