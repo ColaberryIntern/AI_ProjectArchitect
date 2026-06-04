@@ -184,6 +184,11 @@
     loader.hidden = false;
     if (escapeBox) escapeBox.hidden = true;
     if (escapeTimer) clearTimeout(escapeTimer);
+    // Minimum-show enforcement: once the overlay appears, keep it up at
+    // least 400ms so users see clear feedback even on fast page loads.
+    // Without this, sub-100ms navigations flash the overlay invisibly
+    // and the user feels nothing happened.
+    loader.dataset.shownAt = String(Date.now());
     // Reveal the escape hatch after 10s — the page is genuinely slow,
     // user should be able to dismiss the overlay and try something else.
     escapeTimer = setTimeout(function() {
@@ -225,5 +230,25 @@
   window.addEventListener('pageshow', function(e) {
     if (e.persisted) hide();
   });
+  // Minimum-show: if the new page DOM arrives before 400ms after click,
+  // the overlay element in the FRESH DOM starts hidden — so users on
+  // fast loads still see a brief flash from the *old* page. Belt+suspenders:
+  // on every chip/tab click, also persist a 'just clicked' flag in
+  // sessionStorage; on the next page load, if the flag is recent, briefly
+  // re-display the overlay so the user sees confirmation.
+  try {
+    var t = sessionStorage.getItem('md-loader-last-click');
+    if (t && (Date.now() - parseInt(t, 10)) < 400) {
+      show('Loading…', 'updating view');
+      setTimeout(function() { hide(); }, 350);
+    }
+    sessionStorage.removeItem('md-loader-last-click');
+  } catch (e) {}
+  document.addEventListener('click', function(e) {
+    var el = e.target.closest('.proj-chip, .view-tab');
+    if (!el || el.tagName !== 'A') return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
+    try { sessionStorage.setItem('md-loader-last-click', String(Date.now())); } catch (e) {}
+  }, true);
 })();
 </script>

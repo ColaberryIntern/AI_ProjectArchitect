@@ -43,21 +43,36 @@
 
 {% include "my_day/_view_chrome.html" %}
 
-{# ── Filter-active strip ────────────────────────────────── #}
+{# ── Filter-active banners ─────────────────────────────────
+   Each active filter gets its own prominent banner so the user
+   can see at a glance what's narrowing their view. Click ×
+   to clear THAT filter only; the others stay. #}
+{% if project_filter %}
+{% set active_proj = (all_project_rollups | selectattr('project_id', 'equalto', project_filter) | first) %}
+{% if active_proj %}
+<div style="background: #fff0e6; border: 2px solid #fb8500; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #8a3c00;">
+  📂 Filtered to project: <strong>{{ active_proj.project_name }}</strong>
+  · {{ active_proj.open_count }} open across {{ active_proj.list_count }} list{% if active_proj.list_count != 1 %}s{% endif %}
+  · <a href="?view={{ view }}&tier={{ tier }}{% if list_filter %}&list={{ list_filter }}{% endif %}{% if person_filter %}&person={{ person_filter|urlencode }}{% endif %}" style="color: #8a3c00; font-weight: 600;">× clear project filter</a>
+</div>
+{% endif %}
+{% endif %}
+
 {% if list_filter %}
 {% set active_list = (list_rollups | selectattr('list_id', 'equalto', list_filter) | first) %}
 {% if active_list %}
-<div style="background: #fff8d6; border: 1px solid #f0d678; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px;">
-  Filtered to list: <strong>{{ active_list.list_name }}</strong> in {{ active_list.project_name }}
-  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if person_filter %}&person={{ person_filter|urlencode }}{% endif %}" style="color: #8a5a00;">× clear list filter</a>
+<div style="background: #fff8d6; border: 2px solid #d4a72c; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #8a5a00;">
+  📋 Filtered to list: <strong>{{ active_list.list_name }}</strong> in {{ active_list.project_name }}
+  · {{ active_list.open_count }} open
+  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if person_filter %}&person={{ person_filter|urlencode }}{% endif %}" style="color: #8a5a00; font-weight: 600;">× clear list filter</a>
 </div>
 {% endif %}
 {% endif %}
 
 {% if person_filter %}
-<div style="background: #ddf4ff; border: 1px solid #c6e2ff; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #0550ae;">
+<div style="background: #ddf4ff; border: 2px solid #0969da; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #0550ae;">
   👤 Filtered to person: <strong>{{ person_filter }}</strong>
-  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if list_filter %}&list={{ list_filter }}{% endif %}" style="color: #0550ae;">× clear person filter</a>
+  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if list_filter %}&list={{ list_filter }}{% endif %}" style="color: #0550ae; font-weight: 600;">× clear person filter</a>
 </div>
 {% endif %}
 
