@@ -66,6 +66,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to start ops sync scheduler", exc_info=True)
 
+    try:
+        from execution.products.pilot.scheduler import (
+            start_scheduler as pilot_start, stop_scheduler as pilot_stop,
+        )
+        pilot_start()
+        stops.append(pilot_stop)
+    except Exception:
+        logger.warning("Failed to start pilot dash scheduler", exc_info=True)
+
     yield
 
     for stop in stops:
