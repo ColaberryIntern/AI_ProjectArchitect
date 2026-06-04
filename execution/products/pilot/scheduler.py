@@ -65,18 +65,19 @@ def _fire_kes() -> None:
 
 
 def _deliver(result: dash_runner.DashResult) -> None:
-    """Stub for Gmail delivery — wires up once recipient list is confirmed.
+    """Send the rendered dashboard via SMTP to the configured recipients.
 
-    Per the cadence directive, recipients are:
-        - ali@colaberry.com
-        - karun@colaberry.com (or kes@colaberry.com)
-
-    Until Ali confirms the recipient addresses + the Gmail MCP token is
-    stored in the vault under 'gmail_pilot_dash', this no-ops + logs.
+    Gated by PILOT_DASH_DELIVERY=1 (default OFF). TEST_MODE=1 (default ON)
+    suppresses the DRI email so Ali can validate end-to-end before going
+    live. Delivery failures are non-fatal — the HTML file on disk is the
+    source of truth.
     """
-    logger.info("pilot_dash delivery placeholder: would email result for %s "
-                  "(set PILOT_DASH_DELIVERY=1 + vault gmail_pilot_dash to enable)",
-                  result.dri)
+    from . import delivery
+    d = delivery.send_dashboard(result.dri, result.output_path, result.ran_at)
+    logger.info(
+        "pilot_dash delivery: dri=%s status=%s to=%s error=%s",
+        d.dri, d.status, d.recipients, d.error or "-",
+    )
 
 
 def start_scheduler() -> BackgroundScheduler | None:

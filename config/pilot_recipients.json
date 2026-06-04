@@ -1,0 +1,15 @@
+{
+  "_doc": "[Karun 3 + Kes 3] Recipients for the pre-1:1 dashboard delivery. Per cadence directive, Ali + DRI both receive the same HTML 30 min before the meeting. TEST_MODE (env PILOT_DASH_TEST_MODE=1) suppresses delivery to the DRI so Ali can validate the full pipeline before going live. Set TEST_MODE=0 when Karun/Kes have confirmed they want the email.",
+  "karun": {
+    "ali_email": "ali@colaberry.com",
+    "dri_email": "karun@colaberry.com",
+    "subject_prefix": "Karun 1:1 dashboard",
+    "from_name": "Karun Pilot Dashboard"
+  },
+  "kes": {
+    "ali_email": "ali@colaberry.com",
+    "dri_email": "kes@colaberry.com",
+    "subject_prefix": "Kes 1:1 dashboard",
+    "from_name": "Kes Pilot Dashboard"
+  }
+}
