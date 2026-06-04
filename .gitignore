@@ -46,8 +46,11 @@ Thumbs.db
 .DS_Store
 nul
 
-# Claude IDE local settings
-.claude/
+# Claude IDE local settings — gitignore everything by default but track
+# .claude/skills/ which holds project-shared Claude Code skills (e.g. the
+# karun-agent + kes-agent skills built per BC tickets Karun 2 + Kes 2).
+.claude/*
+!.claude/skills/
 
 # pip/npm version artifacts
 =*
