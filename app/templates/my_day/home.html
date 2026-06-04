@@ -6,9 +6,17 @@
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day</h1>
-  <form method="post" action="/my-day/sync" style="margin: 0;">
-    <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
-  </form>
+  <div style="display: flex; gap: 8px; align-items: center;">
+    {% if is_my_day_admin %}
+    <a href="/my-day/_health" class="md-btn md-btn-quiet" style="font-size: 12px;"
+       title="Operational health snapshot — scheduler state, per-user sync, recent errors">
+      ⚙ Health
+    </a>
+    {% endif %}
+    <form method="post" action="/my-day/sync" style="margin: 0;">
+      <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
+    </form>
+  </div>
 </div>
 
 

@@ -27,6 +27,9 @@ from . import store, tokens
 
 logger = logging.getLogger(__name__)
 
+from collections import deque
+from threading import Lock
+
 BC_ACCOUNT_ID = os.environ.get("BC_ACCOUNT_ID", "3945211")
 BC_API_BASE = f"https://3.basecampapi.com/{BC_ACCOUNT_ID}"
 USER_AGENT = "Advisor Ops Command Center (ali@colaberry.com)"
@@ -41,6 +44,34 @@ HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
 HTTP_THROTTLE_SECONDS = float(os.environ.get("OPS_HTTP_THROTTLE_SECONDS", "0.22"))
 # Retry-after ceiling on 429 — never sleep more than this even if BC says so.
 MAX_RETRY_AFTER = int(os.environ.get("OPS_MAX_RETRY_AFTER", "30"))
+
+# Ring buffer of recent errors caught silently by per-project resilience.
+# Surfaces via /my-day/_health. Audit 2026-06-04 revealed errors were
+# disappearing into try/except without trace; this gives them a home.
+_RECENT_ERRORS_LOCK = Lock()
+_RECENT_ERRORS: deque = deque(maxlen=50)
+
+
+def _record_error(user_id: str, kind: str, detail: str) -> None:
+    """Stash a silent failure so /my-day/_health can show it."""
+    with _RECENT_ERRORS_LOCK:
+        _RECENT_ERRORS.append({
+            "ts": _now_iso(),
+            "user_id": user_id,
+            "kind": kind,
+            "detail": detail[:300],
+        })
+
+
+def recent_errors() -> list[dict]:
+    """Snapshot of the silent-error ring buffer."""
+    with _RECENT_ERRORS_LOCK:
+        return list(_RECENT_ERRORS)
+
+
+def clear_recent_errors() -> None:
+    with _RECENT_ERRORS_LOCK:
+        _RECENT_ERRORS.clear()
 
 
 def _now_iso() -> str:
@@ -280,7 +311,9 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
     try:
         fresh_todos = _walk_project_todos(proj, token, bc_user_id)
     except Exception as e:
-        return {"status": "error", "project_id": project_id, "error": f"{type(e).__name__}: {e}"}
+        err = f"{type(e).__name__}: {e}"
+        _record_error(user_id, f"project_walk:{project_id}", err)
+        return {"status": "error", "project_id": project_id, "error": err}
     proj_name = proj.get("name") or f"Project {project_id}"
     store.upsert_projects(user_id, [store.OpsProject(
         bc_id=project_id, name=proj_name,
@@ -400,6 +433,10 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
             err = f"bucket={bucket} {type(e).__name__}: {str(e)[:120]}"
             project_errors.append(err)
             logger.warning("ops sync: %s", err)
+            # Capture for /my-day/_health visibility — these silent
+            # partial-success errors caused the 2026-06-04 audit issue
+            # where Press Mike completion didn't propagate.
+            _record_error(user_id, "project_walk", err)
 
     # 2. Upsert into store
     p_created, p_updated = store.upsert_projects(user_id, fresh_projects)

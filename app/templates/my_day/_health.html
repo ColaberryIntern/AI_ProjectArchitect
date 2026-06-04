@@ -1,0 +1,157 @@
+{% extends "library/_library_base.html" %}
+{% block title %}My Day · Health{% endblock %}
+
+{% block content %}
+{% include "my_day/_my_day_styles.html" %}
+
+<style>
+  .h-section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+                       padding: 16px 18px; margin-bottom: 14px; }
+  .h-section h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: 0.6px;
+                              color: #1f2328; text-transform: uppercase; }
+  .h-section table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .h-section th, .h-section td { padding: 6px 8px; border-bottom: 1px solid #eaeef2;
+                                                    text-align: left; vertical-align: top; }
+  .h-section th { background: #f6f8fa; font-size: 11px; letter-spacing: 0.4px; }
+  .pill-ok   { background: #dafbe1; color: #15803d; padding: 2px 8px; border-radius: 999px;
+                       font-size: 11px; font-weight: 600; }
+  .pill-warn { background: #fff4d5; color: #8a5a00; padding: 2px 8px; border-radius: 999px;
+                       font-size: 11px; font-weight: 600; }
+  .pill-err  { background: #ffeef0; color: #82071e; padding: 2px 8px; border-radius: 999px;
+                       font-size: 11px; font-weight: 600; }
+  code.kv { background: #f6f8fa; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+</style>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+  <h1 style="font-size: 18px; font-weight: 700; margin: 0;">⚙ My Day · Health</h1>
+  <span style="font-size: 12px; color: #57606a;">Generated {{ snap.now }}</span>
+</div>
+
+{# ── Schedulers ────────────────────────────────────────────── #}
+<div class="h-section">
+  <h2>Schedulers</h2>
+  <table>
+    <thead><tr><th style="width: 200px;">Scheduler</th><th>Status</th><th>Job</th><th>Next run</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Ops sync</strong> (every 5 min)</td>
+        <td>{% if snap.ops_sync_scheduler.running %}<span class="pill-ok">RUNNING</span>
+            {% else %}<span class="pill-err">STOPPED</span>{% endif %}</td>
+        <td colspan="2">
+          {% if snap.ops_sync_scheduler.jobs %}
+            {% for j in snap.ops_sync_scheduler.jobs %}
+              <div><code class="kv">{{ j.id }}</code> · next: {{ j.next_run or '—' }}</div>
+            {% endfor %}
+          {% elif snap.ops_sync_scheduler.error %}
+            <span class="pill-err">ERROR</span> {{ snap.ops_sync_scheduler.error }}
+          {% else %}
+            no jobs registered
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Pilot dash</strong> (Mon ET cron)</td>
+        <td>{% if snap.pilot_dash_scheduler.running %}<span class="pill-ok">RUNNING</span>
+            {% else %}<span class="pill-err">STOPPED</span>{% endif %}</td>
+        <td colspan="2">
+          {% if snap.pilot_dash_scheduler.jobs %}
+            {% for j in snap.pilot_dash_scheduler.jobs %}
+              <div><code class="kv">{{ j.id }}</code> · next: {{ j.next_run or '—' }}</div>
+            {% endfor %}
+          {% else %}
+            no jobs registered
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{# ── Per-user sync state ─────────────────────────────────── #}
+<div class="h-section">
+  <h2>Per-user sync state</h2>
+  <table>
+    <thead>
+      <tr><th>User</th><th>Last sync</th><th>Status</th><th>Age</th>
+          <th>Todos</th><th>Error (if any)</th></tr>
+    </thead>
+    <tbody>
+      {% for u in snap.per_user_sync %}
+      {% if u.error %}
+        <tr><td colspan="6"><span class="pill-err">ERROR</span> {{ u.error }}</td></tr>
+      {% else %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td><code class="kv">{{ u.last_sync_at or '—' }}</code></td>
+          <td>
+            {% if u.last_sync_status == 'ok' %}<span class="pill-ok">OK</span>
+            {% elif u.last_sync_status == 'partial' %}<span class="pill-warn">PARTIAL</span>
+            {% elif u.last_sync_status %}<span class="pill-err">{{ u.last_sync_status }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if u.age_seconds is none %}<span class="pill-err">NEVER</span>
+            {% elif u.age_seconds < 90 %}<span class="pill-ok">{{ u.age_seconds }}s</span>
+            {% elif u.age_seconds < 300 %}<span class="pill-warn">{{ u.age_seconds }}s</span>
+            {% else %}<span class="pill-err">{{ (u.age_seconds // 60) }}m</span>{% endif %}
+          </td>
+          <td>{{ u.todo_count }}</td>
+          <td><code class="kv" style="white-space: pre-wrap;">{{ u.last_sync_error or '' }}</code></td>
+        </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Pilot dash delivery config ──────────────────────────── #}
+<div class="h-section">
+  <h2>Pilot dash delivery</h2>
+  <table>
+    <tbody>
+      <tr>
+        <td style="width: 250px;"><strong>Delivery enabled</strong> (PILOT_DASH_DELIVERY)</td>
+        <td>{% if snap.pilot_dash_delivery.delivery_enabled %}<span class="pill-ok">ENABLED</span>
+            {% else %}<span class="pill-warn">DISABLED</span> (set =1 in .env.prod to enable){% endif %}</td>
+      </tr>
+      <tr>
+        <td><strong>Test mode</strong> (PILOT_DASH_TEST_MODE)</td>
+        <td>{% if snap.pilot_dash_delivery.test_mode %}<span class="pill-warn">TEST MODE</span> Ali-only; DRI suppressed
+            {% else %}<span class="pill-ok">LIVE</span> Ali + DRI{% endif %}</td>
+      </tr>
+      <tr>
+        <td><strong>SMTP creds present</strong></td>
+        <td>{% if snap.pilot_dash_delivery.smtp_creds_present %}<span class="pill-ok">YES</span>
+            {% else %}<span class="pill-err">MISSING</span> set GMAIL_SMTP_USERNAME + GMAIL_SMTP_APP_PASSWORD{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{# ── Recent silent errors ────────────────────────────────── #}
+<div class="h-section">
+  <h2>Recent sync errors ({{ snap.recent_errors|length }}/50)</h2>
+  {% if snap.recent_errors %}
+  <table>
+    <thead><tr><th style="width: 180px;">When</th><th>User</th><th>Kind</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for e in snap.recent_errors|reverse %}
+      <tr>
+        <td><code class="kv">{{ e.ts }}</code></td>
+        <td>{{ e.user_id }}</td>
+        <td><span class="pill-warn">{{ e.kind }}</span></td>
+        <td><code class="kv" style="white-space: pre-wrap;">{{ e.detail }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="font-size: 12px; color: #57606a;">No silent errors recorded since last container restart.</p>
+  {% endif %}
+</div>
+
+<p style="font-size: 11px; color: #57606a; margin-top: 20px;">
+  Pass <code>?format=json</code> for a machine-readable snapshot.
+  Errors persist only across one container lifetime (in-memory ring buffer).
+</p>
+{% endblock %}

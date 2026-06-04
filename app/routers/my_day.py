@@ -6,6 +6,7 @@ Routes:
   POST /my-day/sync                   — manual sync trigger
   POST /my-day/todo/{bc_id}/dismiss   — local soft-dismiss (does NOT touch BC)
   POST /my-day/todo/{bc_id}/undismiss — reverse a dismissal
+  GET  /my-day/_health                — operational health snapshot (admin only)
 
 Authn: required. Uses the same session middleware as /library/.
 """
@@ -70,6 +71,7 @@ def _ctx(request: Request, user, **extra) -> dict:
     bell_count = 0
     queue_count = 0
     is_reviewer = False
+    is_admin = "admin" in (user.roles or [])
     try:
         from execution.products.library import notifications as _notif
         bell_count = _notif.unread_count_for_user(user.user_id, user.company_id)
@@ -99,6 +101,7 @@ def _ctx(request: Request, user, **extra) -> dict:
         "bell_count": bell_count,
         "queue_count": queue_count,
         "is_reviewer": is_reviewer,
+        "is_my_day_admin": is_admin,
         "company_id": user.company_id,
         "company_display": (tenancy.get_company(user.company_id).display_name
                             if tenancy.get_company(user.company_id) else user.company_id),
@@ -689,3 +692,123 @@ async def ops_complete(bc_id: int, request: Request):
     sep = "&" if "?" in referer else "?"
     flash = f"{sep}done={_up.quote(title_snippet)}"
     return RedirectResponse(referer + flash, status_code=303)
+
+
+# ── /my-day/_health — operational visibility ──────────────────────
+
+
+def _health_snapshot() -> dict:
+    """Snapshot of /my-day/ system health. No PII; safe to log.
+
+    Used by the /my-day/_health endpoint. Pulls from:
+      - execution.products.ops.scheduler._scheduler  (cron state)
+      - execution.products.pilot.scheduler._scheduler (pilot dash cron)
+      - per-user state.json (last_sync_at, last_sync_status, error)
+      - sync.recent_errors() (silent-failure ring buffer)
+    """
+    from datetime import datetime as _dt
+    now = _dt.now(timezone.utc).isoformat()
+
+    # Ops sync scheduler
+    ops_sched_state = {"running": False, "jobs": []}
+    try:
+        from execution.products.ops import scheduler as _ops_sched
+        s = _ops_sched._scheduler
+        if s is not None and s.running:
+            ops_sched_state["running"] = True
+            for job in s.get_jobs():
+                ops_sched_state["jobs"].append({
+                    "id": job.id,
+                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger),
+                })
+    except Exception as e:
+        ops_sched_state["error"] = f"{type(e).__name__}: {e}"
+
+    # Pilot dash scheduler
+    pilot_sched_state = {"running": False, "jobs": []}
+    try:
+        from execution.products.pilot import scheduler as _pilot_sched
+        s = _pilot_sched._scheduler
+        if s is not None and s.running:
+            pilot_sched_state["running"] = True
+            for job in s.get_jobs():
+                pilot_sched_state["jobs"].append({
+                    "id": job.id,
+                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger),
+                })
+    except Exception as e:
+        pilot_sched_state["error"] = f"{type(e).__name__}: {e}"
+
+    # Per-user sync state (one row per user with a state file)
+    per_user = []
+    try:
+        users = tenancy.list_users(active_only=True)
+        for u in users:
+            st = store.load_state(u.email)
+            age_sec = _store_age_seconds(st)
+            per_user.append({
+                "email": u.email,
+                "last_sync_at": st.last_sync_at,
+                "last_sync_status": st.last_sync_status,
+                "last_sync_error": (st.last_sync_error or "")[:200],
+                "age_seconds": int(age_sec) if age_sec < 99000 else None,
+                "todo_count": len(store.load_todos(u.email)),
+            })
+    except Exception as e:
+        per_user.append({"error": f"{type(e).__name__}: {e}"})
+
+    # Pilot dash delivery config
+    import os as _os
+    pilot_delivery = {
+        "delivery_enabled": _os.environ.get("PILOT_DASH_DELIVERY", "0") == "1",
+        "test_mode": _os.environ.get("PILOT_DASH_TEST_MODE", "1") == "1",
+        "smtp_creds_present": bool(
+            _os.environ.get("GMAIL_SMTP_USERNAME", "").strip()
+            and _os.environ.get("GMAIL_SMTP_APP_PASSWORD", "").strip()
+        ),
+    }
+
+    return {
+        "now": now,
+        "ops_sync_scheduler": ops_sched_state,
+        "pilot_dash_scheduler": pilot_sched_state,
+        "per_user_sync": per_user,
+        "recent_errors": sync.recent_errors(),
+        "pilot_dash_delivery": pilot_delivery,
+    }
+
+
+@router.get("/_health")
+async def ops_health(request: Request):
+    """Operational health snapshot. Admin-only.
+
+    Default JSON. Pass ?format=html for a renderable view (also served
+    when the Accept header prefers HTML). Surfaces:
+      - Both schedulers' state + next run time
+      - Per-user last_sync_at + status + error
+      - Recent silent-failure ring buffer (last 50)
+      - Pilot dash delivery config
+
+    Built post-audit 2026-06-04 so the next 'why isn't sync working'
+    question can be answered without SSH-ing into the box.
+    """
+    user = _require_user(request)
+    if "admin" not in (user.roles or []):
+        raise HTTPException(403, "admin role required")
+
+    snap = _health_snapshot()
+    accept = (request.headers.get("accept") or "").lower()
+    want_html = (
+        request.query_params.get("format", "").lower() == "html"
+        or ("text/html" in accept and "application/json" not in accept)
+    )
+    if not want_html:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=snap)
+
+    return request.app.state.templates.TemplateResponse(
+        request, "my_day/_health.html",
+        _ctx(request, user, snap=snap),
+    )
