@@ -724,6 +724,113 @@ async def ops_complete(bc_id: int, request: Request):
     return RedirectResponse(referer + flash, status_code=303)
 
 
+# ── /my-day/decisions-report — printable / shareable rich-action report ──
+
+
+@router.get("/decisions-report")
+async def ops_decisions_report(request: Request):
+    """Email-style decisions report with full rich actions.
+
+    Mirrors the layout of external "Decisions Report" digests (subject
+    line + BIG PICTURE narrative + KPI tiles + YOUR TURN + List Scorecard)
+    but adds the action surface from the briefing view: Mark Done button,
+    Copy Claude Code prompt button, WHAT TO DO / Goal / Steps / Stop
+    conditions.
+
+    Use case: a single shareable URL that operates like the print/email
+    digest but lets the recipient actually act on the focus task without
+    bouncing back to /my-day/. Print-friendly CSS so it renders cleanly
+    in a printed PDF or pasted into an email.
+    """
+    user = _require_user(request)
+    state = store.load_state(user.email)
+
+    project_filter_raw = request.query_params.get("project", "")
+    try:
+        project_filter_id = int(project_filter_raw) if project_filter_raw else None
+    except ValueError:
+        project_filter_id = None
+
+    # Same natural-flow sync as ops_home so the report is fresh
+    if _natural_flow_sync(user.email, state, project_filter_id):
+        state = store.load_state(user.email)
+
+    todos = store.load_todos(user.email)
+    projects = store.load_projects(user.email)
+
+    # Decisions report defaults to 'all' tier scope (not narrowed by tier)
+    if project_filter_id is not None:
+        scoped = [t for t in todos if t.bc_project_id == project_filter_id]
+    else:
+        scoped = todos
+
+    status = rollup.overall(scoped)
+    list_rollups = rollup.per_list(scoped)
+    active = [t for t in scoped if t.status == "active" and not t.is_dismissed]
+    active_sorted = sorted(active, key=lambda t: (-t.urgency_score, t.due_on or "9999-12-31"))
+    human_todos = [t for t in active_sorted if rollup.tier(t) == "H"]
+    focus = human_todos[0] if human_todos else (active_sorted[0] if active_sorted else None)
+
+    focus_suggestion = None
+    focus_prompt = ""
+    focus_llm_source = "deterministic"
+    is_post_action = bool(request.query_params.get("done") or request.query_params.get("skip"))
+    if focus:
+        token, _ = tokens.get_user_token(user.email)
+        enhanced = None
+        if not is_post_action:
+            comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
+            enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
+        if enhanced:
+            focus_suggestion = {
+                "action_kind": enhanced.get("action_kind", "default"),
+                "one_line": enhanced.get("goal_line", ""),
+                "steps": enhanced.get("specific_steps", []),
+                "stop_conditions": enhanced.get("stop_conditions", []),
+                "summary_paragraph": enhanced.get("summary_paragraph", ""),
+                "resources": [],
+                "urgency_summary": f"score {focus.urgency_score}",
+            }
+            focus_prompt = enhanced.get("claude_code_prompt", "")
+            focus_llm_source = "llm"
+        else:
+            focus_suggestion = suggestions.build_suggestion(focus)
+            focus_prompt = suggestions.generate_prompt(focus, focus_suggestion)
+
+    project_one = next((p for p in projects if p.bc_id == project_filter_id), None) if project_filter_id else None
+
+    # "EITHER" tile: tasks neither categorically human-required nor an AI
+    # action (waiting_dependency / unscored — could go either way).
+    either_count = sum(
+        1 for t in active
+        if t.category not in ("human_required",) and rollup.tier(t) == "AI"
+        and t.category in ("waiting_dependency", "unscored", "")
+    )
+
+    first_name = (user.display_name or user.email).split()[0]
+    response = request.app.state.templates.TemplateResponse(
+        request, "my_day/decisions_report.html",
+        _ctx(request, user,
+             status=status,
+             list_rollups=list_rollups,
+             focus=focus,
+             focus_suggestion=focus_suggestion,
+             focus_prompt=focus_prompt,
+             focus_llm_source=focus_llm_source,
+             first_name=first_name,
+             project_one=project_one,
+             project_filter=project_filter_id,
+             either_count=either_count,
+             total_open=status.open_count,
+             my_day_total_open=status.open_count,
+             active_list_count=len({t.bc_todolist_id for t in active}),
+             generated_at=datetime.now(timezone.utc),
+        ),
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 # ── /my-day/_health — operational visibility ──────────────────────
 
 

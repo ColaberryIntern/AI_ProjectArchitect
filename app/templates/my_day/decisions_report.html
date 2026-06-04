@@ -1,0 +1,308 @@
+{% extends "library/_library_base.html" %}
+{% block title %}Decisions Report · {{ generated_at.strftime("%A, %B %-d, %Y") if generated_at else "" }}{% endblock %}
+
+{% block content %}
+{% include "my_day/_my_day_styles.html" %}
+
+<style>
+  /* Email-style decisions report — print-friendly, single column.
+     Layout mirrors the external email digest but adds the rich actions
+     (Mark Done + Copy Prompt + WHAT TO DO) from the /my-day/ briefing. */
+  .dr-wrap { max-width: 760px; margin: 0 auto; }
+  .dr-subject {
+    background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 16px;
+    font-size: 14px; color: #1f2328;
+  }
+  .dr-subject .tag { color: #57606a; font-size: 11px; letter-spacing: 0.6px; }
+  .dr-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+  .dr-actions a { font-size: 12px; }
+
+  .dr-bigpic {
+    background: #1a1a1a; color: #f0e9d4;
+    border-radius: 10px; padding: 18px 22px; margin-bottom: 18px;
+  }
+  .dr-bigpic .eyebrow {
+    font-size: 11px; letter-spacing: 1.4px; color: #d4a72c;
+    font-weight: 700; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .dr-bigpic p { margin: 0; font-size: 14px; line-height: 1.6; }
+
+  .dr-kpi-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-bottom: 18px;
+  }
+  .dr-kpi {
+    border-radius: 10px; padding: 18px 16px; text-align: center;
+    border: 1px solid; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .dr-kpi .value { font-size: 32px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+  .dr-kpi .label { font-size: 11px; letter-spacing: 1.2px; font-weight: 600; }
+  .dr-kpi.human    { background: #fff4d5; border-color: #f0d678; color: #8a5a00; }
+  .dr-kpi.ai       { background: #ddf4ff; border-color: #c6e2ff; color: #0550ae; }
+  .dr-kpi.either   { background: #dafbe1; border-color: #aceebb; color: #15803d; }
+  .dr-kpi.overdue  { background: #ffeef0; border-color: #ffabba; color: #82071e; }
+
+  .dr-yourturn {
+    background: #fff8d6; border: 2px solid #d4a72c; border-radius: 10px;
+    padding: 20px 22px; margin-bottom: 14px;
+  }
+  .dr-yourturn .eyebrow {
+    font-size: 11px; letter-spacing: 1.4px; color: #8a5a00;
+    font-weight: 700; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .dr-yourturn h2 { margin: 0 0 4px; font-size: 19px; color: #1f2328; }
+  .dr-yourturn .meta { font-size: 12px; color: #4a3500; margin-bottom: 10px; }
+
+  /* WHAT TO DO block — same shape as briefing but printer-friendly */
+  .dr-whattodo {
+    background: #fff; border: 1px solid #d0d7de; border-radius: 10px;
+    padding: 18px 22px; margin-bottom: 18px;
+  }
+  .dr-whattodo .head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .dr-whattodo h3 {
+    margin: 0; font-size: 12px; letter-spacing: 1.2px;
+    color: #57606a; font-weight: 700; text-transform: uppercase;
+  }
+  .dr-whattodo p, .dr-whattodo ol { font-size: 13px; line-height: 1.6; }
+  .dr-whattodo ol { margin: 6px 0 12px; padding-left: 20px; }
+  .dr-stop {
+    background: #fff8d6; border-left: 3px solid #d4a72c;
+    padding: 8px 12px; font-size: 12px; color: #4a3500;
+    margin: 8px 0 14px;
+  }
+  .dr-action-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .dr-action-row .hint { font-size: 11px; color: #57606a; }
+
+  .dr-scorecard {
+    background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 20px;
+  }
+  .dr-scorecard h3 {
+    margin: 0 0 8px; font-size: 14px; color: #1f2328;
+    border-bottom: 2px solid #1f2328; padding-bottom: 6px;
+  }
+  .dr-scorecard table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .dr-scorecard th, .dr-scorecard td {
+    padding: 6px 8px; border-bottom: 1px solid #eaeef2; text-align: left;
+  }
+  .dr-scorecard th { background: #f6f8fa; font-size: 10px; letter-spacing: 0.6px; }
+
+  /* Print styles — hide library nav, fit to page */
+  @media print {
+    body, html { background: #fff; }
+    .nav-sidebar, .lib-sidebar, .library-nav, .top-actions,
+    nav, header.app-header, .md-btn-quiet { display: none !important; }
+    .dr-wrap { max-width: 100%; padding: 0 12px; }
+    .dr-actions { display: none; }
+  }
+</style>
+
+<div class="dr-wrap">
+
+  {# Subject-style header — looks like an email subject line #}
+  <div class="dr-subject">
+    <span class="tag">[Decisions Report]</span>
+    📌 <strong>{{ status.human }} decisions owed</strong>
+    · {{ generated_at.strftime("%A, %B %-d, %Y") if generated_at else "" }}
+    {% if project_one %}· {{ project_one.name }}{% endif %}
+  </div>
+
+  {# Top action row — print, share, back to briefing #}
+  <div class="dr-actions">
+    <a href="javascript:window.print()" class="md-btn md-btn-outline">🖨 Print / PDF</a>
+    <a href="/my-day/?view=briefing{% if project_filter %}&project={{ project_filter }}{% endif %}"
+       class="md-btn md-btn-quiet">← Back to briefing</a>
+    {% if project_one and project_one.bc_id %}
+    <a href="https://app.basecamp.com/3945211/buckets/{{ project_one.bc_id }}/todos"
+       target="_blank" class="md-btn md-btn-outline">
+      ↗ Open {{ project_one.name[:30] }} in Basecamp
+    </a>
+    {% endif %}
+  </div>
+
+  {# Scope summary line #}
+  <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
+    {{ active_list_count }} active list{{ '' if active_list_count == 1 else 's' }}
+    · {{ status.open_count }} open
+    · {{ status.human }} human-needed
+    · {{ status.ai }} AI-doable
+    · {{ status.overdue }} overdue
+  </p>
+
+  {# BIG PICTURE — narrative summary, mirrors email format #}
+  {% if focus %}
+  <div class="dr-bigpic">
+    <div class="eyebrow">For {{ first_name }} — Big Picture</div>
+    <p>
+      You have <strong>{{ status.open_count }} open todos</strong>, with
+      <strong>{{ status.human }} requiring your decision</strong>.
+      {% if focus %}
+      The single highest-leverage decision is <strong>{{ focus.title }}</strong>
+      {% if focus.due_on %}
+        {% set fd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+        {% if fd is not none and fd < 0 %}, which is already <strong>{{ -fd }} days overdue</strong>{% endif %}
+      {% endif %}.
+      {% endif %}
+      {% if status.overdue %}Clear the <strong>{{ status.overdue }} overdue</strong> first.{% else %}No overdue items today.{% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+  {# KPI tiles — 4 columns matching the email format #}
+  <div class="dr-kpi-row">
+    <div class="dr-kpi human">
+      <div class="value">{{ status.human }}</div>
+      <div class="label">HUMAN-NEEDED</div>
+    </div>
+    <div class="dr-kpi ai">
+      <div class="value">{{ status.ai }}</div>
+      <div class="label">AI-DOABLE</div>
+    </div>
+    <div class="dr-kpi either">
+      <div class="value">{{ either_count }}</div>
+      <div class="label">EITHER</div>
+    </div>
+    <div class="dr-kpi overdue">
+      <div class="value">{{ status.overdue }}</div>
+      <div class="label">OVERDUE</div>
+    </div>
+  </div>
+
+  {# YOUR TURN — the single most important task #}
+  {% if focus %}
+  {% set focus_dd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+  {% set focus_is_overdue = (focus_dd is not none and focus_dd < 0) %}
+  {% set focus_is_today = (focus_dd == 0) %}
+  {% set focus_is_human = (focus.category == 'human_required') %}
+
+  <div class="dr-yourturn">
+    <div class="eyebrow">📌 YOUR TURN — THE MOST IMPORTANT TASK RIGHT NOW</div>
+    <div style="font-size: 12px; color: #8a5a00; margin-bottom: 4px;">
+      NEXT DECISION ON {{ focus.bc_project_name|upper }}
+    </div>
+    <h2>{{ focus.title }}</h2>
+    <div class="meta">
+      List: <strong>{{ focus.bc_todolist_name }}</strong>
+      {% if focus.due_on %} · Due: <strong>{{ focus.due_on }}</strong>
+        {% if focus_is_overdue %}<span style="color: #cf222e; font-weight: 700;"> ({{ -focus_dd }} days overdue)</span>
+        {% elif focus_is_today %}<span style="color: #d4a72c; font-weight: 700;"> (due today)</span>
+        {% endif %}
+      {% endif %}
+      · Urgency <strong>{{ focus.urgency_score }}</strong>
+      {% if focus.assignee_names %}· Assigned to <strong>{{ focus.assignee_names|join(', ') }}</strong>{% endif %}
+      {% if focus.bc_app_url %}· <a href="{{ focus.bc_app_url }}" target="_blank">Open ticket →</a>{% endif %}
+    </div>
+  </div>
+
+  {# WHAT TO DO + Mark Done + Copy Prompt — the rich actions per user ask #}
+  {% if focus_suggestion %}
+  <div class="dr-whattodo">
+    <div class="head">
+      <h3>WHAT TO DO</h3>
+      <span class="pill" style="background: #ddf4ff; color: #0550ae; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px;">
+        {{ focus_suggestion.action_kind|upper }}
+      </span>
+      {% if focus_llm_source == 'llm' %}
+      <span style="background: #dafbe1; color: #1a7f37; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px;">🤖 AI-ENHANCED</span>
+      {% endif %}
+    </div>
+
+    {% if focus_suggestion.summary_paragraph %}
+    <p style="margin: 0 0 12px;">{{ focus_suggestion.summary_paragraph }}</p>
+    {% elif focus_suggestion.one_line %}
+    <p style="margin: 0 0 6px;"><strong>Goal:</strong> {{ focus_suggestion.one_line }}</p>
+    {% endif %}
+
+    {% if focus_suggestion.steps %}
+    <ol>
+      {% for step in focus_suggestion.steps %}<li>{{ step }}</li>{% endfor %}
+    </ol>
+    {% endif %}
+
+    {% if focus_suggestion.stop_conditions %}
+    <div class="dr-stop">
+      <strong>⚠ Stop if:</strong> {{ focus_suggestion.stop_conditions[0] }}
+    </div>
+    {% endif %}
+
+    <div class="dr-action-row">
+      <button type="button" class="md-btn md-btn-primary"
+              onclick="copyPrompt('dr-focus-prompt', this)">
+        📋 Copy Claude Code prompt →
+      </button>
+      <form method="post" action="/my-day/todo/{{ focus.bc_id }}/complete" style="margin: 0;">
+        <button type="submit" class="md-btn md-btn-success">✓ Mark done</button>
+      </form>
+      <form method="post" action="/my-day/todo/{{ focus.bc_id }}/dismiss" style="margin: 0;">
+        <button type="submit" class="md-btn md-btn-quiet">Skip for now</button>
+      </form>
+      <span class="hint">Copy → paste into Claude Code · or mark done if you handled it</span>
+    </div>
+    <textarea id="dr-focus-prompt" class="hidden-prompt" readonly>{{ focus_prompt }}</textarea>
+  </div>
+
+  <script>
+    // Same copy-to-clipboard helper the briefing uses; inlined here so the
+    // decisions report works standalone (no shared JS dep).
+    function copyPrompt(id, btn) {
+      var ta = document.getElementById(id);
+      if (!ta) return;
+      ta.style.display = 'block';
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      ta.style.display = 'none';
+      var orig = btn.textContent;
+      btn.textContent = '✓ Copied — paste into Claude Code';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 2200);
+    }
+  </script>
+  <style>.hidden-prompt { display: none; width: 100%; height: 60px; }</style>
+  {% endif %}
+  {% endif %}
+
+  {# List Scorecard — compact #}
+  {% if list_rollups %}
+  <div class="dr-scorecard">
+    <h3>List scorecard</h3>
+    <p style="font-size: 11px; color: #57606a; margin: 0 0 8px;">
+      All {{ list_rollups|length }} lists sorted by score (worst first). Stalled lists at the top get priority attention.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>LIST</th><th>SCORE</th><th>OPEN</th><th>LATE</th>
+          <th>H/AI</th><th>NEXT</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in list_rollups[:12] %}
+        <tr>
+          <td>
+            <strong>{{ r.list_name[:40] }}</strong>
+            <div style="font-size: 10px; color: #57606a;">{{ r.project_name[:32] }}</div>
+          </td>
+          <td><span class="score-pill {{ r.score_label.lower().replace(' ', '_') }}">{{ r.score_label }} · {{ r.score }}</span></td>
+          <td>{{ r.open_count }}</td>
+          <td>{% if r.overdue_count %}<strong style="color: #cf222e;">{{ r.overdue_count }}</strong>{% else %}—{% endif %}</td>
+          <td>{{ r.human_count }} / {{ r.ai_count }}</td>
+          <td>{% if r.next_blocking %}<a href="{{ r.next_blocking.bc_app_url or '#' }}" target="_blank">{{ r.next_blocking.title[:50] }} ↗</a>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if list_rollups|length > 12 %}
+    <p style="font-size: 11px; color: #57606a; margin: 8px 0 0;">
+      + {{ list_rollups|length - 12 }} more lists below the cap.
+      <a href="/my-day/?view=briefing{% if project_filter %}&project={{ project_filter }}{% endif %}">View full briefing →</a>
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

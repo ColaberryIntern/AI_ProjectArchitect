@@ -7,6 +7,11 @@
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day</h1>
   <div style="display: flex; gap: 8px; align-items: center;">
+    <a href="/my-day/decisions-report{% if project_filter %}?project={{ project_filter }}{% endif %}"
+       class="md-btn md-btn-quiet" style="font-size: 12px;"
+       title="Email-style decisions report — printable, with Mark Done + Copy Prompt baked in">
+      📌 Decisions report
+    </a>
     {% if is_my_day_admin %}
     <a href="/my-day/_health" class="md-btn md-btn-quiet" style="font-size: 12px;"
        title="Operational health snapshot — scheduler state, per-user sync, recent errors">
