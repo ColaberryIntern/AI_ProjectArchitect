@@ -90,6 +90,38 @@
 </div>
 {% endif %}
 
+{# ── Lists filter (collapsed by default — many lists per project) ────
+   Sits between Projects and People so the filter order matches the
+   data hierarchy: project → list → person. When a project filter is
+   active, the chips here scope to that project's lists only; otherwise
+   you get the top 50 lists across the whole queue sorted by overdue
+   then open count (so the most-at-risk lists surface first). #}
+{% if all_list_rollups_for_chips %}
+{% set qs_no_list = '&view=' ~ view ~ '&tier=' ~ tier ~ (('&project=' ~ project_filter) if project_filter else '') ~ qs_pp %}
+<details class="lists-filter" {% if list_filter %}open{% endif %} style="margin-top: 6px; margin-bottom: 8px;">
+  <summary style="cursor: pointer; font-size: 12px; color: #57606a; font-weight: 600; padding: 4px 0; list-style: none; user-select: none;">
+    <span style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 999px; padding: 4px 10px; display: inline-block;">
+      📋 Filter by list ({{ all_list_rollups_total }}{% if all_list_rollups_total > 50 %}, top 50{% endif %}){% if list_filter %} · 1 active{% endif %} ▾
+    </span>
+  </summary>
+  <div class="project-chips" style="margin-top: 8px; padding-top: 0;">
+    {% if list_filter %}
+    <a href="?{{ qs_no_list[1:] }}" class="proj-chip" style="background: #fff4d5; border-color: #f0d678; color: #8a5a00;">
+      × clear list
+    </a>
+    {% endif %}
+    {% for r in all_list_rollups_for_chips %}
+    <a href="?{{ qs_no_list[1:] }}&list={{ r.list_id }}{% if not project_filter %}&project={{ r.project_id }}{% endif %}"
+       class="proj-chip {% if list_filter == r.list_id %}active{% endif %} {% if r.overdue_count %}has-overdue{% endif %}">
+      {{ r.list_name[:36] }}
+      <span class="chip-count">{{ r.open_count }}</span>
+      {% if r.overdue_count %}<span class="chip-overdue">{{ r.overdue_count }} late</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
 {# ── People filter (collapsed by default — long list) ──────── #}
 {% if people_for_chips %}
 {% set qs_no_person = '&view=' ~ view ~ '&tier=' ~ tier ~ (('&project=' ~ project_filter) if project_filter else '') ~ (('&list=' ~ list_filter) if list_filter else '') %}

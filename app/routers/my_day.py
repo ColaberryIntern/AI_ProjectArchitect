@@ -418,6 +418,18 @@ async def ops_home(request: Request):
     chip_source = _filter_by_tier(todos)
     all_project_rollups = rollup.per_project(chip_source)
 
+    # List chip data — similar logic: tier-filtered + project-filtered
+    # (so the chip set scopes to "lists in the currently-filtered project"
+    # when a project is selected; otherwise all lists). Cap at 50 to keep
+    # the chip row finite. Sort by overdue desc then open count desc so
+    # the user's eye lands on the most-at-risk lists first.
+    chip_list_source = chip_source
+    if project_filter_id is not None:
+        chip_list_source = [t for t in chip_list_source if t.bc_project_id == project_filter_id]
+    all_list_rollups_full = rollup.per_list(chip_list_source)
+    all_list_rollups_full.sort(key=lambda r: (-r.overdue_count, -r.open_count))
+    all_list_rollups_for_chips = all_list_rollups_full[:50]
+
     # If a project filter is active but the project has 0 in current tier,
     # inject a synthetic rollup so the chip still shows (otherwise the
     # active chip just vanishes and the user can't see what they filtered).
@@ -451,6 +463,8 @@ async def ops_home(request: Request):
              list_filter=list_filter_id,
              person_filter=person_filter,
              people_for_chips=people_for_chips,
+             all_list_rollups_for_chips=all_list_rollups_for_chips,
+             all_list_rollups_total=len(all_list_rollups_full),
              tier=tier,
              tier_counts=tier_counts_total,
              overall_health=overall_health_data,
