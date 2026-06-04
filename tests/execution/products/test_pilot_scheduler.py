@@ -34,29 +34,49 @@ def tmp_pilot_output(monkeypatch, tmp_path):
 # ── dash_runner ───────────────────────────────────────────────────
 
 
-def test_run_karun_in_stub_mode_writes_html(tmp_pilot_output):
+def test_run_karun_in_provisional_mode_writes_html(tmp_pilot_output):
+    """Pre-PRD-ratification: scoring uses BC-backed signals as stand-ins.
+
+    Banner says 'PROVISIONAL' (not 'SCAFFOLD'); placeholder flag is True
+    because the 5 numbers aren't PRD-ratified yet. Sidecar carries
+    pre_ratification=True so consumers can tell which mode rendered.
+    """
     result = dash_runner.run("karun")
     assert result.status == "ok"
     assert result.placeholder is True
     assert Path(result.output_path).exists()
     html = Path(result.output_path).read_text(encoding="utf-8")
     assert "Karun 1:1 dashboard" in html
-    assert "PRE-RATIFICATION SCAFFOLD" in html
+    assert "PROVISIONAL" in html
     # Sidecar JSON written alongside HTML
     sidecar_path = Path(result.output_path).with_suffix(".json")
     assert sidecar_path.exists()
     sidecar = json.loads(sidecar_path.read_text())
     assert sidecar["dri"] == "karun"
-    assert sidecar["sources_stub"] is True
+    assert sidecar["pre_ratification"] is True
+    assert sidecar["sources_stub"] is False
     assert len(sidecar["scored"]) == 5
 
 
-def test_run_kes_in_stub_mode_writes_html(tmp_pilot_output):
+def test_run_kes_in_provisional_mode_writes_html(tmp_pilot_output):
     result = dash_runner.run("kes")
     assert result.status == "ok"
     assert result.placeholder is True
     html = Path(result.output_path).read_text(encoding="utf-8")
     assert "Kes 1:1 dashboard" in html
+    assert "PROVISIONAL" in html
+
+
+def test_provisional_scoring_has_5_real_numbers(tmp_pilot_output):
+    """The BC-backed scoring path produces 5 numeric values, not None."""
+    result = dash_runner.run("karun")
+    sidecar_path = Path(result.output_path).with_suffix(".json")
+    sidecar = json.loads(sidecar_path.read_text())
+    for i, row in enumerate(sidecar["scored"]):
+        assert row["value"] is not None, f"number {i+1} ({row['number']}) has None value"
+        assert isinstance(row["value"], (int, float)), f"number {i+1} value must be numeric"
+        assert row["on_track"] is not None, f"number {i+1} missing on_track"
+        assert row["source"], f"number {i+1} missing source attribution"
 
 
 def test_critic_short_circuits_on_stub_sources():
