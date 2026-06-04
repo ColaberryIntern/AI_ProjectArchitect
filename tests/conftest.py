@@ -17,6 +17,30 @@ def set_test_environment(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "test")
 
 
+@pytest.fixture(autouse=True)
+def _reset_project_create_rate_limit():
+    """Reset the per-IP create-project rate limit between tests.
+
+    Without this, tests that POST /projects/new (test_auto_build,
+    test_chapter_build, etc.) accumulate against the in-process token
+    bucket across the full sweep and the 6th+ test fails with 429.
+    Each test gets a clean slate.
+    """
+    try:
+        from app.routers import projects as _projects_router
+        _projects_router._RL_PER_IP.clear()
+        _projects_router._RL_GLOBAL.clear()
+    except (ImportError, AttributeError):
+        pass
+    yield
+    try:
+        from app.routers import projects as _projects_router
+        _projects_router._RL_PER_IP.clear()
+        _projects_router._RL_GLOBAL.clear()
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def tmp_output_dir(monkeypatch, tmp_path):
     """Redirect OUTPUT_DIR to a temporary directory for test isolation."""
