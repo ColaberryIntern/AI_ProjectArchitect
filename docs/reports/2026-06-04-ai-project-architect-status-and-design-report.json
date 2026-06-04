@@ -1,0 +1,734 @@
+{
+  "status": {
+    "completed_count": 15,
+    "active_count": 15,
+    "completion_pct": 50,
+    "critical_dates": [
+      {
+        "date": "2026-06-07",
+        "days_out": 3,
+        "event": "Karun 1 + Kes 1 PRDs due (Ali 30-min ratification session)"
+      },
+      {
+        "date": "2026-06-08",
+        "days_out": 4,
+        "event": "[00 START HERE] Build Index review due"
+      },
+      {
+        "date": "2026-06-09",
+        "days_out": 5,
+        "event": "Monday pilot day-1: Karun 1:1 09:00 ET + Kes 1:1 09:30 ET \u2014 first live dashboard fires"
+      },
+      {
+        "date": "2026-06-12",
+        "days_out": 8,
+        "event": "Karun 2 + Kes 2 dash skills ship-ready"
+      },
+      {
+        "date": "2026-06-14",
+        "days_out": 10,
+        "event": "Karun 3 + Kes 3 scheduler wired to fire 30 min pre-1:1"
+      },
+      {
+        "date": "2026-07-02",
+        "days_out": 28,
+        "event": "Karun + Kes 4-week pilot iteration complete (8 cycles each)"
+      },
+      {
+        "date": "2026-07-04",
+        "days_out": 30,
+        "event": "30-day retrospective + Colaberry-approved artifact commit"
+      },
+      {
+        "date": "2026-07-07",
+        "days_out": 33,
+        "event": "Phase 2 launch \u2014 generalize karun-agent to YAML-per-person"
+      },
+      {
+        "date": "2026-07-17",
+        "days_out": 43,
+        "event": "DRI framing + $90/$10 budget envelope adopted"
+      },
+      {
+        "date": "2026-08-01",
+        "days_out": 58,
+        "event": "Phase 2 exec onboarding: Ali, Ram, David Lahme, JJ McBride, Sohail"
+      }
+    ],
+    "completed_summary": [
+      {
+        "title": "[Library 1] Per-company approved filter UI + per-item badge",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit ec67167 \u2014 library UI ships per-tenant approval chip + approving-company badge"
+      },
+      {
+        "title": "[Library 2] User identity badge + workspace switcher (All / My company / Mine / Other companies)",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit ec67167 \u2014 identity switcher live in /library/"
+      },
+      {
+        "title": "[Workflow 1] Per-company publish workflow + moderation queue (draft -> submitted -> approved)",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 51651e5 \u2014 per-tenant moderation queue functional"
+      },
+      {
+        "title": "[Workflow 2] Cross-user + cross-company visibility (default same-company; opt-in cross-company)",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 7bb0927 \u2014 provenance + follow-author wired"
+      },
+      {
+        "title": "[Admin 1] Admin console: user provisioning UI at /admin/",
+        "completed_at": "2026-06",
+        "one_line": "Spec docs/specs/admin-01-admin-console.md exists; console live at /admin/"
+      },
+      {
+        "title": "[Admin 2] Tools-access provisioning matrix (per-user MCP/tool checklist)",
+        "completed_at": "2026-06",
+        "one_line": "Spec docs/specs/admin-02-tools-access-matrix.md shipped"
+      },
+      {
+        "title": "[Admin 3] Add-new-company flow (super-admin tenant onboarding)",
+        "completed_at": "2026-06",
+        "one_line": "Spec docs/specs/admin-03-add-new-company.md shipped"
+      },
+      {
+        "title": "[Provision 1] Per-user GitHub workspace auto-create on account creation",
+        "completed_at": "2026-06",
+        "one_line": "Spec docs/specs/provision-01-workspace-repo.md shipped"
+      },
+      {
+        "title": "[Provision 2] Per-user credentials vault (encrypted token storage)",
+        "completed_at": "2026-06",
+        "one_line": "Spec docs/specs/provision-02-credentials-vault.md shipped \u2014 LIBRARY_VAULT_MASTER_KEY in prod env"
+      },
+      {
+        "title": "[Data 1] Backfill 552 existing library items into multi-tenant model",
+        "completed_at": "2026-06",
+        "one_line": "Migration complete \u2014 multi-tenant cut-over live"
+      },
+      {
+        "title": "[Infra 2] Library -> AI_ProjectArchitect GitHub PR-based sync + CI smoke gate",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit ceb97e4"
+      },
+      {
+        "title": "[Infra 3] Employee onboarding runbook for AI_ProjectArchitect",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 43224cd"
+      },
+      {
+        "title": "[Infra 4] Rubric refinement weekly cadence (Ali + each DRI)",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 43224cd \u2014 directives/pilot-weekly-cadence.md is source of truth"
+      },
+      {
+        "title": "[Infra 5] Comms: Ram all-hands message (Earn/Learn/Bond/Save framing)",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 43224cd"
+      },
+      {
+        "title": "[Deploy 1] Deployment pipeline for auth+admin+multi-tenant cut-over",
+        "completed_at": "2026-06-03",
+        "one_line": "Shipped in commit 43224cd \u2014 Hetzner cut-over runbook live"
+      }
+    ],
+    "active_summary": [
+      {
+        "title": "[00 START HERE] Build Index \u2014 read this first to build the entire system",
+        "due_on": "2026-06-08",
+        "days_out": 4,
+        "status": "on_track",
+        "blocker": "Reference/index ticket; not a build deliverable"
+      },
+      {
+        "title": "OVERVIEW: AI_ProjectArchitect company-wide rollout (Karun + Kes pilot first)",
+        "due_on": "2026-09-30",
+        "days_out": 118,
+        "status": "on_track",
+        "blocker": "Parent rollup ticket; closes when pilot + Phase 2 done"
+      },
+      {
+        "title": "[Karun] Step 1 - Write Karun PRD (30-min session with Ali)",
+        "due_on": "2026-06-07",
+        "days_out": 3,
+        "status": "at_risk",
+        "blocker": "PRD scaffold exists (docs/personas/karun-prd.md, commit 416fd56) but marked DRAFT \u2014 needs Ali 30-min ratification session before Mon Jun 9 pilot kickoff"
+      },
+      {
+        "title": "[Karun] Step 2 - Build karun-agent + /karun-dash skill",
+        "due_on": "2026-06-12",
+        "days_out": 8,
+        "status": "blocked",
+        "blocker": "Skill scaffold at .claude/skills/karun-agent/SKILL.md (commit 9da039c) \u2014 blocked on Karun 1 PRD signature; provisional BC-backed scoring landed in eb990b0"
+      },
+      {
+        "title": "[Karun] Step 3 - Wire /karun-dash to fire 30 min before each 1:1",
+        "due_on": "2026-06-14",
+        "days_out": 10,
+        "status": "at_risk",
+        "blocker": "scheduler.py exists (commit f439a0a) firing Mon 08:30 ET; delivery.py exists but PILOT_DASH_DELIVERY NOT set in /opt/ai-project-architect/.env.prod \u2014 currently disk-only, no Gmail SMTP push"
+      },
+      {
+        "title": "[Karun] Step 4 - 4-week pilot iteration (two 1:1s/week)",
+        "due_on": "2026-07-02",
+        "days_out": 28,
+        "status": "on_track",
+        "blocker": "Starts Mon Jun 9; depends on Karun 1+2+3 readiness"
+      },
+      {
+        "title": "[Karun] Step 5 - 30-day retrospective + commit Colaberry-approved artifacts",
+        "due_on": "2026-07-04",
+        "days_out": 30,
+        "status": "on_track",
+        "blocker": "Depends on Karun 4 pilot completion"
+      },
+      {
+        "title": "[Kes] Step 1 - Write Kes PRD (30-min session with Ali)",
+        "due_on": "2026-06-07",
+        "days_out": 3,
+        "status": "at_risk",
+        "blocker": "PRD scaffold exists (docs/personas/kes-prd.md, commit 416fd56) but marked DRAFT \u2014 needs Ali 30-min ratification session before Mon Jun 9 pilot kickoff"
+      },
+      {
+        "title": "[Kes] Step 2 - Build kes-agent + /kes-dash skill",
+        "due_on": "2026-06-12",
+        "days_out": 8,
+        "status": "blocked",
+        "blocker": "Skill scaffold at .claude/skills/kes-agent/SKILL.md (commit 9da039c) \u2014 blocked on Kes 1 PRD signature"
+      },
+      {
+        "title": "[Kes] Step 3 - Wire /kes-dash to fire 30 min before each Ali<->Kes 1:1",
+        "due_on": "2026-06-14",
+        "days_out": 10,
+        "status": "at_risk",
+        "blocker": "scheduler.py fires Mon 09:00 ET for Kes (commit f439a0a); same SMTP delivery gap as Karun 3 \u2014 PILOT_DASH_DELIVERY missing in .env.prod"
+      },
+      {
+        "title": "[Kes] Step 4 - 4-week pilot iteration (two 1:1s/week)",
+        "due_on": "2026-07-02",
+        "days_out": 28,
+        "status": "on_track",
+        "blocker": "Starts Mon Jun 9; depends on Kes 1+2+3 readiness"
+      },
+      {
+        "title": "[Kes] Step 5 - 30-day retrospective + commit Colaberry-approved artifacts",
+        "due_on": "2026-07-04",
+        "days_out": 30,
+        "status": "on_track",
+        "blocker": "Depends on Kes 4 pilot completion"
+      },
+      {
+        "title": "[Phase 2 launch] Generalize karun-agent to YAML-per-person after pilot success",
+        "due_on": "2026-07-07",
+        "days_out": 33,
+        "status": "on_track",
+        "blocker": "Cannot start until Karun 5 + Kes 5 retros sign-off"
+      },
+      {
+        "title": "[Phase 2] Onboard exec team: Ali, Ram, David Lahme, JJ McBride, Sohail",
+        "due_on": "2026-08-01",
+        "days_out": 58,
+        "status": "on_track",
+        "blocker": "Depends on Phase 2 launch generalization"
+      },
+      {
+        "title": "[Phase 2] Adopt DRI framing + $90/$10 budget envelope",
+        "due_on": "2026-07-17",
+        "days_out": 43,
+        "status": "on_track",
+        "blocker": "Comms + ops change; orthogonal to build"
+      }
+    ],
+    "pilot_track_status": {
+      "karun": {
+        "karun_1_prd": {
+          "status": "DRAFT_scaffold",
+          "path": "docs/personas/karun-prd.md",
+          "commit": "416fd56 \u2014 [Karun 1 + Kes 1] PRD scaffolds awaiting Ali ratification",
+          "signed": false,
+          "blocker": "Awaiting 30-min Ali ratification session; due 2026-06-07 (3 days out)"
+        },
+        "karun_2_skill": {
+          "status": "SCAFFOLD_with_provisional_scoring",
+          "path": ".claude/skills/karun-agent/SKILL.md",
+          "commits": [
+            "9da039c skill scaffolds",
+            "eb990b0 BC-backed provisional scoring \u2014 Jun 9 fires real dash"
+          ],
+          "blocker": "Implementation gated on Karun 1 PRD signature; provisional BC-only scoring will run Jun 9 even without PRD sign-off"
+        },
+        "karun_3_scheduler": {
+          "status": "EXISTS_partial",
+          "path": "execution/products/pilot/scheduler.py",
+          "commits": [
+            "f439a0a pilot dash scheduler \u2014 fires Mon 08:30 / 09:00 ET",
+            "d1ae0ec pilot dash SMTP delivery \u2014 TEST_MODE safety default"
+          ],
+          "fires_at": "Monday 08:30 ET (30 min before 09:00 Karun 1:1)",
+          "delivery_enabled": false,
+          "blocker": "PILOT_DASH_DELIVERY not in /opt/ai-project-architect/.env.prod \u2014 currently writes HTML to disk only, no email delivery"
+        }
+      },
+      "kes": {
+        "kes_1_prd": {
+          "status": "DRAFT_scaffold",
+          "path": "docs/personas/kes-prd.md",
+          "commit": "416fd56 \u2014 [Karun 1 + Kes 1] PRD scaffolds awaiting Ali ratification",
+          "signed": false,
+          "blocker": "Awaiting 30-min Ali ratification session; due 2026-06-07 (3 days out)"
+        },
+        "kes_2_skill": {
+          "status": "SCAFFOLD_with_provisional_scoring",
+          "path": ".claude/skills/kes-agent/SKILL.md",
+          "commits": [
+            "9da039c skill scaffolds",
+            "eb990b0 BC-backed provisional scoring"
+          ],
+          "blocker": "Implementation gated on Kes 1 PRD signature"
+        },
+        "kes_3_scheduler": {
+          "status": "EXISTS_partial",
+          "path": "execution/products/pilot/scheduler.py (shared with Karun) + execution/products/pilot/delivery.py",
+          "commits": [
+            "f439a0a fires Mon 09:00 ET (30 min before 09:30 Kes 1:1)",
+            "d1ae0ec SMTP delivery TEST_MODE default"
+          ],
+          "delivery_enabled": false,
+          "blocker": "Same PILOT_DASH_DELIVERY env gap as Karun 3"
+        }
+      }
+    },
+    "blockers": [
+      "CRITICAL \u2014 PILOT_DASH_DELIVERY=1 NOT present in /opt/ai-project-architect/.env.prod (verified via SSH cat). delivery.py reads PILOT_DASH_DELIVERY and defaults OFF; without it, Mon Jun 9 dashboards write HTML to disk but do not email Ali/Karun/Kes. Need to set PILOT_DASH_DELIVERY=1, PILOT_DASH_TEST_MODE=1 (Ali-only safety), GMAIL_SMTP_USERNAME, GMAIL_SMTP_APP_PASSWORD before 08:30 ET Jun 9.",
+      "CRITICAL \u2014 Karun 1 + Kes 1 PRDs still marked DRAFT scaffold (due Jun 7, only 3 days out). Both PRDs have placeholder fields ([Ali to confirm \u2014 sales-side DRI], rubric scores _[fill from approver matrix]_). The 30-min Ali ratification session has not been booked or completed. Without signed PRDs, Karun 2 + Kes 2 cannot move past scaffold and dashboards on Jun 9 will run on provisional BC-only scoring (per commit eb990b0 fallback).",
+      "Pilot recipients file (config/pilot_recipients.json) not verified \u2014 delivery.py reads from it but file existence not confirmed in this audit; needs check before Jun 9.",
+      "config/library_approvers.json referenced from PRDs as source of approval scope \u2014 both PRDs say _[fill from config/library_approvers.json Karun/Kes rows]_ meaning the rubric scoring authority for both pilots is still unwritten.",
+      "BC ticket count discrepancy \u2014 prompt said 39 todos (15 done / 24 active) but live BC shows 30 (15 done / 15 active). Either 9 tickets were closed since prompt was written, or the build-artifact tickets the prompt referenced never made it into BC. Worth reconciling before Phase 2."
+    ],
+    "risk_level": "HIGH"
+  },
+  "ghAccess": {
+    "admin_responsibilities": [
+      "One-time platform bootstrap: register Google OAuth client at console.cloud.google.com, generate LIBRARY_VAULT_MASTER_KEY (base64 32 bytes) and LIBRARY_SESSION_SECRET, mint a GITHUB_ADMIN_TOKEN PAT with repo+admin:org scopes for the ColaberryIntern org, and write all four into .env.prod on the Hetzner box.",
+      "One-time GitHub seeding: create ColaberryIntern/workspace-template with .claude/skills/, placeholder .mcp.json, README, USER_PROFILE.md; flag it as a Template repository (gh repo edit --template); confirm gh auth status on prod has repo scope so github_sync and github_pr_sync can push.",
+      "Per-user onboarding click: from /admin/users/new, enter the employee's email + display name + access level (admin/approver/contributor/consumer); tick `create_workspace_repo` (default ON for everyone above consumer); this single POST runs tenancy.provision_user + workspaces.provision_user_workspace + scope grants in one transaction and writes one row to workspace_provision_audit.jsonl.",
+      "Edit config/library_approvers.json to add new approvers or shift categories; commit + deploy (no code change required). The matrix is the single source of truth that github_sync.can_approve() and github_pr_sync.open_sync_pr() consult before any write to ColaberryIntern/AI_ProjectArchitect.",
+      "Maintain config/library_tenant_domains.json: add new corporate email domains, set auto_provision true/false, and set default_roles. Unmatched domains hit the queue_for_admin_review queue rather than auto-provisioning a tenant.",
+      "Token rotation steward: respond to vault.days_until_expiry() amber/red signals in the /admin/users/{id}/scopes matrix; can revoke any user's token for any tool with vault.revoke(caller_id=admin.user_id, reason=...). Quarterly rotation of GITHUB_ADMIN_TOKEN is the admin's calendar item, not the user's.",
+      "Offboarding click: from the admin user page, run `offboard user` which: revokes every vault entry, removes the user as a GitHub collaborator on their workspace + the canonical repo, rotates LIBRARY_SESSION_SECRET only if compromise is suspected (not on every departure \u2014 that nukes every other session), and archives the workspace repo rather than deleting it (audit trail preservation).",
+      "Approve unmatched-domain queue entries: when a user from a new domain logs in, they hit the 403 queued_for_review state; Ali or Ram decides approve (create company + user) vs reject, both auditable in the admin console."
+    ],
+    "user_responsibilities": [
+      "Log in once via Google SSO at https://advisor.colaberry.ai/auth/login. First successful login provisions the User row via auth_google.provision_or_lookup_user() \u2014 the user does nothing extra to get a tenant identity if their domain is in library_tenant_domains.json.",
+      "Accept the GitHub collaborator invite that lands in their inbox after admin onboarding (the invite is to ColaberryIntern/{slug}-workspace with write permission). Until they accept, the repo exists but isn't visible to them \u2014 the system does not impersonate them.",
+      "Self-serve token paste: at /admin/users/{me}/scopes, paste their own tool tokens (Gmail app password, Basecamp PAT, HubSpot key, etc.) into the credential-store form. The token is encrypted into the vault under their user_id keyed by tool_name. Plaintext never leaves the form.",
+      "Set TTL on any token they paste (default 90 days). When days_until_expiry() goes amber the matrix flags it in their workspace; the user re-pastes the rotated token. Backend services like the Gmail fetcher must NOT auto-refresh \u2014 the user is the only person who can hold the new secret.",
+      "Clone their workspace repo locally, run Claude Code there. The .mcp.json in the workspace repo contains ${{ vault.X }} placeholders; the MCP runtime at startup calls vault.read_secret(user_id=me, tool_name=X, caller_id='mcp-runtime', purpose='MCP server X bootstrap') and injects the decrypted value into the spawned server's env. Each decrypt = one audit row the user can read via /admin/users/me/scopes.",
+      "Submit drafts to the library via the contributor publish form (workflow-01-publish-queue). Drafts land in the per-company moderation queue. Contributors cannot push to ColaberryIntern/AI_ProjectArchitect directly \u2014 only via the approval pipeline.",
+      "Approvers (Ram/Karun for sales categories, Kes for tech categories): when an asset they're authorised for lands in the queue, they hit Approve in the Library UI. This triggers github_pr_sync.maybe_trigger_pr_for_approval() which opens a PR against AI_ProjectArchitect using the gh CLI as the sync identity (not the approver's personal credential). Approvers never need a personal write token to the canonical repo.",
+      "Log out / report compromise: any user can hit /auth/logout to drop their library_session cookie. If they suspect their workstation is compromised they request the admin revoke their vault entries \u2014 they themselves cannot delete other people's secrets."
+    ],
+    "provisioning_flow": [
+      {
+        "step": 1,
+        "actor": "admin",
+        "action": "Opens /admin/users/new, enters email (ali.intern@colaberry.com), display name, access level radio (admin|approver|contributor|consumer), and ticks `create_workspace_repo` (auto-ticked for non-consumer).",
+        "output": "Pending form POST. No state change yet."
+      },
+      {
+        "step": 2,
+        "actor": "system",
+        "action": "Server validates the domain against library_tenant_domains.json. colaberry.com matches \u2192 company_id=colaberry, auto_provision=true. If the domain is unmatched, returns 422 with `queue_for_admin_review` and stops \u2014 admin can either add the domain to the mapping file or reject.",
+        "output": "Validated company binding; or 422 queued response."
+      },
+      {
+        "step": 3,
+        "actor": "system",
+        "action": "tenancy.provision_or_lookup_user() creates the User row (user_id=uuid, email, company_id=colaberry, roles=[selected]). Idempotent \u2014 re-running on the same email returns the existing user.",
+        "output": "User row in tenancy store; new entry in tenancy audit log."
+      },
+      {
+        "step": 4,
+        "actor": "system",
+        "action": "If access_level != consumer, workspaces.provision_user_workspace(user) runs: (a) repo_exists check against ColaberryIntern/{slug}-workspace, (b) if absent and template_repo set \u2192 POST /repos/ColaberryIntern/workspace-template/generate, else fallback to POST /orgs/ColaberryIntern/repos with auto_init=true, (c) PUT /repos/{repo}/collaborators/{slug} permission=write, (d) commit a rendered USER_PROFILE.md + .mcp.json (scopes=[] initially \u2014 empty mcpServers object).",
+        "output": "GitHub repo ColaberryIntern/{slug}-workspace exists; user has a pending collaborator invite; one row appended to output/library/_tenants/workspace_provision_audit.jsonl with action=create_repo or skip_existing."
+      },
+      {
+        "step": 5,
+        "actor": "system",
+        "action": "Scope grants: tenancy.grant_scope(user_id, 'library:read') for every non-rejected user; if access_level==approver, grant scope 'library:approve:{category_list}' derived from library_approvers.json; if admin, grant 'platform:admin'. AccessScope rows written; admin audit row per grant.",
+        "output": "AccessScope rows in tenancy store; /admin/users/{id}/scopes matrix renders the new permissions; no GitHub-side change."
+      },
+      {
+        "step": 6,
+        "actor": "system",
+        "action": "Email dispatch: sends the user a welcome email \u2014 `(a) GitHub invite link they need to accept, (b) https://advisor.colaberry.ai/auth/login link to perform their first SSO login, (c) link to /admin/users/{id}/scopes where they paste their personal tool tokens`. The email goes via Mandrill using the platform's own credentials, never the user's.",
+        "output": "Email queued; admin sees `onboarding_email_sent` in audit."
+      },
+      {
+        "step": 7,
+        "actor": "user",
+        "action": "Clicks Google SSO link, authenticates with @colaberry.com Google Workspace, lands at /auth/callback. auth_google.exchange_code_for_userinfo() runs; matches the existing User row from step 3 (idempotent \u2014 does not create a duplicate). Session JWT signed with LIBRARY_SESSION_SECRET, set as library_session httpOnly cookie 24h TTL.",
+        "output": "User is authenticated; /auth/whoami returns authenticated=true, company=colaberry, roles=[\u2026]; library identity badge renders."
+      },
+      {
+        "step": 8,
+        "actor": "user",
+        "action": "Accepts the pending GitHub collaborator invite on their workspace repo (one click in github.com/notifications). System has no callback here \u2014 it's purely a GitHub-side handshake.",
+        "output": "User now has write access to ColaberryIntern/{slug}-workspace; read access via the team grant (or future Provision 4) to ColaberryIntern/AI_ProjectArchitect."
+      },
+      {
+        "step": 9,
+        "actor": "user",
+        "action": "Navigates to /admin/users/{me}/scopes, pastes each tool token they need (Gmail, Basecamp, HubSpot, \u2026) one at a time with TTL. Each paste calls vault.store_secret(user_id=me, tool_name=\u2026, plaintext=\u2026, caller_id=me, ttl_days=\u2026). Plaintext is wiped from the form on success.",
+        "output": "Encrypted blobs in output/library/_vault/credentials.json keyed `{user_id}|{tool_name}`; one audit row per store in audit.jsonl."
+      },
+      {
+        "step": 10,
+        "actor": "system",
+        "action": "First time the user runs Claude Code in their workspace clone, the MCP runtime reads .mcp.json, sees ${{ vault.gmail }} etc., calls vault.read_secret(user_id=me, tool_name='gmail', caller_id='mcp-runtime', purpose='MCP server gmail bootstrap'), injects the decrypted value into the spawned MCP server's env. Plaintext is in-process only and never written to disk.",
+        "output": "MCP servers boot with the user's own tokens; one decrypt audit row per server per session in vault audit.jsonl."
+      }
+    ],
+    "access_levels": [
+      {
+        "level": "admin",
+        "who": "ali@colaberry.com, ram@colaberry.com (configurable via tenancy roles=['admin'] + library_approvers.json role='lead')",
+        "permissions": [
+          "Read + write + delete on every Library asset across every company",
+          "Approve in ANY category \u2014 github_sync.can_approve() returns True unconditionally via the `all` flag in library_approvers.json",
+          "Provision new users via /admin/users/new (only role allowed to POST here)",
+          "Edit config/library_approvers.json and config/library_tenant_domains.json (gated by file-write + redeploy)",
+          "Rotate or revoke ANY user's vault entries (vault.revoke with caller_id=admin.user_id, reason)",
+          "Read the full vault audit log via /admin/vault/audit (no other role sees other users' decrypts)",
+          "Approve queued unmatched-domain registrations or reject them",
+          "Holds GITHUB_ADMIN_TOKEN \u2014 the only token that can create repos in ColaberryIntern org and add collaborators"
+        ]
+      },
+      {
+        "level": "approver",
+        "who": "ram, karun (sales categories: use_cases, prompts, agents), kes (tech categories: skills, mcp, capabilities, workflows, projections, recovery, chaos, governance, evals, connectors, adapters, templates, policies) per library_approvers.json",
+        "permissions": [
+          "Everything a contributor can do, plus:",
+          "Stamp vetted=True on assets in their granted categories \u2014 github_sync.can_approve(email, category) gates this",
+          "Trigger github_pr_sync.open_sync_pr() against ColaberryIntern/AI_ProjectArchitect (PR is authored as `Colaberry Library Sync` bot identity using the platform GITHUB_ADMIN_TOKEN, not the approver's personal token \u2014 approvers never need write access to the canonical repo)",
+          "View the per-company moderation queue (workflow-01-publish-queue)",
+          "Cannot provision other users; cannot read other users' vault entries; cannot edit the approver matrix"
+        ]
+      },
+      {
+        "level": "contributor",
+        "who": "Default for any colaberry.com employee (and demo-tenant.local user) post-onboarding when admin selects `contributor` access_level",
+        "permissions": [
+          "Read entire vetted Library (per per-tenant approval filter, library-01-approval-filter)",
+          "Submit draft assets via the publish form \u2014 drafts land in the per-company moderation queue, NEVER auto-publish, NEVER touch ColaberryIntern/AI_ProjectArchitect directly",
+          "Personal GitHub workspace repo ColaberryIntern/{slug}-workspace with write access",
+          "Manage own vault: store_secret / revoke / list_for_user \u2014 caller_id MUST equal user_id; backend rejects cross-user writes",
+          "Read own vault audit history; cannot read anyone else's",
+          "Cannot approve, cannot edit approver matrix, cannot provision other users"
+        ]
+      },
+      {
+        "level": "consumer",
+        "who": "External viewers or read-only colaberry employees (admin opts out of workspace creation by unticking `create_workspace_repo`)",
+        "permissions": [
+          "Read vetted Library assets only (per-tenant filter applies)",
+          "No GitHub workspace repo \u2014 workspaces.provision_user_workspace is not invoked",
+          "No vault entries \u2014 they have no tokens to store because they don't run Claude Code anywhere",
+          "Cannot submit drafts; cannot approve; cannot provision",
+          "Session cookie still works for the library identity badge and audit attribution on view events"
+        ]
+      }
+    ],
+    "security_boundaries": [
+      "Approver category isolation \u2014 github_sync.can_approve(ram@colaberry.com, 'skills') returns (False, 'Ram cannot approve skills'). Even if Ram flips vetted=True in the Library UI, github_pr_sync.open_sync_pr() refuses to open a PR and writes a failed audit row. Cross-lane approval (sales-approving-tech or vice versa) is blocked at the sync layer, not the UI layer, by design \u2014 the UI can lie, the matrix cannot.",
+      "No plaintext token ever crosses the HTTP boundary out of the server \u2014 vault.store_secret accepts plaintext only via the form POST and immediately encrypts; vault.read_secret returns plaintext only when caller_id is a backend service id (mcp-runtime, gmail-fetcher-svc, etc.) and HTTP routes never expose plaintext under any path. Vault audit captures every decrypt with purpose, so a leak is at least observable.",
+      "Tenant scoping on Library reads \u2014 a contributor in company X cannot see drafts or pending items in company Y. The per-tenant approval filter (library-01) intersects every list query with the user's company_id from the session JWT; bypass requires forging a JWT, which requires LIBRARY_SESSION_SECRET, which is admin-only.",
+      "GitHub write asymmetry \u2014 the only token with write access to ColaberryIntern/AI_ProjectArchitect is GITHUB_ADMIN_TOKEN held server-side. Approvers triggering an approval do NOT need any personal write credential to the canonical repo. Users with personal workspace repos get write on THEIR workspace only via the collaborator invite. This means a compromised approver account cannot push raw to the canonical repo \u2014 they can only request a PR via the sync pipeline, which still requires CI smoke pass.",
+      "User-scoped vault writes \u2014 vault.store_secret enforces caller_id matches user_id for non-admin callers. A contributor cannot write to another contributor's vault. Admins are the only role with caller_id != user_id permission, and every cross-user write is audit-logged with `caller_id != target_user_id` \u2014 this is the signal for periodic review.",
+      "Unmatched-domain rejection \u2014 auth_google.provision_or_lookup_user() does NOT auto-create a tenant for unknown email domains. It returns 403 with status=queued_for_review. This prevents a randomly-domained Google account from minting a Colaberry-identity session and pivoting into the library. New tenants require an admin's explicit edit of library_tenant_domains.json.",
+      "Session secret rotation = forced re-login \u2014 LIBRARY_SESSION_SECRET signs every JWT; rotating it invalidates every existing session in one shot. This is the kill-switch for `lost laptop, no idea which session is compromised` scenarios, and it must NOT be used for routine offboarding because it logs everyone out.",
+      "Workspace repo invite \u2260 access until accepted \u2014 the system creates the repo and issues the invite via PUT /collaborators/{slug}, but the user must accept on github.com. Until acceptance, the repo is admin-only. This means a fired employee whose invite is unaccepted has zero residual GitHub access from the platform.",
+      "CI smoke gate is a write boundary, not just a quality boundary \u2014 scripts/library_sync_smoke.py scans every PR body for ghp_, sk-, AKIA, BEARER, and PEM patterns. An approver who accidentally lets a secret-bearing asset into the queue cannot merge it through to ColaberryIntern/AI_ProjectArchitect \u2014 the PR stays red until the secret is stripped."
+    ],
+    "edge_cases": [
+      {
+        "scenario": "User logs in via Google SSO from a domain not in library_tenant_domains.json (e.g. consultant@partner-co.com)",
+        "handling": "auth_google.provision_or_lookup_user() consults unmatched_policy: queue_for_admin_review. Returns 403 with status=queued_for_review; user sees a `request access` page. An entry lands in the admin's queue. Ali/Ram decides approve (creates company row + adds the domain mapping + provisions the user) or reject. The user does NOT get a session JWT, does NOT see any library content, and does NOT get a workspace repo until admin acts. Fail-closed."
+      },
+      {
+        "scenario": "Approver leaves Colaberry (e.g. Ram resigns)",
+        "handling": "Admin runs the offboarding flow: (1) edit config/library_approvers.json to remove ram@colaberry.com \u2014 next deploy makes github_sync.can_approve() reject any future approval from that email. (2) tenancy.revoke_scope(ram.user_id, 'library:approve:*'). (3) vault.revoke for every (ram.user_id, tool_name) pair with reason='user offboarded'. (4) DELETE /repos/ColaberryIntern/{ram-slug}-workspace/collaborators/ram so Ram loses write to his workspace; archive the repo rather than deleting (preserves audit). (5) Remove Ram as a collaborator on AI_ProjectArchitect if he had been added directly. Existing approvals Ram already made remain in the audit with his attribution \u2014 we don't rewrite history. If Ram's GitHub PAT was committed anywhere, rotate GITHUB_ADMIN_TOKEN out of paranoia, but his personal PAT was never a write credential to the canonical repo so blast radius is small."
+      },
+      {
+        "scenario": "Intern needs a forked workspace (e.g. for a customer-specific build that shouldn't pollute the standard skill-set)",
+        "handling": "Admin re-runs /admin/users/new for the intern's email with a `workspace_suffix` override (e.g. `-pepsi`); workspaces.workspace_repo_for_user returns ColaberryIntern/{slug}-pepsi-workspace. provision_user_workspace seeds it from the same template but the .mcp.json points to a different vault namespace ({user_id}|pepsi:{tool}). Two repos, two .mcp.json files, two parallel vault namespaces \u2014 the same human, two isolated tool scopes. Idempotent \u2014 re-running with the same suffix is a no-op."
+      },
+      {
+        "scenario": "Two admins (Ali and Ram) simultaneously click `Onboard` on the same user email",
+        "handling": "tenancy.provision_or_lookup_user() is idempotent on email \u2014 first caller wins, second caller gets the existing User row (no duplicate). workspaces.provision_user_workspace is idempotent on repo_exists \u2014 first caller creates, second caller skips with action=skip_existing in the audit. The collaborator invite PUT is naturally idempotent on the GitHub side (re-inviting a collaborator is a no-op once they're already in). Email send is the one non-idempotent action; the admin queue deduplicates by email within 60s. Audit log shows two `provision_user` rows with the same target_user_id and different actor_ids \u2014 clean record of the race, no corrupted state."
+      },
+      {
+        "scenario": "User's vault entry hits expiry mid-Claude-Code session (e.g. Basecamp token expires 14 days in per memory rule, no auto-refresh)",
+        "handling": "vault.read_secret returns the stale token until vault.revoke or vault.days_until_expiry < 0; the MCP server bootstraps, gets a 401 from Basecamp, and surfaces the error in Claude Code. The user gets an `expires in X days` amber/red badge on /admin/users/me/scopes well before this \u2014 that's the prompt to re-paste. No auto-refresh by design (per the Basecamp auth rule in user memory) \u2014 the user is the only person who can hold the rotated secret. If a backend cron job hits the same expired token it logs the failure, doesn't retry indefinitely, and surfaces a row in the admin's vault dashboard for nudging."
+      },
+      {
+        "scenario": "Approver triggers a PR for an asset whose markdown contains a leaked secret (e.g. a copy-pasted ghp_ token in a How-To-Use section)",
+        "handling": "github_pr_sync.open_sync_pr() creates the branch and PR, but the GitHub Actions workflow library-sync-check.yml runs scripts/library_sync_smoke.py which pattern-scans for ghp_, sk-, AKIA, BEARER, PEM blocks. PR is blocked red; pr_auto_merge has no effect (gh waits on required checks). The audit row is status=ci_blocked. Approver edits the asset to strip the secret, re-approves, new PR opens, CI passes, merge proceeds. The leaked token must still be rotated out-of-band \u2014 the smoke gate prevents propagation, not the original exposure."
+      },
+      {
+        "scenario": "User uninvited from their own workspace repo accidentally (e.g. admin clicks wrong button)",
+        "handling": "The repo continues to exist with the user as a write collaborator only on GitHub's record \u2014 once removed, the user loses access to push, but their workspace clone still works locally. Re-running /admin/users/{id} \u2192 `re-issue workspace invite` calls workspaces.provision_user_workspace again; the idempotent path skips repo creation (action=skip_existing) and just re-PUTs the collaborator. One audit row, no data loss. The .mcp.json + USER_PROFILE.md in the repo are untouched."
+      },
+      {
+        "scenario": "GITHUB_ADMIN_TOKEN expires mid-provisioning (90-day rotation lapse)",
+        "handling": "workspaces.provision_user_workspace's _gh_api call returns 401. provision_user_workspace catches it, writes an audit row with action=provision_failed + error='401 from gh API \u2014 likely admin token expiry', and returns ok=False. The User row from step 3 still exists (tenancy.provision_or_lookup_user already committed); the workspace repo + invite did not. Admin rotates GITHUB_ADMIN_TOKEN in .env.prod, restarts the container, and clicks `Retry provision` on the user \u2014 the second run is idempotent and completes the steps that failed. Fail-open on identity (user can log in), fail-closed on GitHub access (no half-created workspace)."
+      }
+    ]
+  },
+  "libUX": {
+    "examples": [
+      {
+        "source_task": "Build the Basecamp comment-rollup agent (status=completed, project=AI Ops Command Center)",
+        "transforms_to": "agent \u2014 name 'BC Comment Rollup', autonomy_policy=recommend_only, owner=ali@colaberry.com, source_task=bc:7463955/todo/XXXX",
+        "why": "Title starts with the verb 'Build' + the noun 'agent'. Description references a persona prompt, an autonomy policy, and a recurring trigger \u2014 all three are mandatory fields on AssetMetadata for kind=agent. The completed cycle_seconds proves the agent actually shipped, which is exactly the bar for a vetted=true library entry."
+      },
+      {
+        "source_task": "Wire MCP filesystem server into the dev environment and document install steps (status=completed)",
+        "transforms_to": "mcp \u2014 name 'MCP Filesystem Server (Colaberry profile)', install_command + install_url pre-filled from the task description's npm line, category=mcp",
+        "why": "Description contains a literal `npm install @modelcontextprotocol/server-filesystem` line plus a checklist of install steps. AssetMetadata.install_steps, install_command, install_url are all directly extractable. Skipping the user re-typing this is the entire pitch of one-click transformation."
+      },
+      {
+        "source_task": "Run Monday morning operations review and post summary to #ops (recurring weekly, completed 8 times in last 60 days)",
+        "transforms_to": "workflow \u2014 multi-step orchestration with steps {pull_ops_metrics, summarize, post_to_slack}, owner=ali@colaberry.com, tags=[weekly, ops]",
+        "why": "Same title appears 8 times with completed status on a 7-day cadence \u2014 that is the textbook 'recurring action' signal. The description's numbered steps map 1:1 to orchestration_engine step claims. Turning this into a workflow asset replaces the human-driven Monday ritual with a scheduled job."
+      },
+      {
+        "source_task": "Write the Claude prompt that classifies skill_catalog items into Library buckets (status=completed)",
+        "transforms_to": "prompt \u2014 versioned prompt template with name 'Skill Catalog Classifier', evaluation_hook=accuracy_on_50_item_holdout",
+        "why": "Title says 'Write the Claude prompt'. Description contains an actual prompt body wrapped in triple-backticks plus a 'tested against N examples' line \u2014 which is the eval_hook AssetMetadata expects for prompts. This is a near-zero-effort transformation; the prompt already exists in the BC comment thread."
+      },
+      {
+        "source_task": "Document the recovery procedure for outbox backlog above 1000 items (status=completed)",
+        "transforms_to": "recovery \u2014 playbook 'outbox_backlog_drain_v2', tags=[auto-executable], source_task linked",
+        "why": "The completed task description has detector criteria ('above 1000') + remediation steps + a rollback note. That is the exact shape of a recovery_coordinator playbook. The 'document' verb in completed past tense is the strongest single signal that the artifact is already written and just needs to be lifted into the library."
+      },
+      {
+        "source_task": "Define acceptance criteria + step-by-step setup for the standard FastAPI + SQLAlchemy + Alembic project starter (status=completed)",
+        "transforms_to": "template \u2014 blueprint 'fastapi-sqlalchemy-starter', tags=[python, web, blueprint]",
+        "why": "Description has the magic combination: bulleted setup steps + a 'Done when\u2026' acceptance section. config/blueprints expects exactly this. The reusability is obvious because the user phrased the task generically ('standard \u2026 starter') rather than for one project."
+      }
+    ],
+    "one_click_flow": [
+      "From /my-day/ or /harvest/, the user clicks a completed todo card \u2014 the row expands inline (no page change) into a Transformation Drawer on the right edge.",
+      "The drawer shows 1-3 ranked suggestion chips at the top: 'agent \u00b7 92% match', 'prompt \u00b7 71% match', 'workflow \u00b7 58% match'. Each chip displays the scan signals that fired (e.g. 'verb: Build', 'noun: agent', 'description contains autonomy_policy').",
+      "User clicks one chip (say 'agent'). The drawer body morphs into a pre-filled Submission form mapped to AssetMetadata fields for that category: name (extracted from title), description (first paragraph of bc description), how_to_use (steps section), example (code block if present), tags (auto from project + keywords), source = bc:{bc_project_id}/todo/{bc_id}.",
+      "Each field shows an 'extracted from' citation underneath (e.g. 'from todo title' or 'from comment #3 by Karun') so the user trusts the auto-fill. Fields are editable in place.",
+      "User edits anything that's wrong (usually nothing) and clicks one button: 'Submit to library'. This calls store.submit(workspace, category, submitted_by, \u2026) \u2014 the same Submission flow the Add-to-Library button uses today \u2014 and tags the submission with source_task_bc_id so provenance is preserved.",
+      "The drawer collapses with a green 'Submitted \u00b7 queued for review' toast and a link to the new pending row. The todo card in the list now shows a small badge 'library: pending agent' so the user does not propose it a second time.",
+      "Reviewer experience is unchanged \u2014 the submission appears in the existing /library/pending queue. On accept, the resulting AssetMetadata.source_task field links back to the originating BC todo, closing the loop in both directions."
+    ],
+    "page_design": "\"The new page lives at /harvest/ \u2014 a sibling of /my-day/ in the top nav, between 'My Day' and 'Library'. The name is deliberate: this is where finished work gets harvested into reusable assets. When you land on it, the first thing you see is a single sentence at the top: 'You completed 47 tasks in the last 30 days. 23 of them look transformable.' Below that, a horizontal strip of ten chips \u2014 one per asset kind (skills, agents, prompts, MCP servers, capabilities, templates, workflows, projections, recovery, chaos) \u2014 each showing the count of candidate transformations of that kind. Clicking a chip filters the list. The main body is a feed of completed-todo cards from output/ops/{user_id}/todos.json where status='completed', sorted by 'highest-confidence suggestion first'. Each card shows the todo title, the project (Personal folder by default, switchable), completed-at timestamp, and a colored ribbon along the left edge whose color matches the top suggested kind \u2014 purple for agent, blue for workflow, green for recovery, etc. On the right side of every card sits a stack of 1-3 suggestion chips with confidence scores, computed by the scan_signals heuristics. Clicking the card expands a right-edge Transformation Drawer (described in one_click_flow). Already-transformed todos collapse to a one-line 'shipped to library' row at the bottom of the feed. A subtle filter bar at the top supports: date range, project (defaults to Personal), kind, and 'hide already-submitted'. The whole page reuses the library shell's left nav, so the user always sees library counts updating in real time as they submit \u2014 the dopamine loop is the whole point. No bulk-select, no wizards, no modals; the entire UX is: see card, click chip, glance at extracted fields, click Submit.\"",
+    "scan_signals": [
+      {
+        "signal": "Title regex matches /^(build|create|ship|deploy)\\s+.*\\bagent\\b/i",
+        "suggests": "agent \u2014 high confidence (~90%); pre-fill name from the noun phrase after 'agent', owner from assignee_names[0]"
+      },
+      {
+        "signal": "Description contains a fenced code block whose language is 'prompt' OR the literal phrase 'system prompt:' OR a triple-quoted multi-paragraph instruction with no code",
+        "suggests": "prompt \u2014 high confidence; lift the body verbatim into AssetMetadata.example, derive name from the title's gerund clause"
+      },
+      {
+        "signal": "Same title appears 3+ times across todos with completed status and an inter-completion gap that is approximately constant (weekly, biweekly, monthly within 20% tolerance)",
+        "suggests": "workflow \u2014 high confidence; the cadence becomes the orchestration schedule, the description steps become orchestration step claims"
+      },
+      {
+        "signal": "Description contains an install command line: regex /\\b(npm install|pip install|uvx|brew install|docker pull)\\s+\\S+/",
+        "suggests": "mcp OR capability \u2014 if the package name contains 'mcp' or 'modelcontextprotocol' \u2192 mcp; otherwise capability. install_command and install_url auto-extract."
+      },
+      {
+        "signal": "Description has a numbered or bulleted list of 3+ imperative steps AND a separately delimited 'Acceptance criteria' / 'Done when' / 'Definition of done' section",
+        "suggests": "template \u2014 medium confidence; the steps become how_to_use, the criteria become tags + the blueprint's validation block"
+      },
+      {
+        "signal": "Title or description contains one of: 'recover', 'rollback', 'unstick', 'drain', 'reconnect', 'replay', 'retry' AND a threshold/condition phrase (numbers, comparators)",
+        "suggests": "recovery \u2014 high confidence; threshold becomes the detector criterion in the playbook"
+      },
+      {
+        "signal": "Title or description contains: 'inject', 'simulate failure', 'kill', 'chaos', 'load test', 'fault'",
+        "suggests": "chaos \u2014 medium-high confidence; map to a chaos_engine drill JSON"
+      },
+      {
+        "signal": "Description references 'read model', 'projection', 'rebuild from events', 'materialized view', or rebuilds state from an event log",
+        "suggests": "projection \u2014 medium confidence; the rebuild function becomes the projection_engine registration"
+      },
+      {
+        "signal": "Description has a 'why use this' / 'use this when' style framing AND no code AND no install commands \u2014 pure decision-making text",
+        "suggests": "skill \u2014 low-medium confidence; lift into the classified catalog as a skill candidate"
+      },
+      {
+        "signal": "Description has a plugin manifest shape: name + version + tools/operations list",
+        "suggests": "capability \u2014 high confidence; the operations list maps directly to capability_registry entries"
+      },
+      {
+        "signal": "Description contains a Claude Code persona definition ('You are a \u2026', behavioral rules, autonomy hints like 'recommend only' / 'auto-approve low risk')",
+        "suggests": "agent \u2014 high confidence; the persona body becomes AssetMetadata.description, autonomy phrase becomes the tag"
+      },
+      {
+        "signal": "completed_by_id == assignee_ids[0] AND cycle_seconds < 600 AND description contains a Slack/email link in the comments",
+        "suggests": "no transformation \u2014 this was a quick ack, not a reusable artifact. Suppress card to reduce noise."
+      }
+    ],
+    "transformation_types": [
+      {
+        "target": "skill",
+        "when_to_use": "Completed task captured a small, single-purpose, reusable unit of know-how (a how-to, a one-page playbook, a decision rule). No code shipped, no recurring schedule, no install steps \u2014 just an artifact worth indexing in the classified skill_catalog so the next person finds it.",
+        "effort": "low \u2014 pre-fills 6 of 7 AssetMetadata fields; user only confirms category"
+      },
+      {
+        "target": "agent",
+        "when_to_use": "Task title verb is build/ship/create + the noun 'agent', or the description defines a persona, an autonomy policy (recommend/approve/auto), and the tools it can call. agent_registry expects exactly these fields.",
+        "effort": "low \u2014 three new fields beyond the standard Submission form: persona, autonomy_policy, tool_allowlist"
+      },
+      {
+        "target": "prompt",
+        "when_to_use": "Task captured the act of writing or refining a prompt \u2014 description contains a triple-backticked prompt body, often paired with a 'tested on N examples' eval line. Skip if the prompt only existed in the LLM call site and was never written down as an artifact.",
+        "effort": "very low \u2014 body lifts verbatim; only versioning + an optional eval_hook to fill"
+      },
+      {
+        "target": "mcp",
+        "when_to_use": "Task involved installing, configuring, or wrapping a Model Context Protocol server. The install command line and the package URL are present in the description.",
+        "effort": "very low \u2014 install_command, install_url, source_url all auto-extract from the description regex"
+      },
+      {
+        "target": "capability",
+        "when_to_use": "Task created or registered a new platform operation \u2014 there is a plugin manifest, a tool/op list, or the user explicitly hooked something into capability_registry. Distinguished from agent: capabilities have no persona, only operations.",
+        "effort": "medium \u2014 manifest shape is rigid; user confirms the operations list and tags"
+      },
+      {
+        "target": "template",
+        "when_to_use": "Task wrote a blueprint, starter, or scaffolding \u2014 bulleted steps + acceptance criteria + reusable across projects. config/blueprints is the target.",
+        "effort": "medium \u2014 steps + acceptance section map cleanly, but the user must affirm the blueprint is generic enough"
+      },
+      {
+        "target": "workflow",
+        "when_to_use": "Same titled task completes on a recurring cadence (weekly Monday review, monthly report). The cadence itself plus the step list is what becomes the orchestration definition.",
+        "effort": "medium-high \u2014 needs the user to confirm the schedule and identify which steps automate vs which stay human"
+      },
+      {
+        "target": "projection",
+        "when_to_use": "Task built a read model or rebuildable view from event history. Phrase 'rebuild from events' is the canonical tell.",
+        "effort": "high \u2014 needs the rebuild function to actually exist as code; the library entry mostly documents and registers it"
+      },
+      {
+        "target": "recovery",
+        "when_to_use": "Task wrote a runbook for an incident pattern: detector criterion (numeric threshold) + remediation steps + rollback. Recovery_coordinator expects this exact triple.",
+        "effort": "low-medium \u2014 detector regex parses the threshold; steps + rollback split via section headers"
+      },
+      {
+        "target": "chaos",
+        "when_to_use": "Task involved running, designing, or documenting a fault-injection scenario. Keywords: inject, kill, simulate, fault, drill.",
+        "effort": "low \u2014 chaos_engine drills are small JSON files; the description maps almost 1:1"
+      }
+    ]
+  },
+  "useCases": {
+    "scenarios": [
+      {
+        "title": "Kes inherits Christian's Cold Lead Conversion repo",
+        "cast": [
+          "Kes",
+          "Ali Muwwakkil",
+          "Ram Kumar"
+        ],
+        "narrative": "May 4, 8:47am \u2014 Kes opens /my-day/ and the briefing flags an orphaned asset: Cold Lead Conversion (last commit by Christian Outlaw, 11 days stale, hot lead scoring still firing into a dead webhook). The decisions report from the prior week shows Ali assigned ownership transfer but no acceptance event was recorded. Kes clicks into /library/, filters by 'author: christian-outlaw', and sees the agent, its three MCPs, and the prompt chain Christian built. He pulls the repo into ColaberryIntern/kes-workspace via the workspace clone action. By 10:15am, Kes has run the agent locally, found that the hot lead scoring webhook points to Christian's personal ngrok URL, and opens a moderation queue item to republish under his ownership. Ali ratifies in the queue at 11am; Ram Kumar countersigns the cross-team transfer. By 2pm the asset shows Kes as steward in /library/, the heat map for 'inherited assets' drops from 1 to 0, and the next 1:1 pilot dash auto-fires with the handoff marked complete.",
+        "system_touches": [
+          "/my-day/ briefing",
+          "decisions report",
+          "/library/ author filter",
+          "Per-user GitHub workspace (ColaberryIntern/kes-workspace)",
+          "Per-tenant moderation queue",
+          "Hot lead scoring (Cold Lead Conversion)",
+          "Pilot dash auto-fire"
+        ],
+        "outcome": "The Cold Lead Conversion pipeline goes from silently broken (dead webhook, no owner) to actively stewarded by Kes with a recorded chain of custody. Future intern departures can no longer create orphaned production assets \u2014 the briefing surfaces them within one business day."
+      },
+      {
+        "title": "Karun's Monday morning calibration",
+        "cast": [
+          "Karun",
+          "Ali Muwwakkil",
+          "David Lahme"
+        ],
+        "narrative": "Monday 7:30am \u2014 Karun's /my-day/ briefing leads with the hot lead scoring delta from the weekend: 4 leads moved from warm to hot, 1 hot lead went cold (no reply in 72hrs). The kanban shows David Lahme's onboarding card at 'Day 6 of 30' with a blocker tag \u2014 David needs Karun's intro to the Tarrant County prospect before Wednesday. Karun clicks the heat map and sees his own 'follow-up debt' has crept to amber. At 8:15am he @CB System mentions in the shared channel: 'draft the Tarrant intro email using our standard pilot pitch'. The auto-response pulls the pilot-pitch template from /library/, fills in David's bio from his exec onboarding profile, and posts a draft. Karun edits two lines and sends. The pilot dash auto-fires 30 minutes before his 9am 1:1 with Ali, showing the calibration: 3 deals at risk, 1 cleared, David unblocked. Ali approves Karun's proposal to make the Tarrant intro template a reusable library asset.",
+        "system_touches": [
+          "/my-day/ briefing",
+          "Hot lead scoring",
+          "Kanban",
+          "Heat map",
+          "@CB System mention auto-response",
+          "/library/ templates",
+          "Pilot dash auto-fire"
+        ],
+        "outcome": "Karun starts the week with a calibrated picture of sales pipeline health instead of inbox-driven scrambling. David's onboarding stays on its 30-day timeline because the blocker was surfaced and cleared in a single morning. The Tarrant intro becomes a library asset by Friday."
+      },
+      {
+        "title": "JJ's deck-builder task becomes a library asset",
+        "cast": [
+          "JJ McBride",
+          "Kes",
+          "Ali Muwwakkil"
+        ],
+        "narrative": "Aug 14, 10am \u2014 JJ McBride (two weeks into his exec role) has a one-off task on his kanban: 'Build investor update deck for August board meeting'. He works through it by chaining three prompts \u2014 pull metrics from the pilot dash, summarize wins from the decisions report, generate slide outlines. By 4pm the deck is done. At 4:30pm /my-day/ surfaces a suggestion on his kanban card: 'This task touched 3 prompts + 1 MCP + 1 template \u2014 promote to library asset?' JJ clicks yes. The system bundles his prompt chain into a draft 'Monthly Investor Update Generator' agent and routes it to the per-tenant moderation queue. Kes reviews the bundle at 5pm, refactors the metrics-pull MCP to be parameterized (so it works for any month, not just August), and approves. Ali ratifies. By Aug 15 morning, the agent appears in /library/ tagged 'exec-reporting', authored by JJ, hardened by Kes. Next month's deck takes JJ 40 minutes instead of 6 hours.",
+        "system_touches": [
+          "Kanban",
+          "Pilot dash",
+          "Decisions report",
+          "/library/ skills/agents/prompts",
+          "Per-tenant moderation queue",
+          "/my-day/ task-to-asset suggestion"
+        ],
+        "outcome": "A one-off executive task becomes durable institutional capability within 24 hours. The task-to-library-asset transformation pays for itself the first time JJ reuses it. Sohail and David inherit the same agent without ever meeting JJ to learn his workflow."
+      },
+      {
+        "title": "Cross-company discovery of the Cold Lead Conversion agent",
+        "cast": [
+          "Sohail Syed",
+          "Kes",
+          "Ali Muwwakkil"
+        ],
+        "narrative": "Sept 3, 11am \u2014 Sohail is operating in his own tenant workspace (a partner company onboarded onto AI_ProjectArchitect under cross-company visibility). His /my-day/ heat map flags 'cold pipeline' as red. He searches /library/ with the cross-company filter on and finds the Cold Lead Conversion agent \u2014 published by Colaberry, stewarded by Kes, approved cross-tenant. The provenance trail shows Christian Outlaw as original author, Kes as current steward, 14 successful deployments inside Colaberry, 92% precision on hot-lead classification. Sohail clicks 'follow author' on Kes. He requests the asset via the cross-company visibility flow; the request lands in Colaberry's moderation queue. Ali ratifies the share (Sohail's tenant is a vetted partner). By 2pm Sohail has the agent running in his tenant, parameterized for his ICP. Kes gets a notification that his asset has a new cross-company deployment and a question from Sohail about webhook configuration \u2014 the same gotcha Kes fixed back in May.",
+        "system_touches": [
+          "/my-day/ heat map",
+          "/library/ cross-company filter",
+          "Cross-company visibility (Workflow 2)",
+          "Provenance trail",
+          "Follow-author",
+          "Per-tenant moderation queue",
+          "Hot lead scoring (Cold Lead Conversion)"
+        ],
+        "outcome": "An asset built by a departed intern, rescued by Kes, generates value for a partner tenant four months later \u2014 with full provenance and zero loss of institutional credit. Christian's name still appears in the lineage. The follow-author graph starts becoming a real signal of who is shipping reusable capability."
+      },
+      {
+        "title": "Ram's quarterly cross-team ratification sweep",
+        "cast": [
+          "Ram Kumar",
+          "Ali Muwwakkil",
+          "Karun",
+          "Kes"
+        ],
+        "narrative": "End of Q3, Friday 9am \u2014 Ram opens /my-day/ and pulls the quarterly decisions report. It lists every cross-team commitment Ali made in the prior 90 days that requires Ram's ratification: 7 library asset publications, 2 tenant onboardings, 1 inherited-asset transfer (Kes/Cold Lead Conversion, already cleared), and 3 sales-to-engineering handoffs Karun initiated. The kanban view filtered to 'awaiting-ram-ratify' shows the same 3 cards in red. Ram walks each: Karun's pilot pitch template (approve), Kes's refactored Cold Lead Conversion v2 with new MCP (approve, but flag the rate-limit assumption), JJ's investor deck agent (approve, conditional on Sohail's tenant being excluded from access). At 11am he runs the heat map across all four execs \u2014 David, JJ, Sohail, Karun \u2014 and confirms no one is in red on capability gaps. He drops a single Loom into the 1:1 channel with Ali. The pilot dash auto-fires 30 minutes before their 12pm sync with the quarter's ratification ledger already loaded.",
+        "system_touches": [
+          "/my-day/ briefing",
+          "Decisions report",
+          "Kanban (awaiting-ratify filter)",
+          "/library/ skills/agents",
+          "Per-tenant moderation queue",
+          "Heat map",
+          "Pilot dash auto-fire"
+        ],
+        "outcome": "Ram's role as co-founder ratifier becomes a 2-hour Friday ritual instead of a constant interrupt stream. Cross-team commitments don't pile up unratified. By end of quarter, every published library asset has a recorded co-founder signature, which is the audit trail Colaberry needs when partner tenants ask 'who actually approved this'."
+      }
+    ]
+  }
+}

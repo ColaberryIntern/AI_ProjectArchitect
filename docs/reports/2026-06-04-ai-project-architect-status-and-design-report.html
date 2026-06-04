@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI_ProjectArchitect · Status + Design Report · 2026-06-04 · Ali Muwwakkil</title>
+<style>
+  body { margin: 0; padding: 0; background: #f6f8fa; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; line-height: 1.5; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px; }
+  .card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+  .subject { background: linear-gradient(135deg, #1a1a1a 0%, #24292f 100%); color: #f0e9d4; padding: 28px 24px; border-radius: 8px; margin-bottom: 18px; }
+  .subject .label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #d4a72c; margin-bottom: 8px; }
+  .subject h1 { margin: 0; font-size: 24px; line-height: 1.3; color: #ffffff; }
+  .subject .meta { margin-top: 10px; font-size: 13px; color: #c9d1d9; }
+  .section-head { padding: 14px 20px; font-size: 17px; font-weight: 700; color: #ffffff; display: block; }
+  .sh-snapshot { background: linear-gradient(135deg, #0969da 0%, #218bff 100%); }
+  .sh-shipped { background: linear-gradient(135deg, #15803d 0%, #2da44e 100%); }
+  .sh-active { background: linear-gradient(135deg, #d4a72c 0%, #eac54f 100%); color: #1a1a1a !important; }
+  .sh-github { background: linear-gradient(135deg, #6e40c9 0%, #8957e5 100%); }
+  .sh-harvest { background: linear-gradient(135deg, #cf222e 0%, #ff5a5a 100%); }
+  .sh-collab { background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%); }
+  .body { padding: 18px 20px; }
+  .exec-row { display: block; margin-bottom: 10px; padding: 12px 14px; border-radius: 6px; font-size: 14px; }
+  .exec-red { background: #ffeef0; border-left: 4px solid #cf222e; }
+  .exec-amber { background: #fff4d5; border-left: 4px solid #d4a72c; }
+  .exec-green { background: #dafbe1; border-left: 4px solid #15803d; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { background: #1a1a1a; color: #f0e9d4; text-align: left; padding: 8px 10px; font-weight: 600; font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
+  td { padding: 9px 10px; border-bottom: 1px solid #eaeef2; vertical-align: top; }
+  tr:nth-child(even) td { background: #f6f8fa; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
+  .p-green { background: #dafbe1; color: #116329; }
+  .p-amber { background: #fff4d5; color: #7d4e00; }
+  .p-red { background: #ffeef0; color: #82071e; }
+  .p-blue { background: #ddf4ff; color: #0550ae; }
+  .p-purple { background: #f3e8ff; color: #5a32a3; }
+  .p-dark { background: #1a1a1a; color: #f0e9d4; }
+  .bar-row { display: block; margin: 6px 0; }
+  .bar-label { display: inline-block; width: 130px; font-size: 13px; vertical-align: middle; }
+  .bar-track { display: inline-block; width: calc(100% - 200px); height: 22px; background: #eaeef2; border-radius: 4px; vertical-align: middle; overflow: hidden; }
+  .bar-fill { display: block; height: 100%; line-height: 22px; color: #ffffff; font-size: 11px; font-weight: 700; padding-left: 8px; }
+  .bar-count { display: inline-block; width: 60px; text-align: right; font-size: 13px; font-weight: 600; vertical-align: middle; }
+  .timeline-cell { padding: 8px 10px; vertical-align: middle; border-bottom: 1px solid #eaeef2; }
+  .date-block { display: inline-block; width: 78px; padding: 6px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; text-align: center; vertical-align: middle; }
+  .db-red { background: #ffeef0; color: #82071e; }
+  .db-amber { background: #fff4d5; color: #7d4e00; }
+  .db-blue { background: #ddf4ff; color: #0550ae; }
+  .db-green { background: #dafbe1; color: #116329; }
+  .db-dark { background: #1a1a1a; color: #f0e9d4; }
+  .two-col td { width: 50%; vertical-align: top; padding: 0 8px; }
+  .col-card { background: #f6f8fa; border-radius: 6px; padding: 14px; border: 1px solid #d0d7de; }
+  .col-card.admin { border-top: 4px solid #6e40c9; }
+  .col-card.user { border-top: 4px solid #0969da; }
+  .col-card h4 { margin: 0 0 10px 0; font-size: 14px; }
+  .col-card ul { margin: 0; padding-left: 18px; font-size: 12.5px; }
+  .col-card li { margin-bottom: 7px; }
+  .badge-grid td { padding: 6px; text-align: center; }
+  .kind-badge { display: block; padding: 12px 6px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #ffffff; }
+  .k-skill { background: #15803d; }
+  .k-agent { background: #6e40c9; }
+  .k-prompt { background: #0969da; }
+  .k-mcp { background: #d4a72c; color: #1a1a1a; }
+  .k-cap { background: #cf222e; }
+  .k-template { background: #1f6feb; }
+  .k-workflow { background: #218bff; }
+  .k-projection { background: #5a32a3; }
+  .k-recovery { background: #15803d; }
+  .k-chaos { background: #82071e; }
+  .pilot-table td { padding: 0 6px; vertical-align: top; }
+  .pilot-card { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; }
+  .pilot-card h4 { margin: 0 0 8px 0; font-size: 15px; }
+  .pilot-row { display: block; padding: 6px 0; border-bottom: 1px dashed #d0d7de; font-size: 12.5px; }
+  .pilot-row:last-child { border-bottom: 0; }
+  .pilot-row .lbl { display: inline-block; width: 90px; font-weight: 600; color: #57606a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .scenario { background: #f6f8fa; border-radius: 6px; padding: 16px; margin-bottom: 14px; border-left: 5px solid #0969da; }
+  .scenario h4 { margin: 0 0 8px 0; font-size: 15px; color: #1a1a1a; }
+  .cast-pill { display: inline-block; background: #ddf4ff; color: #0550ae; padding: 2px 9px; border-radius: 12px; font-size: 11px; margin-right: 5px; margin-bottom: 4px; font-weight: 600; }
+  .scenario-body td { padding: 8px 0; vertical-align: top; }
+  .touch-side { background: #ffffff; border: 1px solid #d0d7de; border-radius: 5px; padding: 10px; font-size: 11.5px; }
+  .touch-side b { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a; display: block; margin-bottom: 5px; }
+  .touch-side ul { margin: 0; padding-left: 16px; }
+  .outcome-box { background: #dafbe1; border-left: 4px solid #15803d; padding: 10px 12px; margin-top: 8px; font-size: 12.5px; }
+  .step-list { counter-reset: step; padding-left: 0; list-style: none; margin: 0; }
+  .step-list li { position: relative; padding: 10px 12px 10px 44px; margin-bottom: 6px; background: #f6f8fa; border-radius: 5px; font-size: 13px; counter-increment: step; }
+  .step-list li::before { content: counter(step); position: absolute; left: 10px; top: 10px; width: 24px; height: 24px; background: #1a1a1a; color: #d4a72c; border-radius: 50%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px; }
+  .step-list li b { color: #6e40c9; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; margin-right: 6px; }
+  .blocker-row { background: #ffeef0; border-left: 4px solid #cf222e; padding: 10px 14px; margin-bottom: 8px; border-radius: 4px; font-size: 13px; }
+  .blocker-row b { color: #82071e; }
+  .ask { display: inline-block; background: #1a1a1a; color: #d4a72c; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 6px; }
+  .footer { text-align: center; padding: 18px; font-size: 11.5px; color: #57606a; }
+  .bc-ref { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; background: #f0e9d4; padding: 1px 5px; border-radius: 3px; color: #1a1a1a; }
+  .url-tag { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #1a1a1a; color: #d4a72c; padding: 2px 7px; border-radius: 3px; }
+  h3.sub { margin: 20px 0 10px 0; font-size: 14px; color: #1a1a1a; padding-bottom: 6px; border-bottom: 2px solid #d4a72c; }
+  .quote { background: #f0e9d4; border-left: 4px solid #d4a72c; padding: 12px 14px; font-style: italic; font-size: 13px; border-radius: 4px; margin: 10px 0; color: #1a1a1a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="subject">
+    <div class="label">📬 Status + Design Report</div>
+    <h1>AI_ProjectArchitect · Status + Design Report · 2026-06-04 · Ali Muwwakkil</h1>
+    <div class="meta">🗓️ 2026-06-04 (Thursday) · 👤 Ali Muwwakkil · 🏢 Colaberry · 📊 BC list 9953889092</div>
+  </div>
+
+  <div class="card">
+    <div class="body" style="padding: 18px 20px;">
+      <div style="font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #82071e; font-weight: 700; margin-bottom: 10px;">🚨 Executive summary · risk level HIGH</div>
+      <div class="exec-row exec-red">🔴 <b>Pilot kickoff fires Monday 2026-06-09 at 09:00 ET</b>, but two CRITICAL blockers remain. Completion is at <b>50% (15 done / 15 active)</b>, and the next 3 business days carry the entire pilot risk.</div>
+      <div class="exec-row exec-amber">🟠 <b>Karun 1 + Kes 1 PRDs are still DRAFT scaffolds</b>, due 2026-06-07 (3 days out). Both have placeholder fields awaiting Ali's 30-minute ratification session. Without signed PRDs, the Jun 9 dashboards run on provisional BC-only scoring.</div>
+      <div class="exec-row exec-amber">🟠 <b>PILOT_DASH_DELIVERY is NOT set in /opt/ai-project-architect/.env.prod</b>. delivery.py defaults OFF, so Mon Jun 9 dashboards will write HTML to disk but will not email Ali, Karun, or Kes. Fix must land before 08:30 ET 2026-06-09.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-snapshot">📊 Status snapshot</div>
+    <div class="body">
+
+      <h3 class="sub">Completion chart · 15 done · 15 active · 50% complete</h3>
+      <div class="bar-row">
+        <span class="bar-label">✅ Completed</span>
+        <span class="bar-track"><span class="bar-fill" style="width: 50%; background: linear-gradient(90deg, #15803d, #2da44e);">15 (50%)</span></span>
+        <span class="bar-count">15</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">⏳ Active</span>
+        <span class="bar-track"><span class="bar-fill" style="width: 50%; background: linear-gradient(90deg, #d4a72c, #eac54f); color: #1a1a1a;">15 (50%)</span></span>
+        <span class="bar-count">15</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">🔴 At-risk / blocked</span>
+        <span class="bar-track"><span class="bar-fill" style="width: 20%; background: linear-gradient(90deg, #cf222e, #ff5a5a);">6 (20%)</span></span>
+        <span class="bar-count">6</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">🟢 On-track</span>
+        <span class="bar-track"><span class="bar-fill" style="width: 30%; background: linear-gradient(90deg, #0969da, #58a6ff);">9 (30%)</span></span>
+        <span class="bar-count">9</span>
+      </div>
+
+      <h3 class="sub">Critical dates timeline · next 60 days</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Days out</th><th>Event</th></tr></thead>
+        <tbody>
+          <tr><td><span class="date-block db-red">2026-06-07</span></td><td><span class="pill p-red">+3</span></td><td>📝 Karun 1 + Kes 1 PRDs due (Ali 30-min ratification session)</td></tr>
+          <tr><td><span class="date-block db-red">2026-06-08</span></td><td><span class="pill p-red">+4</span></td><td>📚 [00 START HERE] Build Index review due</td></tr>
+          <tr><td><span class="date-block db-red">2026-06-09</span></td><td><span class="pill p-red">+5</span></td><td>🚀 <b>Monday pilot day-1</b>: Karun 1:1 09:00 ET + Kes 1:1 09:30 ET · first live dashboard fires</td></tr>
+          <tr><td><span class="date-block db-amber">2026-06-12</span></td><td><span class="pill p-amber">+8</span></td><td>🛠️ Karun 2 + Kes 2 dash skills ship-ready</td></tr>
+          <tr><td><span class="date-block db-amber">2026-06-14</span></td><td><span class="pill p-amber">+10</span></td><td>⏰ Karun 3 + Kes 3 scheduler wired to fire 30 min pre-1:1</td></tr>
+          <tr><td><span class="date-block db-blue">2026-07-02</span></td><td><span class="pill p-blue">+28</span></td><td>📈 Karun + Kes 4-week pilot iteration complete (8 cycles each)</td></tr>
+          <tr><td><span class="date-block db-blue">2026-07-04</span></td><td><span class="pill p-blue">+30</span></td><td>📋 30-day retrospective + Colaberry-approved artifact commit</td></tr>
+          <tr><td><span class="date-block db-green">2026-07-07</span></td><td><span class="pill p-green">+33</span></td><td>🪄 Phase 2 launch · generalize karun-agent to YAML-per-person</td></tr>
+          <tr><td><span class="date-block db-green">2026-07-17</span></td><td><span class="pill p-green">+43</span></td><td>💰 DRI framing + $90/$10 budget envelope adopted</td></tr>
+          <tr><td><span class="date-block db-dark">2026-08-01</span></td><td><span class="pill p-dark">+58</span></td><td>👥 Phase 2 exec onboarding: Ali, Ram, David Lahme, JJ McBride, Sohail</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">Pilot track readiness · Karun || Kes</h3>
+      <table class="pilot-table" cellspacing="0" cellpadding="0">
+        <tr>
+          <td>
+            <div class="pilot-card" style="border-top: 4px solid #6e40c9;">
+              <h4>👤 Karun pilot</h4>
+              <div class="pilot-row"><span class="lbl">PRD</span> <span class="pill p-amber">DRAFT scaffold</span> docs/personas/karun-prd.md · commit 416fd56 · <b>not signed</b></div>
+              <div class="pilot-row"><span class="lbl">Skill</span> <span class="pill p-amber">scaffold + provisional BC scoring</span> commits 9da039c, eb990b0</div>
+              <div class="pilot-row"><span class="lbl">Scheduler</span> <span class="pill p-red">delivery OFF</span> fires Mon 08:30 ET (30 min pre 09:00 1:1) · disk-only</div>
+              <div class="pilot-row"><span class="lbl">Gate</span> 🔴 PILOT_DASH_DELIVERY missing in .env.prod</div>
+            </div>
+          </td>
+          <td>
+            <div class="pilot-card" style="border-top: 4px solid #1f6feb;">
+              <h4>👤 Kes pilot</h4>
+              <div class="pilot-row"><span class="lbl">PRD</span> <span class="pill p-amber">DRAFT scaffold</span> docs/personas/kes-prd.md · commit 416fd56 · <b>not signed</b></div>
+              <div class="pilot-row"><span class="lbl">Skill</span> <span class="pill p-amber">scaffold + provisional BC scoring</span> commits 9da039c, eb990b0</div>
+              <div class="pilot-row"><span class="lbl">Scheduler</span> <span class="pill p-red">delivery OFF</span> fires Mon 09:00 ET (30 min pre 09:30 1:1) · shared scheduler.py</div>
+              <div class="pilot-row"><span class="lbl">Gate</span> 🔴 Same SMTP delivery env gap as Karun</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <h3 class="sub">🚨 Blockers + explicit owner asks</h3>
+      <div class="blocker-row">
+        <b>1. CRITICAL · PILOT_DASH_DELIVERY missing in .env.prod</b><span class="ask">Owner: Ali</span><br>
+        Verified via SSH cat. Set <span class="bc-ref">PILOT_DASH_DELIVERY=1</span>, <span class="bc-ref">PILOT_DASH_TEST_MODE=1</span> (Ali-only safety), <span class="bc-ref">GMAIL_SMTP_USERNAME</span>, <span class="bc-ref">GMAIL_SMTP_APP_PASSWORD</span> before 08:30 ET 2026-06-09.
+      </div>
+      <div class="blocker-row">
+        <b>2. CRITICAL · Karun 1 + Kes 1 PRDs still DRAFT</b><span class="ask">Owner: Ali</span><span class="ask">Co-signer: Ram</span><br>
+        Due 2026-06-07. 30-min ratification session not booked. Without signed PRDs, Jun 9 dashboards run on provisional BC-only scoring (per commit eb990b0 fallback).
+      </div>
+      <div class="blocker-row" style="background: #fff4d5; border-left-color: #d4a72c;">
+        <b>3. Pilot recipients file not verified</b><span class="ask" style="background: #7d4e00;">Owner: Kes</span><br>
+        <span class="bc-ref">config/pilot_recipients.json</span> existence not confirmed in audit. delivery.py reads from it. Check before Jun 9.
+      </div>
+      <div class="blocker-row" style="background: #fff4d5; border-left-color: #d4a72c;">
+        <b>4. config/library_approvers.json scoring authority unwritten</b><span class="ask" style="background: #7d4e00;">Owner: Ali</span><br>
+        Both PRDs reference <i>[fill from config/library_approvers.json Karun/Kes rows]</i>. Approval scope is undefined.
+      </div>
+      <div class="blocker-row" style="background: #ddf4ff; border-left-color: #0969da;">
+        <b>5. BC ticket count discrepancy</b><span class="ask" style="background: #0550ae;">Owner: Ali (reconcile)</span><br>
+        Prompt said 39 todos (15 done / 24 active); live BC shows 30 (15 done / 15 active). Either 9 closed since prompt was written or 9 build-artifact tickets never landed in BC. Reconcile before Phase 2.
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-shipped">✅ What shipped (15 items)</div>
+    <div class="body">
+
+      <h3 class="sub">Week of 2026-06-03 · multi-tenant cut-over week</h3>
+      <table>
+        <thead><tr><th style="width: 38%;">Item</th><th>Commit</th><th>One-line</th></tr></thead>
+        <tbody>
+          <tr><td>📚 [Library 1] Per-company approved filter UI + per-item badge</td><td><span class="bc-ref">ec67167</span></td><td>Library UI ships per-tenant approval chip + approving-company badge</td></tr>
+          <tr><td>🔄 [Library 2] User identity badge + workspace switcher</td><td><span class="bc-ref">ec67167</span></td><td>Identity switcher live in /library/ (All / My company / Mine / Other companies)</td></tr>
+          <tr><td>📝 [Workflow 1] Per-company publish workflow + moderation queue</td><td><span class="bc-ref">51651e5</span></td><td>Per-tenant moderation queue functional (draft → submitted → approved)</td></tr>
+          <tr><td>🌐 [Workflow 2] Cross-user + cross-company visibility</td><td><span class="bc-ref">7bb0927</span></td><td>Provenance + follow-author wired</td></tr>
+          <tr><td>🔗 [Infra 2] Library → AI_ProjectArchitect PR-based sync + CI smoke gate</td><td><span class="bc-ref">ceb97e4</span></td><td>PR sync pipeline live with secret-scan gate</td></tr>
+          <tr><td>📖 [Infra 3] Employee onboarding runbook</td><td><span class="bc-ref">43224cd</span></td><td>Runbook shipped</td></tr>
+          <tr><td>🗓️ [Infra 4] Rubric refinement weekly cadence</td><td><span class="bc-ref">43224cd</span></td><td>directives/pilot-weekly-cadence.md is source of truth</td></tr>
+          <tr><td>📣 [Infra 5] Ram all-hands message (Earn/Learn/Bond/Save framing)</td><td><span class="bc-ref">43224cd</span></td><td>Comms message shipped</td></tr>
+          <tr><td>🚀 [Deploy 1] Deployment pipeline for auth+admin+multi-tenant cut-over</td><td><span class="bc-ref">43224cd</span></td><td>Hetzner cut-over runbook live</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">Earlier in 2026-06 · admin + provisioning + data layer</h3>
+      <table>
+        <thead><tr><th style="width: 38%;">Item</th><th>Spec / artifact</th><th>One-line</th></tr></thead>
+        <tbody>
+          <tr><td>🛡️ [Admin 1] Admin console: user provisioning UI</td><td><span class="bc-ref">docs/specs/admin-01</span></td><td>Console live at /admin/</td></tr>
+          <tr><td>🔧 [Admin 2] Tools-access provisioning matrix</td><td><span class="bc-ref">docs/specs/admin-02</span></td><td>Per-user MCP/tool checklist spec shipped</td></tr>
+          <tr><td>🏢 [Admin 3] Add-new-company flow</td><td><span class="bc-ref">docs/specs/admin-03</span></td><td>Super-admin tenant onboarding spec shipped</td></tr>
+          <tr><td>🐙 [Provision 1] Per-user GitHub workspace auto-create</td><td><span class="bc-ref">docs/specs/provision-01</span></td><td>Workspace-repo provisioning spec shipped</td></tr>
+          <tr><td>🔐 [Provision 2] Per-user credentials vault</td><td><span class="bc-ref">docs/specs/provision-02</span></td><td>LIBRARY_VAULT_MASTER_KEY in prod env</td></tr>
+          <tr><td>🔁 [Data 1] Backfill 552 existing library items into multi-tenant model</td><td><span class="bc-ref">migration</span></td><td>Multi-tenant cut-over live</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-active">⏳ What's active (15 items)</div>
+    <div class="body">
+      <table>
+        <thead><tr><th style="width: 40%;">Item</th><th>Due</th><th>Status</th><th>Blocker</th></tr></thead>
+        <tbody>
+          <tr><td>📚 [00 START HERE] Build Index</td><td>2026-06-08</td><td><span class="pill p-green">🟢 on-track</span></td><td>Reference/index ticket; not a build deliverable</td></tr>
+          <tr><td>🎯 OVERVIEW: AI_ProjectArchitect company-wide rollout</td><td>2026-09-30</td><td><span class="pill p-green">🟢 on-track</span></td><td>Parent rollup; closes when pilot + Phase 2 done</td></tr>
+          <tr><td>📝 [Karun] Step 1 · Karun PRD</td><td>2026-06-07</td><td><span class="pill p-amber">🟠 at-risk</span></td><td>DRAFT scaffold; needs Ali 30-min ratification before Jun 9</td></tr>
+          <tr><td>🛠️ [Karun] Step 2 · karun-agent + /karun-dash skill</td><td>2026-06-12</td><td><span class="pill p-red">🔴 blocked</span></td><td>Gated on Karun 1 signature; provisional BC-only scoring landed in eb990b0</td></tr>
+          <tr><td>⏰ [Karun] Step 3 · Wire /karun-dash to fire 30 min pre-1:1</td><td>2026-06-14</td><td><span class="pill p-amber">🟠 at-risk</span></td><td>PILOT_DASH_DELIVERY missing in .env.prod; disk-only, no Gmail SMTP push</td></tr>
+          <tr><td>📈 [Karun] Step 4 · 4-week pilot iteration</td><td>2026-07-02</td><td><span class="pill p-green">🟢 on-track</span></td><td>Starts Mon Jun 9; depends on K1+K2+K3</td></tr>
+          <tr><td>📋 [Karun] Step 5 · 30-day retrospective</td><td>2026-07-04</td><td><span class="pill p-green">🟢 on-track</span></td><td>Depends on Karun 4 completion</td></tr>
+          <tr><td>📝 [Kes] Step 1 · Kes PRD</td><td>2026-06-07</td><td><span class="pill p-amber">🟠 at-risk</span></td><td>DRAFT scaffold; needs Ali 30-min ratification before Jun 9</td></tr>
+          <tr><td>🛠️ [Kes] Step 2 · kes-agent + /kes-dash skill</td><td>2026-06-12</td><td><span class="pill p-red">🔴 blocked</span></td><td>Gated on Kes 1 PRD signature</td></tr>
+          <tr><td>⏰ [Kes] Step 3 · Wire /kes-dash 30 min pre-1:1</td><td>2026-06-14</td><td><span class="pill p-amber">🟠 at-risk</span></td><td>Same SMTP env gap as Karun 3</td></tr>
+          <tr><td>📈 [Kes] Step 4 · 4-week pilot iteration</td><td>2026-07-02</td><td><span class="pill p-green">🟢 on-track</span></td><td>Starts Mon Jun 9; depends on K1+K2+K3</td></tr>
+          <tr><td>📋 [Kes] Step 5 · 30-day retrospective</td><td>2026-07-04</td><td><span class="pill p-green">🟢 on-track</span></td><td>Depends on Kes 4 completion</td></tr>
+          <tr><td>🪄 [Phase 2 launch] Generalize karun-agent to YAML-per-person</td><td>2026-07-07</td><td><span class="pill p-green">🟢 on-track</span></td><td>Gated on Karun 5 + Kes 5 retros</td></tr>
+          <tr><td>👥 [Phase 2] Onboard exec team (Ali, Ram, Lahme, McBride, Sohail)</td><td>2026-08-01</td><td><span class="pill p-green">🟢 on-track</span></td><td>Depends on Phase 2 launch generalization</td></tr>
+          <tr><td>💰 [Phase 2] Adopt DRI framing + $90/$10 budget envelope</td><td>2026-07-17</td><td><span class="pill p-green">🟢 on-track</span></td><td>Comms + ops change; orthogonal to build</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-github">🔐 GitHub access flow · admin vs user vs automatic</div>
+    <div class="body">
+
+      <table class="two-col" cellspacing="0" cellpadding="0">
+        <tr>
+          <td>
+            <div class="col-card admin">
+              <h4>🛡️ Admin does this</h4>
+              <ul>
+                <li><b>One-time bootstrap:</b> register Google OAuth, generate LIBRARY_VAULT_MASTER_KEY + LIBRARY_SESSION_SECRET, mint GITHUB_ADMIN_TOKEN (repo + admin:org), write all four into .env.prod on Hetzner.</li>
+                <li><b>One-time GitHub seeding:</b> create ColaberryIntern/workspace-template with .claude/skills/, .mcp.json, README, USER_PROFILE.md; flag as Template repo via <span class="bc-ref">gh repo edit --template</span>.</li>
+                <li><b>Per-user onboarding click:</b> from /admin/users/new, enter email + display name + access level; tick create_workspace_repo. One POST runs tenancy.provision_user + workspaces.provision_user_workspace + scope grants in one transaction.</li>
+                <li><b>Approver matrix edits:</b> commit/deploy <span class="bc-ref">config/library_approvers.json</span>. Single source of truth for github_sync.can_approve().</li>
+                <li><b>Tenant-domain mapping:</b> maintain <span class="bc-ref">config/library_tenant_domains.json</span>. Unmatched domains hit queue_for_admin_review.</li>
+                <li><b>Token rotation steward:</b> respond to vault.days_until_expiry() amber/red signals. Quarterly rotation of GITHUB_ADMIN_TOKEN is on the admin calendar.</li>
+                <li><b>Offboarding click:</b> revoke every vault entry, remove user as collaborator, archive workspace repo (do not delete · preserves audit).</li>
+                <li><b>Unmatched-domain queue:</b> approve or reject 403 queued_for_review entries when a new domain logs in.</li>
+              </ul>
+            </div>
+          </td>
+          <td>
+            <div class="col-card user">
+              <h4>👤 User does this</h4>
+              <ul>
+                <li><b>One-time Google SSO login</b> at https://advisor.colaberry.ai/auth/login. First successful login provisions the User row via auth_google.provision_or_lookup_user().</li>
+                <li><b>Accept the GitHub collaborator invite</b> for ColaberryIntern/{slug}-workspace. Until accepted, repo is admin-only.</li>
+                <li><b>Self-serve token paste</b> at /admin/users/{me}/scopes · paste Gmail app password, Basecamp PAT, HubSpot key, etc. Token encrypted into vault keyed by user_id + tool_name. Plaintext never leaves the form.</li>
+                <li><b>Set TTL on every token</b> (default 90 days). When amber, re-paste the rotated token. Backend never auto-refreshes · the user is the only person who can hold the new secret.</li>
+                <li><b>Clone workspace repo locally</b>, run Claude Code. MCP runtime reads .mcp.json placeholders and calls vault.read_secret() at startup; plaintext stays in-process.</li>
+                <li><b>Submit drafts</b> via the contributor publish form. Drafts land in the per-tenant moderation queue. Contributors cannot push to ColaberryIntern/AI_ProjectArchitect directly.</li>
+                <li><b>Approve in their lanes</b> (Ram/Karun for sales categories, Kes for tech). Approval triggers github_pr_sync via the sync identity, not the approver's personal token.</li>
+                <li><b>Log out / report compromise:</b> /auth/logout drops the library_session cookie. Suspected compromise = request admin to revoke vault entries.</li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <h3 class="sub">⚙️ Provisioning flow · 10 steps</h3>
+      <ol class="step-list">
+        <li><b>admin</b>Opens /admin/users/new, enters email + display name + access level (admin|approver|contributor|consumer); ticks create_workspace_repo.</li>
+        <li><b>system</b>Validates domain against library_tenant_domains.json. colaberry.com matches → company_id=colaberry. Unmatched domains return 422 with queue_for_admin_review.</li>
+        <li><b>system</b>tenancy.provision_or_lookup_user() creates the User row. Idempotent on email · re-running returns the existing user.</li>
+        <li><b>system</b>If access_level != consumer, workspaces.provision_user_workspace runs: repo_exists check, generate from template (or POST /orgs/.../repos), PUT collaborator with write, commit rendered USER_PROFILE.md + .mcp.json.</li>
+        <li><b>system</b>Scope grants: library:read for all; library:approve:{categories} from approvers matrix for approvers; platform:admin for admins. Audit row per grant.</li>
+        <li><b>system</b>Welcome email via Mandrill: GitHub invite link, SSO login link, scopes link to paste tokens.</li>
+        <li><b>user</b>Clicks Google SSO link, lands at /auth/callback. auth_google.exchange_code_for_userinfo() matches existing User row. JWT signed with LIBRARY_SESSION_SECRET, set as library_session httpOnly cookie 24h TTL.</li>
+        <li><b>user</b>Accepts GitHub collaborator invite. System has no callback · pure GitHub-side handshake.</li>
+        <li><b>user</b>Navigates to /admin/users/{me}/scopes, pastes tool tokens with TTL. vault.store_secret encrypts; plaintext wiped from the form on success.</li>
+        <li><b>system</b>First Claude Code run reads .mcp.json placeholders, calls vault.read_secret(), injects decrypted values into the spawned MCP server's env. One decrypt audit row per server per session.</li>
+      </ol>
+
+      <h3 class="sub">🪪 Access levels matrix</h3>
+      <table>
+        <thead><tr><th>Level</th><th>Who</th><th>Headline permissions</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill p-dark">👑 admin</span></td><td>ali@colaberry.com, ram@colaberry.com</td><td>Read/write/delete on every Library asset across every company; approve ANY category; provision new users; edit approvers + tenant-domains files; rotate/revoke any vault entry; read full vault audit; holds GITHUB_ADMIN_TOKEN.</td></tr>
+          <tr><td><span class="pill p-purple">✍️ approver</span></td><td>Ram, Karun (sales), Kes (tech)</td><td>Everything contributor does + stamp vetted=True in granted categories + trigger github_pr_sync (PR authored as platform bot, not personal token). Cannot provision; cannot read other vaults; cannot edit approver matrix.</td></tr>
+          <tr><td><span class="pill p-blue">🛠️ contributor</span></td><td>Default colaberry.com employee post-onboarding</td><td>Read vetted Library; submit drafts (queue, never direct push); personal workspace repo with write; manage own vault (caller_id must equal user_id); read own vault audit only.</td></tr>
+          <tr><td><span class="pill p-green">👁️ consumer</span></td><td>External viewers or read-only employees</td><td>Read vetted Library only (per-tenant filter); no workspace repo; no vault; cannot submit, approve, or provision; session cookie supports identity badge + audit attribution.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">🛡️ Security boundaries (9 invariants)</h3>
+      <table>
+        <thead><tr><th style="width: 28%;">Boundary</th><th>How it holds</th></tr></thead>
+        <tbody>
+          <tr><td>🚧 Approver category isolation</td><td>github_sync.can_approve(ram, 'skills') returns False. Cross-lane approval blocked at sync layer, not UI · the UI can lie, the matrix cannot.</td></tr>
+          <tr><td>🔒 No plaintext token over HTTP</td><td>vault.store_secret takes plaintext only via form POST, immediately encrypts. read_secret returns plaintext only to backend caller_ids (mcp-runtime, gmail-fetcher-svc). Every decrypt audit-logged.</td></tr>
+          <tr><td>🏢 Tenant scoping on reads</td><td>Per-tenant approval filter intersects every list query with the company_id in the session JWT. Bypass requires forging a JWT = needs LIBRARY_SESSION_SECRET = admin-only.</td></tr>
+          <tr><td>📝 GitHub write asymmetry</td><td>Only GITHUB_ADMIN_TOKEN writes to ColaberryIntern/AI_ProjectArchitect. Compromised approver account cannot push raw · must use PR pipeline, which requires CI smoke pass.</td></tr>
+          <tr><td>👤 User-scoped vault writes</td><td>vault.store_secret enforces caller_id == user_id for non-admin callers. Cross-user writes are admin-only and audit-logged with caller_id != target_user_id.</td></tr>
+          <tr><td>🚫 Unmatched-domain rejection</td><td>auth_google does NOT auto-create a tenant for unknown domains. Returns 403 queued_for_review. Fail-closed.</td></tr>
+          <tr><td>🔄 Session secret rotation = kill switch</td><td>Rotating LIBRARY_SESSION_SECRET invalidates every JWT in one shot. For lost-laptop scenarios only; do not rotate on routine offboarding.</td></tr>
+          <tr><td>📨 Invite ≠ access until accepted</td><td>System creates repo + issues invite; user accepts on github.com. Until acceptance, repo is admin-only.</td></tr>
+          <tr><td>🧯 CI smoke gate as write boundary</td><td>library_sync_smoke.py scans for ghp_, sk-, AKIA, BEARER, PEM patterns. Secret-bearing assets cannot merge through to canonical repo.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">⚠️ Edge cases</h3>
+      <table>
+        <thead><tr><th style="width: 32%;">Scenario</th><th>Handling</th></tr></thead>
+        <tbody>
+          <tr><td>🌐 Unknown-domain SSO login (consultant@partner-co.com)</td><td>unmatched_policy: queue_for_admin_review. Returns 403; no JWT; admin decides approve (creates company + adds domain) or reject.</td></tr>
+          <tr><td>🚪 Approver leaves Colaberry (Ram resigns)</td><td>Edit library_approvers.json; revoke scopes; revoke vault entries; DELETE collaborator; archive workspace repo. Existing approvals stay attributed.</td></tr>
+          <tr><td>🍴 Forked workspace (intern Pepsi build)</td><td>Re-run /admin/users/new with workspace_suffix=pepsi. Two repos, two .mcp.json files, two vault namespaces. Idempotent on suffix.</td></tr>
+          <tr><td>🏃 Two admins click Onboard on same email</td><td>provision_or_lookup_user is idempotent on email; provision_user_workspace idempotent on repo_exists; collaborator PUT is GitHub-idempotent. Email queue deduplicates within 60s.</td></tr>
+          <tr><td>⏲️ Vault entry expires mid-session</td><td>read_secret returns stale until revoked; MCP server 401s; user sees expires-in-X badge well before. No auto-refresh by design.</td></tr>
+          <tr><td>💣 Leaked secret in asset markdown</td><td>library_sync_smoke.py blocks PR red. Approver edits asset, re-approves, new PR opens. Leaked token must still be rotated out-of-band.</td></tr>
+          <tr><td>🪛 Accidental uninvite from workspace repo</td><td>Re-run provision_user_workspace: repo skip_existing, re-PUT collaborator. One audit row, no data loss. .mcp.json + USER_PROFILE.md untouched.</td></tr>
+          <tr><td>🗝️ GITHUB_ADMIN_TOKEN expires mid-provision</td><td>_gh_api returns 401; audit row action=provision_failed. User row already committed. Admin rotates token + clicks Retry · idempotent path completes failed steps.</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-harvest">🪄 Library transformation · turning completed tasks into reusable assets</div>
+    <div class="body">
+
+      <h3 class="sub">10 asset kinds</h3>
+      <table class="badge-grid" cellspacing="0" cellpadding="0">
+        <tr>
+          <td><span class="kind-badge k-skill">🧠 skill</span></td>
+          <td><span class="kind-badge k-agent">🤖 agent</span></td>
+          <td><span class="kind-badge k-prompt">💬 prompt</span></td>
+          <td><span class="kind-badge k-mcp">🔌 MCP</span></td>
+          <td><span class="kind-badge k-cap">⚙️ capability</span></td>
+        </tr>
+        <tr>
+          <td><span class="kind-badge k-template">📐 template</span></td>
+          <td><span class="kind-badge k-workflow">🔁 workflow</span></td>
+          <td><span class="kind-badge k-projection">📽️ projection</span></td>
+          <td><span class="kind-badge k-recovery">🩺 recovery</span></td>
+          <td><span class="kind-badge k-chaos">💥 chaos</span></td>
+        </tr>
+      </table>
+
+      <h3 class="sub">🔍 Scan signals · how the page picks the suggested kind</h3>
+      <table>
+        <thead><tr><th style="width: 50%;">Signal</th><th>Suggests</th></tr></thead>
+        <tbody>
+          <tr><td>Title regex matches <span class="bc-ref">/^(build|create|ship|deploy)\s+.*\bagent\b/i</span></td><td><span class="pill p-purple">🤖 agent · ~90%</span></td></tr>
+          <tr><td>Description contains fenced code block lang='prompt' OR literal 'system prompt:' OR triple-quoted multi-paragraph instruction</td><td><span class="pill p-blue">💬 prompt · high</span></td></tr>
+          <tr><td>Same title appears 3+ times completed with ~constant inter-completion gap (weekly/biweekly/monthly within 20%)</td><td><span class="pill p-blue">🔁 workflow · high</span></td></tr>
+          <tr><td>Description contains install command: <span class="bc-ref">npm install</span>, <span class="bc-ref">pip install</span>, <span class="bc-ref">uvx</span>, <span class="bc-ref">brew install</span>, <span class="bc-ref">docker pull</span></td><td><span class="pill p-amber">🔌 mcp / ⚙️ capability</span></td></tr>
+          <tr><td>3+ imperative bulleted steps AND a 'Done when' / 'Acceptance criteria' section</td><td><span class="pill p-blue">📐 template · medium</span></td></tr>
+          <tr><td>Keywords: recover, rollback, unstick, drain, reconnect, replay, retry AND a threshold phrase</td><td><span class="pill p-green">🩺 recovery · high</span></td></tr>
+          <tr><td>Keywords: inject, simulate failure, kill, chaos, load test, fault</td><td><span class="pill p-red">💥 chaos · medium-high</span></td></tr>
+          <tr><td>References 'read model', 'projection', 'rebuild from events', 'materialized view'</td><td><span class="pill p-purple">📽️ projection · medium</span></td></tr>
+          <tr><td>'why use this' / 'use this when' framing, no code, no install</td><td><span class="pill p-green">🧠 skill · low-medium</span></td></tr>
+          <tr><td>Plugin manifest shape: name + version + tools/operations list</td><td><span class="pill p-red">⚙️ capability · high</span></td></tr>
+          <tr><td>Claude Code persona definition ('You are a...', autonomy hints)</td><td><span class="pill p-purple">🤖 agent · high</span></td></tr>
+          <tr><td>completed_by == assignee AND cycle_seconds &lt; 600 AND Slack/email link in comments</td><td><span class="pill p-dark">🚫 suppress (quick ack)</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">👆 One-click flow</h3>
+      <ol class="step-list">
+        <li><b>open</b>From /my-day/ or /harvest/, user clicks a completed todo card. The row expands inline (no page change) into a Transformation Drawer on the right edge.</li>
+        <li><b>rank</b>Drawer shows 1-3 ranked suggestion chips at the top: 'agent · 92% match', 'prompt · 71% match', 'workflow · 58% match'. Each chip displays the scan signals that fired.</li>
+        <li><b>pick</b>User clicks one chip (say 'agent'). Drawer body morphs into a pre-filled Submission form mapped to AssetMetadata fields for that category.</li>
+        <li><b>cite</b>Each field shows an 'extracted from' citation underneath ('from todo title', 'from comment #3 by Karun') so the user trusts the auto-fill. Fields are editable in place.</li>
+        <li><b>submit</b>User edits anything wrong (usually nothing) and clicks 'Submit to library'. Calls the same store.submit flow as Add-to-Library; tags submission with source_task_bc_id so provenance is preserved.</li>
+        <li><b>confirm</b>Drawer collapses with a green 'Submitted · queued for review' toast and a link to the pending row. Todo card now shows a 'library: pending agent' badge so it's never proposed twice.</li>
+        <li><b>review</b>Reviewer experience unchanged · submission appears in /library/pending queue. On accept, AssetMetadata.source_task links back to the originating BC todo, closing the loop both directions.</li>
+      </ol>
+
+      <h3 class="sub">📋 Examples · source task → transforms to → why</h3>
+      <table>
+        <thead><tr><th style="width: 28%;">Source task</th><th style="width: 28%;">Transforms to</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Build the Basecamp comment-rollup agent (status=completed, AI Ops Command Center)</td><td><span class="pill p-purple">🤖 agent</span> 'BC Comment Rollup', autonomy_policy=recommend_only, owner=ali@colaberry.com</td><td>Verb 'Build' + noun 'agent'. Description references persona, autonomy, recurring trigger · all mandatory on AssetMetadata. Completed cycle proves it shipped.</td></tr>
+          <tr><td>Wire MCP filesystem server into dev environment and document install steps (completed)</td><td><span class="pill p-amber">🔌 mcp</span> 'MCP Filesystem Server (Colaberry profile)', install_command + install_url pre-filled</td><td>Description has literal <span class="bc-ref">npm install @modelcontextprotocol/server-filesystem</span> + install checklist. AssetMetadata.install_steps directly extractable.</td></tr>
+          <tr><td>Run Monday morning operations review and post summary to #ops (recurring, 8 completes in 60 days)</td><td><span class="pill p-blue">🔁 workflow</span> steps {pull_ops_metrics, summarize, post_to_slack}, tags=[weekly, ops]</td><td>Same title 8x on 7-day cadence · textbook recurring signal. Description steps map 1:1 to orchestration_engine.</td></tr>
+          <tr><td>Write the Claude prompt that classifies skill_catalog items (completed)</td><td><span class="pill p-blue">💬 prompt</span> 'Skill Catalog Classifier', evaluation_hook=accuracy_on_50_item_holdout</td><td>Title says 'Write the Claude prompt'. Description has triple-backticked body + 'tested against N examples' line · exact eval_hook shape.</td></tr>
+          <tr><td>Document the recovery procedure for outbox backlog above 1000 items (completed)</td><td><span class="pill p-green">🩺 recovery</span> 'outbox_backlog_drain_v2', tags=[auto-executable]</td><td>Description has detector criteria ('above 1000') + remediation steps + rollback note. Exact shape recovery_coordinator expects.</td></tr>
+          <tr><td>Define acceptance criteria + step-by-step setup for the standard FastAPI + SQLAlchemy + Alembic starter (completed)</td><td><span class="pill p-blue">📐 template</span> 'fastapi-sqlalchemy-starter', tags=[python, web, blueprint]</td><td>Bulleted setup steps + 'Done when' acceptance section. config/blueprints expects exactly this. Phrased generically ('standard starter').</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">📄 Page design + proposed URL</h3>
+      <div style="padding: 8px 0;"><span class="url-tag">/harvest/</span> · sibling of <span class="url-tag">/my-day/</span> in the top nav, between My Day and Library.</div>
+      <div class="quote">
+        "The new page lives at /harvest/ · a sibling of /my-day/ in the top nav, between 'My Day' and 'Library'. The name is deliberate: this is where finished work gets harvested into reusable assets. When you land on it, the first thing you see is a single sentence at the top: 'You completed 47 tasks in the last 30 days. 23 of them look transformable.' Below that, a horizontal strip of ten chips · one per asset kind · each showing the count of candidate transformations of that kind. Clicking a chip filters the list. The main body is a feed of completed-todo cards from output/ops/{user_id}/todos.json where status='completed', sorted by 'highest-confidence suggestion first'. Each card shows the todo title, the project, completed-at timestamp, and a colored ribbon along the left edge whose color matches the top suggested kind. On the right side of every card sits a stack of 1-3 suggestion chips with confidence scores. Clicking the card expands a right-edge Transformation Drawer. Already-transformed todos collapse to a one-line 'shipped to library' row at the bottom of the feed. The whole page reuses the library shell's left nav, so the user always sees library counts updating in real time as they submit · the dopamine loop is the whole point. No bulk-select, no wizards, no modals; the entire UX is: see card, click chip, glance at extracted fields, click Submit."
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head sh-collab">🤝 Employee collaboration use cases</div>
+    <div class="body">
+
+      <div class="scenario" style="border-left-color: #15803d;">
+        <h4>📖 Scenario 1 · Kes inherits Christian's Cold Lead Conversion repo</h4>
+        <div style="margin-bottom: 8px;"><b style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a;">👥 Cast</b><br>
+          <span class="cast-pill">Kes</span><span class="cast-pill">Ali Muwwakkil</span><span class="cast-pill">Ram Kumar</span>
+        </div>
+        <table class="scenario-body" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="width: 68%; padding-right: 12px; font-size: 13px;">
+              2026-05-04, 08:47 ET · Kes opens /my-day/ and the briefing flags an orphaned asset: Cold Lead Conversion (last commit by Christian Outlaw, 11 days stale, hot lead scoring still firing into a dead webhook). The decisions report from the prior week shows Ali assigned ownership transfer but no acceptance event was recorded. Kes clicks into /library/, filters by 'author: christian-outlaw', and sees the agent, its three MCPs, and the prompt chain Christian built. He pulls the repo into ColaberryIntern/kes-workspace via the workspace clone action. By 10:15 ET, Kes has run the agent locally, found that the hot lead scoring webhook points to Christian's personal ngrok URL, and opens a moderation queue item to republish under his ownership. Ali ratifies in the queue at 11:00; Ram Kumar countersigns the cross-team transfer. By 14:00 the asset shows Kes as steward in /library/, the heat map for 'inherited assets' drops from 1 to 0, and the next 1:1 pilot dash auto-fires with the handoff marked complete.
+            </td>
+            <td style="width: 32%; padding-left: 8px;">
+              <div class="touch-side">
+                <b>🧩 System touches</b>
+                <ul>
+                  <li>/my-day/ briefing</li>
+                  <li>Decisions report</li>
+                  <li>/library/ author filter</li>
+                  <li>Per-user GitHub workspace</li>
+                  <li>Per-tenant moderation queue</li>
+                  <li>Hot lead scoring</li>
+                  <li>Pilot dash auto-fire</li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div class="outcome-box">✅ <b>Outcome:</b> Cold Lead Conversion goes from silently broken (dead webhook, no owner) to actively stewarded by Kes with recorded chain of custody. Future intern departures cannot create orphaned production assets · the briefing surfaces them within one business day.</div>
+      </div>
+
+      <div class="scenario" style="border-left-color: #d4a72c;">
+        <h4>📖 Scenario 2 · Karun's Monday morning calibration</h4>
+        <div style="margin-bottom: 8px;"><b style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a;">👥 Cast</b><br>
+          <span class="cast-pill">Karun</span><span class="cast-pill">Ali Muwwakkil</span><span class="cast-pill">David Lahme</span>
+        </div>
+        <table class="scenario-body" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="width: 68%; padding-right: 12px; font-size: 13px;">
+              Monday 07:30 ET · Karun's /my-day/ briefing leads with the hot lead scoring delta from the weekend: 4 leads moved from warm to hot, 1 hot lead went cold (no reply in 72hrs). The kanban shows David Lahme's onboarding card at 'Day 6 of 30' with a blocker tag · David needs Karun's intro to the Tarrant County prospect before Wednesday. Karun clicks the heat map and sees his own 'follow-up debt' has crept to amber. At 08:15 he @CB System mentions in the shared channel: 'draft the Tarrant intro email using our standard pilot pitch'. The auto-response pulls the pilot-pitch template from /library/, fills in David's bio from his exec onboarding profile, and posts a draft. Karun edits two lines and sends. The pilot dash auto-fires 30 minutes before his 09:00 1:1 with Ali, showing the calibration: 3 deals at risk, 1 cleared, David unblocked. Ali approves Karun's proposal to make the Tarrant intro template a reusable library asset.
+            </td>
+            <td style="width: 32%; padding-left: 8px;">
+              <div class="touch-side">
+                <b>🧩 System touches</b>
+                <ul>
+                  <li>/my-day/ briefing</li>
+                  <li>Hot lead scoring</li>
+                  <li>Kanban</li>
+                  <li>Heat map</li>
+                  <li>@CB System auto-response</li>
+                  <li>/library/ templates</li>
+                  <li>Pilot dash auto-fire</li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div class="outcome-box">✅ <b>Outcome:</b> Karun starts the week with a calibrated picture of sales pipeline health instead of inbox-driven scrambling. David's onboarding stays on its 30-day timeline because the blocker was surfaced and cleared in a single morning. The Tarrant intro becomes a library asset by Friday.</div>
+      </div>
+
+      <div class="scenario" style="border-left-color: #6e40c9;">
+        <h4>📖 Scenario 3 · JJ's deck-builder task becomes a library asset</h4>
+        <div style="margin-bottom: 8px;"><b style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a;">👥 Cast</b><br>
+          <span class="cast-pill">JJ McBride</span><span class="cast-pill">Kes</span><span class="cast-pill">Ali Muwwakkil</span>
+        </div>
+        <table class="scenario-body" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="width: 68%; padding-right: 12px; font-size: 13px;">
+              2026-08-14, 10:00 ET · JJ McBride (two weeks into his exec role) has a one-off task on his kanban: 'Build investor update deck for August board meeting'. He works through it by chaining three prompts · pull metrics from the pilot dash, summarize wins from the decisions report, generate slide outlines. By 16:00 the deck is done. At 16:30 /my-day/ surfaces a suggestion on his kanban card: 'This task touched 3 prompts + 1 MCP + 1 template · promote to library asset?' JJ clicks yes. The system bundles his prompt chain into a draft 'Monthly Investor Update Generator' agent and routes it to the per-tenant moderation queue. Kes reviews the bundle at 17:00, refactors the metrics-pull MCP to be parameterized (so it works for any month, not just August), and approves. Ali ratifies. By 2026-08-15 morning, the agent appears in /library/ tagged 'exec-reporting', authored by JJ, hardened by Kes. Next month's deck takes JJ 40 minutes instead of 6 hours.
+            </td>
+            <td style="width: 32%; padding-left: 8px;">
+              <div class="touch-side">
+                <b>🧩 System touches</b>
+                <ul>
+                  <li>Kanban</li>
+                  <li>Pilot dash</li>
+                  <li>Decisions report</li>
+                  <li>/library/ skills/agents/prompts</li>
+                  <li>Per-tenant moderation queue</li>
+                  <li>/my-day/ task-to-asset suggestion</li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div class="outcome-box">✅ <b>Outcome:</b> A one-off executive task becomes durable institutional capability within 24 hours. The task-to-library-asset transformation pays for itself the first time JJ reuses it. Sohail and David inherit the same agent without ever meeting JJ to learn his workflow.</div>
+      </div>
+
+      <div class="scenario" style="border-left-color: #0969da;">
+        <h4>📖 Scenario 4 · Cross-company discovery of the Cold Lead Conversion agent</h4>
+        <div style="margin-bottom: 8px;"><b style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a;">👥 Cast</b><br>
+          <span class="cast-pill">Sohail Syed</span><span class="cast-pill">Kes</span><span class="cast-pill">Ali Muwwakkil</span>
+        </div>
+        <table class="scenario-body" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="width: 68%; padding-right: 12px; font-size: 13px;">
+              2026-09-03, 11:00 ET · Sohail is operating in his own tenant workspace (a partner company onboarded onto AI_ProjectArchitect under cross-company visibility). His /my-day/ heat map flags 'cold pipeline' as red. He searches /library/ with the cross-company filter on and finds the Cold Lead Conversion agent · published by Colaberry, stewarded by Kes, approved cross-tenant. The provenance trail shows Christian Outlaw as original author, Kes as current steward, 14 successful deployments inside Colaberry, 92% precision on hot-lead classification. Sohail clicks 'follow author' on Kes. He requests the asset via the cross-company visibility flow; the request lands in Colaberry's moderation queue. Ali ratifies the share (Sohail's tenant is a vetted partner). By 14:00 Sohail has the agent running in his tenant, parameterized for his ICP. Kes gets a notification that his asset has a new cross-company deployment and a question from Sohail about webhook configuration · the same gotcha Kes fixed back in May.
+            </td>
+            <td style="width: 32%; padding-left: 8px;">
+              <div class="touch-side">
+                <b>🧩 System touches</b>
+                <ul>
+                  <li>/my-day/ heat map</li>
+                  <li>/library/ cross-company filter</li>
+                  <li>Cross-company visibility (Workflow 2)</li>
+                  <li>Provenance trail</li>
+                  <li>Follow-author</li>
+                  <li>Per-tenant moderation queue</li>
+                  <li>Hot lead scoring</li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div class="outcome-box">✅ <b>Outcome:</b> An asset built by a departed intern, rescued by Kes, generates value for a partner tenant four months later · with full provenance and zero loss of institutional credit. Christian's name still appears in the lineage. The follow-author graph starts becoming a real signal of who is shipping reusable capability.</div>
+      </div>
+
+      <div class="scenario" style="border-left-color: #1a1a1a;">
+        <h4>📖 Scenario 5 · Ram's quarterly cross-team ratification sweep</h4>
+        <div style="margin-bottom: 8px;"><b style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #57606a;">👥 Cast</b><br>
+          <span class="cast-pill">Ram Kumar</span><span class="cast-pill">Ali Muwwakkil</span><span class="cast-pill">Karun</span><span class="cast-pill">Kes</span>
+        </div>
+        <table class="scenario-body" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="width: 68%; padding-right: 12px; font-size: 13px;">
+              End of Q3, Friday 09:00 ET · Ram opens /my-day/ and pulls the quarterly decisions report. It lists every cross-team commitment Ali made in the prior 90 days that requires Ram's ratification: 7 library asset publications, 2 tenant onboardings, 1 inherited-asset transfer (Kes/Cold Lead Conversion, already cleared), and 3 sales-to-engineering handoffs Karun initiated. The kanban view filtered to 'awaiting-ram-ratify' shows the same 3 cards in red. Ram walks each: Karun's pilot pitch template (approve), Kes's refactored Cold Lead Conversion v2 with new MCP (approve, but flag the rate-limit assumption), JJ's investor deck agent (approve, conditional on Sohail's tenant being excluded from access). At 11:00 he runs the heat map across all four execs · David, JJ, Sohail, Karun · and confirms no one is in red on capability gaps. He drops a single Loom into the 1:1 channel with Ali. The pilot dash auto-fires 30 minutes before their 12:00 sync with the quarter's ratification ledger already loaded.
+            </td>
+            <td style="width: 32%; padding-left: 8px;">
+              <div class="touch-side">
+                <b>🧩 System touches</b>
+                <ul>
+                  <li>/my-day/ briefing</li>
+                  <li>Decisions report</li>
+                  <li>Kanban (awaiting-ratify filter)</li>
+                  <li>/library/ skills/agents</li>
+                  <li>Per-tenant moderation queue</li>
+                  <li>Heat map</li>
+                  <li>Pilot dash auto-fire</li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div class="outcome-box">✅ <b>Outcome:</b> Ram's role as co-founder ratifier becomes a 2-hour Friday ritual instead of a constant interrupt stream. Cross-team commitments do not pile up unratified. By end of quarter, every published library asset has a recorded co-founder signature, which is the audit trail Colaberry needs when partner tenants ask 'who actually approved this'.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    Generated by Claude session 2026-06-04. Source data: BC list 9953889092 + repo HEAD (feature/multitenant-os).<br>
+    Latest commits referenced: 43224cd · ceb97e4 · 7bb0927 · 51651e5 · ec67167 · f439a0a · d1ae0ec · eb990b0 · 9da039c · 416fd56.
+  </div>
+
+</div>
+</body>
+</html>
