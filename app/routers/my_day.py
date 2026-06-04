@@ -581,14 +581,35 @@ async def ops_complete(bc_id: int, request: Request):
             bc_status = f"http_{e.code}"
         except Exception as e:  # noqa: BLE001
             bc_status = f"err: {type(e).__name__}"
-    # Force a sync so the next focus task isn't a stale-already-completed
-    # one. 6s wall-clock budget: enough for most syncs; if BC is slow we
-    # proceed with what we have rather than blocking the user further.
-    synced_in_time = _sync_with_budget(user.email, budget_seconds=6.0)
+    # Targeted sync of THE PROJECT we just touched — much faster than a
+    # full 50-project sync (~2-3s vs ~30s) and catches the common case
+    # where other people on the same project have closed tasks since the
+    # last full sync. The full background sync still runs every 5 min for
+    # cross-project state.
+    proj_sync_result = {}
+    try:
+        proj_sync_result = sync.pull_todos_for_project(user.email, todo.bc_project_id)
+    except Exception as e:
+        proj_sync_result = {"status": "error", "error": str(e)}
+    # Also re-score so the next focus selection sees current urgency.
+    try:
+        scorer.score_all_todos(user.email)
+    except Exception:
+        pass
     _log.getLogger(__name__).info(
-        "my-day complete: user=%s bc_id=%s title=%r bc_status=%s sync_in_time=%s",
-        user.email, bc_id, title_snippet, bc_status, synced_in_time,
+        "my-day complete: user=%s bc_id=%s title=%r bc_status=%s proj_sync=%s",
+        user.email, bc_id, title_snippet, bc_status, proj_sync_result.get("status", "?"),
     )
+    # Kick a full background sync so OTHER projects are eventually fresh
+    # too, without making the user wait for it.
+    import threading as _th
+    def _bg_full():
+        try:
+            sync.pull_todos_for_user(user.email)
+            scorer.score_all_todos(user.email)
+        except Exception:
+            pass
+    _th.Thread(target=_bg_full, daemon=True, name=f"bg-full-sync-{user.email}").start()
     # Build redirect URL: preserve filter state via Referer + append
     # ?done=<title> so the next render shows a green flash confirming
     # the action actually fired.

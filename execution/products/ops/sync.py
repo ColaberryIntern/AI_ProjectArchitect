@@ -177,6 +177,125 @@ def discover_projects(token: str) -> list[dict]:
     return out
 
 
+def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.OpsTodo]:
+    """Pull every active + completed todo in one BC project that's relevant
+    to the user. Returns the list of OpsTodo rows ready for upsert.
+
+    Extracted so both pull_todos_for_user (loops all 50 projects) and
+    pull_todos_for_project (targeted single-project sync on Mark Done) can
+    share the same walking logic — keeps them from drifting out of sync.
+    """
+    bucket = proj.get("id")
+    proj_name = proj.get("name") or f"Project {bucket}"
+    out: list[store.OpsTodo] = []
+
+    # BC API v3: the todoset id lives in the project's `dock` array,
+    # not under a /buckets/{id}/todosets.json collection endpoint.
+    proj_full = _bc_get(f"/projects/{bucket}.json", token) or {}
+    todoset_dock = next(
+        (d for d in proj_full.get("dock", []) if d.get("name") == "todoset"),
+        None,
+    )
+    ts_id = todoset_dock.get("id") if todoset_dock else None
+    if not ts_id:
+        return out
+    lists = _bc_get(f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token) or []
+    for lst in lists:
+        lst_id = lst.get("id")
+        lst_name = lst.get("name") or "?"
+        if not lst_id:
+            continue
+        active_todos = list(_paginate(
+            f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
+            token, max_pages=10,
+        ))
+        completed_todos = list(_paginate(
+            f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
+            token, max_pages=5, params={"completed": "true"},
+        ))
+        for t in active_todos + completed_todos:
+            is_completed = bool(t.get("completed"))
+            reason = _classify_for_user(t, bc_user_id)
+            if not is_completed and reason is None:
+                continue
+            if not _todo_is_relevant(t):
+                continue
+            assignee_objs = t.get("assignees") or []
+            completion = t.get("completion") or {}
+            cby = completion.get("creator") or {}
+            completed_at = completion.get("created_at") or ""
+            created_at = t.get("created_at") or ""
+            cycle_seconds = 0
+            if completed_at and created_at:
+                try:
+                    c_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+                    cr_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if c_dt.tzinfo is None: c_dt = c_dt.replace(tzinfo=timezone.utc)
+                    if cr_dt.tzinfo is None: cr_dt = cr_dt.replace(tzinfo=timezone.utc)
+                    cycle_seconds = max(0, int((c_dt - cr_dt).total_seconds()))
+                except (ValueError, TypeError):
+                    pass
+            out.append(store.OpsTodo(
+                bc_id=t["id"],
+                bc_project_id=bucket,
+                bc_project_name=proj_name,
+                bc_todolist_id=lst_id,
+                bc_todolist_name=lst_name,
+                title=t.get("title") or t.get("content") or "(untitled)",
+                description=(t.get("description") or "")[:5000],
+                status="completed" if is_completed else "active",
+                due_on=t.get("due_on"),
+                assignee_ids=[a.get("id") for a in assignee_objs],
+                assignee_names=[a.get("name") for a in assignee_objs if a.get("name")],
+                inclusion_reason=reason or "assigned",
+                bc_app_url=t.get("app_url", ""),
+                bc_created_at=created_at,
+                bc_updated_at=t.get("updated_at") or "",
+                completed_by_id=cby.get("id") if is_completed else None,
+                completed_by_name=cby.get("name", "") if is_completed else "",
+                completed_at=completed_at if is_completed else "",
+                cycle_seconds=cycle_seconds if is_completed else 0,
+                last_synced_at=_now_iso(),
+            ))
+    return out
+
+
+def pull_todos_for_project(user_id: str, project_id: int) -> dict:
+    """Targeted sync of ONE project. Much faster than pull_todos_for_user
+    (~2-3s vs ~30s) because it skips the 49 other projects.
+
+    Used by Mark Done so the just-touched project is refreshed before the
+    user sees the next focus task — no more 'next' task surfacing while
+    actually completed in BC.
+    """
+    token, _src = tokens.get_user_token(user_id)
+    if not token:
+        return {"status": "token_missing", "project_id": project_id}
+    bc_user_id = tokens.get_user_bc_id(user_id)
+    if not bc_user_id:
+        return {"status": "bc_user_id_missing", "project_id": project_id}
+    proj = _bc_get(f"/projects/{project_id}.json", token)
+    if not proj:
+        return {"status": "project_not_found", "project_id": project_id}
+    try:
+        fresh_todos = _walk_project_todos(proj, token, bc_user_id)
+    except Exception as e:
+        return {"status": "error", "project_id": project_id, "error": f"{type(e).__name__}: {e}"}
+    proj_name = proj.get("name") or f"Project {project_id}"
+    store.upsert_projects(user_id, [store.OpsProject(
+        bc_id=project_id, name=proj_name,
+        description=(proj.get("description") or "")[:500],
+        last_synced_at=_now_iso(),
+    )])
+    store.upsert_todos(user_id, fresh_todos)
+    return {
+        "status": "ok",
+        "project_id": project_id,
+        "project_name": proj_name,
+        "todos": len(fresh_todos),
+    }
+
+
 def _project_is_recently_active(proj: dict, cutoff: datetime) -> bool:
     """True iff the project's own updated_at is at-or-after the cutoff.
     Used to skip walking projects that have been quiet for the freshness
@@ -275,82 +394,7 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
             last_synced_at=_now_iso(),
         ))
         try:
-            # BC API v3: the todoset id lives in the project's `dock` array,
-            # not under a /buckets/{id}/todosets.json collection endpoint.
-            # We need the full project payload to extract it.
-            proj_full = _bc_get(f"/projects/{bucket}.json", token) or {}
-            todoset_dock = next(
-                (d for d in proj_full.get("dock", []) if d.get("name") == "todoset"),
-                None,
-            )
-            ts_id = todoset_dock.get("id") if todoset_dock else None
-            if not ts_id:
-                continue
-            lists = _bc_get(f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token) or []
-            for lst in lists:
-                lst_id = lst.get("id")
-                lst_name = lst.get("name") or "?"
-                if not lst_id:
-                    continue
-                # Walk ACTIVE todos
-                active_todos = list(_paginate(
-                    f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
-                    token, max_pages=10,
-                ))
-                # Walk COMPLETED todos (BC requires ?completed=true; freshness-filtered below)
-                completed_todos = list(_paginate(
-                    f"/buckets/{bucket}/todolists/{lst_id}/todos.json",
-                    token, max_pages=5, params={"completed": "true"},
-                ))
-                for t in active_todos + completed_todos:
-                    is_completed = bool(t.get("completed"))
-                    reason = _classify_for_user(t, bc_user_id)
-                    # For completed: include even when not classified-as-relevant
-                    # if assigned-to-user OR completed-by-user (so we capture
-                    # cycle times across the team in CB-connected projects).
-                    if not is_completed and reason is None:
-                        continue
-                    if not _todo_is_relevant(t):
-                        continue
-
-                    assignee_objs = t.get("assignees") or []
-                    completion = t.get("completion") or {}
-                    cby = completion.get("creator") or {}
-                    completed_at = completion.get("created_at") or ""
-                    created_at = t.get("created_at") or ""
-                    cycle_seconds = 0
-                    if completed_at and created_at:
-                        try:
-                            c_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
-                            cr_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                            if c_dt.tzinfo is None: c_dt = c_dt.replace(tzinfo=timezone.utc)
-                            if cr_dt.tzinfo is None: cr_dt = cr_dt.replace(tzinfo=timezone.utc)
-                            cycle_seconds = max(0, int((c_dt - cr_dt).total_seconds()))
-                        except (ValueError, TypeError):
-                            pass
-
-                    fresh_todos.append(store.OpsTodo(
-                        bc_id=t["id"],
-                        bc_project_id=bucket,
-                        bc_project_name=proj_name,
-                        bc_todolist_id=lst_id,
-                        bc_todolist_name=lst_name,
-                        title=t.get("title") or t.get("content") or "(untitled)",
-                        description=(t.get("description") or "")[:5000],
-                        status="completed" if is_completed else "active",
-                        due_on=t.get("due_on"),
-                        assignee_ids=[a.get("id") for a in assignee_objs],
-                        assignee_names=[a.get("name") for a in assignee_objs if a.get("name")],
-                        inclusion_reason=reason or "assigned",
-                        bc_app_url=t.get("app_url", ""),
-                        bc_created_at=created_at,
-                        bc_updated_at=t.get("updated_at") or "",
-                        completed_by_id=cby.get("id") if is_completed else None,
-                        completed_by_name=cby.get("name", "") if is_completed else "",
-                        completed_at=completed_at if is_completed else "",
-                        cycle_seconds=cycle_seconds if is_completed else 0,
-                        last_synced_at=_now_iso(),
-                    ))
+            fresh_todos.extend(_walk_project_todos(proj, token, bc_user_id))
         except Exception as e:  # noqa: BLE001 — per-project resilience
             partial = True
             err = f"bucket={bucket} {type(e).__name__}: {str(e)[:120]}"
