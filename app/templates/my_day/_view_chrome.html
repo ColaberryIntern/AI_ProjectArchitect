@@ -124,11 +124,11 @@
     loader.hidden = false;
     if (escapeBox) escapeBox.hidden = true;
     if (escapeTimer) clearTimeout(escapeTimer);
-    // Reveal the escape hatch after 20s — the page is genuinely slow,
+    // Reveal the escape hatch after 10s — the page is genuinely slow,
     // user should be able to dismiss the overlay and try something else.
     escapeTimer = setTimeout(function() {
       if (escapeBox) escapeBox.hidden = false;
-    }, 20000);
+    }, 10000);
   }
   function hide() {
     loader.hidden = true;

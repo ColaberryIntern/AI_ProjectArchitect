@@ -281,12 +281,19 @@ async def ops_home(request: Request):
     focus_suggestion = None
     focus_prompt = ""
     focus_llm_source = "deterministic"
+    # Post-action redirects (?done= / ?skip=) skip the LLM enhancement so the
+    # post-Mark-done page renders instantly. Without this, after marking a
+    # human task done the user waited 10-15s for a fresh LLM call against the
+    # newly-promoted focus task, which made the dim overlay feel stuck.
+    is_post_action = bool(request.query_params.get("done") or request.query_params.get("skip"))
     if focus:
         # Try LLM enhancement first: pull recent comments, send to GPT,
         # get specific steps + Claude Code prompt back. Cached per ticket.
         token, _src = tokens.get_user_token(user.email)
-        comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
-        enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
+        enhanced = None
+        if not is_post_action:
+            comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
+            enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
         if enhanced:
             focus_suggestion = {
                 "action_kind": enhanced.get("action_kind", "default"),
@@ -299,7 +306,8 @@ async def ops_home(request: Request):
             focus_prompt = enhanced.get("claude_code_prompt", "")
             focus_llm_source = "llm"
         else:
-            # Deterministic fallback when OpenAI is unavailable or errors
+            # Deterministic fallback when OpenAI is unavailable, errors, or
+            # we deliberately skipped it for the post-action snappy render.
             focus_suggestion = suggestions.build_suggestion(focus)
             focus_prompt = suggestions.generate_prompt(focus, focus_suggestion)
 
@@ -514,7 +522,7 @@ async def ops_complete(bc_id: int, request: Request):
                 headers={"Authorization": f"Bearer {token}",
                          "User-Agent": "Advisor My Day (ali@colaberry.com)"},
             )
-            with _ur.urlopen(req, timeout=10) as r:
+            with _ur.urlopen(req, timeout=6) as r:
                 bc_status = f"ok ({r.status})"
         except _ue.HTTPError as e:
             bc_status = f"http_{e.code}"
