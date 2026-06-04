@@ -102,6 +102,29 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 app.mount("/advisory/static", StaticFiles(directory=str(APP_DIR / "advisory" / "static")), name="advisory_static")
 
+
+def _days_from_today(due_on):
+    """Jinja filter: int days from today's UTC date to `due_on`.
+
+    Negative = overdue. Zero = due today. Positive = future. None for
+    invalid / empty input. Used everywhere /my-day/ renders an OVERDUE
+    badge — the cached score_breakdown.due_days is computed at scorer
+    run time and can lag the current date by minutes (between syncs)
+    or days (if the scorer cron didn't fire). This filter is always
+    fresh.
+    """
+    if not due_on:
+        return None
+    from datetime import datetime, timezone
+    try:
+        d = datetime.strptime(due_on, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+    return (d - datetime.now(timezone.utc).date()).days
+
+
+templates.env.filters["days_from_today"] = _days_from_today
+
 # Store templates on app state so routers can access them
 app.state.templates = templates
 

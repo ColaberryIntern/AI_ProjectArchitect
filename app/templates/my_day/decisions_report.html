@@ -143,7 +143,7 @@
       {% if focus %}
       The single highest-leverage decision is <strong>{{ focus.title }}</strong>
       {% if focus.due_on %}
-        {% set fd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+        {% set fd = focus.due_on | days_from_today %}
         {% if fd is not none and fd < 0 %}, which is already <strong>{{ -fd }} days overdue</strong>{% endif %}
       {% endif %}.
       {% endif %}
@@ -174,7 +174,7 @@
 
   {# YOUR TURN — the single most important task #}
   {% if focus %}
-  {% set focus_dd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+  {% set focus_dd = focus.due_on | days_from_today %}
   {% set focus_is_overdue = (focus_dd is not none and focus_dd < 0) %}
   {% set focus_is_today = (focus_dd == 0) %}
   {% set focus_is_human = (focus.category == 'human_required') %}

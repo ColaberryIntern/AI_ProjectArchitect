@@ -37,7 +37,7 @@
 {% include "my_day/_view_chrome.html" %}
 
 {% macro kanban_card(t, force_overdue=false) %}
-  {% set dd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+  {% set dd = t.due_on | days_from_today %}
   <div class="kanban-card {% if force_overdue %}is-overdue{% endif %} {% if t.urgency_score >= 70 %}is-red{% elif t.urgency_score >= 40 %}is-amber{% endif %}">
     <div class="title">
       {# Title links to BC ticket (new tab) — user ask: 'when you click on

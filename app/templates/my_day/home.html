@@ -117,7 +117,10 @@
 
 {# ── YOUR TURN banner with prominent due-status pill ───── #}
 {% if focus %}
-{% set focus_dd = focus.score_breakdown.get('breakdown', {}).get('due_days') %}
+{# Always compute overdue against TODAY's actual date — not the cached
+   score_breakdown.due_days, which can lag by minutes/days if the scorer
+   cron didn't fire. days_from_today is a custom filter on templates.env. #}
+{% set focus_dd = focus.due_on | days_from_today %}
 {% set focus_is_overdue = (focus_dd is not none and focus_dd < 0) %}
 {% set focus_is_today = (focus_dd == 0) %}
 {% set focus_is_human = (focus.category == 'human_required') %}
@@ -291,7 +294,7 @@
 
 {% macro feasibility_row(r) %}
   {% set nb = r.next_blocking %}
-  {% set dd = nb.score_breakdown.get('breakdown', {}).get('due_days') if nb else none %}
+  {% set dd = (nb.due_on | days_from_today) if nb else none %}
   {% set is_overdue = (dd is not none and dd < 0) %}
   {% set is_today = (dd == 0) %}
   {# Find the chain of tasks AFTER the next_blocking #}
@@ -484,7 +487,7 @@
 
               {# ─── FUTURE: next 15, NEXT HUMAN STEP highlighted ─── #}
               {% for t in seq[:seq_cap] %}
-              {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+              {% set tdd = t.due_on | days_from_today %}
               {% set t_overdue = (tdd is not none and tdd < 0) %}
               {% set t_today = (tdd == 0) %}
               {% set t_human = (t.category == 'human_required') %}
@@ -542,7 +545,7 @@
                 </td>
               </tr>
               {% for t in seq[seq_cap:] %}
-              {% set tdd = t.score_breakdown.get('breakdown', {}).get('due_days') %}
+              {% set tdd = t.due_on | days_from_today %}
               {% set t_overdue = (tdd is not none and tdd < 0) %}
               {% set t_today = (tdd == 0) %}
               {% set t_human = (t.category == 'human_required') %}
