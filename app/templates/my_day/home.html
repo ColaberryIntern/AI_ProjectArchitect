@@ -44,9 +44,16 @@
 {% if active_list %}
 <div style="background: #fff8d6; border: 1px solid #f0d678; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px;">
   Filtered to list: <strong>{{ active_list.list_name }}</strong> in {{ active_list.project_name }}
-  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}" style="color: #8a5a00;">× clear list filter</a>
+  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if person_filter %}&person={{ person_filter|urlencode }}{% endif %}" style="color: #8a5a00;">× clear list filter</a>
 </div>
 {% endif %}
+{% endif %}
+
+{% if person_filter %}
+<div style="background: #ddf4ff; border: 1px solid #c6e2ff; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #0550ae;">
+  👤 Filtered to person: <strong>{{ person_filter }}</strong>
+  · <a href="?view={{ view }}&tier={{ tier }}{% if project_filter %}&project={{ project_filter }}{% endif %}{% if list_filter %}&list={{ list_filter }}{% endif %}" style="color: #0550ae;">× clear person filter</a>
+</div>
 {% endif %}
 
 {# ── Big-picture banner (only when there's a single project + description) ──── #}
@@ -158,15 +165,19 @@
     {% endif %}
 
     {# Assignee badge — who's actually on the hook for this ticket.
-       Lets the viewer decide at a glance whether to act, nudge the
-       assignee, or skip. Without this, project names like 'Christian
-       Persecution Analysis' can be misread as person assignment. #}
+       Clickable: tapping it adds &person=<name> to the URL and filters
+       the entire dashboard by that person, same as clicking a list/project.
+       Lets the viewer act, nudge the assignee, or skip at a glance. #}
     {% set me_first = ('Ali' in (focus.assignee_names|join(' ')) or 'Muwwakkil' in (focus.assignee_names|join(' '))) %}
+    {% set _filter_base = '?view=' ~ view ~ '&tier=' ~ tier ~ (('&project=' ~ project_filter) if project_filter else '') ~ (('&list=' ~ list_filter) if list_filter else '') %}
     {% if focus.assignee_names %}
-      <span style="display: inline-block; margin-left: 6px; background: {% if me_first %}#dafbe1{% else %}#f6f8fa{% endif %}; color: {% if me_first %}#15803d{% else %}#1f2328{% endif %}; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 12px; border: 1px solid {% if me_first %}#aceebb{% else %}#d0d7de{% endif %};"
-            title="Assigned to: {{ focus.assignee_names|join(', ') }}">
-        👤 {{ focus.assignee_names[0] }}{% if focus.assignee_names|length > 1 %} <span class="dim">+{{ focus.assignee_names|length - 1 }}</span>{% endif %}
-      </span>
+      <a href="{{ _filter_base }}&person={{ focus.assignee_names[0]|urlencode }}"
+         style="text-decoration: none;"
+         title="Click to filter the dashboard by {{ focus.assignee_names[0] }} · full assignee list: {{ focus.assignee_names|join(', ') }}">
+        <span style="display: inline-block; margin-left: 6px; background: {% if me_first %}#dafbe1{% else %}#f6f8fa{% endif %}; color: {% if me_first %}#15803d{% else %}#1f2328{% endif %}; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 12px; border: 1px solid {% if me_first %}#aceebb{% else %}#d0d7de{% endif %}; cursor: pointer;">
+          👤 {{ focus.assignee_names[0] }}{% if focus.assignee_names|length > 1 %} <span class="dim">+{{ focus.assignee_names|length - 1 }}</span>{% endif %}
+        </span>
+      </a>
     {% elif focus.inclusion_reason == 'unassigned' %}
       <span style="display: inline-block; margin-left: 6px; background: #fff4d5; color: #8a5a00; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 12px; border: 1px solid #f0d678;">
         🤝 UNASSIGNED
@@ -340,9 +351,10 @@
       </td>
     </tr>
     {% if r.open_todos|length > 1 %}
-    {# Auto-open when project_filter is set + only one list_rollup (drilled
-       in deep enough that we want full visibility) #}
-    {% set _auto_open = project_filter and list_rollups|length == 1 %}
+    {# Auto-open whenever the scope is narrow (list or project filter
+       active). User ask: 'When filtered by one list or one project,
+       by default it should show all tasks.' #}
+    {% set _auto_open = list_filter or project_filter %}
     <tr class="blocking-chain" {% if not _auto_open %}hidden{% endif %}>
       <td colspan="6" style="background: #f6f8fa; padding: 0;">
         <div style="padding: 18px 22px;">
@@ -404,7 +416,11 @@
           {% set _wd = _with_due|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
           {% set _nd = _no_due|sort(attribute='urgency_score', reverse=True) %}
           {% set seq = _wd + _nd %}
-          {% set seq_cap = 15 %}
+          {# Lift the 15-task cap when scope is narrow (list or project
+             filter active) — user is intentionally focused so show all
+             open tasks. Outside that scope, 15 stays as the default
+             cap with a 'Show remaining N' expander. #}
+          {% set seq_cap = seq|length if (list_filter or project_filter) else 15 %}
 
           <div class="task-seq-header">
             PROJECT TIMELINE

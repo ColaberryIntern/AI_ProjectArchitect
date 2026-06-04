@@ -26,7 +26,10 @@
 {% endif %}
 
 {# ── View-mode tabs ───────────────────────────────────────── #}
-{% set qs_tail = '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') %}
+{# qs_pp = preserve person filter on tab/chip clicks (the person filter
+   is a *narrowing* — it shouldn't be silently cleared by switching tabs) #}
+{% set qs_pp = ('&person=' ~ (person_filter|urlencode) if person_filter else '') %}
+{% set qs_tail = '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') ~ qs_pp %}
 <div class="view-tabs">
   <a href="?view=briefing{{ qs_tail }}" class="view-tab {% if view == 'briefing' %}active{% endif %}">📋 Briefing</a>
   <a href="?view=kanban{{ qs_tail }}" class="view-tab {% if view == 'kanban' %}active{% endif %}">🗂 Kanban</a>
@@ -34,7 +37,7 @@
 </div>
 
 {# ── Tier filter chips ─────────────────────────────────── #}
-{% set qs_no_tier = '&project=' ~ project_filter if project_filter else '' %}
+{% set qs_no_tier = (('&project=' ~ project_filter) if project_filter else '') ~ qs_pp %}
 <div class="project-chips" style="border-top: 0; padding-top: 0; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 0;">
   <a href="?view={{ view }}&tier=assigned{{ qs_no_tier }}"
      class="proj-chip {% if tier == 'assigned' %}active{% endif %}">
@@ -73,11 +76,11 @@
 {# ── Project filter chips ─────────────────────────────────── #}
 {% if all_project_rollups %}
 <div class="project-chips">
-  <a href="?view={{ view }}&tier={{ tier }}" class="proj-chip {% if not project_filter %}active{% endif %}">
+  <a href="?view={{ view }}&tier={{ tier }}{{ qs_pp }}" class="proj-chip {% if not project_filter %}active{% endif %}">
     All projects <span class="chip-count">{{ status.open_count if not project_filter else (all_project_rollups | sum(attribute='open_count')) }}</span>
   </a>
   {% for p in all_project_rollups %}
-  <a href="?view={{ view }}&tier={{ tier }}&project={{ p.project_id }}"
+  <a href="?view={{ view }}&tier={{ tier }}&project={{ p.project_id }}{{ qs_pp }}"
      class="proj-chip {% if project_filter == p.project_id %}active{% endif %} {% if p.overdue_count %}has-overdue{% endif %}">
     {{ p.project_name[:24] }}
     <span class="chip-count">{{ p.open_count }}</span>
@@ -85,6 +88,31 @@
   </a>
   {% endfor %}
 </div>
+{% endif %}
+
+{# ── People filter (collapsed by default — long list) ──────── #}
+{% if people_for_chips %}
+{% set qs_no_person = '&view=' ~ view ~ '&tier=' ~ tier ~ (('&project=' ~ project_filter) if project_filter else '') ~ (('&list=' ~ list_filter) if list_filter else '') %}
+<details class="people-filter" {% if person_filter %}open{% endif %} style="margin-top: 6px; margin-bottom: 10px;">
+  <summary style="cursor: pointer; font-size: 12px; color: #57606a; font-weight: 600; padding: 4px 0; list-style: none; user-select: none;">
+    <span style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 999px; padding: 4px 10px; display: inline-block;">
+      👥 Filter by person ({{ people_for_chips|length }}){% if person_filter %} · <strong>{{ person_filter }}</strong> active{% endif %} ▾
+    </span>
+  </summary>
+  <div class="project-chips" style="margin-top: 8px; padding-top: 0;">
+    {% if person_filter %}
+    <a href="?{{ qs_no_person[1:] }}" class="proj-chip" style="background: #fff4d5; border-color: #f0d678; color: #8a5a00;">
+      × clear person
+    </a>
+    {% endif %}
+    {% for name, count in people_for_chips %}
+    <a href="?{{ qs_no_person[1:] }}&person={{ name|urlencode }}"
+       class="proj-chip {% if person_filter and person_filter == name %}active{% endif %}">
+      👤 {{ name[:24] }} <span class="chip-count">{{ count }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</details>
 {% endif %}
 
 {# ── Dim-overlay loader (shown on filter chip / view tab click) ───────
