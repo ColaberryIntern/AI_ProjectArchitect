@@ -757,6 +757,33 @@ async def ops_complete(bc_id: int, request: Request):
     return RedirectResponse(referer + flash, status_code=303)
 
 
+# ── /my-day/reports/{filename} — serve generated HTML reports ────
+
+
+@router.get("/reports/{filename}")
+async def ops_report_file(filename: str, request: Request):
+    """Serve a rendered HTML report from docs/reports/. Admin-only.
+
+    Lets Ali view the workflow-generated status reports as rendered HTML
+    instead of GitHub's text/plain raw view. Filename is sanitized
+    against path traversal.
+    """
+    user = _require_user(request)
+    if "admin" not in (user.roles or []):
+        raise HTTPException(403, "admin role required")
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "invalid filename")
+    if not filename.endswith((".html", ".json")):
+        raise HTTPException(400, "only .html / .json")
+    from config.settings import PROJECT_ROOT
+    from fastapi.responses import Response
+    p = PROJECT_ROOT / "docs" / "reports" / filename
+    if not p.exists():
+        raise HTTPException(404, f"report not found: {filename}")
+    media = "text/html; charset=utf-8" if filename.endswith(".html") else "application/json"
+    return Response(content=p.read_text(encoding="utf-8"), media_type=media)
+
+
 # ── /my-day/decisions-report — printable / shareable rich-action report ──
 
 
