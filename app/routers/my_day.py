@@ -47,7 +47,13 @@ def _session_user(request: Request):
 def _require_user(request: Request):
     user = _session_user(request)
     if not user:
-        raise HTTPException(303, headers={"Location": "/auth/login?next=/my-day/"})
+        # Preserve the original URL (including query string) so the user
+        # round-trips back here after login. Previously hard-coded to
+        # /my-day/ which broke /my-day/_health and /my-day/todo/{id}.
+        from urllib.parse import quote
+        qs = request.url.query
+        full = request.url.path + ("?" + qs if qs else "")
+        raise HTTPException(303, headers={"Location": f"/auth/login?next={quote(full, safe='')}"})
     return user
 
 
