@@ -138,6 +138,24 @@ def _build_response_text(plan: dict) -> str:
     return "".join(parts)
 
 
+def _parent_is_closed(bucket: int, todo_id: int, token: str) -> bool:
+    """Return True if the parent todo is already completed in BC.
+
+    Closed tickets should NOT receive new auto-responses — user feedback:
+    'If your queue is re-firing the prompt for tickets already closed,
+    it's worth flagging that to whatever is queueing — closed tickets
+    shouldn't generate new prompts.'
+    """
+    from .sync import _bc_get
+    try:
+        todo = _bc_get(f"/buckets/{bucket}/todos/{todo_id}.json", token)
+    except Exception:
+        return False
+    if not todo:
+        return False
+    return bool(todo.get("completed"))
+
+
 def _post_comment(bucket: int, recording_id: int, html_content: str, token: str) -> bool:
     """POST a comment as the AI clone identity."""
     url = (
@@ -182,6 +200,8 @@ def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
     skipped_seen = 0
     failed = 0
 
+    skipped_closed = 0
+
     for proj in projects:
         bucket = proj.get("id")
         if not bucket:
@@ -192,6 +212,18 @@ def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
             key = f"comment:{m['comment_id']}"
             if key in seen:
                 skipped_seen += 1
+                continue
+            # Skip closed tickets BEFORE we burn an LLM call + post a comment
+            # the user already considered resolved. Mark as seen anyway so
+            # we don't re-check on every scan.
+            parent_id = m.get("parent_id")
+            if parent_id and _parent_is_closed(bucket, parent_id, token):
+                logger.info(
+                    "cb-mention: parent todo %s is completed; skipping auto-response",
+                    parent_id,
+                )
+                seen.add(key)
+                skipped_closed += 1
                 continue
             seen.add(key)
             # Crawl the parent ticket so the plan has real context
@@ -225,6 +257,7 @@ def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
         "mentions_found": found,
         "responded": responded,
         "skipped_already_seen": skipped_seen,
+        "skipped_closed_parent": skipped_closed,
         "failed": failed,
         "token_source": src,
     }

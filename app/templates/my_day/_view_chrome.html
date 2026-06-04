@@ -97,6 +97,16 @@
     <div class="md-spinner"></div>
     <div class="md-loader-text">Loading…</div>
     <div class="md-loader-sub">filtering tasks + syncing with Basecamp</div>
+    <div id="md-loader-escape" hidden style="margin-top: 14px;">
+      <div style="font-size: 11px; color: #cf222e; margin-bottom: 6px;">
+        Still working… your last action is taking longer than usual.
+      </div>
+      <button type="button" id="md-loader-cancel"
+              style="background: #fff; border: 1px solid #d0d7de; color: #1f2328;
+                     padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+        Dismiss overlay
+      </button>
+    </div>
   </div>
 </div>
 <script>
@@ -105,10 +115,28 @@
   if (!loader) return;
   var textEl = loader.querySelector('.md-loader-text');
   var subEl  = loader.querySelector('.md-loader-sub');
+  var escapeBox = document.getElementById('md-loader-escape');
+  var cancelBtn = document.getElementById('md-loader-cancel');
+  var escapeTimer = null;
   function show(title, sub) {
     if (textEl && title) textEl.textContent = title;
     if (subEl)  subEl.textContent  = sub || '';
     loader.hidden = false;
+    if (escapeBox) escapeBox.hidden = true;
+    if (escapeTimer) clearTimeout(escapeTimer);
+    // Reveal the escape hatch after 20s — the page is genuinely slow,
+    // user should be able to dismiss the overlay and try something else.
+    escapeTimer = setTimeout(function() {
+      if (escapeBox) escapeBox.hidden = false;
+    }, 20000);
+  }
+  function hide() {
+    loader.hidden = true;
+    if (escapeBox) escapeBox.hidden = true;
+    if (escapeTimer) { clearTimeout(escapeTimer); escapeTimer = null; }
+  }
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function() { hide(); });
   }
   // Filter chips + view tabs → page reload
   document.addEventListener('click', function(e) {
@@ -135,7 +163,7 @@
   }, true);
   // bfcache restore: page came back from history with overlay still up
   window.addEventListener('pageshow', function(e) {
-    if (e.persisted) loader.hidden = true;
+    if (e.persisted) hide();
   });
 })();
 </script>

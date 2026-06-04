@@ -44,7 +44,10 @@ def _get_client():
         return None
     try:
         from openai import OpenAI
-        _client = OpenAI(api_key=key)
+        # Per-client default timeout; per-request override on .create() too.
+        # Keeps /my-day/ page render under 20s end-to-end so the dim
+        # overlay never sticks waiting for the API.
+        _client = OpenAI(api_key=key, timeout=12.0)
         return _client
     except Exception:
         logger.warning("Failed to init OpenAI client", exc_info=True)
@@ -191,7 +194,7 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
         return cache[key]
 
     try:
-        resp = client.chat.completions.create(
+        resp = client.with_options(timeout=12.0).chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
