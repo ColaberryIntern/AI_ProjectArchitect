@@ -143,26 +143,26 @@ def _sync_relative(last_sync_iso: str) -> str:
         return ""
 
 
-def _maybe_async_sync(user_email: str, state) -> None:
-    """If the last sync is more than 3 min old, kick a background thread
-    to refresh. Non-blocking — the page renders with current data and the
-    next refresh shows the fresh state. Cheap idempotency via a module-
-    level lock dict.
-    """
-    import threading
+def _store_age_seconds(state) -> float:
+    """Seconds since last successful sync, or a large number if never."""
     last = state.last_sync_at or ""
-    if last:
-        try:
-            ts = last.replace("Z", "+00:00")
-            dt = datetime.fromisoformat(ts)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - dt).total_seconds()
-            if age < 180:  # < 3 min — recent enough
-                return
-        except (ValueError, TypeError):
-            pass
-    # One in-flight per user
+    if not last:
+        return 99999.0
+    try:
+        ts = last.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except (ValueError, TypeError):
+        return 99999.0
+
+
+def _kick_bg_full_sync(user_email: str) -> None:
+    """Kick a background full sync if one isn't already in flight. Uses the
+    per-user lock dict so a slower auto-scheduler and a page-load nudge
+    can't double up."""
+    import threading
     if getattr(_maybe_async_sync, "_locks", None) is None:
         _maybe_async_sync._locks = {}
     locks = _maybe_async_sync._locks
@@ -180,22 +180,70 @@ def _maybe_async_sync(user_email: str, state) -> None:
         finally:
             locks[user_email] = False
 
-    threading.Thread(target=_run, daemon=True, name=f"sync-{user_email}").start()
+    threading.Thread(target=_run, daemon=True, name=f"bg-sync-{user_email}").start()
+
+
+def _maybe_async_sync(user_email: str, state) -> None:
+    """Legacy background-only nudge. Kept so cb_mention_worker + other
+    callers don't break. New code should use _natural_flow_sync."""
+    if _store_age_seconds(state) < 180:
+        return
+    _kick_bg_full_sync(user_email)
+
+
+def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) -> bool:
+    """Page-load 'natural flow' sync: when the store is stale (>90s), sync
+    the project the user is about to view INLINE (~2-3s) so the focus task
+    they see is computed against fresh data. Always kicks a background full
+    sync so projects outside the current filter also catch up. Returns True
+    if any inline work was done.
+
+    This is what keeps the system synced through the natural flow of using
+    the app — independent of whether the background APScheduler cron is
+    firing. Mark Done's targeted sync (ops_complete) covers the same gap
+    on the write path; this covers the read path.
+    """
+    age = _store_age_seconds(state)
+    if age < 90:
+        return False
+
+    inline_did_work = False
+    if project_filter_id is not None:
+        try:
+            r = sync.pull_todos_for_project(user_email, project_filter_id)
+            inline_did_work = (r.get("status") == "ok")
+        except Exception:
+            pass
+
+    _kick_bg_full_sync(user_email)
+    return inline_did_work
 
 
 @router.get("/")
 async def ops_home(request: Request):
     user = _require_user(request)
     state = store.load_state(user.email)
+
+    # Parse project filter early so the natural-flow sync can target it.
+    project_filter_raw = request.query_params.get("project", "")
+    try:
+        _early_proj = int(project_filter_raw) if project_filter_raw else None
+    except ValueError:
+        _early_proj = None
+
+    # Natural-flow sync: if the store is stale, sync the focused project
+    # inline (~2-3s) so the user always sees fresh state for what they're
+    # looking at. Background-kicks a full sync for everything else.
+    inline_synced = _natural_flow_sync(user.email, state, _early_proj)
+    if inline_synced:
+        # Reload state + todos so we see the freshly-upserted rows
+        state = store.load_state(user.email)
     todos = store.load_todos(user.email)
     projects = store.load_projects(user.email)
-    # Nudge: if data is stale, kick a background sync.
-    _maybe_async_sync(user.email, state)
 
     view = request.query_params.get("view", "briefing")
     if view not in ("briefing", "kanban", "heatmap"):
         view = "briefing"
-    project_filter_raw = request.query_params.get("project", "")
     # Tier filter: assignment-based (assigned|due|unassigned|all) OR
     # kind-based (human|ai). The 6 values are mutually exclusive in the UI.
     # Default is 'all' so projects show every task they actually have —
@@ -217,14 +265,9 @@ async def ops_home(request: Request):
     tier_counts_total["human"] = sum(1 for t in active_unfiltered if t.category == "human_required")
     tier_counts_total["ai"] = sum(1 for t in active_unfiltered if t.category != "human_required")
 
-    # Apply project filter
-    if project_filter_raw:
-        try:
-            project_filter_id = int(project_filter_raw)
-        except ValueError:
-            project_filter_id = None
-    else:
-        project_filter_id = None
+    # Apply project filter (parsed earlier as _early_proj for the
+    # natural-flow sync; re-bind to the name the downstream code uses).
+    project_filter_id = _early_proj
 
     # List filter (drill-in from Feasibility table)
     list_filter_raw = request.query_params.get("list", "")

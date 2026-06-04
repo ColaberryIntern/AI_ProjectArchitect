@@ -63,7 +63,12 @@ async def lifespan(app: FastAPI):
         )
         ops_start()
         stops.append(ops_stop)
-    except Exception:
+        # Print + log so we can verify in container logs that the
+        # scheduler actually started (the prior logger.info call was
+        # being filtered out by uvicorn's default log config).
+        print("[lifespan] ops sync scheduler started", flush=True)
+    except Exception as e:
+        print(f"[lifespan] FAILED to start ops sync scheduler: {e}", flush=True)
         logger.warning("Failed to start ops sync scheduler", exc_info=True)
 
     try:
@@ -72,7 +77,9 @@ async def lifespan(app: FastAPI):
         )
         pilot_start()
         stops.append(pilot_stop)
-    except Exception:
+        print("[lifespan] pilot dash scheduler started", flush=True)
+    except Exception as e:
+        print(f"[lifespan] FAILED to start pilot dash scheduler: {e}", flush=True)
         logger.warning("Failed to start pilot dash scheduler", exc_info=True)
 
     yield
