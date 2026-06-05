@@ -15,6 +15,24 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Op 3 + Op 4 SHIPPED + Op 5 v01 built (LAST child) + review sent (2026-06-05)
+- [x] Op 3 + Op 4 v01 both shipped (commit `6c72444` pushed, both BC tickets auto-closed). Op 5 v01 (the last child spec) built and review sent — once Ali approves Op 5, the kickoff completes.
+  - Date: 2026-06-05
+  - Session: CC-20260605-4w8q
+  - What changed: **Op 3 + Op 4 ship**: committed `[Op 3 + Op 4 v01]` as `6c72444`, pushed to `origin/main`. Both BC tickets auto-closed via Op 4 logic (confidence 0.92 each): close-summary green-card comments posted on 9967247804 and 9967247829, both flipped to completed. Op 0 parent received `child_closed` status (4/5 done) with the tracking table updated. Op 5 build_started comment posted. **Op 5 v01 build**: NEW `execution/products/library/operator_memory.py` — `render_starter_operator_memory()` template (4 sections: stated_preferences, recurring_patterns, corrections, open_observations) + 3 capture detectors using regex extraction (`detect_stated_preference` for "I prefer X" / "always X" / "never X" / "from now on X"; `detect_correction` for "no not that" / "don't X" / "stop X"; `detect_pattern_observation` for Claude-observed behaviors) + `append_memory_entry()` idempotent appender that inserts under section headers + `promote_pattern_if_observed()` that moves an open observation to recurring patterns once observed ≥3 times. Stdlib only. EXTENDED `execution/products/library/operator_scaffold.py` — `seed_workspace()` now also writes `OPERATOR_MEMORY.md` at provisioning (lazy import keeps the module loadable if operator_memory is missing). NEW `scripts/operator_05_preview.py` — runs a live 3-event capture simulation (stated pref + correction + 3x observation → promotion) against the real code in a temp workspace; renders the 5-layer priority diagram + the post-capture memory file. Artifact 13.4 KB. Op 5 v01 review email sent to all 3 of Ali's inboxes.
+  - Verification: Commit `6c72444` on `origin/main`. Op 3 + Op 4 BC tickets status: completed. BC comments this turn: Op 3 close `9967695265`, Op 4 close `9967695289`, Op 0 status (4/5) `9967695323`, Op 5 build_started `9967695339`, Op 5 review_sent `9967713767`. Mandrill Op 5 review: `<2856fe4b-671d-f46e-b61c-a167f1e2316e@colaberry.com>` with `Attached: yes`. Em-dash sweep: 0 (pass). Ali Muwwakkil count: 3 (pass). Op 5 preview executed live — capture simulation produced the expected memory file with stated pref + correction + 3 observations + promotion line.
+  - Notes: **Once Ali approves Op 5, the kickoff completes.** Op 5 ships + auto-closes (confidence will be ~0.92, same as the other 4); Op 0 parent then auto-closes (all 5 children closed); all 6 BC tickets in the kickoff list reach `completed` status. Op 5 is the architectural keystone — it implements the "shared KB prioritized over learned memory" rule structurally via the 5-layer priority order. Per-user learned memory is Layer 5 (lowest); admin policy at Layer 1 + shared KB at Layer 2 always win on conflict. The "control the narrative" requirement is preserved.
+
+| File | Change |
+|---|---|
+| Op 3 + Op 4 commit `6c72444` | SHIPPED — pushed to `origin/main` after Ali approval of both. (2026-06-05) |
+| Op 3 BC ticket 9967247804 | CLOSED — auto-close via confidence 0.92. (2026-06-05) |
+| Op 4 BC ticket 9967247829 | CLOSED — auto-close via confidence 0.92. (2026-06-05) |
+| `execution/products/library/operator_memory.py` | NEW — starter template + 3 capture detectors + idempotent append + 3-occurrence pattern promotion. Stdlib only. (2026-06-05) |
+| `execution/products/library/operator_scaffold.py` | EDIT — `seed_workspace()` extended to also seed `OPERATOR_MEMORY.md` via lazy import of operator_memory. (2026-06-05) |
+| `scripts/operator_05_preview.py` | NEW — live capture simulation runner + 5-layer priority diagram renderer. (2026-06-05) |
+| `tmp/operator-05-v01.html` | NEW — 13.4 KB v01 artifact (gitignored). (2026-06-05) |
+
 ### Op 2 SHIPPED + Op 3 v01 + Op 4 v01 built (parallel) + both reviews sent (2026-06-05)
 - [x] Op 2 v01 shipped (commit + push + auto-close + parent status). Op 3 + Op 4 built in parallel and both v01 reviews sent.
   - Date: 2026-06-05

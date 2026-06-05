@@ -429,6 +429,14 @@ def seed_workspace(
     workspace_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"workspace": str(workspace_dir), "written": [], "skipped": []}
 
+    # Op 5: also seed OPERATOR_MEMORY.md (the learned-memory file at Layer 5)
+    # Imported lazily so this module stays importable even if operator_memory is absent.
+    try:
+        from execution.products.library import operator_memory as _opmem  # noqa: WPS433
+        starter_memory = _opmem.render_starter_operator_memory(user_email, user_display_name)
+    except ImportError:
+        starter_memory = None
+
     files_to_write = {
         "CLAUDE.md": render_starter_claude_md(user_email, user_display_name, tenant_id),
         "PROGRESS.md": render_starter_progress_md(user_email, user_display_name),
@@ -444,6 +452,8 @@ def seed_workspace(
             "Edit `../CLAUDE.md` (the per-user file in the workspace root) for your own preferences.\n"
         ),
     }
+    if starter_memory is not None:
+        files_to_write["OPERATOR_MEMORY.md"] = starter_memory
 
     for relpath, content in files_to_write.items():
         target = workspace_dir / relpath
