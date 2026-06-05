@@ -15,6 +15,19 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Onboarding pilot plan drafted — Ali as user #1 end-to-end test (2026-06-05)
+- [x] Drafted comprehensive plan for Ali to dogfood the per-operator experience layer as user #1
+  - Date: 2026-06-05
+  - Session: CC-20260605-4w8q
+  - What changed: Per Op 2 doctrine, created BC ticket [9967849730](https://app.basecamp.com/3945211/buckets/7463955/todos/9967849730) `[Onboarding pilot] Ali as user #1 end-to-end test` in the rollout list before substantive work; posted build_started card. Wrote `docs/specs/onboarding-pilot-ali-first-user.md` — comprehensive plan covering: (1) the 18-step end-to-end flow from "Admin opens admin console" through "user creates a skill that lands in the library," (2) gap analysis per step with what exists / what's missing / dependency / effort estimate, (3) the 5 biggest gaps in plain language (PR #1 deployment, Claude Code session-start hook, invitation email script, Op 1 + workspaces.py integration, library auto-sync trigger), (4) 7 pre-flight prerequisites with owner assignments, (5) 5-phase execution roadmap (Foundation deploy → Workspace provisioning → Invitation + session-start → Skill creation + library sync → The actual pilot run), (6) the dogfood test script with per-step verification checkpoints, (7) teardown/reset plan if anything breaks, (8) explicit validation scope (what the pilot does and does NOT validate), (9) 7 open questions for Ali with recommended defaults. Posted step_complete card on the pilot ticket.
+  - Verification: BC ticket 9967849730 created in list 9953889092. BC comments: build_started [9967849756](https://app.basecamp.com/3945211/buckets/7463955/todos/9967849730#__recording_9967849756), step_complete [9967864531](https://app.basecamp.com/3945211/buckets/7463955/todos/9967849730#__recording_9967864531). Plan file at `docs/specs/onboarding-pilot-ali-first-user.md` (348 lines).
+  - Notes: This is the natural continuation of the just-completed Op 0-5 kickoff. The per-operator experience layer is built; this pilot exercises it end-to-end against the multi-tenant foundation. **The load-bearing unknown:** PR #1 deployment status — per WORK_LOG.md it was open on `feature/multitenant-os` but never merged; subsequent commits to main didn't change that. Without PR #1 deployed, Steps 1-5, 9, 10, 18 don't work. **Recommended estimate:** 5 working days from Ali's approval to pilot completion. **Awaiting:** Ali's review of the plan + answers to the 7 open questions (Q1: PR #1 merge path / Q2: portal host / Q3: hook mechanism / Q4: test skill choice / Q5: single vs two-admin / Q6: one-sitting vs multi-day / Q7: user #2 identity).
+
+| File | Change |
+|---|---|
+| `docs/specs/onboarding-pilot-ali-first-user.md` | NEW — comprehensive pilot plan (348 lines): 18-step flow, gap analysis, 5-phase roadmap, dogfood test script, 7 open questions. (2026-06-05) |
+| BC ticket 9967849730 | NEW — `[Onboarding pilot] Ali as user #1 end-to-end test` in list 9953889092 (natural continuation of the just-closed Op 0-5 kickoff). (2026-06-05) |
+
 ### 🎉 KICKOFF COMPLETE — Op 5 shipped + Op 0 parent closed + final wrap-up sent (2026-06-05)
 - [x] Op 5 v01 shipped (Ali-approved). Op 5 + Op 0 parent BC tickets both auto-closed. Per-operator experience layer build complete. Final wrap-up email sent to Ali.
   - Date: 2026-06-05
