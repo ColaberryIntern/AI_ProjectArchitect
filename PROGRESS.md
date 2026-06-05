@@ -15,6 +15,25 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Op 2 SHIPPED + Op 3 v01 + Op 4 v01 built (parallel) + both reviews sent (2026-06-05)
+- [x] Op 2 v01 shipped (commit + push + auto-close + parent status). Op 3 + Op 4 built in parallel and both v01 reviews sent.
+  - Date: 2026-06-05
+  - Session: CC-20260605-4w8q
+  - What changed: **Op 2 ship**: committed `[Op 2 v01]` as `cfac3f7`, pushed `origin/main`. 4 open questions locked with defaults per Ali's "keep it moving" reply (2-step BC access OK, no verb list edits, keep opt-in confirmation gate, todolist name "Claude Code Sessions"). Op 2 BC ticket (9967247783) auto-closed via Op 4 logic (confidence 0.92). Op 0 parent received `child_closed` status (2/5 done). Op 3 + Op 4 both got `build_started` comments. **Op 3 v01 build**: NEW `execution/products/library/ticket_updater.py` — 10 closed step kinds (file_edit/file_create/file_delete/deploy_started/deploy_completed/test_run/external_send/blocker/diagnostic_mode/step_complete), `StepEvidence` dataclass with SHA-256 signature for idempotency, structured HTML card renderer with per-kind color tone, `CommentRateLimiter` token bucket (1/60s; blocker+diagnostic_mode+step_complete bypass), `TicketUpdater` orchestrator with in-memory dedup + BC last-20-comments safety-net scan. Stdlib only. NEW `scripts/operator_03_preview.py` renders all 10 step kinds + burst simulation + bypass explanation. Artifact 12.9 KB. **Op 4 v01 build**: NEW `execution/products/library/auto_close.py` — `is_ticket_done()` (4 gates: shipped + verified + PROGRESS.md updated + no recent blocker), `compute_confidence()` (5 dimensions clamped to 0..1), `decide_close_action()` pure function (>=0.85 auto-close, 0.70-0.85 ask-confirm, <0.70 or gate-fail not-ready), `render_auto_close_card()` + `render_ask_confirm_card()` (the green and amber BC comment formats already in use on Op 1+2), `execute_close_decision()` side-effecting executor. Stdlib only. NEW `scripts/operator_04_preview.py` runs 3 real scenarios through `decide_close_action()`. Artifact 9.4 KB. **Both review emails sent** to all 3 of Ali's inboxes with HTML attached.
+  - Verification: Op 2 commit `cfac3f7` on `origin/main`. Op 2 ticket completed. BC comments: Op 2 close `9967536922`, Op 0 status `9967536951`, Op 3 build_started `9967536973`, Op 4 build_started `9967537001`, Op 3 review_sent `9967573852`, Op 4 review_sent `9967573866`. Mandrill: Op 3 review `<86ca80ed-e663-545c-bfa2-8fa9555d2548@colaberry.com>`, Op 4 review `<d69028f0-708f-1d78-7d7f-3ba141a04523@colaberry.com>`. Em-dash sweep: 0 on both. Ali Muwwakkil count: 3 on both.
+  - Notes: Op 3 + Op 4 files uncommitted, awaiting approval. **Live-dogfood proof point worth noting**: the entire kickoff has been using the Op 3 card format (since the kickoff_complete comment on Op 0) and the Op 4 green close-summary card (Op 1 + Op 2 both auto-closed via this format). Both modules are formalizations of what's already been working. Both v01 reviews are sent; awaiting Ali's reply on both. Once both approved, Op 5 starts (last child spec — operator memory + shared KB).
+
+| File | Change |
+|---|---|
+| Op 2 commit `cfac3f7` | SHIPPED — pushed to `origin/main` after Ali approval. (2026-06-05) |
+| Op 2 BC ticket 9967247783 | CLOSED — auto-close via confidence 0.92. (2026-06-05) |
+| `execution/products/library/ticket_updater.py` | NEW — 10 closed step kinds, StepEvidence + render_card + CommentRateLimiter + TicketUpdater with SHA-256 idempotency. Stdlib only. (2026-06-05) |
+| `scripts/operator_03_preview.py` | NEW — renders all 10 step kinds + burst sim + bypass explanation. (2026-06-05) |
+| `execution/products/library/auto_close.py` | NEW — 4-gate done check + 5-dim confidence scorer + decide_close_action pure function + green/amber card renderers + execute_close_decision. Stdlib only. (2026-06-05) |
+| `scripts/operator_04_preview.py` | NEW — runs 3 scenarios (auto-close, ask-confirm, not-ready) through the real decide function. (2026-06-05) |
+| `tmp/operator-03-v01.html` | NEW — 12.9 KB v01 artifact (gitignored). (2026-06-05) |
+| `tmp/operator-04-v01.html` | NEW — 9.4 KB v01 artifact (gitignored). (2026-06-05) |
+
 ### Op 1 SHIPPED + Op 2 v01 build — doctrine + 3 modules + preview CLI + review sent (2026-06-05)
 - [x] Op 1 v01 shipped (commit + push + auto-close + Op 0 parent status update); Op 2 v01 built and sent for review
   - Date: 2026-06-05
