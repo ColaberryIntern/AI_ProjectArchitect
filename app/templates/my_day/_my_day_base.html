@@ -334,8 +334,7 @@
 <div class="md-topbar">
   <a class="md-brand" href="/">Colaberry <span class="sep">·</span> <span class="product">My Day</span></a>
   <a href="/library/" class="md-product-link">Library</a>
-  <a href="/my-day/" class="md-product-link {% if library_nav_active == 'my_day' %}active{% endif %}">My Day</a>
-  <a href="/my-day/extract/" class="md-product-link {% if library_nav_active == 'extract' %}active{% endif %}">Extract</a>
+  <a href="/my-day/" class="md-product-link active">My Day</a>
   {% if current_session_user %}
   <div class="md-actions">
     <span class="md-identity-chip">👤 {{ current_session_user.display_name or current_session_user.email }} · {{ company_id }}</span>

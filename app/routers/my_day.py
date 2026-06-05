@@ -1055,7 +1055,8 @@ async def extract_index(request: Request, days: int = 30, project: str = ""):
                 active_project_filter=project,
                 days=days,
                 output_types=output_types,
-                prior_extracts=prior),
+                prior_extracts=prior,
+                library_nav_active="extract"),
     )
 
 

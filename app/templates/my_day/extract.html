@@ -1,9 +1,9 @@
-{% extends "my_day/_my_day_base.html" %}
+{% extends "library/_library_base.html" %}
 {% set library_nav_active = "extract" %}
 
 {% block title %}Extract · My Day · Colaberry{% endblock %}
 
-{% block main %}
+{% block content %}
 <style>
   .extract-layout { display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
   .extract-list { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; max-height: 80vh; overflow-y: auto; }
