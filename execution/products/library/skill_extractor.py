@@ -380,6 +380,7 @@ def extract(source_kind: str,
                   account_id: str = "",
                   bucket_id: str = "",
                   repo: str = "",
+                  workspace_repo: str = "",
                   created_by: str = "") -> dict:
     """Extract from a source -> render template -> optionally commit to library.
 
@@ -437,6 +438,7 @@ def extract(source_kind: str,
             artifact = extracted_writer.write_and_commit(
                 src, output_type, final_slug,
                 repo=repo, created_by=created_by,
+                workspace_repo=workspace_repo,
             )
             content = extracted_writer.render(src, output_type, final_slug,
                                                                 created_at=artifact.created_at)
@@ -451,6 +453,8 @@ def extract(source_kind: str,
                 "branch": artifact.branch,
                 "file_path": artifact.file_path,
                 "raw_url": artifact.raw_url,
+                "workspace_path": artifact.workspace_path,
+                "workspace_url": artifact.workspace_url,
                 "created_at": artifact.created_at,
             }
         # Preview-only mode (Phase 6 preview route uses this)

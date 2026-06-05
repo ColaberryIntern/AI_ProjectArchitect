@@ -28,8 +28,18 @@
 {% if todo.description %}
 <div class="ws-section">
   <h3>Description (from Basecamp)</h3>
-  <div style="font-size: 14px; white-space: pre-wrap; color: #1f2328;">{{ todo.description }}</div>
+  {# BC stores description as HTML (p/ul/li/strong etc.). Render it as such
+     instead of escaping or pre-wrapping the raw markup as plain text. #}
+  <div class="bc-description" style="font-size: 14px; color: #1f2328; line-height: 1.6;">{{ todo.description|safe }}</div>
 </div>
+<style>
+  .bc-description p { margin: 0 0 10px; }
+  .bc-description ul, .bc-description ol { padding-left: 22px; margin: 6px 0 12px; }
+  .bc-description li { margin: 3px 0; }
+  .bc-description strong { font-weight: 700; }
+  .bc-description code { background: #f6f8fa; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+  .bc-description a { color: #0969da; }
+</style>
 {% endif %}
 
 <div class="ws-section">
@@ -64,9 +74,30 @@
     <h3 style="margin: 0;">Claude Code prompt</h3>
     <button id="copyPromptBtn" class="ws-copy-btn" onclick="copyPrompt()">📋 Copy prompt</button>
   </div>
-  <div style="font-size: 12px; color: #57606a; margin-bottom: 12px;">
-    Paste this into a fresh Claude Code session. It contains the task context + your suggested approach + stop conditions.
-  </div>
+
+  {# How-this-works explainer. Tells the user the prompt is meant for a
+     LOCAL Claude Code CLI session in their workspace repo (not typed
+     in this browser page), and explains the CLAUDE.md cascade so they
+     know why the local session has rich context. #}
+  <details class="ws-howto" style="background: #f0f7ff; border: 1px solid #c6e2ff; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px;">
+    <summary style="cursor: pointer; font-weight: 600; color: #0550ae; user-select: none;">
+      How this works (4 steps) ▾
+    </summary>
+    <ol style="margin: 10px 0 4px 20px; padding: 0; line-height: 1.6; color: #1f2328;">
+      <li><strong>Copy</strong> the prompt below.</li>
+      <li>Open a terminal and <strong>cd into your personal workspace</strong>:
+        {% if current_session_user and current_session_user.workspace_repo %}
+          <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">git clone {{ current_session_user.workspace_repo }}</code> (once),
+          then <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">cd {{ (current_session_user.workspace_repo or '').split('/')|last }}</code>.
+        {% else %}
+          your personal workspace repo (ask admin to provision one if you don't have it yet).
+        {% endif %}
+      </li>
+      <li>Run <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">claude</code>. Claude Code automatically reads <code>CLAUDE.md</code> from the workspace root + fires the SessionStart hook in <code>.claude/settings.json</code>. The hook assembles a <strong>5-layer context</strong>: org doctrine → shared KB → tenant policy → your personal <code>CLAUDE.md</code> → your <code>OPERATOR_MEMORY.md</code>. It also appends the mandatory-ticket protocol wired to your personal BC project.</li>
+      <li>Paste the prompt. Claude sees the prompt <em>plus</em> the layered context, follows the Session Protocol, and creates a ticket in your personal BC project before doing the work.</li>
+    </ol>
+  </details>
+
   <div id="promptText" class="ws-prompt">{{ prompt }}</div>
 </div>
 

@@ -65,6 +65,8 @@ class ExtractedArtifact:
     created_at: str = ""
     created_by: str = ""      # user_id of who triggered the extract
     use_count: int = 0
+    workspace_path: str = ""  # path within the user's personal workspace repo (if synced)
+    workspace_url: str = ""   # GitHub raw URL of the file inside the workspace repo
 
 
 # ── Template rendering ────────────────────────────────────────────────
@@ -214,7 +216,8 @@ def write_and_commit(src, output_type: str, slug: str,
                                     repo: str = "",
                                     library_path_prefix: str = "library",
                                     created_by: str = "",
-                                    commit_message: str = "") -> ExtractedArtifact:
+                                    commit_message: str = "",
+                                    workspace_repo: str = "") -> ExtractedArtifact:
     """Render `src` -> write to disk -> push to a skill-extracted/<slug> branch.
 
     Returns an ExtractedArtifact with the branch + file_path + raw_url for the
@@ -223,6 +226,13 @@ def write_and_commit(src, output_type: str, slug: str,
 
     Per Phase 6 anti-scope: never auto-merges the branch. Ali (or any tenant
     admin) reviews + merges the branch into main manually.
+
+    If `workspace_repo` is supplied (e.g. "ColaberryIntern/ali-workspace"),
+    ALSO write the rendered file to that repo's main branch at
+    `.claude/extracted/<output_type>/<slug>.md` so the user's local Claude
+    Code session sees the extracted artifact the next time they pull. Best-
+    effort: a workspace-push failure is recorded in the audit but doesn't
+    fail the library commit (the library is the source of truth).
     """
     now = _now_iso()
     content = render(src, output_type, slug, created_at=now)
@@ -239,6 +249,29 @@ def write_and_commit(src, output_type: str, slug: str,
     _put_file_on_branch(repo, branch, repo_file_path, content, msg)
     raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{repo_file_path}"
 
+    # Optional: push the same content into the user's personal workspace
+    # at .claude/extracted/<type>/<slug>.md so their local claude session
+    # picks it up. Lands on the default branch (main) since the user's
+    # workspace is private + per-user; no review queue applies there.
+    workspace_path = ""
+    workspace_url = ""
+    if workspace_repo:
+        ws_file_path = f".claude/extracted/{output_type}/{slug}.md"
+        ws_msg = f"Add extracted {output_type} {slug!r} (from {src.source_kind} {src.source_id})"
+        try:
+            ws_info = _gh_request("GET", f"/repos/{workspace_repo}")
+            ws_default = ws_info.get("default_branch", "main")
+            _put_file_on_branch(workspace_repo, ws_default, ws_file_path, content, ws_msg)
+            workspace_path = ws_file_path
+            workspace_url = (
+                f"https://raw.githubusercontent.com/{workspace_repo}/{ws_default}/{ws_file_path}"
+            )
+        except Exception:
+            # Don't fail the library commit if the workspace push fails;
+            # caller can re-run later via the same extract route (idempotent).
+            workspace_path = ""
+            workspace_url = ""
+
     artifact = ExtractedArtifact(
         slug=slug,
         output_type=output_type,
@@ -250,6 +283,8 @@ def write_and_commit(src, output_type: str, slug: str,
         local_path=str(local_path),
         created_at=now,
         created_by=created_by,
+        workspace_path=workspace_path,
+        workspace_url=workspace_url,
     )
     _record_artifact(artifact)
     return artifact

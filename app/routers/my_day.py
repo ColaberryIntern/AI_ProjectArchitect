@@ -1288,6 +1288,14 @@ async def extract_commit(request: Request,
     if not token:
         return JSONResponse({"ok": False, "error": "BC token missing (no user token and no CB System fallback)"}, status_code=500)
 
+    # Pass the user's personal workspace repo so the extracted artifact ALSO
+    # lands at .claude/extracted/<type>/<slug>.md in their workspace. Best-
+    # effort -- the library push is the source of truth; workspace push is
+    # a convenience so their local claude session sees the artifact on next pull.
+    workspace_repo = ""
+    if getattr(user, "workspace_repo", ""):
+        workspace_repo = user.workspace_repo.replace("https://github.com/", "").strip("/")
+
     from execution.products.library import skill_extractor
     result = skill_extractor.extract(
         source_kind=source_kind,
@@ -1297,6 +1305,7 @@ async def extract_commit(request: Request,
         commit=True,
         bc_token=token,
         bucket_id=resolved_bucket,
+        workspace_repo=workspace_repo,
         created_by=user.email,
     )
 
