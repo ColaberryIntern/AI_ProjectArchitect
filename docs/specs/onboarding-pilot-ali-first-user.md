@@ -274,17 +274,17 @@ For future operators, the pilot output becomes the **second-user onboarding play
 
 ---
 
-## Open questions for Ali (decisions needed before execution)
+## Open questions for Ali — DECISIONS LOCKED 2026-06-05
 
-| # | Question | Recommended default |
+| # | Question | Decision |
 |---|---|---|
-| Q1 | PR #1 state: merge to main, or deploy from feature/multitenant-os branch? | **Merge to main.** Cleaner long-term; no perpetual feature-branch divergence. Risk: bigger blast if merge breaks something. Mitigation: deploy in stages per `deploy-01-multitenant-cutover.md` runbook. |
-| Q2 | Where is the portal hosted — advisor.colaberry.ai or enterprise.colaberry.ai? | **Recommend `advisor.colaberry.ai`** (per recent memory: "/library/ is identity-gated via auth_gate middleware" on advisor.colaberry.ai). Already SSO-live in prod per the memory file. |
-| Q3 | Claude Code session-start hook mechanism (A/B/C from Gap #2)? | **Option B** (.claude/settings.json hook on SessionStart event) if Claude Code supports it. Cleanest UX. Falls back to Option A (wrapper script) if not. |
-| Q4 | What skill does Ali create for the test? | **"personal-folder-organizer"** per Ali's hint. Concrete enough to test the file-create path; benign enough that it doesn't matter if it lands in the library as a real published skill. |
-| Q5 | Use Ali as both admin and user, or have a second admin (Karun? Dheeraj?) provision Ali? | **Ali as both.** Simpler. The two-admin scenario is a follow-up pilot. |
-| Q6 | Run the pilot all in one sitting (~2 hours) or break across days? | **One sitting** if possible. Continuity beats fatigue here; the cross-session reset cost is real. |
-| Q7 | After the pilot succeeds, who is user #2? | **Karun.** Already named in the Karun-1 / Karun-2 specs; this would replace the manual provisioning currently in those flows. |
+| Q1 | PR #1 state: merge to main, or deploy from feature/multitenant-os branch? | ✅ **MERGE to main.** Ali greenlit 2026-06-05. Deployed in stages per `deploy-01-multitenant-cutover.md` runbook. |
+| Q2 | Where is the portal hosted — advisor.colaberry.ai or enterprise.colaberry.ai? | ✅ **advisor.colaberry.ai.** SSO already live there per memory file. |
+| Q3 | Claude Code session-start hook mechanism? | ✅ **YES** — `.claude/settings.json` hook on `SessionStart` event. Falls back to wrapper script if Claude Code doesn't support `SessionStart` in current version. |
+| Q4 | What skill does Ali create for the test? | Default: `personal-folder-organizer`. |
+| Q5 | Use Ali as both admin and user? | Default: Ali as both. Two-admin scenario is a follow-up pilot. |
+| Q6 | Run the pilot all in one sitting or across days? | Default: one sitting if possible. |
+| Q7 | User #2 identity? | Default: Karun. |
 
 ---
 

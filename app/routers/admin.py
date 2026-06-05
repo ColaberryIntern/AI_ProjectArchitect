@@ -277,6 +277,19 @@ async def user_new(request: Request,
             if bc_res.project_id:
                 new_user.personal_bc_project_id = str(bc_res.project_id)
                 tenancy.upsert_user(new_user)
+                # Refresh .claude/identity.txt in the workspace with the BC id
+                # so the SessionStart hook can anchor tickets correctly (Op 2).
+                if new_user.workspace_repo:
+                    try:
+                        from execution.products.library import workspaces as _ws
+                        repo_path = new_user.workspace_repo.replace("https://github.com/", "").strip("/")
+                        _ws.update_workspace_identity(
+                            new_user, repo_path,
+                            tenant_id=getattr(new_user, "tenant_id", None))
+                    except Exception as ie:
+                        _audit(admin.user_id, "workspace.identity_refresh_failed",
+                                  target=new_user.user_id,
+                                  notes=f"{type(ie).__name__}: {ie}")
             _audit(admin.user_id, "bc.personal_project.provision",
                       target=new_user.user_id,
                       notes=(f"action={bc_res.action} "

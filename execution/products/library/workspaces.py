@@ -181,6 +181,43 @@ def _wait_for_repo_initialized(repo: str, max_attempts: int = 10, base_delay: fl
     return False
 
 
+def render_identity_file(user: tenancy.User, tenant_id: str | None = None) -> str:
+    """Render the .claude/identity.txt body for a user.
+
+    Includes personal_bc_project_id when known (post-Op 2 BC provisioning).
+    Claude's SessionStart hook reads this file to know which BC project to anchor
+    each session's mandatory ticket against (Op 2 doctrine).
+    """
+    bc_id = getattr(user, "personal_bc_project_id", None) or ""
+    bc_account = os.environ.get("BASECAMP_ACCOUNT_ID", "").strip()
+    return (
+        "# Auto-seeded by Op 1 at provisioning. Used by .claude/session_start_hook.py.\n"
+        f"email={user.email}\n"
+        f"display_name={user.display_name}\n"
+        f"tenant_id={tenant_id or ''}\n"
+        f"personal_bc_project_id={bc_id}\n"
+        f"basecamp_account_id={bc_account}\n"
+    )
+
+
+def update_workspace_identity(user: tenancy.User, repo: str,
+                                                tenant_id: str | None = None) -> dict:
+    """Re-PUT only .claude/identity.txt for a user (post-BC-provision refresh).
+
+    Called from admin.py user_new() after personal_bc_provisioner sets the BC
+    project id, so the workspace's identity file reflects it. Single GitHub
+    API call. Idempotent via the existing sha.
+    """
+    identity_content = render_identity_file(user, tenant_id)
+    try:
+        _put_file_via_api(repo, ".claude/identity.txt", identity_content,
+                                  "Update .claude/identity.txt with personal BC project id")
+        return {"ok": True, "path": ".claude/identity.txt"}
+    except Exception as e:
+        return {"ok": False, "path": ".claude/identity.txt",
+                "error": f"{type(e).__name__}: {e}"}
+
+
 def seed_workspace_content(user: tenancy.User, repo: str,
                                           tenant_id: str | None = None) -> dict:
     """Seed Op 1 + Op 5 scaffolding files into a freshly-templated workspace repo.
@@ -202,6 +239,32 @@ def seed_workspace_content(user: tenancy.User, repo: str,
     # Lazy imports to keep workspaces.py loadable even if operator_scaffold/memory
     # are absent (defensive — Op 1 and Op 5 ship together with this code)
     from execution.products.library import operator_scaffold, operator_memory
+    from pathlib import Path as _Path
+
+    # Op 2/Op 3 session-start hook: bundle the hook script + settings.json into
+    # the workspace so Claude Code runs the 5-layer context assembler at every
+    # session start. Read the hook script from the central repo so per-user
+    # workspaces always get the latest version.
+    _central_hook_path = _Path(__file__).parent / "session_start_hook.py"
+    hook_script_content = ""
+    if _central_hook_path.exists():
+        hook_script_content = _central_hook_path.read_text(encoding="utf-8")
+
+    settings_json_content = (
+        '{\n'
+        '  "hooks": {\n'
+        '    "SessionStart": [\n'
+        '      {\n'
+        '        "command": "python .claude/session_start_hook.py",\n'
+        '        "matcher": ".*"\n'
+        '      }\n'
+        '    ]\n'
+        '  },\n'
+        '  "_comment": "Auto-seeded by Colaberry Op 1 provisioning. Edit at your own risk — the SessionStart hook is what loads the org doctrine + shared KB + operator memory into every Claude Code session."\n'
+        '}\n'
+    )
+
+    identity_content = render_identity_file(user, tenant_id)
 
     files: dict[str, str] = {
         "CLAUDE.md": operator_scaffold.render_starter_claude_md(
@@ -212,19 +275,28 @@ def seed_workspace_content(user: tenancy.User, repo: str,
             user.email, user.display_name),
         ".claude/colaberry/.gitkeep": "",
         ".claude/tenant/.gitkeep": "",
+        ".claude/identity.txt": identity_content,
+        ".claude/settings.json": settings_json_content,
+        ".claude/session_start_hook.py": hook_script_content,
         ".claude/README.md": (
             "# .claude/ — Colaberry-managed scaffolding\n\n"
             "- `colaberry/CLAUDE.md` (1h TTL) — the org doctrine, fetched from "
             "`https://raw.githubusercontent.com/ColaberryIntern/AI_ProjectArchitect/main/CLAUDE.md`.\n"
             "- `colaberry/knowledge/*.md` (24h TTL) — scraped from "
             "www.colaberry.com + www.colaberry.ai + www.enterprise.colaberry.com.\n"
-            "- `tenant/CLAUDE.md` — optional tenant-specific policy.\n\n"
+            "- `tenant/CLAUDE.md` — optional tenant-specific policy.\n"
+            "- `identity.txt` — your provisioning identity (read by the SessionStart hook).\n"
+            "- `session_start_hook.py` — assembles the 5-layer context at every claude session start.\n"
+            "- `settings.json` — Claude Code config; points SessionStart at the hook above.\n\n"
             "Do not hand-edit files under `colaberry/` — they are auto-refreshed.\n"
             "Edit `tenant/CLAUDE.md` if you are a tenant admin.\n"
             "Edit `../CLAUDE.md` (the per-user file in the workspace root) "
             "for your own preferences.\n"
         ),
     }
+    # If we couldn't read the hook script content, skip seeding it rather than write empty
+    if not hook_script_content:
+        files.pop(".claude/session_start_hook.py", None)
 
     manifest: dict = {"written": [], "errors": []}
     for path, content in files.items():
