@@ -1,11 +1,10 @@
 {% extends "library/_library_base.html" %}
-{% set library_nav_active = "extract" %}
 
 {% block title %}Extract · My Day · Colaberry{% endblock %}
 
 {% block content %}
 <style>
-  .extract-layout { display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
+  .extract-layout { display: grid; grid-template-columns: 420px 1fr; gap: 24px; }
   .extract-list { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; max-height: 80vh; overflow-y: auto; }
   .extract-list .filter-bar { padding: 10px 12px; border-bottom: 1px solid #d0d7de; background: #f6f8fa; position: sticky; top: 0; }
   .extract-list .filter-bar select { font-size: 12px; padding: 4px 8px; }
@@ -16,6 +15,17 @@
   .ex-item .ex-title { font-size: 13px; font-weight: 600; line-height: 1.3; margin-bottom: 4px; }
   .ex-item .ex-meta { font-size: 11px; color: #57606a; }
   .ex-item .ex-meta .proj { color: #0969da; font-weight: 500; }
+  .ex-task-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 600; margin: 3px 3px 0 0;
+    border: 1px solid transparent; cursor: pointer;
+  }
+  .ex-task-tag:hover { transform: translateY(-1px); }
+  .breadcrumb {
+    font-size: 12px; color: #57606a; margin-bottom: 10px;
+  }
+  .breadcrumb a { color: #0969da; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
 
   .extract-panel { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 20px 24px; min-height: 60vh; }
   .extract-panel h2 { margin: 0 0 16px; font-size: 18px; }
@@ -36,10 +46,20 @@
   .prior-extracts td, .prior-extracts th { padding: 8px 12px; border-bottom: 1px solid #eaeef2; text-align: left; }
 </style>
 
-<h1 style="font-size: 22px; margin: 0 0 6px;">Extract</h1>
+<div class="breadcrumb">
+  <a href="/my-day/?view=extract">📤 Extract</a>
+  {% if selected_list_name %}
+    &rsaquo; <span style="color: #0969da;">{{ selected_project_name }}</span>
+    &rsaquo; <strong>{{ selected_list_name }}</strong>
+    ({{ completed|length }} completed)
+  {% endif %}
+</div>
+
+<h1 style="font-size: 22px; margin: 0 0 6px;">
+  {% if selected_list_name %}Extract from "{{ selected_list_name }}"{% else %}Extract{% endif %}
+</h1>
 <p style="color: #57606a; font-size: 13px; margin: 0 0 18px;">
-  Turn any completed BC todo into a reusable skill / directive / agent in the library.
-  Each extract creates a <code>skill-extracted/&lt;slug&gt;</code> branch you can review + merge.
+  Click a colored tag next to any task to extract it as that asset type. Each extract creates a <code>skill-extracted/&lt;slug&gt;</code> branch you can review + merge.
 </p>
 
 <div class="extract-layout">
@@ -71,15 +91,33 @@
         <a href="?days=90" style="font-size: 12px;">try the last 90 days</a>.
       </div>
     {% else %}
-      {% for t in completed %}
-        <a class="ex-item" data-bcid="{{ t.bc_id }}" data-title="{{ t.title }}" onclick="selectItem(this); return false;">
-          <div class="ex-title">{{ t.title }}</div>
-          <div class="ex-meta">
-            <span class="proj">{{ t.bc_project_name }}</span> ·
-            done {{ t.completed_at[:10] }}
-            {% if t.completed_by_name %} by {{ t.completed_by_name }}{% endif %}
+      {% for entry in completed_with_tags %}
+        {% set t = entry.todo %}
+        <div class="ex-item" data-bcid="{{ t.bc_id }}" data-title="{{ t.title }}">
+          <div onclick="selectItem(this.parentElement); return false;" style="cursor: pointer;">
+            <div class="ex-title">{{ t.title }}</div>
+            <div class="ex-meta">
+              <span class="proj">{{ t.bc_project_name[:30] }}</span> ·
+              done {{ t.completed_at[:10] }}
+              {% if t.completed_by_name %} by {{ t.completed_by_name }}{% endif %}
+            </div>
           </div>
-        </a>
+          {% if entry.tags %}
+          <div style="margin-top: 4px;">
+            {% for tag in entry.tags %}
+              {% set meta = output_type_meta.get(tag) %}
+              {% if meta %}
+                <span class="ex-task-tag"
+                      style="background: {{ meta.color_bg }}; color: {{ meta.color_fg }};"
+                      onclick="selectItemAndOutputType(this.closest('.ex-item'), '{{ meta.key }}'); event.stopPropagation();"
+                      title="Extract this task as {{ meta.label }} ({{ meta.description }})">
+                  {{ meta.label }}
+                </span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
       {% endfor %}
     {% endif %}
   </div>
@@ -150,6 +188,7 @@
 <script>
 let _selectedBcId = null;
 let _selectedTitle = null;
+const _preselectOutputType = {{ (preselect_output_type or '')|tojson }};
 
 function selectItem(el) {
   document.querySelectorAll('.ex-item').forEach(e => e.classList.remove('selected'));
@@ -163,6 +202,23 @@ function selectItem(el) {
   document.getElementById('extract-slug').value = '';
   document.getElementById('extract-preview-box').style.display = 'none';
   document.getElementById('extract-commit-result').innerHTML = '';
+  // If we arrived with ?suggest=<type>, pre-select it on first item selection
+  if (_preselectOutputType) {
+    const dd = document.getElementById('extract-output-type');
+    if (dd && [...dd.options].some(o => o.value === _preselectOutputType)) {
+      dd.value = _preselectOutputType;
+    }
+  }
+}
+
+// Click a colored tag in the left list -> select that task AND set the
+// output_type dropdown to the tag's type AND auto-preview.
+function selectItemAndOutputType(el, outputType) {
+  selectItem(el);
+  const dd = document.getElementById('extract-output-type');
+  if (dd) dd.value = outputType;
+  // Small delay so the panel transition is visible
+  setTimeout(doPreview, 50);
 }
 
 async function doPreview() {

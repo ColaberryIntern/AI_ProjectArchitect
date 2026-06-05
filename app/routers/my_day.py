@@ -251,7 +251,7 @@ async def ops_home(request: Request):
     projects = store.load_projects(user.email)
 
     view = request.query_params.get("view", "briefing")
-    if view not in ("briefing", "kanban", "heatmap"):
+    if view not in ("briefing", "kanban", "heatmap", "extract"):
         view = "briefing"
     # Tier filter: assignment-based (assigned|due|unassigned|all) OR
     # kind-based (human|ai). The 6 values are mutually exclusive in the UI.
@@ -452,7 +452,50 @@ async def ops_home(request: Request):
     template_name = {
         "kanban": "my_day/kanban.html",
         "heatmap": "my_day/heatmap.html",
+        "extract": "my_day/extract_tab.html",
     }.get(view, "my_day/home.html")
+
+    # Extract tab needs per-list completed-todo rollup + classifier tags.
+    # Cheap to compute (filters the in-memory todos list once) so we do it
+    # inline rather than gating behind view==extract; downstream templates
+    # ignore the extras.
+    extract_lists = []
+    if view == "extract":
+        from collections import defaultdict
+        from execution.products.library import extract_classifier
+        completed = store.list_completed_for_user(user.email, days=90)
+        by_list: dict[tuple, dict] = defaultdict(lambda: {
+            "list_id": None, "list_name": "", "project_id": None,
+            "project_name": "", "completed_count": 0,
+            "task_titles": [], "task_descriptions": [], "most_recent": "",
+            "task_samples": [],
+        })
+        for t in completed:
+            key = (t.bc_project_id, t.bc_todolist_id)
+            row = by_list[key]
+            row["list_id"] = t.bc_todolist_id
+            row["list_name"] = t.bc_todolist_name or "(unnamed list)"
+            row["project_id"] = t.bc_project_id
+            row["project_name"] = t.bc_project_name or "(unnamed project)"
+            row["completed_count"] += 1
+            row["task_titles"].append(t.title)
+            if t.description:
+                row["task_descriptions"].append(t.description[:500])
+            if t.completed_at > row["most_recent"]:
+                row["most_recent"] = t.completed_at
+            if len(row["task_samples"]) < 3:
+                row["task_samples"].append({
+                    "bc_id": t.bc_id, "title": t.title,
+                    "completed_at": t.completed_at,
+                })
+        # Compute tags + sort. Most-recently-active lists first.
+        extract_lists = []
+        for row in by_list.values():
+            row["suggested_tags"] = extract_classifier.suggest_for_list(
+                row["list_name"], row["task_titles"], row["task_descriptions"],
+            )
+            extract_lists.append(row)
+        extract_lists.sort(key=lambda r: r["most_recent"], reverse=True)
 
     response = request.app.state.templates.TemplateResponse(
         request, template_name,
@@ -487,6 +530,13 @@ async def ops_home(request: Request):
              # Lists + tasks
              list_rollups=list_rollups,
              project_rollups=project_rollups,
+             # Extract tab (view=extract)
+             extract_lists=extract_lists,
+             output_type_meta=(
+                 __import__("execution.products.library.extract_classifier",
+                                    fromlist=["OUTPUT_TYPES"]).OUTPUT_TYPES
+                 if view == "extract" else {}
+             ),
              kanban_cols=kanban_cols,
              kanban_prompts=kanban_prompts,
              completer_stats=completer_stats,
@@ -1027,14 +1077,45 @@ async def ops_health(request: Request):
 
 
 @router.get("/extract/")
-async def extract_index(request: Request, days: int = 30, project: str = ""):
-    """List recently-completed BC todos the user can extract from."""
+async def extract_index(request: Request, days: int = 90,
+                                 project: str = "", list: str = "",
+                                 suggest: str = ""):
+    """List recently-completed BC todos the user can extract from.
+
+    Drill-down from the My Day Extract tab:
+      ?list=<todolist_id>  -> show only tasks from that BC list
+      ?suggest=<output>    -> pre-select this output_type in the panel
+      ?project=<name>      -> filter by project name (legacy)
+    """
     user = _require_user(request)
     # Ops store is keyed by email (existing My Day convention; pull_todos_for_user
     # is called with user_email everywhere in this router).
     completed = store.list_completed_for_user(user.email, days=days)
     if project:
         completed = [t for t in completed if t.bc_project_name == project]
+    selected_list_name = ""
+    selected_project_name = ""
+    if list:
+        try:
+            list_id = int(list)
+        except ValueError:
+            list_id = None
+        if list_id is not None:
+            scoped = [t for t in completed if t.bc_todolist_id == list_id]
+            if scoped:
+                selected_list_name = scoped[0].bc_todolist_name
+                selected_project_name = scoped[0].bc_project_name
+                completed = scoped
+
+    # Per-task suggestion tags (Phase 7) so the drill-down view shows tags too.
+    from execution.products.library import extract_classifier
+    completed_with_tags = []
+    for t in completed:
+        text = f"{t.title or ''} {t.description or ''}"
+        completed_with_tags.append({
+            "todo": t,
+            "tags": extract_classifier.suggest_output_types(text),
+        })
 
     # Project filter chips: distinct project names from the completed set
     project_counts: dict[str, int] = {}
@@ -1055,12 +1136,18 @@ async def extract_index(request: Request, days: int = 30, project: str = ""):
         request, "my_day/extract.html",
         _ctx(request, user,
                 completed=completed,
+                completed_with_tags=completed_with_tags,
                 project_counts=project_list,
                 active_project_filter=project,
+                selected_list_id=list,
+                selected_list_name=selected_list_name,
+                selected_project_name=selected_project_name,
+                preselect_output_type=suggest,
                 days=days,
                 output_types=output_types,
+                output_type_meta=extract_classifier.OUTPUT_TYPES,
                 prior_extracts=prior,
-                library_nav_active="extract"),
+                library_nav_active="my_day"),
     )
 
 

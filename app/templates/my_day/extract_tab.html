@@ -1,0 +1,96 @@
+{% extends "library/_library_base.html" %}
+{% block title %}My Day · Extract · Colaberry{% endblock %}
+
+{% block content %}
+{% include "my_day/_my_day_styles.html" %}
+
+<style>
+  .ex-tag {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+    margin: 2px 4px 2px 0; cursor: pointer; text-decoration: none;
+    border: 1px solid transparent; transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .ex-tag:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.08); text-decoration: none; }
+  .ex-empty-tag { color: #94a3b8; font-style: italic; font-size: 11px; }
+  .ex-list-meta { font-size: 11px; color: #57606a; margin-top: 2px; }
+  .ex-list-meta .proj { color: #0969da; font-weight: 500; }
+</style>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+  <h1 style="font-size: 18px; font-weight: 700; margin: 0;">📤 Extract</h1>
+  <div style="font-size: 12px; color: #57606a;">
+    Turn completed BC lists + tasks into reusable library assets. Tags suggest output types based on content.
+  </div>
+</div>
+
+{% include "my_day/_view_chrome.html" %}
+
+<div class="section-head">Completed lists (last 90 days, most-recently-active first)</div>
+
+{% if not extract_lists %}
+<div style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 40px 20px; text-align: center; color: #57606a;">
+  <div style="font-size: 36px; opacity: 0.4; margin-bottom: 12px;">📦</div>
+  <p style="margin: 0;">No completed BC todos found in the last 90 days.</p>
+  <p style="margin: 8px 0 0; font-size: 12px;">Lists with completed work will appear here so you can extract them as reusable assets.</p>
+</div>
+{% else %}
+<table class="md-table">
+  <thead>
+    <tr>
+      <th>LIST</th>
+      <th style="width: 110px;">COMPLETED</th>
+      <th style="width: 130px;">MOST RECENT</th>
+      <th style="width: 340px;">SUGGESTED</th>
+      <th style="width: 130px;">ACTION</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in extract_lists %}
+    <tr>
+      <td>
+        <div style="font-weight: 600;">{{ r.list_name }}</div>
+        <div class="ex-list-meta"><span class="proj">{{ r.project_name[:36] }}</span></div>
+      </td>
+      <td><strong>{{ r.completed_count }}</strong> task{{ '' if r.completed_count == 1 else 's' }}</td>
+      <td class="dim">{{ r.most_recent[:10] }}</td>
+      <td>
+        {% if r.suggested_tags %}
+          {% for tag in r.suggested_tags %}
+            {% set meta = output_type_meta.get(tag) %}
+            {% if meta %}
+              <a class="ex-tag"
+                 style="background: {{ meta.color_bg }}; color: {{ meta.color_fg }};"
+                 href="/my-day/extract/?list={{ r.list_id }}&suggest={{ meta.key }}"
+                 title="{{ meta.description }} — drill in to extract a task as {{ meta.label }}">
+                {{ meta.label }}
+              </a>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <span class="ex-empty-tag">no auto-suggestions; drill in to pick manually</span>
+        {% endif %}
+      </td>
+      <td>
+        <a class="md-btn md-btn-outline" style="font-size: 12px;"
+           href="/my-day/extract/?list={{ r.list_id }}">
+          See all {{ r.completed_count }} →
+        </a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<div style="margin-top: 20px; font-size: 12px; color: #57606a; line-height: 1.5;">
+  <strong>How this works:</strong>
+  Each row is one BC list with completed work in the last 90 days.
+  Suggested tags come from a keyword classifier — they're inclusive (better to surface an option than miss it).
+  Click a tag to drill in pre-filtered to that output type.
+  Click <strong>See all N</strong> to drill in and pick a specific task to extract.
+  Once extracted, an artifact lands on a <code>skill-extracted/&lt;slug&gt;</code> branch + posts a BC echo on the source ticket.
+</div>
+{% endif %}
+
+{% endblock %}
