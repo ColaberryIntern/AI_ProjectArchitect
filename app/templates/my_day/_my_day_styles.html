@@ -369,10 +369,46 @@
 </style>
 
 <script>
+// Build the "How to run this prompt" setup block. Mirrors workspace.html so
+// briefing / kanban / focus-card Copy Prompt buttons produce the same
+// self-contained text. Reads the user's workspace URL from a global
+// data attribute set on document.body (injected by _library_base.html).
+function _mdSetupBlock() {
+  const wsUrl = document.body.dataset.workspaceRepo || '';
+  if (!wsUrl) {
+    return '## How to run this prompt\n\n' +
+      'You do not yet have a personal workspace repo. Ask an admin to provision one ' +
+      '(advisor.colaberry.ai/admin/users/new), then come back here.\n';
+  }
+  const parts = wsUrl.replace(/\/+$/, '').split('/');
+  const dir = parts[parts.length - 1] || '<your-workspace>';
+  return (
+    '## How to run this prompt\n\n' +
+    '1. Open a terminal on your personal computer.\n' +
+    '2. One-time setup (skip if already cloned):\n' +
+    '   git clone ' + wsUrl + '\n' +
+    '3. cd into your workspace:\n' +
+    '   cd ' + dir + '\n' +
+    '4. Pull latest doctrine + extracted assets:\n' +
+    '   git pull\n' +
+    '5. Start Claude Code:\n' +
+    '   claude\n' +
+    '   Claude reads CLAUDE.md from the workspace root and fires the SessionStart\n' +
+    '   hook in .claude/settings.json. The hook assembles a 5-layer context:\n' +
+    '   org doctrine -> shared KB -> tenant policy -> your CLAUDE.md ->\n' +
+    '   your OPERATOR_MEMORY.md. It also appends the mandatory-ticket protocol\n' +
+    '   wired to your personal BC project, so the first substantive prompt creates\n' +
+    '   a ticket there before any work happens.\n' +
+    '6. Paste the task prompt below into the Claude Code session.\n'
+  );
+}
+
 function copyPrompt(promptId, btnEl) {
   const el = document.getElementById(promptId);
   if (!el) return;
-  navigator.clipboard.writeText(el.value).then(() => {
+  const taskPrompt = el.value || '';
+  const fullText = _mdSetupBlock() + '\n## Task\n\n' + taskPrompt;
+  navigator.clipboard.writeText(fullText).then(() => {
     const orig = btnEl.innerText;
     btnEl.innerText = '✓ Copied — paste into Claude Code';
     btnEl.classList.add('copied');

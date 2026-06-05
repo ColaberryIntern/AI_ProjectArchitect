@@ -70,35 +70,35 @@
 </div>
 
 <div class="ws-section">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
     <h3 style="margin: 0;">Claude Code prompt</h3>
     <button id="copyPromptBtn" class="ws-copy-btn" onclick="copyPrompt()">📋 Copy prompt</button>
   </div>
+  <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
+    What gets copied: <strong>your notes</strong> (if any) → <strong>setup steps</strong> (so a fresh Claude Code session can self-orient) → the <strong>task prompt</strong>. Paste the whole thing into <code style="background: #f6f8fa; padding: 1px 5px; border-radius: 3px;">claude</code> on your personal computer.
+  </div>
 
-  {# How-this-works explainer. Tells the user the prompt is meant for a
-     LOCAL Claude Code CLI session in their workspace repo (not typed
-     in this browser page), and explains the CLAUDE.md cascade so they
-     know why the local session has rich context. #}
-  <details class="ws-howto" style="background: #f0f7ff; border: 1px solid #c6e2ff; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px;">
-    <summary style="cursor: pointer; font-weight: 600; color: #0550ae; user-select: none;">
-      How this works (4 steps) ▾
-    </summary>
-    <ol style="margin: 10px 0 4px 20px; padding: 0; line-height: 1.6; color: #1f2328;">
-      <li><strong>Copy</strong> the prompt below.</li>
-      <li>Open a terminal and <strong>cd into your personal workspace</strong>:
-        {% if current_session_user and current_session_user.workspace_repo %}
-          <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">git clone {{ current_session_user.workspace_repo }}</code> (once),
-          then <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">cd {{ (current_session_user.workspace_repo or '').split('/')|last }}</code>.
-        {% else %}
-          your personal workspace repo (ask admin to provision one if you don't have it yet).
-        {% endif %}
-      </li>
-      <li>Run <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">claude</code>. Claude Code automatically reads <code>CLAUDE.md</code> from the workspace root + fires the SessionStart hook in <code>.claude/settings.json</code>. The hook assembles a <strong>5-layer context</strong>: org doctrine → shared KB → tenant policy → your personal <code>CLAUDE.md</code> → your <code>OPERATOR_MEMORY.md</code>. It also appends the mandatory-ticket protocol wired to your personal BC project.</li>
-      <li>Paste the prompt. Claude sees the prompt <em>plus</em> the layered context, follows the Session Protocol, and creates a ticket in your personal BC project before doing the work.</li>
-    </ol>
-  </details>
+  {# Editable user notes -- prepended to the copied prompt. Default empty;
+     placeholder explains its purpose. Auto-saves to localStorage per BC
+     id so refresh / nav-away doesn't lose work. #}
+  <label style="display: block; font-size: 12px; font-weight: 600; color: #1f2328; margin-bottom: 4px;">
+    Your notes (added to the top of the prompt; optional)
+  </label>
+  <textarea id="userNotes" rows="3"
+            placeholder="Add any constraints, hand-offs, follow-up questions, or context you want Claude to know about this task before it starts..."
+            style="width: 100%; padding: 10px 12px; font-size: 13px; border: 1px solid #d0d7de; border-radius: 6px; font-family: inherit; resize: vertical; margin-bottom: 12px; box-sizing: border-box;"
+            oninput="rebuildFullPrompt()"></textarea>
 
-  <div id="promptText" class="ws-prompt">{{ prompt }}</div>
+  {# Hidden raw bits that the JS assembles into the visible preview + copy.
+     Keeping them as data-* attrs lets the template stay clean. #}
+  <div id="promptBuilder"
+       data-task-prompt="{{ prompt }}"
+       data-workspace-url="{{ current_session_user.workspace_repo or '' }}"
+       data-bc-id="{{ todo.bc_id }}"
+       style="display: none;"></div>
+
+  <div style="font-size: 11px; color: #57606a; margin: 4px 0;">Preview of what will be copied:</div>
+  <div id="promptText" class="ws-prompt"></div>
 </div>
 
 <div style="margin-top: 16px;">
@@ -115,15 +115,87 @@
 </div>
 
 <script>
+// Build a self-contained prompt with notes (top) + setup steps (middle)
+// + task prompt (bottom). Re-runs whenever the user types in #userNotes.
+// What's visible in #promptText is exactly what gets copied -- no surprises.
+
+function _setupBlock(workspaceUrl) {
+  // Derive the cd target from the URL: strip "https://github.com/<org>/" -> "<repo>"
+  let dir = '<your-workspace>';
+  if (workspaceUrl) {
+    const parts = workspaceUrl.replace(/\/+$/, '').split('/');
+    dir = parts[parts.length - 1] || dir;
+  }
+  if (!workspaceUrl) {
+    return '## How to run this prompt\n\n' +
+      'You do not yet have a personal workspace repo. Ask an admin to provision one ' +
+      '(advisor.colaberry.ai/admin/users/new), then come back here.\n';
+  }
+  return (
+    '## How to run this prompt\n\n' +
+    '1. Open a terminal on your personal computer.\n' +
+    '2. One-time setup (skip if already cloned):\n' +
+    '   git clone ' + workspaceUrl + '\n' +
+    '3. cd into your workspace:\n' +
+    '   cd ' + dir + '\n' +
+    '4. Pull latest doctrine + extracted assets:\n' +
+    '   git pull\n' +
+    '5. Start Claude Code:\n' +
+    '   claude\n' +
+    '   Claude reads CLAUDE.md from the workspace root and fires the SessionStart\n' +
+    '   hook in .claude/settings.json. The hook assembles a 5-layer context:\n' +
+    '   org doctrine -> shared KB -> tenant policy -> your CLAUDE.md ->\n' +
+    '   your OPERATOR_MEMORY.md. It also appends the mandatory-ticket protocol\n' +
+    '   wired to your personal BC project, so the first substantive prompt creates\n' +
+    '   a ticket there before any work happens.\n' +
+    '6. Paste the task prompt below into the Claude Code session.\n'
+  );
+}
+
+function rebuildFullPrompt() {
+  const builder = document.getElementById('promptBuilder');
+  const taskPrompt = builder.dataset.taskPrompt || '';
+  const wsUrl = builder.dataset.workspaceUrl || '';
+  const notes = document.getElementById('userNotes').value.trim();
+  const bcId = builder.dataset.bcId;
+
+  const parts = [];
+  if (notes) {
+    parts.push('## Notes from ' + (window._actor || 'me') + '\n\n' + notes + '\n');
+  }
+  parts.push(_setupBlock(wsUrl));
+  parts.push('## Task\n\n' + taskPrompt);
+
+  document.getElementById('promptText').innerText = parts.join('\n');
+
+  // Persist notes per-task so refresh/nav-away doesn't lose them.
+  try {
+    localStorage.setItem('my-day-notes-' + bcId, notes);
+  } catch (e) {}
+}
+
 function copyPrompt() {
+  rebuildFullPrompt();
   const text = document.getElementById('promptText').innerText;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById('copyPromptBtn');
     const orig = btn.innerText;
-    btn.innerText = '✓ Copied';
+    btn.innerText = '✓ Copied — paste into Claude Code';
     btn.classList.add('copied');
-    setTimeout(() => { btn.innerText = orig; btn.classList.remove('copied'); }, 2000);
+    setTimeout(() => { btn.innerText = orig; btn.classList.remove('copied'); }, 2400);
   });
 }
+
+// On page load: restore saved notes for this task, then render the preview.
+(function () {
+  const builder = document.getElementById('promptBuilder');
+  if (!builder) return;
+  window._actor = {{ (current_session_user.display_name or current_session_user.email or 'me')|tojson }};
+  try {
+    const saved = localStorage.getItem('my-day-notes-' + builder.dataset.bcId);
+    if (saved) document.getElementById('userNotes').value = saved;
+  } catch (e) {}
+  rebuildFullPrompt();
+})();
 </script>
 {% endblock %}

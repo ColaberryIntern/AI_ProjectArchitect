@@ -283,7 +283,7 @@
 </style>
 {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-workspace-repo="{{ current_session_user.workspace_repo if current_session_user else '' }}">
 
 <div class="lib-shell">
 
