@@ -161,15 +161,55 @@
 
     <div class="mcp-step">
       <h3><span class="step-num">2</span>Install on your laptop</h3>
-      <p style="font-size: 13px; margin: 0 0 8px;">Open a terminal anywhere and run:</p>
-      <div class="mcp-cmd">
-        <button class="copy-btn" onclick="copyCmd()">Copy</button>
-        <span id="installCmd">--</span>
+
+      <div style="background: #fff8d6; border: 1px solid #f0d678; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; color: #8a5a00;">
+        <strong>&#x26A0;&#xFE0F; Security:</strong> the token below is shown ONCE.
+        Do NOT paste it into any AI chat (ChatGPT, Claude.ai, etc.) or into
+        a public repo. Only paste into <strong>your own terminal</strong> OR
+        a <strong>local Claude Code session on the same machine you'll use it on</strong>.
+        If you suspect a leak, click "Regenerate token" above; the old one is dead.
       </div>
-      <p style="font-size: 12px; color: #57606a; margin: 6px 0 0;">
-        Repeat on every laptop you work from. Each install gets the same connection -- if you want separate ones (so you can revoke per-laptop), generate a new token from this page for each.
+
+      <div style="display: flex; gap: 6px; margin-bottom: 8px; font-size: 12px;">
+        <button onclick="switchTab('terminal')" id="tabTerminal" class="ic-tab active">In a terminal</button>
+        <button onclick="switchTab('claude')" id="tabClaude" class="ic-tab">In a live Claude Code session</button>
+      </div>
+
+      <div id="paneTerminal">
+        <p style="font-size: 13px; margin: 0 0 8px;">Open a terminal and run:</p>
+        <div class="mcp-cmd">
+          <button class="copy-btn" onclick="copyToClipboard('installCmd', this)">Copy</button>
+          <span id="installCmd">--</span>
+        </div>
+        <p style="font-size: 12px; color: #57606a; margin: 6px 0 0;">
+          After it succeeds: <code>claude mcp list</code> should show <code>colaberry</code>. Restart any open Claude Code session so it picks up the new server.
+        </p>
+      </div>
+
+      <div id="paneClaude" style="display: none;">
+        <p style="font-size: 13px; margin: 0 0 8px;">Paste this into your active Claude Code chat. It tells Claude exactly what to do so there's no back-and-forth.</p>
+        <div class="mcp-cmd" style="max-height: 240px; overflow-y: auto;">
+          <button class="copy-btn" onclick="copyToClipboard('claudePrompt', this)">Copy</button>
+          <span id="claudePrompt">--</span>
+        </div>
+        <p style="font-size: 12px; color: #57606a; margin: 6px 0 0;">
+          Claude Code runs the install command via its Bash tool, verifies with <code>claude mcp list</code>, and prints a restart prompt. No meta-discussion.
+        </p>
+      </div>
+
+      <p style="font-size: 12px; color: #57606a; margin: 14px 0 0;">
+        Repeat on every laptop you work from. Today: one active token per user (regenerating revokes the previous). Multi-laptop labels are deferred.
       </p>
     </div>
+
+<style>
+  .ic-tab {
+    padding: 6px 12px; border-radius: 4px 4px 0 0; cursor: pointer;
+    background: #f6f8fa; border: 1px solid #d0d7de; border-bottom: 0;
+    color: #57606a; font-size: 12px; font-weight: 600;
+  }
+  .ic-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+</style>
 
     <div class="mcp-step" id="waitingStep">
       <h3><span class="step-num">3</span>Waiting for first connection</h3>
@@ -212,12 +252,29 @@ async function generateToken() {
   if (!j.ok) { alert('Failed to generate token'); return; }
   document.getElementById('tokenValue').innerText = j.token;
   document.getElementById('installCmd').innerText = j.install_command;
+  document.getElementById('claudePrompt').innerText = j.claude_install_prompt || '';
   document.getElementById('setupSteps').style.display = 'block';
   document.getElementById('connectedStep').style.display = 'none';
   document.getElementById('waitingStep').style.display = 'block';
   startPolling();
   // Status flips to yellow on next poll
   setStatus('yellow', 'Token issued. Run the install command on your laptop.');
+}
+
+function switchTab(which) {
+  document.getElementById('paneTerminal').style.display = (which === 'terminal') ? 'block' : 'none';
+  document.getElementById('paneClaude').style.display = (which === 'claude') ? 'block' : 'none';
+  document.getElementById('tabTerminal').classList.toggle('active', which === 'terminal');
+  document.getElementById('tabClaude').classList.toggle('active', which === 'claude');
+}
+
+function copyToClipboard(elId, btnEl) {
+  const text = document.getElementById(elId).innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btnEl.innerText;
+    btnEl.innerText = '✓ Copied';
+    setTimeout(() => btnEl.innerText = orig, 1500);
+  });
 }
 
 async function revokeToken() {
@@ -276,14 +333,9 @@ function stopPolling() {
   _pollInterval = null;
 }
 
+// Legacy alias kept in case any inline onclick still references it
 function copyCmd() {
-  const cmd = document.getElementById('installCmd').innerText;
-  navigator.clipboard.writeText(cmd).then(() => {
-    const btn = event.target;
-    const orig = btn.innerText;
-    btn.innerText = '✓ Copied';
-    setTimeout(() => btn.innerText = orig, 1500);
-  });
+  copyToClipboard('installCmd', event.target);
 }
 
 // If user lands here in yellow state (token issued but waiting), start polling

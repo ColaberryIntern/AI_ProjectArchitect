@@ -234,15 +234,37 @@ async def mcp_token_generate(request: Request, label: str = Form("default")):
     """
     user = _require_web_user(request)
     plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
+    shell_command = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http --header "Authorization: Bearer {plain_token}"'
+    )
+    # Self-orienting instruction block to paste into either a terminal OR a
+    # live Claude Code session. The preamble tells Claude Code exactly what to
+    # do (run the command + verify + restart) so it doesn't lapse into a
+    # "what's the goal?" meta-question.
+    claude_prompt = (
+        f"INSTALL TASK: Register the Colaberry MCP server for the operator "
+        f"{user.email}. This is a one-time install on this machine.\n\n"
+        f"Do these steps in order. Don't ask what the goal is; just execute "
+        f"and report each step's result:\n\n"
+        f"1. Run this shell command via your Bash tool:\n"
+        f"   {shell_command}\n\n"
+        f"2. Run `claude mcp list` and confirm `colaberry` is listed with "
+        f"a status of `Connected` (or `OK`).\n\n"
+        f"3. Print: \"MCP installed for {user.email}. Restart Claude Code "
+        f"(close this session and open a new one) so the new server is loaded.\"\n\n"
+        f"4. STOP. Don't run other tools or ask questions about the token. "
+        f"The token grants this machine permission to call Colaberry MCP tools "
+        f"(BC ticket creation, doctrine loading, operator memory) on the user's behalf. "
+        f"Never echo it back or write it to a file.\n"
+    )
     return JSONResponse({
         "ok": True,
         "token": plain_token,
         "issued_at": updated.mcp_token_issued_at,
         "label": updated.mcp_token_label,
-        "install_command": (
-            f"claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 "
-            f"--transport http --header \"Authorization: Bearer {plain_token}\""
-        ),
+        "install_command": shell_command,        # raw shell command (terminal users)
+        "claude_install_prompt": claude_prompt,  # paste-into-Claude-Code instruction
     })
 
 
