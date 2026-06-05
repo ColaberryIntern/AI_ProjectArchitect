@@ -127,27 +127,80 @@
     <span class="dot"></span>
     <div>
       <h2 id="statusHeadline">
-        {% if status == 'green' %}🟢 Connected{% elif status == 'yellow' %}🟡 Configured, awaiting connection{% else %}🔴 Not configured{% endif %}
+        {% if status == 'green' %}🟢 At least one device connected{% elif status == 'yellow' %}🟡 Token issued, awaiting first connection{% else %}🔴 No devices installed{% endif %}
       </h2>
       <div class="sub" id="statusSub">
         {% if status == 'green' %}
-          Your laptop's Claude Code is talking to the Colaberry MCP server. Last ping: <span id="lastPing">{{ current_session_user.mcp_token_last_used_at or 'never' }}</span>.
+          See the device table below. The pill in the topbar reflects this aggregate; individual device status is in the table.
         {% elif status == 'yellow' %}
-          Token issued {{ current_session_user.mcp_token_issued_at }} but no laptop has pinged yet. Run the install command on your laptop below.
+          A token has been issued for at least one device but it hasn't pinged yet. Finish the install command on that laptop.
         {% else %}
-          No MCP token. Click "Generate token" to start.
+          Click "Add this device" to mint a token for the computer you're sitting at.
         {% endif %}
       </div>
     </div>
   </div>
 
-  <div class="mcp-actions">
-    {% if status == 'red' %}
-      <button class="mcp-btn" onclick="generateToken()">Generate token</button>
+  {# Per-device table. The portal can't auto-detect WHICH device's browser is
+     asking, so users have to look at the table to know whether THIS computer
+     has installed yet. Labels are user-chosen ("Work Mac", "Home Win"). #}
+  <div style="background: #fff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 20px;">
+    <div style="padding: 12px 16px; border-bottom: 1px solid #d0d7de; display: flex; align-items: center; justify-content: space-between;">
+      <h3 style="margin: 0; font-size: 14px;">Your devices</h3>
+      <button class="mcp-btn" onclick="promptAddDevice()" style="padding: 6px 14px; font-size: 12px;">+ Add this device</button>
+    </div>
+
+    {% if devices %}
+    <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+      <thead style="background: #f6f8fa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #57606a;">
+        <tr>
+          <th style="text-align: left; padding: 10px 16px;">Label</th>
+          <th style="text-align: left; padding: 10px 8px;">Status</th>
+          <th style="text-align: left; padding: 10px 8px;">Issued</th>
+          <th style="text-align: left; padding: 10px 8px;">Last seen</th>
+          <th style="text-align: right; padding: 10px 16px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="devicesTbody">
+        {% for d in devices %}
+        <tr data-label="{{ d.label }}" style="border-top: 1px solid #eaeef2;">
+          <td style="padding: 10px 16px; font-weight: 600;">
+            {{ d.label }}
+            {% if d.last_user_agent %}
+              <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">{{ d.last_user_agent[:60] }}</div>
+            {% endif %}
+          </td>
+          <td style="padding: 10px 8px;">
+            {% if d.status == 'green' %}
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #dafbe1; color: #137333;">🟢 Connected</span>
+            {% elif d.status == 'yellow' %}
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #fff4d5; color: #8a5a00;">🟡 Awaiting ping</span>
+            {% elif d.status == 'red' %}
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #ffeef0; color: #cf222e;">🔴 Stale (&gt;7d)</span>
+            {% else %}
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #f0f0f0; color: #57606a;">⚫ Revoked</span>
+            {% endif %}
+          </td>
+          <td style="padding: 10px 8px; color: #57606a; font-size: 12px;">{{ d.issued_at[:10] if d.issued_at else '--' }}</td>
+          <td style="padding: 10px 8px; color: #57606a; font-size: 12px;">{{ d.last_used_at[:19].replace('T', ' ') if d.last_used_at else 'never' }}</td>
+          <td style="padding: 10px 16px; text-align: right;">
+            {% if d.status != 'revoked' %}
+              <button class="mcp-btn mcp-btn-danger" onclick="revokeDevice('{{ d.label }}')" style="padding: 5px 12px; font-size: 11px;">Revoke</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     {% else %}
-      <button class="mcp-btn mcp-btn-quiet" onclick="generateToken()">Regenerate token</button>
-      <button class="mcp-btn mcp-btn-danger" onclick="revokeToken()">Revoke</button>
+    <div style="padding: 24px 16px; text-align: center; color: #57606a; font-size: 13px;">
+      No devices yet. Click <strong>"+ Add this device"</strong> above to mint your first token.
+    </div>
     {% endif %}
+
+    <div style="padding: 10px 16px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 11px; color: #57606a;">
+      Each row is one laptop. Revoking a row kills only that token; other devices keep working. The portal can't tell which device's browser is asking, so look at "Last seen" to know whether THIS computer has installed yet.
+    </div>
   </div>
 
   <div id="setupSteps" style="display: none;">
@@ -244,9 +297,9 @@
 let _lastStatus = "{{ status }}";
 let _pollInterval = null;
 
-async function generateToken() {
+async function generateToken(label) {
   const fd = new FormData();
-  fd.set('label', 'default');
+  fd.set('label', label || 'device');
   const r = await fetch('/profile/mcp-token', { method: 'POST', body: fd });
   const j = await r.json();
   if (!j.ok) { alert('Failed to generate token'); return; }
@@ -257,8 +310,33 @@ async function generateToken() {
   document.getElementById('connectedStep').style.display = 'none';
   document.getElementById('waitingStep').style.display = 'block';
   startPolling();
-  // Status flips to yellow on next poll
-  setStatus('yellow', 'Token issued. Run the install command on your laptop.');
+  setStatus('yellow', 'Token issued for "' + (j.label || label) + '". Run the install command on that laptop.');
+  // Scroll the steps into view so the new install instructions are visible
+  setTimeout(() => document.getElementById('setupSteps').scrollIntoView({behavior: 'smooth', block: 'start'}), 100);
+}
+
+function promptAddDevice() {
+  // Sensible default label hinting at the user's current platform
+  let defaultLabel = 'this laptop';
+  if (navigator.platform) {
+    if (navigator.platform.startsWith('Mac')) defaultLabel = 'Mac';
+    else if (navigator.platform.startsWith('Win')) defaultLabel = 'Windows laptop';
+    else if (navigator.platform.startsWith('Linux')) defaultLabel = 'Linux laptop';
+  }
+  const label = prompt('Label this device (so you can revoke it independently if you lose it):', defaultLabel);
+  if (label === null) return;  // user cancelled
+  generateToken(label.trim() || 'device');
+}
+
+async function revokeDevice(label) {
+  if (!confirm('Revoke token for "' + label + '"?\n\nThat laptop\'s Claude Code will stop talking to Colaberry until you re-install. Other devices keep working.')) return;
+  const fd = new FormData();
+  fd.set('label', label);
+  const r = await fetch('/profile/mcp-revoke', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (!j.ok) { alert('Revoke failed'); return; }
+  rebuildDeviceTable(j.devices || []);
+  setStatus(j.status || 'red', 'Revoked "' + label + '".');
 }
 
 function switchTab(which) {
@@ -277,12 +355,45 @@ function copyToClipboard(elId, btnEl) {
   });
 }
 
+// Kept for legacy buttons that haven't been removed; acts as revoke-all.
 async function revokeToken() {
-  if (!confirm('Revoke this MCP token? Your laptop will stop talking to the server until you regenerate.')) return;
-  await fetch('/profile/mcp-revoke', { method: 'POST' });
-  setStatus('red', 'Token revoked. Generate a new one to reconnect.');
+  if (!confirm('Revoke ALL device tokens for this user? Every laptop will stop talking to the server.')) return;
+  const r = await fetch('/profile/mcp-revoke', { method: 'POST' });
+  const j = await r.json();
+  setStatus('red', 'All tokens revoked. Add a new device to reconnect.');
   document.getElementById('setupSteps').style.display = 'none';
+  if (j.devices) rebuildDeviceTable(j.devices);
   stopPolling();
+}
+
+function rebuildDeviceTable(devices) {
+  const tbody = document.getElementById('devicesTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const statusPill = (s) => {
+    if (s === 'green') return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:#dafbe1;color:#137333;">🟢 Connected</span>';
+    if (s === 'yellow') return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:#fff4d5;color:#8a5a00;">🟡 Awaiting ping</span>';
+    if (s === 'red') return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:#ffeef0;color:#cf222e;">🔴 Stale (&gt;7d)</span>';
+    return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:#f0f0f0;color:#57606a;">⚫ Revoked</span>';
+  };
+  devices.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.dataset.label = d.label;
+    tr.style.borderTop = '1px solid #eaeef2';
+    const lastSeen = d.last_used_at ? d.last_used_at.substring(0, 19).replace('T', ' ') : 'never';
+    const issued = d.issued_at ? d.issued_at.substring(0, 10) : '--';
+    const ua = d.last_user_agent ? '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">' + d.last_user_agent.substring(0, 60) + '</div>' : '';
+    const revokeBtn = d.status !== 'revoked'
+      ? `<button class="mcp-btn mcp-btn-danger" onclick="revokeDevice('${d.label.replace(/'/g, "\\'")}')" style="padding:5px 12px;font-size:11px;">Revoke</button>`
+      : '';
+    tr.innerHTML =
+      '<td style="padding:10px 16px;font-weight:600;">' + d.label + ua + '</td>' +
+      '<td style="padding:10px 8px;">' + statusPill(d.status) + '</td>' +
+      '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + issued + '</td>' +
+      '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + lastSeen + '</td>' +
+      '<td style="padding:10px 16px;text-align:right;">' + revokeBtn + '</td>';
+    tbody.appendChild(tr);
+  });
 }
 
 function setStatus(s, sub) {
@@ -310,15 +421,19 @@ async function pollStatus() {
   try {
     const r = await fetch('/profile/mcp-status.json');
     const j = await r.json();
+    // Always refresh the device table -- per-device statuses can change
+    // independently and we want the user to see a row flip from yellow to
+    // green the moment their newly-installed laptop pings.
+    if (j.devices) rebuildDeviceTable(j.devices);
     if (j.status && j.status !== _lastStatus) {
       _lastStatus = j.status;
       if (j.status === 'green') {
-        setStatus('green', 'Connected. Last ping: ' + (j.last_used_at || 'just now'));
+        setStatus('green', 'At least one device connected. See the table for per-device detail.');
         document.getElementById('waitingStep').style.display = 'none';
         document.getElementById('connectedStep').style.display = 'block';
-        stopPolling();
+        // Don't stop polling -- user might add more devices in the same session
       } else if (j.status === 'yellow') {
-        setStatus('yellow', 'Token issued ' + j.issued_at + '. Awaiting first ping.');
+        setStatus('yellow', 'Token issued for at least one device. Run the install command on that laptop.');
       }
     }
   } catch (e) {}

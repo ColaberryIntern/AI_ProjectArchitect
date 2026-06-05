@@ -105,11 +105,19 @@ class User:
     personal_bc_todolist_id: str | None = None  # Op 2 - default todolist within that project (created at provision time)
     # MCP token tracking (Phase 8). We store sha256(token), never the plain token.
     # `last_used_at` updates on every MCP request; the portal renders status from it.
+    # Legacy single-token fields (Phase 8). Kept for back-compat; migrated
+    # lazily into mcp_tokens (Phase 8.3) the first time the user touches the
+    # setup page or the token validates. New code should use mcp_tokens.
     mcp_token_hash: str | None = None
     mcp_token_issued_at: str | None = None
     mcp_token_last_used_at: str | None = None
     mcp_token_revoked_at: str | None = None
     mcp_token_label: str | None = None  # user-supplied (e.g. "Work laptop")
+    # Phase 8.3 multi-device tokens. Each entry: {hash, label, issued_at,
+    # last_used_at, revoked_at, last_user_agent}. One entry per laptop/device
+    # so each install has its own credential and per-device status. Revoke
+    # one without affecting the others.
+    mcp_tokens: list[dict] = field(default_factory=list)
     # Phase 8.1 -- per-user "<Name> AI" BC persona. Every BC write by Claude
     # on behalf of this user posts as their AI persona, so the audit trail
     # is clear ("Ralph AI commented" != "Ralph commented"). The AI user is a

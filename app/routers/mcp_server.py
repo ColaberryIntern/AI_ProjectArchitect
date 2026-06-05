@@ -57,10 +57,14 @@ def _require_web_user(request: Request) -> tenancy.User:
     return user
 
 
-def _bearer_user(authorization: str | None) -> tenancy.User | None:
+def _bearer_user(authorization: str | None,
+                                user_agent: str | None = None) -> tenancy.User | None:
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
-    return mcp_token.validate_token(authorization.split(" ", 1)[1].strip())
+    return mcp_token.validate_token(
+        authorization.split(" ", 1)[1].strip(),
+        user_agent=user_agent,
+    )
 
 
 # ── MCP JSON-RPC handler ────────────────────────────────────────────
@@ -143,9 +147,10 @@ def _handle_rpc(user: tenancy.User, msg: dict) -> dict | None:
 @router.post("/mcp/v1")
 @router.post("/mcp")
 async def mcp_rpc(request: Request,
-                                authorization: str | None = Header(default=None)):
+                                authorization: str | None = Header(default=None),
+                                user_agent: str | None = Header(default=None)):
     """JSON-RPC endpoint. Handles single requests; MCP batching not yet supported."""
-    user = _bearer_user(authorization)
+    user = _bearer_user(authorization, user_agent=user_agent)
     if not user:
         return JSONResponse(
             _rpc_error(None, -32001, "invalid or missing MCP token; generate one at /profile/mcp-setup"),
@@ -174,6 +179,7 @@ async def mcp_rpc(request: Request,
 async def mcp_setup_page(request: Request):
     user = _require_web_user(request)
     status = mcp_token.status_for_user(user)
+    devices = mcp_token.list_devices(user)
     # Compute the user's personal BC project URL for the quick-link card.
     import os as _os
     bc_account = _os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
@@ -225,12 +231,12 @@ async def mcp_setup_page(request: Request):
 
 
 @router.post("/profile/mcp-token")
-async def mcp_token_generate(request: Request, label: str = Form("default")):
-    """Generate a new MCP token for the signed-in user. Revokes any previous token.
+async def mcp_token_generate(request: Request, label: str = Form("device")):
+    """Mint a new per-device MCP token. Each call ADDS to the user's token
+    list -- previous device tokens stay valid until explicitly revoked.
 
-    Returns the plaintext token ONCE in the JSON response so the setup page can
-    show it for copying. We never store it; the user is responsible for pasting
-    into their laptop's claude config.
+    Returns the plaintext token ONCE so the setup page can show it for
+    copying; only sha256 hash is persisted server-side.
     """
     user = _require_web_user(request)
     plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
@@ -269,20 +275,28 @@ async def mcp_token_generate(request: Request, label: str = Form("default")):
 
 
 @router.post("/profile/mcp-revoke")
-async def mcp_revoke(request: Request):
+async def mcp_revoke(request: Request, label: str = Form("")):
+    """Revoke a specific device by label, or ALL devices if no label given."""
     user = _require_web_user(request)
-    mcp_token.revoke_for_user(user.user_id)
-    return JSONResponse({"ok": True, "status": "red"})
+    if label.strip():
+        mcp_token.revoke_device(user.user_id, label.strip())
+    else:
+        mcp_token.revoke_all_for_user(user.user_id)
+    refreshed = tenancy.get_user(user.user_id)
+    return JSONResponse({
+        "ok": True,
+        "status": mcp_token.status_for_user(refreshed),
+        "devices": mcp_token.list_devices(refreshed),
+    })
 
 
 @router.get("/profile/mcp-status.json")
 async def mcp_status_json(request: Request):
-    """Polled by the setup page (every ~2s) to detect first ping in real time."""
+    """Polled by the setup page (every ~2s) to detect first ping in real time.
+    Returns aggregate status + per-device list so the UI can update each row.
+    """
     user = _require_web_user(request)
     return JSONResponse({
         "status": mcp_token.status_for_user(user),
-        "issued_at": user.mcp_token_issued_at,
-        "last_used_at": user.mcp_token_last_used_at,
-        "revoked_at": user.mcp_token_revoked_at,
-        "label": user.mcp_token_label,
+        "devices": mcp_token.list_devices(user),
     })
