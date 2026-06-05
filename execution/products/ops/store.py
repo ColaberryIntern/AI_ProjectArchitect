@@ -159,6 +159,34 @@ def get_todo(user_id: str, bc_id: int) -> OpsTodo | None:
     return next((t for t in load_todos(user_id) if t.bc_id == bc_id), None)
 
 
+def list_completed_for_user(user_id: str, days: int = 30) -> list[OpsTodo]:
+    """Phase 6: return the user's completed BC todos in the last N days.
+
+    Reuses the local ops store (already populated by pull_todos_for_user, which
+    pulls both active + completed). No separate BC fetch needed; this is a
+    pure filter. Sorted newest-completed first so the Extract surface shows
+    fresh work at the top.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    out: list[OpsTodo] = []
+    for t in load_todos(user_id):
+        if t.status != "completed" or not t.completed_at:
+            continue
+        try:
+            ts = t.completed_at.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+        if dt < cutoff:
+            continue
+        out.append(t)
+    out.sort(key=lambda t: t.completed_at or "", reverse=True)
+    return out
+
+
 def update_todo(user_id: str, bc_id: int, **fields: Any) -> OpsTodo | None:
     todos = load_todos(user_id)
     found = None

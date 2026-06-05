@@ -1009,3 +1009,197 @@ async def ops_health(request: Request):
         request, "my_day/_health.html",
         _ctx(request, user, snap=snap),
     )
+
+
+# ── Phase 6: Extract surface ─────────────────────────────────
+#
+# Three routes that put the Phase 4 skill_extractor.extract() engine behind a
+# manual UI in My Day. Per docs/specs/my-day-06-extract-surface.md.
+#
+# GET  /my-day/extract/         -> page (list of completed work + preview pane)
+# GET  /my-day/extract/preview  -> render preview (no commit) for the modal
+# POST /my-day/extract/commit   -> render + commit to skill-extracted/<slug>
+#                                  + post BC echo on the source ticket
+#
+# All three use _require_user. Phase 6 anti-scope: never modify
+# skill_extractor.py or extracted_writer.py from here -- those are the engine
+# and onboarding also calls them.
+
+
+@router.get("/extract/")
+async def extract_index(request: Request, days: int = 30, project: str = ""):
+    """List recently-completed BC todos the user can extract from."""
+    user = _require_user(request)
+    completed = store.list_completed_for_user(user.user_id, days=days)
+    if project:
+        completed = [t for t in completed if t.bc_project_name == project]
+
+    # Project filter chips: distinct project names from the completed set
+    project_counts: dict[str, int] = {}
+    for t in completed:
+        project_counts[t.bc_project_name] = project_counts.get(t.bc_project_name, 0) + 1
+    project_list = sorted(project_counts.items(), key=lambda kv: -kv[1])
+
+    # Available output_types (driven by templates on disk)
+    from execution.products.library import extracted_writer
+    output_types = extracted_writer.available_output_types()
+
+    # Existing extracted artifacts (for the "previous extracts" panel)
+    prior = extracted_writer.list_records(created_by=user.user_id)
+
+    return request.app.state.templates.TemplateResponse(
+        request, "my_day/extract.html",
+        _ctx(request, user,
+                completed=completed,
+                project_counts=project_list,
+                active_project_filter=project,
+                days=days,
+                output_types=output_types,
+                prior_extracts=prior),
+    )
+
+
+@router.get("/extract/preview")
+async def extract_preview(request: Request,
+                                        source_kind: str = "bc_ticket",
+                                        bc_id: str = "",
+                                        output_type: str = "skill",
+                                        slug: str = ""):
+    """Render the artifact without committing. Returns JSON for the modal."""
+    from fastapi.responses import JSONResponse
+    user = _require_user(request)
+    if not bc_id:
+        return JSONResponse({"ok": False, "error": "bc_id required"}, status_code=400)
+
+    # Look up the source todo locally to discover its bucket_id (project id).
+    bc_id_int: int
+    try:
+        bc_id_int = int(bc_id)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
+    todo = store.get_todo(user.user_id, bc_id_int)
+    if not todo:
+        return JSONResponse(
+            {"ok": False,
+             "error": f"BC todo {bc_id} not found in your local store; sync first"},
+            status_code=404,
+        )
+
+    token, _ = tokens.get_user_token(user.user_id)
+    if not token:
+        return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
+
+    from execution.products.library import skill_extractor
+    result = skill_extractor.extract(
+        source_kind=source_kind,
+        bc_id=bc_id,
+        output_type=output_type,
+        slug=slug or None,
+        commit=False,
+        bc_token=token,
+        bucket_id=str(todo.bc_project_id),
+        created_by=user.user_id,
+    )
+    return JSONResponse(result)
+
+
+@router.post("/extract/commit")
+async def extract_commit(request: Request,
+                                          source_kind: str = Form("bc_ticket"),
+                                          bc_id: str = Form(...),
+                                          output_type: str = Form("skill"),
+                                          slug: str = Form(""),
+                                          skip_bc_echo: bool = Form(False)):
+    """Render + commit to skill-extracted/<slug> branch, then echo on source ticket."""
+    from fastapi.responses import JSONResponse
+    user = _require_user(request)
+
+    bc_id_int: int
+    try:
+        bc_id_int = int(bc_id)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
+    todo = store.get_todo(user.user_id, bc_id_int)
+    if not todo:
+        return JSONResponse(
+            {"ok": False,
+             "error": f"BC todo {bc_id} not found in your local store"},
+            status_code=404,
+        )
+
+    token, _ = tokens.get_user_token(user.user_id)
+    if not token:
+        return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
+
+    from execution.products.library import skill_extractor
+    result = skill_extractor.extract(
+        source_kind=source_kind,
+        bc_id=bc_id,
+        output_type=output_type,
+        slug=slug or None,
+        commit=True,
+        bc_token=token,
+        bucket_id=str(todo.bc_project_id),
+        created_by=user.user_id,
+    )
+
+    # BC echo: best-effort, never blocks the response. The file commit is the
+    # source of truth; if the comment fails the user still has the branch.
+    bc_echo_status = "skipped"
+    bc_echo_error = ""
+    if result.get("ok") and not skip_bc_echo:
+        try:
+            html = _render_extract_echo_comment(todo, result, user)
+            bc_comments.post(
+                bucket_id=todo.bc_project_id,
+                recording_id=todo.bc_id,
+                html_body=html,
+                token=token,
+            )
+            bc_echo_status = "sent"
+        except Exception as e:
+            bc_echo_status = "failed"
+            bc_echo_error = f"{type(e).__name__}: {e}"
+
+    result["bc_echo_status"] = bc_echo_status
+    if bc_echo_error:
+        result["bc_echo_error"] = bc_echo_error
+    return JSONResponse(result)
+
+
+def _render_extract_echo_comment(todo, extract_result: dict, user) -> str:
+    """Render the BC echo comment posted on the source ticket after a successful
+    extract. Op 3-style idempotent marker so re-extracting the same slug
+    twice doesn't create a duplicate comment thread (BC users see one card).
+    """
+    output_type = extract_result.get("output_type", "?")
+    slug = extract_result.get("slug", "?")
+    branch = extract_result.get("branch", "?")
+    file_path = extract_result.get("file_path", "?")
+    raw_url = extract_result.get("raw_url", "")
+    marker = f"step:extracted:{output_type}:{slug}"
+    mentions = ""
+    # Tag the original assignees so they get an email.
+    for aid, aname in zip(todo.assignee_ids, todo.assignee_names):
+        if aid:
+            mentions += bc_comments.render_assignee_mention(aid, aname) + " "
+    actor = user.display_name or user.email
+    return (
+        f"<!-- {marker} -->\n"
+        f'<div style="border-left: 3px solid #2b6cb0; padding: 10px 14px; '
+        f'background: #ebf8ff; border-radius: 4px;">'
+        f'<div style="font-weight: 700; color: #2c5282;">'
+        f"&#128279; Extracted as <code>{output_type}</code> by {actor}"
+        f"</div>"
+        f'<div style="margin-top: 6px; font-size: 13px;">'
+        f"This ticket was converted to a reusable <strong>{output_type}</strong>."
+        f"</div>"
+        f'<ul style="margin: 6px 0 0 22px; padding: 0; font-size: 13px;">'
+        f"<li>Slug: <code>{slug}</code></li>"
+        f"<li>Branch: <code>{branch}</code></li>"
+        f"<li>File: <code>{file_path}</code></li>"
+        f'<li>Raw: <a href="{raw_url}">{raw_url}</a></li>'
+        f"</ul>"
+        f'<div style="margin-top: 8px; font-size: 12px;">{mentions}</div>'
+        f"</div>"
+    )
