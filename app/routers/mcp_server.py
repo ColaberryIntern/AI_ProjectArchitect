@@ -180,6 +180,18 @@ async def mcp_setup_page(request: Request):
     personal_bc_url = ""
     if user.personal_bc_project_id:
         personal_bc_url = f"https://3.basecamp.com/{bc_account}/projects/{user.personal_bc_project_id}"
+
+    # _library_base.html references a dozen context vars that My Day's _ctx()
+    # populates. Without them, Jinja's StrictUndefined-ish access raises.
+    # Build the same safe-defaults dict here so the setup page renders
+    # standalone without depending on the my_day router.
+    company_display = user.company_id
+    try:
+        c = tenancy.get_company(user.company_id)
+        if c:
+            company_display = c.display_name
+    except Exception:
+        pass
     return request.app.state.templates.TemplateResponse(
         request, "library/mcp_setup.html",
         {
@@ -188,10 +200,26 @@ async def mcp_setup_page(request: Request):
             "status": status,
             "current_product": "library",
             "company_id": user.company_id,
+            "company_display": company_display,
             "library_nav_active": "mcp_setup",
             "page_title": "Connect Claude Code",
             "mcp_status": status,
             "personal_bc_url": personal_bc_url,
+            # Safe defaults for library/_library_base.html
+            "actor": user.display_name or user.email,
+            "workspace": "global",
+            "workspaces": [],
+            "scope": "my-company",
+            "viewer_company_id": user.company_id,
+            "counts": {},
+            "use_case_count": 0,
+            "pending_count": 0,
+            "bell_count": 0,
+            "queue_count": 0,
+            "is_reviewer": False,
+            "is_my_day_admin": "admin" in (user.roles or []),
+            "my_day_total_open": None,
+            "q": "",
         },
     )
 
