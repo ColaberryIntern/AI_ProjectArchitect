@@ -123,7 +123,33 @@
     </div>
   </div>
 
-  <div id="statusCard" class="mcp-status-card s-{{ status }}">
+  {# Loud-and-clear banner about THIS browser's machine. The aggregate green
+     pill above can be misleading: it says "at least one device connected"
+     even when you're sitting at a NEW computer that hasn't installed yet.
+     This banner directly answers "should I install on THIS machine?". #}
+  {% if not devices or devices|selectattr('status', 'equalto', 'green')|list|length == 0 %}
+  <div style="background: #ffeef0; border: 2px solid #cf222e; border-radius: 10px; padding: 16px 20px; margin-bottom: 22px;">
+    <div style="font-weight: 700; color: #cf222e; font-size: 15px; margin-bottom: 6px;">
+      🚨 This computer isn't connected yet
+    </div>
+    <div style="font-size: 13px; color: #1f2328; line-height: 1.5;">
+      {% if not devices %}
+        You haven't installed Colaberry MCP on any computer yet. To use Claude Code with Colaberry doctrine + auto-Basecamp routing, click <strong>"+ Add this device"</strong> below to mint a token for THIS computer.
+      {% else %}
+        You have token(s) registered for OTHER computers, but no recent ping from a device you might be sitting at right now. To use Claude Code on THIS machine, mint a fresh token below and install it here.
+      {% endif %}
+    </div>
+    <button class="mcp-btn" onclick="promptAddDevice()" style="margin-top: 12px; background: #cf222e;">
+      + Add this device now →
+    </button>
+  </div>
+  {% else %}
+  <div style="background: #dafbe1; border: 1px solid #aceebb; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; font-size: 13px; color: #137333;">
+    ✅ At least one of your devices is actively pinging. Check the device table for which one. If this is a NEW computer, click "+ Add this device" for a separate token.
+  </div>
+  {% endif %}
+
+  <div id="statusCard" class="mcp-status-card s-{{ status }}" style="display: none;">
     <span class="dot"></span>
     <div>
       <h2 id="statusHeadline">

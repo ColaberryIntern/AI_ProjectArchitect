@@ -178,6 +178,10 @@ async def mcp_rpc(request: Request,
 @router.get("/profile/mcp-setup")
 async def mcp_setup_page(request: Request):
     user = _require_web_user(request)
+    # Persist any legacy single-token -> mcp_tokens migration once so
+    # subsequent loads don't redo the in-memory upgrade.
+    if mcp_token._migrate_legacy(user):
+        tenancy.upsert_user(user)
     status = mcp_token.status_for_user(user)
     devices = mcp_token.list_devices(user)
     # Compute the user's personal BC project URL for the quick-link card.
@@ -211,6 +215,7 @@ async def mcp_setup_page(request: Request):
             "page_title": "Connect Claude Code",
             "mcp_status": status,
             "personal_bc_url": personal_bc_url,
+            "devices": devices,
             # Safe defaults for library/_library_base.html
             "actor": user.display_name or user.email,
             "workspace": "global",
