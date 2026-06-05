@@ -12,6 +12,8 @@ Authn: required. Uses the same session middleware as /library/.
 """
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -1215,9 +1217,15 @@ async def extract_preview(request: Request,
     if not resolved_bucket:
         return JSONResponse({"ok": False, "error": "bucket_id required for source_kind=bc_list"}, status_code=400)
 
+    # Token resolution: prefer per-user OAuth token, fall back to the shared
+    # CB System token from env (current architecture: one principal reads BC
+    # for everyone, per Ali's clarification). Without the fallback this route
+    # 400s for any user who hasn't set up a personal BC OAuth token.
     token, _ = tokens.get_user_token(user.email)
     if not token:
-        return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
+        token = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
+    if not token:
+        return JSONResponse({"ok": False, "error": "BC token missing (no user token and no CB System fallback)"}, status_code=500)
 
     from execution.products.library import skill_extractor
     result = skill_extractor.extract(
@@ -1270,9 +1278,15 @@ async def extract_commit(request: Request,
     if not resolved_bucket:
         return JSONResponse({"ok": False, "error": "bucket_id required for source_kind=bc_list"}, status_code=400)
 
+    # Token resolution: prefer per-user OAuth token, fall back to the shared
+    # CB System token from env (current architecture: one principal reads BC
+    # for everyone, per Ali's clarification). Without the fallback this route
+    # 400s for any user who hasn't set up a personal BC OAuth token.
     token, _ = tokens.get_user_token(user.email)
     if not token:
-        return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
+        token = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
+    if not token:
+        return JSONResponse({"ok": False, "error": "BC token missing (no user token and no CB System fallback)"}, status_code=500)
 
     from execution.products.library import skill_extractor
     result = skill_extractor.extract(
