@@ -1030,7 +1030,9 @@ async def ops_health(request: Request):
 async def extract_index(request: Request, days: int = 30, project: str = ""):
     """List recently-completed BC todos the user can extract from."""
     user = _require_user(request)
-    completed = store.list_completed_for_user(user.user_id, days=days)
+    # Ops store is keyed by email (existing My Day convention; pull_todos_for_user
+    # is called with user_email everywhere in this router).
+    completed = store.list_completed_for_user(user.email, days=days)
     if project:
         completed = [t for t in completed if t.bc_project_name == project]
 
@@ -1044,8 +1046,10 @@ async def extract_index(request: Request, days: int = 30, project: str = ""):
     from execution.products.library import extracted_writer
     output_types = extracted_writer.available_output_types()
 
-    # Existing extracted artifacts (for the "previous extracts" panel)
-    prior = extracted_writer.list_records(created_by=user.user_id)
+    # Existing extracted artifacts (for the "previous extracts" panel).
+    # Records are written keyed by user.email (set in extract_commit), so
+    # query by email to match.
+    prior = extracted_writer.list_records(created_by=user.email)
 
     return request.app.state.templates.TemplateResponse(
         request, "my_day/extract.html",
@@ -1078,7 +1082,7 @@ async def extract_preview(request: Request,
         bc_id_int = int(bc_id)
     except ValueError:
         return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
-    todo = store.get_todo(user.user_id, bc_id_int)
+    todo = store.get_todo(user.email, bc_id_int)
     if not todo:
         return JSONResponse(
             {"ok": False,
@@ -1086,7 +1090,7 @@ async def extract_preview(request: Request,
             status_code=404,
         )
 
-    token, _ = tokens.get_user_token(user.user_id)
+    token, _ = tokens.get_user_token(user.email)
     if not token:
         return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
 
@@ -1099,7 +1103,7 @@ async def extract_preview(request: Request,
         commit=False,
         bc_token=token,
         bucket_id=str(todo.bc_project_id),
-        created_by=user.user_id,
+        created_by=user.email,
     )
     return JSONResponse(result)
 
@@ -1120,7 +1124,7 @@ async def extract_commit(request: Request,
         bc_id_int = int(bc_id)
     except ValueError:
         return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
-    todo = store.get_todo(user.user_id, bc_id_int)
+    todo = store.get_todo(user.email, bc_id_int)
     if not todo:
         return JSONResponse(
             {"ok": False,
@@ -1128,7 +1132,7 @@ async def extract_commit(request: Request,
             status_code=404,
         )
 
-    token, _ = tokens.get_user_token(user.user_id)
+    token, _ = tokens.get_user_token(user.email)
     if not token:
         return JSONResponse({"ok": False, "error": "BC token missing"}, status_code=400)
 
@@ -1141,7 +1145,7 @@ async def extract_commit(request: Request,
         commit=True,
         bc_token=token,
         bucket_id=str(todo.bc_project_id),
-        created_by=user.user_id,
+        created_by=user.email,
     )
 
     # BC echo: best-effort, never blocks the response. The file commit is the
