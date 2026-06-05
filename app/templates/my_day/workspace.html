@@ -175,6 +175,8 @@ function rebuildFullPrompt() {
 }
 
 function copyPrompt() {
+  // Reuse the MCP gate from the shared script (loaded via _my_day_styles.html)
+  if (typeof _mcpGateOK === 'function' && !_mcpGateOK()) return;
   rebuildFullPrompt();
   const text = document.getElementById('promptText').innerText;
   navigator.clipboard.writeText(text).then(() => {

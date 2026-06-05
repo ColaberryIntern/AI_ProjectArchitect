@@ -103,6 +103,13 @@ class User:
     workspace_repo: str | None = None   # Provision 1
     personal_bc_project_id: str | None = None  # Op 2 - the user's personal BC project for ticket anchoring
     personal_bc_todolist_id: str | None = None  # Op 2 - default todolist within that project (created at provision time)
+    # MCP token tracking (Phase 8). We store sha256(token), never the plain token.
+    # `last_used_at` updates on every MCP request; the portal renders status from it.
+    mcp_token_hash: str | None = None
+    mcp_token_issued_at: str | None = None
+    mcp_token_last_used_at: str | None = None
+    mcp_token_revoked_at: str | None = None
+    mcp_token_label: str | None = None  # user-supplied (e.g. "Work laptop")
     bc_user_id: int | None = None       # Basecamp human identity (My Day sync)
     bc_ai_clone_name: str | None = None # Display name for the AI clone (e.g. "Ali Clone")
     bc_extra_buckets: list[int] = field(default_factory=list)  # Extra BC project ids to sync

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from fastapi import Form
 
-from execution.products.library import auth_google, tenancy
+from execution.products.library import auth_google, mcp_token, tenancy
 from execution.products.ops import (
     bc_comments, context_collector, llm_suggest, plan_inference,
     rollup, scorer, store, suggestions, sync, tokens,
@@ -93,10 +93,16 @@ def _ctx(request: Request, user, **extra) -> dict:
     except Exception:
         pass
 
+    mcp_status_value = "red"
+    try:
+        mcp_status_value = mcp_token.status_for_user(user) if user else "red"
+    except Exception:
+        pass
     base = {
         "request": request,
         "current_product": "library",
         "library_nav_active": "my_day",
+        "mcp_status": mcp_status_value,
         "workspace": "global",
         "workspaces": [],   # avoid library workspace-switcher AttributeError
         "current_session_user": user,

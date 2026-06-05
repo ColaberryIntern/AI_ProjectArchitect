@@ -1,0 +1,248 @@
+{% extends "library/_library_base.html" %}
+{% block title %}Connect Claude Code · Colaberry{% endblock %}
+
+{% block content %}
+<style>
+  .mcp-page { max-width: 760px; }
+  .mcp-status-card {
+    border-radius: 10px; padding: 18px 22px; margin-bottom: 22px;
+    border: 1px solid; display: flex; align-items: center; gap: 16px;
+  }
+  .mcp-status-card.s-green { background: #dafbe1; border-color: #aceebb; color: #137333; }
+  .mcp-status-card.s-yellow { background: #fff4d5; border-color: #f0d678; color: #8a5a00; }
+  .mcp-status-card.s-red { background: #ffeef0; border-color: #ffabba; color: #b3261e; }
+  .mcp-status-card .dot {
+    width: 14px; height: 14px; border-radius: 50%; display: inline-block;
+  }
+  .mcp-status-card.s-green .dot { background: #15803d; }
+  .mcp-status-card.s-yellow .dot { background: #b45309; }
+  .mcp-status-card.s-red .dot { background: #cf222e; }
+  .mcp-status-card h2 { margin: 0; font-size: 16px; }
+  .mcp-status-card .sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+
+  .mcp-step {
+    background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  .mcp-step h3 { margin: 0 0 10px; font-size: 14px; color: #1f1f1f; }
+  .mcp-step .step-num {
+    display: inline-block; width: 22px; height: 22px;
+    background: #1a1a1a; color: #fff; border-radius: 50%;
+    text-align: center; line-height: 22px; font-size: 11px; font-weight: 700;
+    margin-right: 8px; vertical-align: top;
+  }
+  .mcp-cmd {
+    background: #1a1a1a; color: #d4d4d4; padding: 12px 14px;
+    border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;
+    white-space: pre-wrap; word-break: break-all; margin: 10px 0;
+    position: relative;
+  }
+  .mcp-cmd .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: #2a2a2a; color: #fff; border: 1px solid #444;
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+  }
+  .mcp-cmd .copy-btn:hover { background: #3a3a3a; }
+
+  .mcp-actions { display: flex; gap: 10px; margin-bottom: 22px; }
+  .mcp-btn {
+    background: #1a1a1a; color: #fff; padding: 10px 20px; border-radius: 6px;
+    border: none; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  .mcp-btn:hover { background: #000; }
+  .mcp-btn-quiet { background: #fff; color: #1f2328; border: 1px solid #d0d7de; }
+  .mcp-btn-quiet:hover { background: #f6f8fa; }
+  .mcp-btn-danger { background: #fff; color: #cf222e; border: 1px solid #ffabba; }
+  .mcp-btn-danger:hover { background: #ffeef0; }
+
+  .token-display {
+    background: #fff8d6; border: 1px solid #f0d678; border-radius: 6px;
+    padding: 14px; margin: 14px 0; font-family: ui-monospace, monospace;
+    font-size: 12px; word-break: break-all;
+  }
+  .token-display .warn { font-family: inherit; color: #8a5a00; font-weight: 600; margin-bottom: 6px; font-size: 11px; }
+
+  .ping-watch { font-size: 12px; color: #57606a; margin-top: 8px; }
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid #d0d7de; border-top-color: #0969da;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="mcp-page">
+  <h1 style="font-size: 22px; margin: 0 0 6px;">Connect Claude Code</h1>
+  <p style="color: #57606a; font-size: 13px; margin: 0 0 22px;">
+    Install once per laptop. Lets your local <code>claude</code> sessions read Colaberry doctrine, your operator memory, and auto-route Basecamp updates to your personal project regardless of which repo you're working in.
+  </p>
+
+  <div id="statusCard" class="mcp-status-card s-{{ status }}">
+    <span class="dot"></span>
+    <div>
+      <h2 id="statusHeadline">
+        {% if status == 'green' %}🟢 Connected{% elif status == 'yellow' %}🟡 Configured, awaiting connection{% else %}🔴 Not configured{% endif %}
+      </h2>
+      <div class="sub" id="statusSub">
+        {% if status == 'green' %}
+          Your laptop's Claude Code is talking to the Colaberry MCP server. Last ping: <span id="lastPing">{{ current_session_user.mcp_token_last_used_at or 'never' }}</span>.
+        {% elif status == 'yellow' %}
+          Token issued {{ current_session_user.mcp_token_issued_at }} but no laptop has pinged yet. Run the install command on your laptop below.
+        {% else %}
+          No MCP token. Click "Generate token" to start.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="mcp-actions">
+    {% if status == 'red' %}
+      <button class="mcp-btn" onclick="generateToken()">Generate token</button>
+    {% else %}
+      <button class="mcp-btn mcp-btn-quiet" onclick="generateToken()">Regenerate token</button>
+      <button class="mcp-btn mcp-btn-danger" onclick="revokeToken()">Revoke</button>
+    {% endif %}
+  </div>
+
+  <div id="setupSteps" style="display: none;">
+    <div class="mcp-step">
+      <h3><span class="step-num">1</span>Copy your token</h3>
+      <div class="token-display">
+        <div class="warn">⚠ Shown ONCE. Copy it now -- you can't see it again. If you lose it, regenerate.</div>
+        <div id="tokenValue">--</div>
+      </div>
+    </div>
+
+    <div class="mcp-step">
+      <h3><span class="step-num">2</span>Install on your laptop</h3>
+      <p style="font-size: 13px; margin: 0 0 8px;">Open a terminal anywhere and run:</p>
+      <div class="mcp-cmd">
+        <button class="copy-btn" onclick="copyCmd()">Copy</button>
+        <span id="installCmd">--</span>
+      </div>
+      <p style="font-size: 12px; color: #57606a; margin: 6px 0 0;">
+        Repeat on every laptop you work from. Each install gets the same connection -- if you want separate ones (so you can revoke per-laptop), generate a new token from this page for each.
+      </p>
+    </div>
+
+    <div class="mcp-step" id="waitingStep">
+      <h3><span class="step-num">3</span>Waiting for first connection</h3>
+      <div class="ping-watch">
+        <span class="spinner"></span>
+        <span id="waitingMsg">Run the command above. We'll detect the first ping within ~5 seconds.</span>
+      </div>
+    </div>
+
+    <div class="mcp-step" id="connectedStep" style="display: none;">
+      <h3 style="color: #137333;"><span class="step-num" style="background: #15803d;">✓</span>Connected!</h3>
+      <p style="font-size: 13px; margin: 0;">
+        Your laptop is now talking to Colaberry MCP. Every <code>claude</code> session there inherits org doctrine, your memory, and the mandatory-ticket protocol -- regardless of which directory you're in.
+      </p>
+      <p style="font-size: 12px; color: #57606a; margin: 10px 0 0;">
+        Optional: add a <code>.colaberry.json</code> file in any project repo with <code>{"bc_project_id": &lt;id&gt;}</code> so Claude knows that project's BC and dual-posts.
+      </p>
+    </div>
+  </div>
+
+  <details style="margin-top: 22px; font-size: 13px; color: #57606a;">
+    <summary style="cursor: pointer; font-weight: 600;">What does the MCP server give Claude?</summary>
+    <ul style="line-height: 1.7; margin-top: 8px;">
+      <li><strong>Tools</strong> for classifying prompts, creating BC tickets, posting progress comments, closing tickets, finding BC projects by name, and saving/recalling operator memory.</li>
+      <li><strong>Resources</strong> with org doctrine (live from the central repo, 0 cache), your identity (personal BC project + todolist + workspace repo), your accumulated memory, and the shared KB scraped from colaberry.com / .ai / enterprise.colaberry.com.</li>
+      <li><strong>Session Protocol</strong> telling Claude exactly what to do on every user prompt: classify, create/anchor a ticket, post progress, close at end. Loaded fresh per session.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+let _lastStatus = "{{ status }}";
+let _pollInterval = null;
+
+async function generateToken() {
+  const fd = new FormData();
+  fd.set('label', 'default');
+  const r = await fetch('/profile/mcp-token', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (!j.ok) { alert('Failed to generate token'); return; }
+  document.getElementById('tokenValue').innerText = j.token;
+  document.getElementById('installCmd').innerText = j.install_command;
+  document.getElementById('setupSteps').style.display = 'block';
+  document.getElementById('connectedStep').style.display = 'none';
+  document.getElementById('waitingStep').style.display = 'block';
+  startPolling();
+  // Status flips to yellow on next poll
+  setStatus('yellow', 'Token issued. Run the install command on your laptop.');
+}
+
+async function revokeToken() {
+  if (!confirm('Revoke this MCP token? Your laptop will stop talking to the server until you regenerate.')) return;
+  await fetch('/profile/mcp-revoke', { method: 'POST' });
+  setStatus('red', 'Token revoked. Generate a new one to reconnect.');
+  document.getElementById('setupSteps').style.display = 'none';
+  stopPolling();
+}
+
+function setStatus(s, sub) {
+  const card = document.getElementById('statusCard');
+  card.classList.remove('s-green', 's-yellow', 's-red');
+  card.classList.add('s-' + s);
+  const headlines = {
+    green: '🟢 Connected',
+    yellow: '🟡 Configured, awaiting connection',
+    red: '🔴 Not configured',
+  };
+  document.getElementById('statusHeadline').innerText = headlines[s];
+  if (sub) document.getElementById('statusSub').innerText = sub;
+  // Mirror to the global topbar indicator (body data-attr drives it)
+  document.body.dataset.mcpStatus = s;
+  // Update topbar pill in place
+  const pill = document.getElementById('mcpTopbarPill');
+  if (pill) {
+    pill.classList.remove('s-green', 's-yellow', 's-red');
+    pill.classList.add('s-' + s);
+  }
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/profile/mcp-status.json');
+    const j = await r.json();
+    if (j.status && j.status !== _lastStatus) {
+      _lastStatus = j.status;
+      if (j.status === 'green') {
+        setStatus('green', 'Connected. Last ping: ' + (j.last_used_at || 'just now'));
+        document.getElementById('waitingStep').style.display = 'none';
+        document.getElementById('connectedStep').style.display = 'block';
+        stopPolling();
+      } else if (j.status === 'yellow') {
+        setStatus('yellow', 'Token issued ' + j.issued_at + '. Awaiting first ping.');
+      }
+    }
+  } catch (e) {}
+}
+
+function startPolling() {
+  if (_pollInterval) return;
+  _pollInterval = setInterval(pollStatus, 2500);
+}
+function stopPolling() {
+  if (_pollInterval) clearInterval(_pollInterval);
+  _pollInterval = null;
+}
+
+function copyCmd() {
+  const cmd = document.getElementById('installCmd').innerText;
+  navigator.clipboard.writeText(cmd).then(() => {
+    const btn = event.target;
+    const orig = btn.innerText;
+    btn.innerText = '✓ Copied';
+    setTimeout(() => btn.innerText = orig, 1500);
+  });
+}
+
+// If user lands here in yellow state (token issued but waiting), start polling
+if (_lastStatus === 'yellow') startPolling();
+</script>
+
+{% endblock %}

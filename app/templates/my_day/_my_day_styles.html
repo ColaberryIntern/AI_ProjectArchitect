@@ -403,7 +403,23 @@ function _mdSetupBlock() {
   );
 }
 
+function _mcpGateOK() {
+  // Block Copy Prompt when the user hasn't installed MCP -- without it the
+  // copied prompt's setup steps are useless (no doctrine, no BC routing).
+  // Yellow (token issued, not yet pinged) is allowed because the user is
+  // mid-install and may legitimately want to grab the prompt while finishing.
+  const status = document.body.dataset.mcpStatus || 'red';
+  if (status === 'red') {
+    if (confirm('Your laptop is not connected to the Colaberry MCP server yet.\n\nWithout MCP, the copied prompt has no doctrine, no auto-ticket creation, and no Basecamp routing.\n\nGo to /profile/mcp-setup to install? (Cancel to copy anyway.)')) {
+      window.location.href = '/profile/mcp-setup';
+      return false;
+    }
+  }
+  return true;
+}
+
 function copyPrompt(promptId, btnEl) {
+  if (!_mcpGateOK()) return;
   const el = document.getElementById(promptId);
   if (!el) return;
   const taskPrompt = el.value || '';

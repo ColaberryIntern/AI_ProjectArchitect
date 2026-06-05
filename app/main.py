@@ -24,6 +24,7 @@ from app.routers import (
     generate,
     idea_intake,
     library,
+    mcp_server,
     my_day,
     ops_platform,
     outline_approval,
@@ -97,6 +98,41 @@ app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
 from app.middleware import auth_gate_middleware
 app.middleware("http")(auth_gate_middleware)
 
+
+# [Phase 8] MCP first-login gate. Once a Google-SSO'd user is identified,
+# if they've never minted an MCP token, force a redirect to /profile/mcp-setup
+# so they install MCP before navigating the rest of the app. Skips itself
+# on the setup page, the token routes, auth, static assets, and the MCP RPC
+# endpoint (which has its own bearer-token auth, not Google SSO).
+async def mcp_first_login_gate(request, call_next):
+    from execution.products.library import auth_google as _ag
+    path = request.url.path
+    skip_prefixes = (
+        "/profile/mcp-setup", "/profile/mcp-token", "/profile/mcp-revoke",
+        "/profile/mcp-status.json",
+        "/auth/", "/static/", "/advisory/static/",
+        "/mcp", "/api/", "/favicon",
+        "/openapi.json", "/docs", "/redoc",
+    )
+    if any(path.startswith(p) for p in skip_prefixes):
+        return await call_next(request)
+    cookie = request.cookies.get(_ag.SESSION_COOKIE_NAME)
+    user = _ag.current_user_from_cookie(cookie) if cookie else None
+    if user is not None and not user.mcp_token_issued_at:
+        # Only redirect for HTML page loads. JSON/form posts get a 401 so
+        # client-side handlers can decide what to do.
+        accept = (request.headers.get("accept") or "").lower()
+        if "text/html" in accept or accept == "" or "*/*" in accept:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(
+                "/profile/mcp-setup?reason=first-login",
+                status_code=303,
+            )
+    return await call_next(request)
+
+
+app.middleware("http")(mcp_first_login_gate)
+
 # Templates and static files
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
@@ -147,6 +183,7 @@ app.include_router(library.router)
 app.include_router(my_day.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(mcp_server.router)
 
 
 @app.exception_handler(ValueError)

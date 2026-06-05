@@ -283,7 +283,8 @@
 </style>
 {% block extra_head %}{% endblock %}
 </head>
-<body data-workspace-repo="{{ current_session_user.workspace_repo if current_session_user else '' }}">
+<body data-workspace-repo="{{ current_session_user.workspace_repo if current_session_user else '' }}"
+      data-mcp-status="{{ mcp_status|default('red') }}">
 
 <div class="lib-shell">
 
@@ -334,6 +335,19 @@
         <option value="mine" {% if scope == 'mine' %}selected{% endif %}>👤 Mine</option>
         {% endif %}
       </select>
+
+      {# MCP status indicator -- click goes to /profile/mcp-setup. Color +
+         tooltip driven by server-rendered mcp_status; JS on mcp_setup.html
+         can mutate this in-place when the user toggles state. #}
+      {% if current_session_user %}
+      <a id="mcpTopbarPill" href="/profile/mcp-setup"
+         class="lib-action-btn outline s-{{ mcp_status|default('red') }}"
+         title="{% if mcp_status == 'green' %}MCP connected (last ping: {{ current_session_user.mcp_token_last_used_at }}){% elif mcp_status == 'yellow' %}MCP token issued; awaiting first connection{% else %}MCP not configured -- click to set up{% endif %}"
+         style="position: relative; padding-left: 22px;">
+        <span style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; border-radius: 50%; background: {% if mcp_status == 'green' %}#15803d{% elif mcp_status == 'yellow' %}#d4a72c{% else %}#cf222e{% endif %};"></span>
+        MCP
+      </a>
+      {% endif %}
 
       {# [Workflow 1] notification bell + reviewer queue counter #}
       {% if current_session_user %}
