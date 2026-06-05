@@ -304,6 +304,46 @@ async def user_new(request: Request,
         _audit(admin.user_id, "bc.personal_project.failed",
                   target=new_user.user_id, notes=f"{type(e).__name__}: {e}")
 
+    # Phase 4 onboarding extract: if env-configured, extract a canonical
+    # welcome BC ticket into a per-user `welcome-<slug>` directive in the
+    # library. Gated on ONBOARDING_WELCOME_BC_ID + ONBOARDING_WELCOME_BUCKET_ID
+    # so the engine can be deployed cold and turned on later by setting the
+    # env vars to a real BC todo + project id.
+    try:
+        welcome_bc_id = os.environ.get("ONBOARDING_WELCOME_BC_ID", "").strip()
+        welcome_bucket_id = os.environ.get("ONBOARDING_WELCOME_BUCKET_ID", "").strip()
+        if welcome_bc_id and welcome_bucket_id:
+            from execution.products.library import skill_extractor, workspaces as _ws_for_slug
+            user_slug = _ws_for_slug.username_slug(new_user.email)
+            ext_res = skill_extractor.extract(
+                source_kind="bc_ticket",
+                bc_id=welcome_bc_id,
+                output_type=os.environ.get("ONBOARDING_WELCOME_OUTPUT_TYPE", "directive"),
+                slug=f"welcome-{user_slug}",
+                commit=True,
+                bucket_id=welcome_bucket_id,
+                bc_token=os.environ.get("BASECAMP_ACCESS_TOKEN", ""),
+                account_id=os.environ.get("BASECAMP_ACCOUNT_ID", ""),
+                created_by=admin.user_id,
+            )
+            if ext_res.get("ok"):
+                _audit(admin.user_id, "onboarding.welcome_extract",
+                          target=new_user.user_id,
+                          notes=(f"slug={ext_res.get('slug')} "
+                                     f"branch={ext_res.get('branch')} "
+                                     f"file={ext_res.get('file_path')}")[:300])
+            else:
+                _audit(admin.user_id, "onboarding.welcome_extract_failed",
+                          target=new_user.user_id,
+                          notes=f"error={ext_res.get('error', '?')}"[:300])
+        else:
+            _audit(admin.user_id, "onboarding.welcome_extract_skipped",
+                      target=new_user.user_id,
+                      notes="ONBOARDING_WELCOME_BC_ID / _BUCKET_ID not set")
+    except Exception as e:
+        _audit(admin.user_id, "onboarding.welcome_extract_error",
+                  target=new_user.user_id, notes=f"{type(e).__name__}: {e}")
+
     return RedirectResponse(url=f"/admin/users/{new_user.user_id}", status_code=303)
 
 

@@ -1,0 +1,25 @@
+# Directive: {{ src.title }}
+
+> Extracted from {{ src.source_kind }} `{{ src.source_id }}` on {{ created_at }}{% if src.metadata.get('bc_url') %} ([source]({{ src.metadata.get('bc_url') }})){% endif %}.
+
+## Purpose
+
+{{ src.body }}
+
+## Operating context
+
+- **Source kind:** `{{ src.source_kind }}`
+- **Source id:** `{{ src.source_id }}`
+- **Slug:** `{{ slug }}`
+
+{% if src.metadata.get('comments') %}
+## Decisions and clarifications from the thread
+
+{% for c in src.metadata.get('comments') -%}
+- **{{ c.author }}** ({{ c.created_at[:10] }}): {{ c.body|truncate(400, true, '...') }}
+{% endfor %}
+{% endif %}
+
+---
+
+_Auto-derived by Colaberry skill_extractor. Treat as living doctrine; edit the underlying BC ticket if behavior should change._
