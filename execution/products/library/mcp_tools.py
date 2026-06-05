@@ -75,10 +75,30 @@ def _append_memory(email: str, scope: str, fact: str) -> None:
             f.write(entry)
 
 
-def _bc_token() -> str:
+def _bc_token(user=None) -> str:
+    """Resolve the BC token to use for this call.
+
+    Order:
+      1. Per-user "<Name> AI" token from the vault (preferred -- BC writes
+         appear authored by Ralph AI, not by CB System). Looked up by user
+         when supplied.
+      2. Shared CB System token from BASECAMP_ACCESS_TOKEN env (fallback
+         until per-user AI personas are provisioned across the company).
+    """
+    if user is not None and getattr(user, "bc_ai_user_id", None):
+        try:
+            from . import vault
+            plain = vault.read_secret(
+                user.user_id, "basecamp_ai",
+                caller_id="mcp-server", purpose="BC write as AI persona",
+            )
+            if plain:
+                return plain
+        except Exception:
+            pass
     tok = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
     if not tok:
-        raise RuntimeError("BASECAMP_ACCESS_TOKEN not set on server")
+        raise RuntimeError("no BC token available (no per-user AI token, no BASECAMP_ACCESS_TOKEN env)")
     return tok
 
 
@@ -86,12 +106,12 @@ def _bc_account() -> str:
     return os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
 
 
-def _bc_request(method: str, url: str, payload: dict | None = None) -> Any:
+def _bc_request(method: str, url: str, payload: dict | None = None, user=None) -> Any:
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
         url, method=method, data=data,
         headers={
-            "Authorization": f"Bearer {_bc_token()}",
+            "Authorization": f"Bearer {_bc_token(user)}",
             "Accept": "application/json",
             "User-Agent": USER_AGENT,
         },
@@ -176,6 +196,7 @@ def _tool_create_ticket(user, args: dict) -> dict:
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{todolist_id}/todos.json",
             payload={"content": title, "description": description},
+            user=user,
         )
     except RuntimeError as e:
         return {"ok": False, "error": str(e)}
@@ -203,6 +224,7 @@ def _tool_post_progress(user, args: dict) -> dict:
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/recordings/{ticket_id}/comments.json",
             payload={"content": html_body},
+            user=user,
         )
     except RuntimeError as e:
         return {"ok": False, "error": str(e)}
@@ -230,6 +252,7 @@ def _tool_close_ticket(user, args: dict) -> dict:
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}/completion.json",
             payload={},
+            user=user,
         )
     except RuntimeError as e:
         return {"ok": False, "error": str(e)}

@@ -110,6 +110,15 @@ class User:
     mcp_token_last_used_at: str | None = None
     mcp_token_revoked_at: str | None = None
     mcp_token_label: str | None = None  # user-supplied (e.g. "Work laptop")
+    # Phase 8.1 -- per-user "<Name> AI" BC persona. Every BC write by Claude
+    # on behalf of this user posts as their AI persona, so the audit trail
+    # is clear ("Ralph AI commented" != "Ralph commented"). The AI user is a
+    # real BC account invited via email; bc_ai_user_id is the numeric BC id,
+    # bc_ai_user_email is the alias (e.g. ralph-ai@colaberry.com), and the
+    # access token lives in the vault under tool_name="basecamp_ai".
+    bc_ai_user_email: str | None = None
+    bc_ai_user_id: int | None = None
+    bc_ai_provisioned_at: str | None = None
     bc_user_id: int | None = None       # Basecamp human identity (My Day sync)
     bc_ai_clone_name: str | None = None # Display name for the AI clone (e.g. "Ali Clone")
     bc_extra_buckets: list[int] = field(default_factory=list)  # Extra BC project ids to sync

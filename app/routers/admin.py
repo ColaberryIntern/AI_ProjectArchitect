@@ -364,6 +364,46 @@ async def user_detail(request: Request, user_id: str):
     )
 
 
+@router.post("/users/{user_id}/bc-ai")
+async def user_set_bc_ai(request: Request, user_id: str,
+                                          bc_ai_user_email: str = Form(...),
+                                          bc_ai_user_id: int = Form(...),
+                                          bc_ai_oauth_token: str = Form("")):
+    """Record the user's BC AI persona after manual provisioning.
+
+    Per Phase 8.1: each Colaberry user needs a "<Name> AI" BC user account so
+    Claude's BC writes appear authored by their AI persona, not by the shared
+    CB System bot. The actual BC account creation is manual (admin invites
+    via email, accepts on the AI mailbox). Once that's done, admin POSTs here
+    with the BC user id + optionally the OAuth token to store in the vault.
+
+    Without a stored token, BC writes for this user fall back to the shared
+    CB System token. With it, writes appear as the AI persona.
+    """
+    admin = _require_admin(request)
+    u = tenancy.get_user(user_id)
+    if not u:
+        raise HTTPException(404, "user not found")
+    u.bc_ai_user_email = bc_ai_user_email.strip().lower()
+    u.bc_ai_user_id = int(bc_ai_user_id)
+    u.bc_ai_provisioned_at = datetime.now().isoformat()
+    tenancy.upsert_user(u)
+    # If an OAuth token was supplied, stash it in the vault keyed by user.
+    if bc_ai_oauth_token.strip():
+        try:
+            vault.store_secret(
+                u.user_id, "basecamp_ai", bc_ai_oauth_token.strip(),
+                ttl_days=14, actor_id=admin.user_id,
+            )
+        except Exception as e:
+            _audit(admin.user_id, "bc_ai.token_store_failed",
+                          target=user_id, notes=f"{type(e).__name__}: {e}")
+    _audit(admin.user_id, "bc_ai.provisioned",
+              target=user_id,
+              notes=f"email={bc_ai_user_email} bc_id={bc_ai_user_id} token_set={bool(bc_ai_oauth_token.strip())}")
+    return RedirectResponse(url=f"/admin/users/{user_id}", status_code=303)
+
+
 @router.post("/users/{user_id}/role")
 async def user_set_roles(request: Request, user_id: str,
                                   roles: str = Form(...)):

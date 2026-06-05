@@ -174,6 +174,12 @@ async def mcp_rpc(request: Request,
 async def mcp_setup_page(request: Request):
     user = _require_web_user(request)
     status = mcp_token.status_for_user(user)
+    # Compute the user's personal BC project URL for the quick-link card.
+    import os as _os
+    bc_account = _os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
+    personal_bc_url = ""
+    if user.personal_bc_project_id:
+        personal_bc_url = f"https://3.basecamp.com/{bc_account}/projects/{user.personal_bc_project_id}"
     return request.app.state.templates.TemplateResponse(
         request, "library/mcp_setup.html",
         {
@@ -184,6 +190,8 @@ async def mcp_setup_page(request: Request):
             "company_id": user.company_id,
             "library_nav_active": "mcp_setup",
             "page_title": "Connect Claude Code",
+            "mcp_status": status,
+            "personal_bc_url": personal_bc_url,
         },
     )
 
