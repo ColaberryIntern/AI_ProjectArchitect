@@ -216,7 +216,132 @@ def extract_from_bc_ticket(bc_id: str, *, account_id: str = "",
     )
 
 
-# Future adapters (placeholders documenting the contract — uncomment + implement):
+def extract_from_bc_list(todolist_id: str, *, account_id: str = "",
+                                        bucket_id: str = "",
+                                        bc_token: str = "",
+                                        max_tasks: int = 200) -> ExtractedSource:
+    """Pull an entire BC todolist (name + URL + all active + completed tasks)
+    and return as a single ExtractedSource.
+
+    Use this when the user wants to extract the WHOLE list as one asset (e.g.
+    a recurring weekly checklist becomes one template), rather than picking
+    one specific task. Per-task extraction is `extract_from_bc_ticket()`.
+
+    Required: todolist_id (BC todolist id), bucket_id (BC project id), bc_token.
+    Optional: account_id (defaults to BASECAMP_ACCOUNT_ID env), max_tasks cap.
+    """
+    account_id = account_id or DEFAULT_BC_ACCOUNT_ID
+    if not bc_token:
+        bc_token = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
+    if not bc_token:
+        raise RuntimeError("bc_token required (or set BASECAMP_ACCESS_TOKEN)")
+    if not bucket_id:
+        raise RuntimeError("bucket_id required for source_kind=bc_list")
+
+    # 1. Fetch the list metadata
+    list_url = (
+        f"https://3.basecampapi.com/{account_id}/buckets/{bucket_id}"
+        f"/todolists/{todolist_id}.json"
+    )
+    todolist = _bc_request("GET", list_url, bc_token)
+    list_name = (todolist.get("title") or todolist.get("name")
+                          or f"BC todolist {todolist_id}").strip()
+    list_description = _strip_html(todolist.get("description") or "")
+    list_app_url = todolist.get("app_url") or todolist.get("url") or ""
+
+    # 2. Fetch tasks (active + completed). One page each; BC paginates 50/page
+    # by default. For a list with >100 tasks we cap rather than fan out.
+    tasks_active_url = (
+        f"https://3.basecampapi.com/{account_id}/buckets/{bucket_id}"
+        f"/todolists/{todolist_id}/todos.json"
+    )
+    tasks_completed_url = tasks_active_url + "?completed=true"
+    all_tasks: list[dict] = []
+    for u in (tasks_active_url, tasks_completed_url):
+        try:
+            page = _bc_request("GET", u, bc_token)
+        except RuntimeError:
+            continue
+        if isinstance(page, list):
+            all_tasks.extend(page)
+        if len(all_tasks) >= max_tasks:
+            break
+    all_tasks = all_tasks[:max_tasks]
+
+    # Sort: completed-first by completion date desc, then active by created desc
+    def _sort_key(t):
+        comp = (t.get("completion") or {}).get("created_at") or ""
+        return (0 if t.get("completed") else 1, -ord(comp[0]) if comp else 0, comp)
+    all_tasks.sort(key=lambda t: (
+        not bool(t.get("completed")),
+        -(int((t.get("completion") or {}).get("created_at", "")[:4] or 0)),
+    ))
+
+    # 3. Build the rolled-up body: a structured markdown summary of every task
+    parts: list[str] = []
+    if list_description:
+        parts.append(list_description)
+        parts.append("")
+    completed_count = sum(1 for t in all_tasks if t.get("completed"))
+    active_count = len(all_tasks) - completed_count
+    parts.append(f"_{len(all_tasks)} tasks total ({completed_count} completed, {active_count} active)._")
+    parts.append("")
+    if completed_count:
+        parts.append("## Completed tasks")
+        parts.append("")
+        for t in all_tasks:
+            if not t.get("completed"):
+                continue
+            comp_at = (t.get("completion") or {}).get("created_at", "")[:10]
+            title = (t.get("title") or t.get("content") or "").strip()
+            desc = _strip_html(t.get("description") or "")
+            line = f"- ({comp_at}) {title}" if comp_at else f"- {title}"
+            parts.append(line)
+            if desc:
+                for dl in desc.splitlines()[:4]:
+                    dl = dl.strip()
+                    if dl:
+                        parts.append(f"  > {dl}")
+        parts.append("")
+    if active_count:
+        parts.append("## Still open")
+        parts.append("")
+        for t in all_tasks:
+            if t.get("completed"):
+                continue
+            title = (t.get("title") or t.get("content") or "").strip()
+            parts.append(f"- {title}")
+        parts.append("")
+    body = "\n".join(parts).strip()
+
+    metadata = {
+        "bc_url": list_app_url,
+        "bc_project_id": bucket_id,
+        "bc_todolist_id": todolist_id,
+        "task_count": len(all_tasks),
+        "completed_count": completed_count,
+        "active_count": active_count,
+        "tasks": [
+            {
+                "id": t.get("id"),
+                "title": (t.get("title") or t.get("content") or "").strip(),
+                "completed": bool(t.get("completed")),
+                "completed_at": (t.get("completion") or {}).get("created_at", ""),
+                "app_url": t.get("app_url", ""),
+            }
+            for t in all_tasks
+        ],
+    }
+    return ExtractedSource(
+        source_kind="bc_list",
+        source_id=str(todolist_id),
+        title=list_name,
+        body=body,
+        metadata=metadata,
+    )
+
+
+# Future adapters (placeholders documenting the contract; uncomment + implement):
 #
 # def extract_from_transcript(transcript_id: str, **opts) -> ExtractedSource: ...
 # def extract_from_session(session_id: str, **opts) -> ExtractedSource: ...
@@ -289,6 +414,10 @@ def extract(source_kind: str,
         src = extract_from_bc_ticket(
             bc_id, account_id=account_id, bucket_id=bucket_id, bc_token=bc_token
         )
+    elif source_kind == "bc_list":
+        src = extract_from_bc_list(
+            bc_id, account_id=account_id, bucket_id=bucket_id, bc_token=bc_token
+        )
     else:
         return {
             "ok": False,
@@ -296,7 +425,7 @@ def extract(source_kind: str,
             "source_id": str(bc_id),
             "output_type": output_type,
             "error": f"unsupported source_kind={source_kind!r} "
-                            f"(supported: bc_ticket)",
+                            f"(supported: bc_ticket, bc_list)",
         }
 
     # 2. Slug

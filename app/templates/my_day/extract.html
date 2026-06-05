@@ -27,6 +27,55 @@
   .breadcrumb a { color: #0969da; text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
 
+  /* List-level banner -- visually distinct from per-task extraction. Uses
+     a blue tint + a "LIST-LEVEL" eyebrow so it's clear this extracts the
+     whole list as ONE artifact, not individual tasks. */
+  .list-level-banner {
+    background: linear-gradient(135deg, #ebf5ff 0%, #dbeafe 100%);
+    border: 1px solid #93c5fd;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 22px;
+    position: relative;
+  }
+  .list-level-banner .eyebrow {
+    display: inline-block;
+    background: #2563eb; color: #fff;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    padding: 3px 10px; border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .list-level-banner h3 {
+    margin: 0 0 6px; font-size: 15px; color: #1e3a8a;
+  }
+  .list-level-banner .ll-desc { font-size: 12px; color: #1e40af; margin-bottom: 12px; }
+  .list-level-banner .ll-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .list-level-banner .ll-controls select,
+  .list-level-banner .ll-controls input {
+    padding: 6px 10px; font-size: 13px; border: 1px solid #93c5fd; border-radius: 4px; background: #fff;
+  }
+  .list-level-banner .ll-controls input.slug { width: 220px; font-family: ui-monospace, monospace; }
+  .list-level-banner .ll-tag-bar { margin-bottom: 12px; }
+  .list-level-banner .ll-result { margin-top: 10px; }
+  .ll-tag {
+    display: inline-block; padding: 3px 11px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; margin: 0 4px 0 0; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .ll-tag:hover { transform: translateY(-1px); }
+
+  .section-divider {
+    margin: 24px 0 14px; padding-top: 14px;
+    border-top: 1px dashed #cbd5e1;
+    font-size: 11px; color: #64748b; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .section-divider .pill-task {
+    display: inline-block; background: #fef3c7; color: #92400e;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; margin-left: 8px;
+  }
+
   .extract-panel { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 20px 24px; min-height: 60vh; }
   .extract-panel h2 { margin: 0 0 16px; font-size: 18px; }
   .extract-panel .field { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
@@ -59,8 +108,62 @@
   {% if selected_list_name %}Extract from "{{ selected_list_name }}"{% else %}Extract{% endif %}
 </h1>
 <p style="color: #57606a; font-size: 13px; margin: 0 0 18px;">
-  Click a colored tag next to any task to extract it as that asset type. Each extract creates a <code>skill-extracted/&lt;slug&gt;</code> branch you can review + merge.
+  Two extraction modes: <strong>list-level</strong> (the whole list as one asset) below in blue, and <strong>task-level</strong> (one task as one asset) further down.
+  Each extract creates a <code>skill-extracted/&lt;slug&gt;</code> branch you can review + merge.
 </p>
+
+{% if list_level_meta %}
+<div class="list-level-banner">
+  <span class="eyebrow">📚 List-level extract</span>
+  <h3>Extract the entire "{{ list_level_meta.list_name }}" list as one asset</h3>
+  <div class="ll-desc">
+    Rolls all {{ list_level_meta.task_count }} task{{ '' if list_level_meta.task_count == 1 else 's' }} (titles + descriptions + completion order) into a single rendered artifact.
+    Most-recent task completed <strong>{{ list_level_meta.time_ago }}</strong>.
+  </div>
+
+  <div class="ll-tag-bar">
+    {% if list_level_tags %}
+      <span style="font-size: 11px; color: #1e40af; margin-right: 6px; font-weight: 600;">Suggested types:</span>
+      {% for tag in list_level_tags %}
+        {% set meta = output_type_meta.get(tag) %}
+        {% if meta %}
+          <a class="ll-tag"
+             style="background: {{ meta.color_bg }}; color: {{ meta.color_fg }};"
+             onclick="setListLevelType('{{ meta.key }}'); return false;"
+             title="{{ meta.description }}">{{ meta.label }}</a>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <span style="font-size: 11px; color: #64748b; font-style: italic;">No keyword-based suggestions; pick a type manually.</span>
+    {% endif %}
+  </div>
+
+  <div class="ll-controls">
+    <label style="font-size: 12px; color: #1e3a8a; font-weight: 600;">Output type
+      <select id="ll-output-type">
+        {% for ot in output_types %}
+          <option value="{{ ot }}">{{ ot }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="font-size: 12px; color: #1e3a8a; font-weight: 600;">Slug
+      <input class="slug" id="ll-slug" placeholder="auto-derived from list name">
+    </label>
+    <button class="md-btn md-btn-outline" onclick="doListLevelPreview()" style="border-color: #2563eb; color: #1e3a8a;">Generate preview</button>
+    <button class="md-btn" onclick="doListLevelCommit()" style="background: #2563eb; color: #fff;">Commit whole list</button>
+  </div>
+
+  <div id="ll-result" class="ll-result"></div>
+  <div id="ll-preview-box" style="display: none; margin-top: 10px;">
+    <div style="font-size: 11px; color: #1e3a8a; font-weight: 600; margin-bottom: 4px;">Preview</div>
+    <div class="extract-preview" id="ll-preview-content" style="background: #fff; border-color: #93c5fd; max-height: 320px;"></div>
+  </div>
+</div>
+
+<div class="section-divider">
+  Per-task extract <span class="pill-task">one task = one asset</span>
+</div>
+{% endif %}
 
 <div class="extract-layout">
   <!-- LEFT: completed work list -->
@@ -98,7 +201,7 @@
             <div class="ex-title">{{ t.title }}</div>
             <div class="ex-meta">
               <span class="proj">{{ t.bc_project_name[:30] }}</span> ·
-              done {{ t.completed_at[:10] }}
+              <span title="{{ t.completed_at[:19] }}">done {{ entry.time_ago or t.completed_at[:10] }}</span>
               {% if t.completed_by_name %} by {{ t.completed_by_name }}{% endif %}
             </div>
           </div>
@@ -284,6 +387,83 @@ async function doCommit() {
   } finally {
     btn.innerText = 'Commit to library branch';
     btn.disabled = false;
+  }
+}
+
+// ── List-level extract handlers ──────────────────────────────────────
+const _listLevelMeta = {{ (list_level_meta or {})|tojson }};
+
+function setListLevelType(t) {
+  const dd = document.getElementById('ll-output-type');
+  if (dd && [...dd.options].some(o => o.value === t)) {
+    dd.value = t;
+  }
+  doListLevelPreview();
+}
+
+async function doListLevelPreview() {
+  if (!_listLevelMeta || !_listLevelMeta.list_id) return;
+  const ot = document.getElementById('ll-output-type').value;
+  const slug = document.getElementById('ll-slug').value.trim();
+  const params = new URLSearchParams({
+    source_kind: 'bc_list',
+    bc_id: _listLevelMeta.list_id,
+    bucket_id: _listLevelMeta.project_id,
+    output_type: ot,
+  });
+  if (slug) params.set('slug', slug);
+  const box = document.getElementById('ll-preview-box');
+  const content = document.getElementById('ll-preview-content');
+  content.innerText = 'Loading whole-list preview…';
+  box.style.display = 'block';
+  try {
+    const r = await fetch('/my-day/extract/preview?' + params.toString());
+    const j = await r.json();
+    if (j.ok) {
+      content.innerText = j.content_preview || '(empty)';
+      if (!slug && j.slug) document.getElementById('ll-slug').placeholder = 'auto: ' + j.slug;
+    } else {
+      content.innerText = 'Error: ' + (j.error || 'unknown');
+    }
+  } catch (e) {
+    content.innerText = 'Network error: ' + e.message;
+  }
+}
+
+async function doListLevelCommit() {
+  if (!_listLevelMeta || !_listLevelMeta.list_id) return;
+  if (!confirm('Commit the WHOLE list as one artifact?')) return;
+  const ot = document.getElementById('ll-output-type').value;
+  const slug = document.getElementById('ll-slug').value.trim();
+  const result = document.getElementById('ll-result');
+  result.innerHTML = '<div style="font-size: 12px; color: #1e3a8a;">Committing whole list…</div>';
+  try {
+    const fd = new FormData();
+    fd.set('source_kind', 'bc_list');
+    fd.set('bc_id', _listLevelMeta.list_id);
+    fd.set('bucket_id', _listLevelMeta.project_id);
+    fd.set('output_type', ot);
+    if (slug) fd.set('slug', slug);
+    const r = await fetch('/my-day/extract/commit', {method: 'POST', body: fd});
+    const j = await r.json();
+    if (j.ok) {
+      const branchUrl = `https://github.com/ColaberryIntern/AI_ProjectArchitect/tree/${j.branch}`;
+      const fileUrl = `https://github.com/ColaberryIntern/AI_ProjectArchitect/blob/${j.branch}/${j.file_path}`;
+      result.innerHTML =
+        `<div class="commit-result">
+          <strong>✅ Whole-list committed.</strong>
+          <ul style="margin: 8px 0 0 22px;">
+            <li>Slug: <code>${j.slug}</code></li>
+            <li>Branch: <a href="${branchUrl}"><code>${j.branch}</code></a></li>
+            <li>File: <a href="${fileUrl}"><code>${j.file_path}</code></a></li>
+            <li>Raw: <a href="${j.raw_url}">${j.raw_url}</a></li>
+          </ul>
+        </div>`;
+    } else {
+      result.innerHTML = `<div class="commit-result err"><strong>❌ Failed:</strong> ${j.error || 'unknown'}</div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="commit-result err"><strong>❌ Network error:</strong> ${e.message}</div>`;
   }
 }
 </script>

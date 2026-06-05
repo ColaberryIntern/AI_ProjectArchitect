@@ -488,12 +488,13 @@ async def ops_home(request: Request):
                     "bc_id": t.bc_id, "title": t.title,
                     "completed_at": t.completed_at,
                 })
-        # Compute tags + sort. Most-recently-active lists first.
+        # Compute tags + relative-time + sort. Most-recently-active first.
         extract_lists = []
         for row in by_list.values():
             row["suggested_tags"] = extract_classifier.suggest_for_list(
                 row["list_name"], row["task_titles"], row["task_descriptions"],
             )
+            row["time_ago"] = _sync_relative(row["most_recent"])
             extract_lists.append(row)
         extract_lists.sort(key=lambda r: r["most_recent"], reverse=True)
 
@@ -1115,7 +1116,32 @@ async def extract_index(request: Request, days: int = 90,
         completed_with_tags.append({
             "todo": t,
             "tags": extract_classifier.suggest_output_types(text),
+            "time_ago": _sync_relative(t.completed_at),
         })
+
+    # List-level extraction: aggregate the whole list into one signal so the
+    # user can extract the entire list as a single asset (different mode from
+    # the per-task tag clicks below). Only computed when scoped to a list.
+    list_level_tags: list[str] = []
+    list_level_meta: dict = {}
+    if selected_list_name and completed:
+        titles = [t.title for t in completed]
+        descs = [t.description for t in completed if t.description]
+        list_level_tags = extract_classifier.suggest_for_list(
+            selected_list_name, titles, descs,
+        )
+        # Use the most-recent completed task's BC bucket as the project/list
+        # source for the list-level extract (every task in the scope shares
+        # the same bucket_id + todolist_id by construction).
+        first = completed[0]
+        list_level_meta = {
+            "list_id": first.bc_todolist_id,
+            "list_name": selected_list_name,
+            "project_id": first.bc_project_id,
+            "project_name": selected_project_name,
+            "task_count": len(completed),
+            "time_ago": _sync_relative(first.completed_at),
+        }
 
     # Project filter chips: distinct project names from the completed set
     project_counts: dict[str, int] = {}
@@ -1143,6 +1169,8 @@ async def extract_index(request: Request, days: int = 90,
                 selected_list_name=selected_list_name,
                 selected_project_name=selected_project_name,
                 preselect_output_type=suggest,
+                list_level_tags=list_level_tags,
+                list_level_meta=list_level_meta,
                 days=days,
                 output_types=output_types,
                 output_type_meta=extract_classifier.OUTPUT_TYPES,
@@ -1155,27 +1183,37 @@ async def extract_index(request: Request, days: int = 90,
 async def extract_preview(request: Request,
                                         source_kind: str = "bc_ticket",
                                         bc_id: str = "",
+                                        bucket_id: str = "",
                                         output_type: str = "skill",
                                         slug: str = ""):
-    """Render the artifact without committing. Returns JSON for the modal."""
+    """Render the artifact without committing. Returns JSON for the modal.
+
+    For source_kind=bc_ticket: bc_id is a todo id; bucket_id is auto-derived
+    from the user's local store.
+    For source_kind=bc_list: bc_id is a todolist id; bucket_id (project id)
+    MUST be supplied by the caller.
+    """
     from fastapi.responses import JSONResponse
     user = _require_user(request)
     if not bc_id:
         return JSONResponse({"ok": False, "error": "bc_id required"}, status_code=400)
-
-    # Look up the source todo locally to discover its bucket_id (project id).
-    bc_id_int: int
     try:
         bc_id_int = int(bc_id)
     except ValueError:
         return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
-    todo = store.get_todo(user.email, bc_id_int)
-    if not todo:
-        return JSONResponse(
-            {"ok": False,
-             "error": f"BC todo {bc_id} not found in your local store; sync first"},
-            status_code=404,
-        )
+
+    resolved_bucket = bucket_id
+    if source_kind == "bc_ticket" and not resolved_bucket:
+        todo = store.get_todo(user.email, bc_id_int)
+        if not todo:
+            return JSONResponse(
+                {"ok": False,
+                 "error": f"BC todo {bc_id} not found in your local store; sync first"},
+                status_code=404,
+            )
+        resolved_bucket = str(todo.bc_project_id)
+    if not resolved_bucket:
+        return JSONResponse({"ok": False, "error": "bucket_id required for source_kind=bc_list"}, status_code=400)
 
     token, _ = tokens.get_user_token(user.email)
     if not token:
@@ -1189,7 +1227,7 @@ async def extract_preview(request: Request,
         slug=slug or None,
         commit=False,
         bc_token=token,
-        bucket_id=str(todo.bc_project_id),
+        bucket_id=resolved_bucket,
         created_by=user.email,
     )
     return JSONResponse(result)
@@ -1199,25 +1237,38 @@ async def extract_preview(request: Request,
 async def extract_commit(request: Request,
                                           source_kind: str = Form("bc_ticket"),
                                           bc_id: str = Form(...),
+                                          bucket_id: str = Form(""),
                                           output_type: str = Form("skill"),
                                           slug: str = Form(""),
                                           skip_bc_echo: bool = Form(False)):
-    """Render + commit to skill-extracted/<slug> branch, then echo on source ticket."""
+    """Render + commit to skill-extracted/<slug> branch, then echo on source ticket.
+
+    BC echo only fires for source_kind=bc_ticket (we know exactly which todo
+    to comment on). For source_kind=bc_list there's no canonical single
+    "source" todo, so we skip the echo.
+    """
     from fastapi.responses import JSONResponse
     user = _require_user(request)
 
-    bc_id_int: int
     try:
         bc_id_int = int(bc_id)
     except ValueError:
         return JSONResponse({"ok": False, "error": f"bc_id must be numeric: {bc_id!r}"}, status_code=400)
-    todo = store.get_todo(user.email, bc_id_int)
-    if not todo:
-        return JSONResponse(
-            {"ok": False,
-             "error": f"BC todo {bc_id} not found in your local store"},
-            status_code=404,
-        )
+
+    resolved_bucket = bucket_id
+    todo = None
+    if source_kind == "bc_ticket":
+        todo = store.get_todo(user.email, bc_id_int)
+        if not todo:
+            return JSONResponse(
+                {"ok": False,
+                 "error": f"BC todo {bc_id} not found in your local store"},
+                status_code=404,
+            )
+        if not resolved_bucket:
+            resolved_bucket = str(todo.bc_project_id)
+    if not resolved_bucket:
+        return JSONResponse({"ok": False, "error": "bucket_id required for source_kind=bc_list"}, status_code=400)
 
     token, _ = tokens.get_user_token(user.email)
     if not token:
@@ -1231,15 +1282,15 @@ async def extract_commit(request: Request,
         slug=slug or None,
         commit=True,
         bc_token=token,
-        bucket_id=str(todo.bc_project_id),
+        bucket_id=resolved_bucket,
         created_by=user.email,
     )
 
-    # BC echo: best-effort, never blocks the response. The file commit is the
-    # source of truth; if the comment fails the user still has the branch.
+    # BC echo: per-task only (we have an exact recording to comment on).
+    # List-level extracts skip the echo since there's no canonical single source.
     bc_echo_status = "skipped"
     bc_echo_error = ""
-    if result.get("ok") and not skip_bc_echo:
+    if result.get("ok") and not skip_bc_echo and source_kind == "bc_ticket" and todo:
         try:
             html = _render_extract_echo_comment(todo, result, user)
             bc_comments.post(

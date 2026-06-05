@@ -54,7 +54,7 @@
         <div class="ex-list-meta"><span class="proj">{{ r.project_name[:36] }}</span></div>
       </td>
       <td><strong>{{ r.completed_count }}</strong> task{{ '' if r.completed_count == 1 else 's' }}</td>
-      <td class="dim">{{ r.most_recent[:10] }}</td>
+      <td class="dim" title="{{ r.most_recent[:19] }}">{{ r.time_ago or r.most_recent[:10] }}</td>
       <td>
         {% if r.suggested_tags %}
           {% for tag in r.suggested_tags %}
