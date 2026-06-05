@@ -288,6 +288,30 @@
     color: #57606a; font-size: 12px; font-weight: 600;
   }
   .ic-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+  /* "This computer" highlighting on a device row -- the row matching the
+     locally-stored current-device label gets a soft yellow tint + a left
+     border accent + a badge so the user can scan a row of 3 and instantly
+     know which is the laptop they're sitting at. */
+  #devicesTbody tr.current-device td {
+    background: #fff8d6 !important;
+  }
+  #devicesTbody tr.current-device td:first-child {
+    border-left: 4px solid #d4a72c;
+    padding-left: 12px !important;
+  }
+  .current-device-badge {
+    display: inline-block; background: #d4a72c; color: #fff;
+    padding: 2px 8px; border-radius: 999px; font-size: 9px;
+    font-weight: 700; letter-spacing: 0.5px; margin-left: 8px;
+    text-transform: uppercase; vertical-align: middle;
+  }
+  .mark-current-btn {
+    background: none; border: 1px dashed #57606a; color: #57606a;
+    padding: 3px 8px; border-radius: 4px; font-size: 10px; cursor: pointer;
+    margin-left: 6px; font-weight: 500;
+  }
+  .mark-current-btn:hover { background: #fff8d6; border-color: #d4a72c; color: #8a5a00; }
 </style>
 
     <div class="mcp-step" id="waitingStep">
@@ -322,6 +346,83 @@
 <script>
 let _lastStatus = "{{ status }}";
 let _pollInterval = null;
+const _userId = "{{ current_session_user.user_id }}";
+const _currentDeviceKey = 'mcp-current-device-' + _userId;
+
+function getCurrentDeviceLabel() {
+  try { return localStorage.getItem(_currentDeviceKey) || ''; } catch (e) { return ''; }
+}
+
+function setCurrentDeviceLabel(label) {
+  try {
+    if (label) localStorage.setItem(_currentDeviceKey, label);
+    else localStorage.removeItem(_currentDeviceKey);
+  } catch (e) {}
+  highlightCurrentRow();
+}
+
+function markAsCurrent(label) {
+  setCurrentDeviceLabel(label);
+}
+
+// Best-effort first-time guess: if we don't have a localStorage mark yet
+// AND exactly one device row's last_user_agent matches our browser's
+// platform substring, auto-mark it. Saves the user from having to manually
+// click on the only plausible row.
+function tryAutoGuessCurrentDevice(devices) {
+  if (getCurrentDeviceLabel()) return;
+  if (!devices || devices.length === 0) return;
+  let platformHint = '';
+  try {
+    const p = (navigator.platform || '').toLowerCase();
+    if (p.startsWith('win')) platformHint = 'win';
+    else if (p.startsWith('mac')) platformHint = 'mac';
+    else if (p.startsWith('linux')) platformHint = 'linux';
+  } catch (e) {}
+  if (!platformHint) return;
+  const matches = devices.filter(d => {
+    if (d.status === 'revoked') return false;
+    const ua = (d.last_user_agent || '').toLowerCase();
+    if (platformHint === 'mac') return ua.includes('mac') || ua.includes('darwin');
+    if (platformHint === 'win') return ua.includes('win');
+    if (platformHint === 'linux') return ua.includes('linux');
+    return false;
+  });
+  if (matches.length === 1) {
+    setCurrentDeviceLabel(matches[0].label);
+  }
+}
+
+function highlightCurrentRow() {
+  const current = getCurrentDeviceLabel();
+  document.querySelectorAll('#devicesTbody tr').forEach(tr => {
+    const isCurrent = tr.dataset.label === current;
+    tr.classList.toggle('current-device', isCurrent);
+    // Toggle the "← THIS COMPUTER" badge presence
+    let badge = tr.querySelector('.current-device-badge');
+    const labelCell = tr.querySelector('td:first-child');
+    if (isCurrent && !badge && labelCell) {
+      const span = document.createElement('span');
+      span.className = 'current-device-badge';
+      span.textContent = '← THIS COMPUTER';
+      labelCell.appendChild(span);
+    } else if (!isCurrent && badge) {
+      badge.remove();
+    }
+    // Toggle "Mark as this computer" button
+    let markBtn = tr.querySelector('.mark-current-btn');
+    if (!isCurrent && !markBtn && labelCell) {
+      const btn = document.createElement('button');
+      btn.className = 'mark-current-btn';
+      btn.dataset.label = tr.dataset.label;
+      btn.textContent = 'Mark as this computer';
+      btn.onclick = () => markAsCurrent(tr.dataset.label);
+      labelCell.appendChild(btn);
+    } else if (isCurrent && markBtn) {
+      markBtn.remove();
+    }
+  });
+}
 
 async function generateToken(label) {
   const fd = new FormData();
@@ -329,6 +430,9 @@ async function generateToken(label) {
   const r = await fetch('/profile/mcp-token', { method: 'POST', body: fd });
   const j = await r.json();
   if (!j.ok) { alert('Failed to generate token'); return; }
+  // The user just minted from THIS browser -> remember which device label
+  // belongs to this computer so we can highlight the right row going forward.
+  setCurrentDeviceLabel(j.label || label);
   document.getElementById('tokenValue').innerText = j.token;
   document.getElementById('installCmd').innerText = j.install_command;
   document.getElementById('claudePrompt').innerText = j.claude_install_prompt || '';
@@ -450,7 +554,11 @@ async function pollStatus() {
     // Always refresh the device table -- per-device statuses can change
     // independently and we want the user to see a row flip from yellow to
     // green the moment their newly-installed laptop pings.
-    if (j.devices) rebuildDeviceTable(j.devices);
+    if (j.devices) {
+      tryAutoGuessCurrentDevice(j.devices);
+      rebuildDeviceTable(j.devices);
+      highlightCurrentRow();
+    }
     if (j.status && j.status !== _lastStatus) {
       _lastStatus = j.status;
       if (j.status === 'green') {
@@ -481,6 +589,26 @@ function copyCmd() {
 
 // If user lands here in yellow state (token issued but waiting), start polling
 if (_lastStatus === 'yellow') startPolling();
+
+// On page load: best-effort auto-guess from server-rendered devices table
+// + highlight the current row + add Mark-as-this-computer buttons.
+(function initCurrentDeviceHighlight() {
+  // Build a lightweight devices array from the server-rendered table rows
+  // so tryAutoGuessCurrentDevice can scan UA strings without a fetch.
+  const rows = document.querySelectorAll('#devicesTbody tr');
+  const initialDevices = [];
+  rows.forEach(tr => {
+    const label = tr.dataset.label || '';
+    const uaEl = tr.querySelector('td:first-child div');
+    initialDevices.push({
+      label: label,
+      last_user_agent: uaEl ? uaEl.textContent : '',
+      status: 'unknown',
+    });
+  });
+  tryAutoGuessCurrentDevice(initialDevices);
+  highlightCurrentRow();
+})();
 </script>
 
 {% endblock %}
