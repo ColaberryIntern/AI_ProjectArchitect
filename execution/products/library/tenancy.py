@@ -102,6 +102,7 @@ class User:
     google_subject: str | None = None   # OAuth `sub` (Auth 2)
     workspace_repo: str | None = None   # Provision 1
     personal_bc_project_id: str | None = None  # Op 2 - the user's personal BC project for ticket anchoring
+    personal_bc_todolist_id: str | None = None  # Op 2 - default todolist within that project (created at provision time)
     bc_user_id: int | None = None       # Basecamp human identity (My Day sync)
     bc_ai_clone_name: str | None = None # Display name for the AI clone (e.g. "Ali Clone")
     bc_extra_buckets: list[int] = field(default_factory=list)  # Extra BC project ids to sync

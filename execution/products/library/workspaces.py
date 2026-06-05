@@ -189,6 +189,7 @@ def render_identity_file(user: tenancy.User, tenant_id: str | None = None) -> st
     each session's mandatory ticket against (Op 2 doctrine).
     """
     bc_id = getattr(user, "personal_bc_project_id", None) or ""
+    bc_todolist = getattr(user, "personal_bc_todolist_id", None) or ""
     bc_account = os.environ.get("BASECAMP_ACCOUNT_ID", "").strip()
     return (
         "# Auto-seeded by Op 1 at provisioning. Used by .claude/session_start_hook.py.\n"
@@ -196,6 +197,7 @@ def render_identity_file(user: tenancy.User, tenant_id: str | None = None) -> st
         f"display_name={user.display_name}\n"
         f"tenant_id={tenant_id or ''}\n"
         f"personal_bc_project_id={bc_id}\n"
+        f"personal_bc_todolist_id={bc_todolist}\n"
         f"basecamp_account_id={bc_account}\n"
     )
 

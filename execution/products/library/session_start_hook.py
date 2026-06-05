@@ -93,6 +93,7 @@ def main():
     user_email = args.user_email
     display_name = args.display_name
     personal_bc_project_id = ""
+    personal_bc_todolist_id = ""
     basecamp_account_id = ""
     if identity_file.exists():
         for line in identity_file.read_text(encoding="utf-8").splitlines():
@@ -103,6 +104,8 @@ def main():
                 display_name = display_name or line.split("=", 1)[1]
             elif line.startswith("personal_bc_project_id="):
                 personal_bc_project_id = line.split("=", 1)[1].strip()
+            elif line.startswith("personal_bc_todolist_id="):
+                personal_bc_todolist_id = line.split("=", 1)[1].strip()
             elif line.startswith("basecamp_account_id="):
                 basecamp_account_id = line.split("=", 1)[1].strip()
 
@@ -123,7 +126,8 @@ def main():
         print("# Shared KB: www.colaberry.com + www.colaberry.ai + www.enterprise.colaberry.com")
         print("# (Full 5-layer context unavailable — install AI_ProjectArchitect side-by-side for full assembly.)")
         print(_render_session_protocol(user_email, display_name,
-                                                              personal_bc_project_id, basecamp_account_id))
+                                                              personal_bc_project_id, basecamp_account_id,
+                                                              personal_bc_todolist_id))
         return 0
 
     # Full mode: run the assembler
@@ -142,13 +146,15 @@ def main():
         for w in ctx.warnings:
             print(f"# {w}")
     print(_render_session_protocol(user_email, display_name,
-                                                          personal_bc_project_id, basecamp_account_id))
+                                                          personal_bc_project_id, basecamp_account_id,
+                                                          personal_bc_todolist_id))
     return 0
 
 
 def _render_session_protocol(user_email: str, display_name: str,
                                                 personal_bc_project_id: str,
-                                                basecamp_account_id: str) -> str:
+                                                basecamp_account_id: str,
+                                                personal_bc_todolist_id: str = "") -> str:
     """Render the mandatory-ticket Session Protocol Claude sees on every session start.
 
     Per docs/specs/operator-02-mandatory-ticket-doctrine.md. The protocol tells
@@ -164,10 +170,16 @@ def _render_session_protocol(user_email: str, display_name: str,
         5. Auto-close at end if confidence >= 0.85 (Op 4).
     """
     bc_known = personal_bc_project_id and basecamp_account_id
+    todolist_line = (
+        f"- Default todolist id (use as `todolist_id` in create_ticket_for_session): `{personal_bc_todolist_id}`\n"
+        if personal_bc_todolist_id else
+        "- (Default todolist not provisioned; discover via `GET /buckets/<project>/projects/<project>.json` -> dock['todoset'] -> todolists_url)\n"
+    )
     bc_block = (
-        f"- Personal BC project id: `{personal_bc_project_id}`\n"
+        f"- Personal BC project id (use as `bucket_id`): `{personal_bc_project_id}`\n"
         f"- Basecamp account id: `{basecamp_account_id}`\n"
         f"- Project URL: https://3.basecamp.com/{basecamp_account_id}/projects/{personal_bc_project_id}\n"
+        + todolist_line
         if bc_known else
         "- (Personal BC project id not yet provisioned; Op 2 provision may have failed; admin should check audit log.)\n"
     )

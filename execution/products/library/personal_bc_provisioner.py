@@ -41,6 +41,7 @@ class ProvisioningResult:
     project_id: Optional[int] = None
     url: Optional[str] = None
     name: Optional[str] = None
+    todolist_id: Optional[int] = None  # Phase 5 fix: default todo list id (anchor for ticket_creation_flow)
     error: Optional[str] = None
 
 
@@ -147,11 +148,13 @@ def provision_user_personal_bc(
     # Idempotency check
     existing = find_personal_project(display_name, account_id, bc_token)
     if existing:
+        todolist_id = _ensure_default_todolist(existing["id"], account_id, bc_token)
         return ProvisioningResult(
             action="reused",
             project_id=existing["id"],
             url=existing.get("app_url"),
             name=existing.get("name"),
+            todolist_id=todolist_id,
         )
 
     # Create
@@ -168,9 +171,72 @@ def provision_user_personal_bc(
     )
     if not ok:
         return ProvisioningResult(action="failed", error=str(body))
+    project_id = body["id"]
+    # Phase 5 fix: BC projects come up with an empty todoset; create a default
+    # "To-dos" list so ticket_creation_flow has a place to anchor.
+    todolist_id = _ensure_default_todolist(project_id, account_id, bc_token)
     return ProvisioningResult(
         action="created",
-        project_id=body["id"],
+        project_id=project_id,
         url=body.get("app_url"),
         name=body.get("name"),
+        todolist_id=todolist_id,
     )
+
+
+def _ensure_default_todolist(project_id: int, account_id: str, bc_token: str,
+                                                  list_name: str = "To-dos") -> Optional[int]:
+    """Ensure the project has at least one todolist; return its id.
+
+    BC creates a project with a todoset (in the dock) but the todoset is empty
+    until something adds a list. Op 2's ticket_creation_flow.create_ticket_for_session()
+    needs a todolist_id, so this fills the gap once at provision time.
+
+    Idempotent: if a list named `list_name` already exists, returns its id.
+    Returns None on hard failure rather than raising (provisioning continues;
+    admin can fix manually).
+    """
+    # Step 1: find the todoset in the project's dock
+    ok, project = _bc_get(
+        f"https://3.basecampapi.com/{account_id}/projects/{project_id}.json",
+        bc_token,
+    )
+    if not ok or not isinstance(project, dict):
+        return None
+    todoset = next(
+        (d for d in (project.get("dock") or []) if d.get("name") == "todoset"),
+        None,
+    )
+    if not todoset:
+        return None
+
+    # Step 2: GET the todoset to find the todolists endpoint
+    ok, ts = _bc_get(todoset["url"], bc_token)
+    if not ok or not isinstance(ts, dict):
+        return None
+    todolists_url = ts.get("todolists_url")
+    if not todolists_url:
+        return None
+
+    # Step 3: list existing todolists. If one matching list_name exists, reuse.
+    ok, todolists = _bc_get(todolists_url, bc_token)
+    if ok and isinstance(todolists, list):
+        for tl in todolists:
+            if (tl.get("title") or tl.get("name") or "").strip().lower() == list_name.lower():
+                return tl.get("id")
+        if todolists:
+            # Fall back to the first existing list rather than create another
+            return todolists[0].get("id")
+
+    # Step 4: create the default list
+    ok, body = _bc_post(
+        todolists_url,
+        {"name": list_name, "description": (
+            "Default working list. Op 2 (mandatory ticket doctrine) "
+            "creates one todo here per Claude Code session."
+        )},
+        bc_token,
+    )
+    if not ok or not isinstance(body, dict):
+        return None
+    return body.get("id")

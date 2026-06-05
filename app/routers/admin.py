@@ -276,6 +276,8 @@ async def user_new(request: Request,
             )
             if bc_res.project_id:
                 new_user.personal_bc_project_id = str(bc_res.project_id)
+                if bc_res.todolist_id:
+                    new_user.personal_bc_todolist_id = str(bc_res.todolist_id)
                 tenancy.upsert_user(new_user)
                 # Refresh .claude/identity.txt in the workspace with the BC id
                 # so the SessionStart hook can anchor tickets correctly (Op 2).
