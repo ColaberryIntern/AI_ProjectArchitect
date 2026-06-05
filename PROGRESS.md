@@ -15,6 +15,25 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Op 1 SHIPPED + Op 2 v01 build — doctrine + 3 modules + preview CLI + review sent (2026-06-05)
+- [x] Op 1 v01 shipped (commit + push + auto-close + Op 0 parent status update); Op 2 v01 built and sent for review
+  - Date: 2026-06-05
+  - Session: CC-20260605-4w8q
+  - What changed: **Op 1 ship**: Ali approved the v01 review → committed `[Op 0 + Op 1 v01]` as `11bde86`, pushed to `origin/main`. Op 1 BC ticket (9967247766) auto-closed via Op 4 logic (confidence 0.92 ≥ 0.85): close-summary green-card comment posted (`9967340045`) then `POST /todos/{id}/completion.json` flipped status to completed. Op 0 parent (9967247739) received a `child_closed` status update showing 1 of 5 children done + tracking table for the remaining 4. **Op 2 v01 build**: 4 new files shipped (uncommitted, awaiting v01 approval). (1) `execution/products/library/session_state.py` — `SessionState` dataclass with `ActiveTicket` + `TicketBypass` (mutually exclusive), JSON serialization to `.claude/session-state.json`. (2) `execution/products/library/personal_bc_provisioner.py` — idempotent `provision_user_personal_bc()` that finds existing project by name before creating (returns action=`reused`|`created`|`failed`). v01 creates project but doesn't auto-grant user access (v02 follow-up — surfaced as open question #1). (3) `execution/products/library/ticket_creation_flow.py` — `classify_prompt()` returns one of 4 kinds (substantive / readonly / override_no_ticket / override_force) via regex routing + BC URL detection. `derive_proposed_title()` for the confirmation gate. `create_ticket_for_session()` + `fetch_existing_ticket()` for the actual BC API calls. (4) `docs/specs/operator-02-doctrine-text.md` — the exact section that lands in the org CLAUDE.md once Ali approves. (5) `scripts/operator_02_preview.py` — renders v01 HTML artifact running the actual `classify_prompt()` code against 3 example prompts + showing the resulting flows + 4 open questions for Ali.
+  - Verification: Op 1 commit `11bde86` on `origin/main`. BC ticket 9967247766 status: completed. Op 1 close-summary comment `9967340045`, Op 0 status comment `9967340089`, Op 2 build_started comment `9967340122`, Op 2 review_sent comment `9967367496`. Op 2 v01 preview render: 15,060 bytes → `tmp/operator-02-v01.html`. Mandrill Op 2 review email: `<b709f0ea-bd5a-9d8c-0e11-a4b4a6d94867@colaberry.com>` with `Attached: yes`. Em-dash sweep: 0 (pass). Ali Muwwakkil count: 3 (pass).
+  - Notes: 4 open questions in the Op 2 v01 artifact awaiting Ali's call: (1) personal BC project access auto-grant — v01 creates project but admin manually adds user; v02 closes the loop. (2) substantive-verb classifier list — ~30 verbs hardcoded; any to add/remove? (3) confirmation gate style — opt-in (current = always ask) vs opt-out (auto-create with derived title, user can edit). (4) BC todolist name within the personal project ("Claude Code Sessions" or default first list?). Op 2 files NOT committed yet — same pattern as Op 1: ship only after review approval. Op 3 + Op 4 are queued to start in parallel once Op 2 ships.
+
+| File | Change |
+|---|---|
+| Op 1 commit `11bde86` | SHIPPED — pushed to `origin/main` after Ali approval. (2026-06-05) |
+| Op 1 BC ticket 9967247766 | CLOSED — auto-close via confidence 0.92 ≥ 0.85 (Op 4 logic applied even before Op 4 ships). (2026-06-05) |
+| `execution/products/library/session_state.py` | NEW — `SessionState` + `ActiveTicket` + `TicketBypass` dataclasses; JSON serialization to `.claude/session-state.json`. Stdlib only. (2026-06-05) |
+| `execution/products/library/personal_bc_provisioner.py` | NEW — idempotent BC project creator. Find-by-name dedup. v01 creates project, admin manually grants user access (v02 closes loop). (2026-06-05) |
+| `execution/products/library/ticket_creation_flow.py` | NEW — `classify_prompt()` (substantive / readonly / override_no_ticket / override_force), `derive_proposed_title()`, `create_ticket_for_session()`, `fetch_existing_ticket()`. (2026-06-05) |
+| `docs/specs/operator-02-doctrine-text.md` | NEW — draft text that lands in the org CLAUDE.md once approved. Defines substantive vs read-only, session-start protocol, override flags, forbidden patterns. (2026-06-05) |
+| `scripts/operator_02_preview.py` | NEW — renders Op 2 v01 HTML artifact with 3 live-classified example flows + doctrine + code shipped table + 4 open questions. (2026-06-05) |
+| `tmp/operator-02-v01.html` | NEW — 15 KB v01 review artifact (gitignored). (2026-06-05) |
+
 ### Op 1 v01 build — scaffold module + 3-site KB scraper + preview CLI + review sent (2026-06-05)
 - [x] Built `execution/products/library/operator_scaffold.py` + `scripts/operator_scaffold_preview.py`; ran the preview CLI against the 3 colaberry.com sites + repo-root CLAUDE.md fallback; produced 40 KB HTML artifact; sent the v01 review email to all 3 of Ali's inboxes via Mandrill with the HTML attached; posted build_started and review_sent BC comments on the Op 1 ticket
   - Date: 2026-06-05
