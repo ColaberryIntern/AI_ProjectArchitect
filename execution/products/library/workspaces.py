@@ -135,8 +135,109 @@ class ProvisionResult:
     repo_url: str = ""
     repo_already_existed: bool = False
     invited_user: bool = False
+    seeded_files: int = 0
+    seed_errors: int = 0
     error: str = ""
     details: dict | None = None
+
+
+def _put_file_via_api(repo: str, path: str, content: str, message: str) -> dict:
+    """Write a single file to a GitHub repo via PUT /contents. Idempotent.
+
+    If the file exists, fetches its sha and updates in place. Otherwise creates.
+    Used by `seed_workspace_content()` to write Op 1 + Op 5 scaffolding into a
+    freshly-templated workspace repo without needing a local clone.
+    """
+    import base64
+    encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    sha: str | None = None
+    try:
+        existing = _gh_api("GET", f"/repos/{repo}/contents/{path}")
+        sha = existing.get("sha") if isinstance(existing, dict) else None
+    except Exception:
+        # File doesn't exist yet — that's fine, we'll create it
+        pass
+    payload: dict = {"message": message, "content": encoded}
+    if sha:
+        payload["sha"] = sha
+    return _gh_api("PUT", f"/repos/{repo}/contents/{path}", payload=payload)
+
+
+def _wait_for_repo_initialized(repo: str, max_attempts: int = 10, base_delay: float = 1.0) -> bool:
+    """Poll until the repo's default branch is reachable.
+
+    GitHub's `POST /repos/{template}/generate` returns ~immediately but the
+    initial commit may take a few seconds. Seeding files before the branch
+    exists returns 409. This function waits up to ~10s.
+    """
+    for attempt in range(max_attempts):
+        try:
+            r = _gh_api("GET", f"/repos/{repo}")
+            default_branch = r.get("default_branch", "main")
+            _gh_api("GET", f"/repos/{repo}/branches/{default_branch}")
+            return True
+        except Exception:
+            time.sleep(base_delay + attempt * 0.5)
+    return False
+
+
+def seed_workspace_content(user: tenancy.User, repo: str,
+                                          tenant_id: str | None = None) -> dict:
+    """Seed Op 1 + Op 5 scaffolding files into a freshly-templated workspace repo.
+
+    Implements docs/specs/operator-01-per-user-scaffold.md acceptance criterion #6
+    ("Both files are auto-seeded at workspace creation").
+
+    Files written:
+      - CLAUDE.md (per-user, Layer 4 of the 5-layer assembled context)
+      - PROGRESS.md (per-user work log)
+      - OPERATOR_MEMORY.md (Layer 5, learned memory; Op 5)
+      - .claude/colaberry/.gitkeep (placeholder for auto-fetched Layer 1+2)
+      - .claude/tenant/.gitkeep (placeholder for optional Layer 3)
+      - .claude/README.md (explains the layered context to the operator)
+
+    Idempotent: re-running updates existing files in place (uses sha).
+    Returns {written: [...], errors: [{path, error}, ...]}.
+    """
+    # Lazy imports to keep workspaces.py loadable even if operator_scaffold/memory
+    # are absent (defensive — Op 1 and Op 5 ship together with this code)
+    from execution.products.library import operator_scaffold, operator_memory
+
+    files: dict[str, str] = {
+        "CLAUDE.md": operator_scaffold.render_starter_claude_md(
+            user.email, user.display_name, tenant_id),
+        "PROGRESS.md": operator_scaffold.render_starter_progress_md(
+            user.email, user.display_name),
+        "OPERATOR_MEMORY.md": operator_memory.render_starter_operator_memory(
+            user.email, user.display_name),
+        ".claude/colaberry/.gitkeep": "",
+        ".claude/tenant/.gitkeep": "",
+        ".claude/README.md": (
+            "# .claude/ — Colaberry-managed scaffolding\n\n"
+            "- `colaberry/CLAUDE.md` (1h TTL) — the org doctrine, fetched from "
+            "`https://raw.githubusercontent.com/ColaberryIntern/AI_ProjectArchitect/main/CLAUDE.md`.\n"
+            "- `colaberry/knowledge/*.md` (24h TTL) — scraped from "
+            "www.colaberry.com + www.colaberry.ai + www.enterprise.colaberry.com.\n"
+            "- `tenant/CLAUDE.md` — optional tenant-specific policy.\n\n"
+            "Do not hand-edit files under `colaberry/` — they are auto-refreshed.\n"
+            "Edit `tenant/CLAUDE.md` if you are a tenant admin.\n"
+            "Edit `../CLAUDE.md` (the per-user file in the workspace root) "
+            "for your own preferences.\n"
+        ),
+    }
+
+    manifest: dict = {"written": [], "errors": []}
+    for path, content in files.items():
+        try:
+            _put_file_via_api(repo, path, content,
+                                  f"Seed {path} via Op 1 scaffold")
+            manifest["written"].append(path)
+        except Exception as e:
+            manifest["errors"].append({
+                "path": path,
+                "error": f"{type(e).__name__}: {e}",
+            })
+    return manifest
 
 
 def repo_exists(repo: str) -> bool:
@@ -217,6 +318,34 @@ def provision_user_workspace(user: tenancy.User,
                       details={"gh_handle": gh_handle},
                       error=str(e)[:200])
 
+        # 4. Seed Op 1 + Op 5 scaffolding into the new repo
+        # Wait for the template-generate to settle (GitHub creates the repo
+        # synchronously but the initial commit can lag a few seconds).
+        # Then render the per-user files and write them via the Contents API.
+        # Best-effort: a seed failure is logged but doesn't fail the whole
+        # provisioning (admin can re-run later via a separate endpoint).
+        if not result.repo_already_existed:
+            try:
+                if _wait_for_repo_initialized(repo):
+                    tenant_id = getattr(user, "tenant_id", None)
+                    seed_manifest = seed_workspace_content(user, repo, tenant_id=tenant_id)
+                    result.seeded_files = len(seed_manifest["written"])
+                    result.seed_errors = len(seed_manifest["errors"])
+                    _audit(admin_actor_id, user.user_id, "seed_workspace_content",
+                              repo=repo,
+                              details={
+                                  "written": seed_manifest["written"],
+                                  "errors": seed_manifest["errors"],
+                              })
+                else:
+                    _audit(admin_actor_id, user.user_id, "seed_workspace_timeout",
+                              repo=repo,
+                              error="repo not initialized after 10 attempts")
+            except Exception as e:
+                _audit(admin_actor_id, user.user_id, "seed_workspace_failed",
+                          repo=repo,
+                          error=f"{type(e).__name__}: {str(e)[:200]}")
+
         result.ok = True
         return _result_dict(result)
 
@@ -231,7 +360,10 @@ def _result_dict(r: ProvisionResult) -> dict:
     return {
         "ok": r.ok, "repo_url": r.repo_url,
         "repo_already_existed": r.repo_already_existed,
-        "invited_user": r.invited_user, "error": r.error,
+        "invited_user": r.invited_user,
+        "seeded_files": r.seeded_files,
+        "seed_errors": r.seed_errors,
+        "error": r.error,
     }
 
 

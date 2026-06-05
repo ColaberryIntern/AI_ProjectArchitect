@@ -20,6 +20,7 @@ super-admin (a Colaberry-tenant user with `admin` role).
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -258,6 +259,37 @@ async def user_new(request: Request,
         except Exception as e:
             _audit(admin.user_id, "workspace.provision_failed",
                       target=new_user.user_id, notes=f"{type(e).__name__}: {e}")
+
+    # Op 2 — Provision the user's personal Basecamp project unconditionally.
+    # Best-effort: a BC API failure logs + continues rather than failing user creation.
+    # Idempotent — find_personal_project() reuses an existing project by name.
+    try:
+        from execution.products.library import personal_bc_provisioner
+        bc_token = os.environ.get("BASECAMP_ACCESS_TOKEN", "").strip()
+        bc_account_id = os.environ.get("BASECAMP_ACCOUNT_ID", "").strip()
+        if bc_token and bc_account_id:
+            bc_res = personal_bc_provisioner.provision_user_personal_bc(
+                user_email=new_user.email,
+                display_name=new_user.display_name,
+                account_id=bc_account_id,
+                bc_token=bc_token,
+            )
+            if bc_res.project_id:
+                new_user.personal_bc_project_id = str(bc_res.project_id)
+                tenancy.upsert_user(new_user)
+            _audit(admin.user_id, "bc.personal_project.provision",
+                      target=new_user.user_id,
+                      notes=(f"action={bc_res.action} "
+                                 f"project_id={bc_res.project_id} "
+                                 f"name={bc_res.name!r} "
+                                 f"error={bc_res.error!r}")[:300])
+        else:
+            _audit(admin.user_id, "bc.personal_project.skipped",
+                      target=new_user.user_id,
+                      notes="BASECAMP_ACCESS_TOKEN or BASECAMP_ACCOUNT_ID not set")
+    except Exception as e:
+        _audit(admin.user_id, "bc.personal_project.failed",
+                  target=new_user.user_id, notes=f"{type(e).__name__}: {e}")
 
     return RedirectResponse(url=f"/admin/users/{new_user.user_id}", status_code=303)
 
