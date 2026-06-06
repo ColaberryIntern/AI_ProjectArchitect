@@ -95,7 +95,27 @@
     letter-spacing: 0.08em; color: var(--fg-subtle);
     margin: var(--space-4) var(--space-3) var(--space-2);
     font-weight: 600;
+    /* button reset so it looks identical to the prior div header */
+    background: transparent; border: 0; padding: 0;
+    width: calc(100% - 2 * var(--space-3));
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; text-align: left;
+    font-family: inherit;
   }
+  .lib-sidebar .group-label:hover { color: var(--fg-default, #1f2328); }
+  .lib-sidebar .group-label:focus-visible {
+    outline: 2px solid var(--accent-blue, #0969da); outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .lib-sidebar .group-chevron {
+    display: inline-block; font-size: 9px; width: 12px;
+    transition: transform 0.15s ease;
+    color: var(--fg-subtle);
+  }
+  .lib-sidebar .group-label[aria-expanded="false"] .group-chevron {
+    transform: rotate(-90deg);
+  }
+  .lib-sidebar .group-items[hidden] { display: none; }
   .lib-sidebar .nav-icon {
     display: inline-block; width: 22px; text-align: center; margin-right: 4px;
   }
@@ -437,7 +457,10 @@
       <span class="nav-icon">🔍</span> Search
     </a>
 
-    <div class="group-label">📦 Reusable assets</div>
+    <button type="button" class="group-label" data-group="reusable" aria-expanded="true">
+      <span class="group-chevron">▾</span><span class="group-text">📦 Reusable assets</span>
+    </button>
+    <div class="group-items" data-group-items="reusable">
     {% for k, label, emoji in [
       ('skills', 'Skills', '🛠️'),
       ('agents', 'Agents', '🤖'),
@@ -451,8 +474,12 @@
       {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
     </a>
     {% endfor %}
+    </div>
 
-    <div class="group-label">⚙️ Operations</div>
+    <button type="button" class="group-label" data-group="operations" aria-expanded="false">
+      <span class="group-chevron">▾</span><span class="group-text">⚙️ Operations</span>
+    </button>
+    <div class="group-items" data-group-items="operations">
     {% for k, label, emoji in [
       ('workflows', 'Workflows', '🎼'),
       ('projections', 'Projections', '📊'),
@@ -464,8 +491,12 @@
       {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
     </a>
     {% endfor %}
+    </div>
 
-    <div class="group-label">🏛️ Governance</div>
+    <button type="button" class="group-label" data-group="governance" aria-expanded="false">
+      <span class="group-chevron">▾</span><span class="group-text">🏛️ Governance</span>
+    </button>
+    <div class="group-items" data-group-items="governance">
     {% for k, label, emoji in [
       ('policies', 'Policies', '📜'),
       ('governance', 'Scorecards', '🏛️'),
@@ -478,8 +509,12 @@
       {% if (counts|default({})).get(k) is not none %}<span class="nav-count">{{ counts[k] }}</span>{% endif %}
     </a>
     {% endfor %}
+    </div>
 
-    <div class="group-label">🔧 Admin</div>
+    <button type="button" class="group-label" data-group="admin" aria-expanded="false">
+      <span class="group-chevron">▾</span><span class="group-text">🔧 Admin</span>
+    </button>
+    <div class="group-items" data-group-items="admin">
     <a href="/library/ingest?ws={{ workspace|default('global') }}" {% if library_nav_active == 'ingest' %}class="active"{% endif %}>
       <span class="nav-icon">🌐</span>Ingest
     </a>
@@ -489,6 +524,7 @@
     <a href="/library/candidates?ws={{ workspace|default('global') }}" {% if library_nav_active == 'candidates' %}class="active"{% endif %}>
       <span class="nav-icon">🔍</span>Candidates
     </a>
+    </div>
   </aside>
 
   <!-- Main content -->
@@ -510,6 +546,47 @@ document.addEventListener('keydown', (e) => {
     document.querySelector('.lib-search input')?.focus();
   }
 });
+
+// ── Sidebar group collapse/expand ──────────────────────────────────
+// Default: Reusable assets open, Operations/Governance/Admin closed.
+// User toggles persist in localStorage. If the currently-active nav
+// item is inside a closed group, force-open that group for this view
+// without persisting (so the user always sees their context).
+(function () {
+  var LS_PREFIX = 'lib-sidebar-group:';
+  var buttons = document.querySelectorAll('.lib-sidebar .group-label[data-group]');
+
+  function applyState(btn, open) {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var name = btn.dataset.group;
+    var panel = document.querySelector(
+      '.lib-sidebar .group-items[data-group-items="' + name + '"]'
+    );
+    if (panel) { panel.hidden = !open; }
+  }
+
+  buttons.forEach(function (btn) {
+    var name = btn.dataset.group;
+    var defaultOpen = btn.getAttribute('aria-expanded') === 'true';
+    var stored = null;
+    try { stored = localStorage.getItem(LS_PREFIX + name); } catch (e) {}
+    var open = stored === null ? defaultOpen : stored === 'open';
+
+    // If the active nav item is inside this group, force-open it.
+    var panel = document.querySelector(
+      '.lib-sidebar .group-items[data-group-items="' + name + '"]'
+    );
+    if (panel && panel.querySelector('a.active')) { open = true; }
+
+    applyState(btn, open);
+
+    btn.addEventListener('click', function () {
+      var nowOpen = btn.getAttribute('aria-expanded') !== 'true';
+      applyState(btn, nowOpen);
+      try { localStorage.setItem(LS_PREFIX + name, nowOpen ? 'open' : 'closed'); } catch (e) {}
+    });
+  });
+})();
 
 // ── Live search filter (only when input has data-live-filter) ─────
 (function() {
