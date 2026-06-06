@@ -1310,6 +1310,218 @@ def _tool_recategorize_session(user, args: dict) -> dict:
     }
 
 
+def _tool_save_doc_to_bc(user, args: dict) -> dict:
+    """Save a writeup (markdown or HTML) as a Basecamp Document in a
+    project's Docs & Files vault, then link it from a ticket.
+
+    Why this exists: anything Claude produces that another Claude session
+    in a DIFFERENT project might need to reference must live at a stable
+    URL, not on the operator's laptop. BC Docs & Files is that home.
+    The returned `doc_url` is what gets stored anywhere we'd otherwise
+    have written a local file path.
+
+    Flow:
+      1. Find the project's vault via /projects/{id}.json dock.
+      2. POST /buckets/{bid}/vaults/{vid}/documents.json with the title +
+         content (BC wants HTML; markdown is converted minimally).
+      3. If `ticket_id` is supplied, post a small comment on that ticket
+         linking to the new doc so the writeup is discoverable from the
+         session anchor.
+
+    Returns: { ok, doc_id, doc_url, ticket_url, attached_to_ticket }.
+    """
+    title = (args.get("title") or "").strip()
+    content = args.get("content") or ""
+    if not title or not content:
+        return {"ok": False, "error": "title and content required"}
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        anchor = _resolve_default_anchor(user)
+        bc_project_id = anchor.get("bc_project_id") or 0
+        if not bc_project_id:
+            return {"ok": False, "error": "bc_project_id required and no personal anchor configured"}
+    ticket_id = args.get("ticket_id") or 0
+    try:
+        ticket_id = int(ticket_id) if ticket_id else 0
+    except (TypeError, ValueError):
+        ticket_id = 0
+
+    # Minimal markdown-to-html for the common case: paragraphs separated
+    # by blank lines + code fences. Real markdown rendering would be
+    # nicer but BC's WYSIWYG handles plain text + <p> well enough.
+    is_html = bool(args.get("is_html"))
+    if is_html:
+        body_html = content
+    else:
+        body_html = _md_to_basecamp_html(content)
+
+    # Step 1: get project to find vault id.
+    try:
+        proj = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/projects/{bc_project_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "project_unreachable", "detail": str(e)[:200]}
+    vault_url = ""
+    for dock in proj.get("dock", []) or []:
+        if dock.get("name") == "vault":
+            vault_url = dock.get("url") or ""
+            break
+    if not vault_url:
+        return {"ok": False, "error": "project_has_no_vault"}
+
+    # Step 2: get the vault, then POST documents to its documents_url.
+    try:
+        vault = _bc_request("GET", vault_url, user=user)
+        documents_url = vault.get("documents_url") or ""
+        if not documents_url:
+            return {"ok": False, "error": "vault_missing_documents_url"}
+        attribution = (
+            f"<p><em>Written by {getattr(user, 'display_name', '') or getattr(user, 'email', '')}'s Claude Code"
+            f"{' (anchored to BC#' + str(ticket_id) + ')' if ticket_id else ''}.</em></p>\n"
+        )
+        doc = _bc_request(
+            "POST", documents_url,
+            payload={"title": title,
+                            "content": attribution + body_html,
+                            "status": "active"},
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "create_doc_failed", "detail": str(e)[:200]}
+
+    doc_id = doc.get("id")
+    doc_url = doc.get("app_url") or ""
+
+    # Step 3: optional ticket attachment via a linking comment.
+    attached_to_ticket = False
+    ticket_url = ""
+    if ticket_id and doc_url:
+        try:
+            comment_body = (
+                f"<p>📎 Writeup saved to <a href=\"{doc_url}\">"
+                f"{title}</a> in Docs &amp; Files. "
+                f"<em>(cross-project portable -- any Claude session "
+                f"with access to this BC project can read it.)</em></p>"
+            )
+            _bc_request(
+                "POST",
+                f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/recordings/{ticket_id}/comments.json",
+                payload={"content": _with_attribution(user, comment_body)},
+                user=user,
+            )
+            attached_to_ticket = True
+            ticket_url = f"https://3.basecamp.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}"
+        except RuntimeError:
+            # Best-effort linking; the doc itself is the source of truth.
+            attached_to_ticket = False
+
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "doc_url": doc_url,
+        "bc_project_id": bc_project_id,
+        "ticket_id": ticket_id or None,
+        "ticket_url": ticket_url or None,
+        "attached_to_ticket": attached_to_ticket,
+        "guidance": (
+            "Use doc_url as the canonical reference anywhere you'd "
+            "otherwise have written a local file path. Other Claude "
+            "sessions in OTHER projects can fetch the doc's content "
+            "via the BC API as long as the operator has BC access."
+        ),
+    }
+
+
+def _md_to_basecamp_html(md: str) -> str:
+    """Tiny, dependency-free markdown -> HTML conversion just enough for
+    BC's Trix editor. Handles paragraphs, code fences, inline code, bold,
+    and bare URLs. NOT a full markdown parser -- it's "good enough so the
+    writeup renders cleanly in BC".
+    """
+    import re
+    lines = md.replace("\r", "").split("\n")
+    out_parts: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Code fence
+        if line.strip().startswith("```"):
+            j = i + 1
+            block = []
+            while j < len(lines) and not lines[j].strip().startswith("```"):
+                block.append(lines[j])
+                j += 1
+            out_parts.append("<pre>" + "\n".join(block).replace("<", "&lt;").replace(">", "&gt;") + "</pre>")
+            i = j + 1
+            continue
+        # Header
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            level = len(m.group(1))
+            out_parts.append(f"<h{level}>{m.group(2)}</h{level}>")
+            i += 1
+            continue
+        # Blank line ends a paragraph; let next iteration start fresh.
+        if not line.strip():
+            i += 1
+            continue
+        # Gather a paragraph until next blank line or fence.
+        para = [line]
+        i += 1
+        while (i < len(lines) and lines[i].strip()
+                       and not lines[i].strip().startswith("```")
+                       and not re.match(r"^#{1,6}\s+", lines[i])):
+            para.append(lines[i])
+            i += 1
+        text = " ".join(para)
+        # Inline: **bold**, `code`, bare URLs
+        text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+        text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+        text = re.sub(r"(https?://\S+)", r'<a href="\1">\1</a>', text)
+        out_parts.append(f"<p>{text}</p>")
+    return "\n".join(out_parts)
+
+
+TOOLS.append(Tool(
+    name="colaberry_save_doc_to_bc",
+    description=(
+        "Save a writeup (a markdown document, code snippet, plan, asset "
+        "draft, etc.) as a Basecamp Document in a project's Docs & Files "
+        "vault, optionally linking it from a ticket. RETURNS A STABLE BC "
+        "URL that any other Claude session can read -- this is the "
+        "REQUIRED home for any artifact bigger than a paragraph that "
+        "needs to be referenced cross-project. Do NOT write writeups to "
+        "local files -- they aren't portable across projects. Pass "
+        "is_html=true if your content is already HTML; otherwise lightweight "
+        "markdown (headers, paragraphs, code fences, bold, bare URLs) is "
+        "auto-converted."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string",
+                              "description": "Short, descriptive doc title (shown in Docs & Files)."},
+            "content": {"type": "string",
+                                  "description": "The writeup body. Plain markdown is auto-converted; pass is_html=true for raw HTML."},
+            "bc_project_id": {"type": "integer",
+                                          "description": "Project to save under. Defaults to the operator's personal project."},
+            "ticket_id": {"type": "integer",
+                                  "description": "Optional. When supplied, a comment is posted on that ticket linking to the new doc."},
+            "is_html": {"type": "boolean",
+                                "description": "Optional. True if `content` is already HTML; false (default) treats it as markdown."},
+        },
+        "required": ["title", "content"],
+    },
+    handler=_tool_save_doc_to_bc,
+))
+
+
 TOOLS.append(Tool(
     name="colaberry_categorize_session",
     description=(

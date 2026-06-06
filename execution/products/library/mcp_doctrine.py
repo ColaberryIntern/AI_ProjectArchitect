@@ -225,6 +225,52 @@ hidden HTML comment with the full rationale (matched keywords,
 alternatives considered, history hits). When team members ask 'why is
 this in <list>?', read the receipt back from the ticket -- you don't
 need to re-run the categorizer.
+
+## 9. Cross-project portability: writeups live in BC, NOT on disk
+
+Any substantive artifact you produce -- a writeup, an asset draft, a
+plan, a code snippet that's longer than a few lines, a meeting summary,
+a design doc, anything bigger than a paragraph -- MUST be saved to
+Basecamp's Docs & Files via `colaberry_save_doc_to_bc`, NOT to a
+local file on the operator's laptop or to a project-specific repo file.
+
+Why: a Claude session in a DIFFERENT project (the operator working in
+their `~/dev/some-other-thing/` workspace tomorrow) cannot see files
+that live on the operator's laptop or in this project's repo. But it
+CAN see Basecamp documents, because BC is the operator's shared
+substrate -- accessed through the same MCP server from any session,
+any laptop, any project.
+
+When to call `colaberry_save_doc_to_bc`:
+
+  a. After producing a writeup the operator might reference later
+     (sales SOW draft, design doc, status report, meeting notes).
+  b. When the user says "save this" / "document this" / "write this up
+     for me" / "I want to come back to this".
+  c. When the artifact you're producing is too long to fit cleanly
+     into a ticket description or `colaberry_remember` (typically >
+     ~500 words or contains code blocks / structured tables).
+  d. Whenever you'd be tempted to write to a local file path -- check
+     yourself: is this something the operator might need to access
+     from another project? If yes, BC Docs. If no (it's truly local
+     to this codebase), then yes, local file is fine.
+
+Always pass `ticket_id` when you have a session anchor open so the
+writeup is linked from the ticket -- the operator (and team members)
+discover docs by browsing tickets, not by browsing the Vault.
+
+After saving, mention the `doc_url` in your reply ("Saved as 'X' in
+the project's Docs & Files: <url>") so the user has the link in chat
+context too.
+
+If the user asks for the content of a doc, fetch it from BC via the
+BC API (the doc_url is a stable URL inside the project). Don't keep
+local copies of these docs -- BC is the source of truth.
+
+`colaberry_remember` remains the right call for short, durable
+operator-memory facts ("Ali prefers X", "we use the Y convention").
+BC Docs is for longer artifacts that other people / projects need
+to see, not for personal-memory snippets.
 """
 
 
