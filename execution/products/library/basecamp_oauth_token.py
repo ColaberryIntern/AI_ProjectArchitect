@@ -92,11 +92,20 @@ def _client_credentials() -> tuple[str, str]:
 
 
 def _read_stored_grant(user) -> Optional[dict]:
-    """Raw vault read. Returns the wrapped dict, or None when absent.
+    """Raw vault read. Returns the wrapped dict, or None when absent or
+    unreadable.
 
     Legacy bare-string entries (single access_token, no refresh) are
-    treated as legacy and returned as a partial dict so callers can
-    surface a clear "needs OAuth re-grant" error.
+    returned as a partial dict so callers can surface a clear "needs
+    OAuth re-grant" error.
+
+    This function is on the page-render hot path (called by
+    get_grant_metadata) so it MUST NOT raise. Any vault-side failure
+    (missing row, non-active status, decryption error, missing vault
+    file in fresh deploys) becomes None so the landing page can render
+    a "Not connected yet" state instead of crashing. The exchange path
+    (get_access_token_for_operator) maps None to a clean
+    'no_basecamp_oauth_grant' OAuthError.
     """
     try:
         stored = vault.read_secret(
@@ -107,10 +116,13 @@ def _read_stored_grant(user) -> Optional[dict]:
         )
     except KeyError:
         return None
+    except PermissionError:
+        return None
     except Exception as e:
-        logger.warning("vault read failed for user=%s tool=%s err_type=%s",
+        logger.warning("vault read returned an unexpected error for user=%s "
+                       "tool=%s err_type=%s -- treating as no grant",
                        user.user_id, VAULT_TOOL_NAME, type(e).__name__)
-        raise OAuthError("vault_read_failed", "could not read stored credential")
+        return None
 
     if not stored:
         return None
