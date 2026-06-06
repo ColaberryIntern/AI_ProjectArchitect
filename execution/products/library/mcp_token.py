@@ -136,6 +136,35 @@ def revoke_all_for_user(user_id_or_email: str) -> tenancy.User | None:
     return user
 
 
+def revoke_unidentified_for_user(user_id_or_email: str) -> tuple[tenancy.User | None, int]:
+    """Revoke only the tokens whose device never reported a hostname.
+
+    Hostname is the strongest "which physical computer is this?" signal. A
+    device with no hostname is either:
+      - never installed (awaiting ping, label only)
+      - installed with the old command that didn't embed X-MCP-Hostname
+    Either way, the row is unidentifiable to a human scanning the table.
+    Cleaner to revoke + re-install with the hostname-capturing flow.
+
+    Returns (user, count_revoked).
+    """
+    user = tenancy.get_user(user_id_or_email)
+    if not user:
+        return None, 0
+    _migrate_legacy(user)
+    now = _now()
+    count = 0
+    for t in (user.mcp_tokens or []):
+        if t.get("revoked_at"):
+            continue
+        if not t.get("hostname"):
+            t["revoked_at"] = now
+            count += 1
+    if count:
+        tenancy.upsert_user(user)
+    return user, count
+
+
 # ── Validate ──────────────────────────────────────────────────────────
 
 

@@ -400,6 +400,24 @@ async def mcp_revoke(request: Request, label: str = Form("")):
     })
 
 
+@router.post("/profile/mcp-revoke-unidentified")
+async def mcp_revoke_unidentified(request: Request):
+    """Revoke tokens for devices that never reported a hostname.
+
+    Cleans up half-finished installs + older pre-hostname-capture entries
+    without nuking devices that ARE clearly identified.
+    """
+    user = _require_web_user(request)
+    _, count = mcp_token.revoke_unidentified_for_user(user.user_id)
+    refreshed = tenancy.get_user(user.user_id)
+    return JSONResponse({
+        "ok": True,
+        "revoked_count": count,
+        "status": mcp_token.status_for_user(refreshed),
+        "devices": mcp_token.list_devices(refreshed),
+    })
+
+
 @router.get("/profile/mcp-status.json")
 async def mcp_status_json(request: Request):
     """Polled by the setup page (every ~2s) to detect first ping in real time.

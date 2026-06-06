@@ -184,6 +184,12 @@
       <div style="display: flex; gap: 8px;">
         <button class="mcp-btn" onclick="promptAddDevice()" style="padding: 6px 14px; font-size: 12px;">+ Add this device</button>
         {% if devices %}
+        {% set unidentified_count = devices|rejectattr('hostname')|rejectattr('status', 'equalto', 'revoked')|list|length %}
+        {% if unidentified_count > 0 %}
+        <button class="mcp-btn mcp-btn-quiet" onclick="revokeUnidentified()" style="padding: 6px 14px; font-size: 12px; border-color: #d4a72c; color: #8a5a00;">
+          Revoke unidentified ({{ unidentified_count }})
+        </button>
+        {% endif %}
         <button class="mcp-btn mcp-btn-danger" onclick="revokeAll()" style="padding: 6px 14px; font-size: 12px;">🗑️ Revoke all + start fresh</button>
         {% endif %}
       </div>
@@ -496,6 +502,26 @@ async function revokeDevice(label) {
   if (!j.ok) { alert('Revoke failed'); return; }
   rebuildDeviceTable(j.devices || []);
   setStatus(j.status || 'red', 'Revoked "' + label + '".');
+}
+
+// Targeted cleanup: revoke ONLY the devices that never reported a hostname.
+// Keeps the identifiable rows intact (the ones with hostname captured), kills
+// the mystery rows + half-finished installs. Less destructive than revokeAll.
+async function revokeUnidentified() {
+  if (!confirm(
+    'Revoke devices that never reported a hostname?\n\n' +
+    'These rows are unidentifiable -- either never-installed (awaiting ping) or installed before hostname capture went live.\n\n' +
+    'Devices WITH a captured hostname stay untouched.\n\n' +
+    'Affected laptops (if any) will need to re-install. Continue?'
+  )) return;
+  const r = await fetch('/profile/mcp-revoke-unidentified', { method: 'POST' });
+  const j = await r.json();
+  if (!j.ok) { alert('Revoke failed'); return; }
+  rebuildDeviceTable(j.devices || []);
+  setStatus(j.status || 'red', 'Revoked ' + (j.revoked_count || 0) + ' unidentified device(s).');
+  if ((j.revoked_count || 0) === 0) {
+    alert('Nothing to revoke -- every active device already has a hostname.');
+  }
 }
 
 // Nuclear option: revoke EVERY active token. After this, the user re-installs
