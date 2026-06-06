@@ -344,12 +344,19 @@ def _tool_list_project_todolists(user, args: dict) -> dict:
 
 
 def _tool_create_ticket(user, args: dict) -> dict:
-    """Create a BC todo. Defaults to the user's personal project + todolist when
-    bc_project_id/list_id aren't supplied -- the common case for "create my
-    session anchor". When the user is working on an existing project (per the
-    project's .colaberry.json or an explicit reference) Claude passes the
-    actual project's ids.
+    """Create a BC todo. Defaults to the user's personal project + a
+    categorized todolist when bc_project_id/list_id aren't supplied --
+    the common case for "create my session anchor". When the user is
+    working on an existing project (per the project's .colaberry.json
+    or an explicit reference) Claude passes the actual project's ids.
+
+    Auto-categorization fires when the project is the operator's personal
+    project AND no todolist_id was supplied. The category receipt is
+    appended to the ticket body so 'why is this here?' is answerable
+    by reading the ticket source.
     """
+    from . import session_categorizer
+
     title = (args.get("title") or "").strip()
     description = (args.get("description") or "").strip()
     bc_project_id = args.get("bc_project_id")
@@ -360,6 +367,70 @@ def _tool_create_ticket(user, args: dict) -> dict:
         anchor = _resolve_default_anchor(user)
         bc_project_id = bc_project_id or anchor["bc_project_id"]
         todolist_id = todolist_id or anchor["todolist_id"]
+
+    # Auto-categorize when filing into the personal project without an
+    # explicit list. Skip categorization when the caller passed an
+    # explicit todolist_id (they know where they want it).
+    categorization_result = None
+    user_personal_pid = getattr(user, "personal_bc_project_id", None)
+    is_personal = (user_personal_pid
+                              and str(bc_project_id) == str(user_personal_pid))
+    explicit_list = bool(args.get("todolist_id") or args.get("list_id"))
+    if is_personal and not explicit_list and bc_project_id:
+        snippet = (args.get("session_snippet") or description or "")[:1000]
+        cat_result = _tool_categorize_session(user, {
+            "session_title": title,
+            "session_snippet": snippet,
+            "bc_project_id": int(bc_project_id),
+        })
+        if cat_result.get("ok") and cat_result.get("chosen_list_id"):
+            if cat_result.get("should_ask_user"):
+                # Confidence too low. Return the alternatives + a
+                # suggested new list name so Claude can ask the user
+                # which list to use, instead of silently filing under
+                # a low-confidence guess.
+                return {
+                    "ok": False,
+                    "error": "categorization_low_confidence",
+                    "needs_user_input": True,
+                    "chosen_list_id": cat_result.get("chosen_list_id"),
+                    "chosen_list_name": cat_result.get("chosen_list_name"),
+                    "confidence": cat_result.get("confidence"),
+                    "rationale": cat_result.get("rationale"),
+                    "alternatives": cat_result.get("alternatives", []),
+                    "suggest_new_list_name": cat_result.get("suggest_new_list_name", ""),
+                    "remediation": (
+                        f"My best guess was '{cat_result.get('chosen_list_name')}' "
+                        f"(confidence {int((cat_result.get('confidence') or 0) * 100)}%). "
+                        f"Other options I considered: "
+                        f"{', '.join(a['name'] for a in cat_result.get('alternatives', [])[:3])}. "
+                        f"Ask the user which list to use, or whether to "
+                        f"create a new one. To proceed, call create_ticket "
+                        f"again with an explicit todolist_id, OR call "
+                        f"colaberry_create_todolist first to make a new "
+                        f"category and then create_ticket against it."
+                    ),
+                }
+            # High-enough confidence: use the chosen list + remember the
+            # receipt so we can append it to the body.
+            todolist_id = cat_result["chosen_list_id"]
+            categorization_result = session_categorizer.CategorizationResult(
+                chosen_list_id=cat_result["chosen_list_id"],
+                chosen_list_name=cat_result["chosen_list_name"],
+                confidence=cat_result["confidence"],
+                rationale=cat_result["rationale"],
+                matched_tokens=cat_result.get("matched_tokens", []),
+                history_hits=cat_result.get("history_hits", 0),
+                alternatives=cat_result.get("alternatives", []),
+                should_ask_user=False,
+            )
+
+    # If categorization decided where to file, prepend the transparency
+    # block to the description so readers (and Claude in any future
+    # session) can see the rationale without round-tripping to the log.
+    if categorization_result and categorization_result.chosen_list_name:
+        receipt = session_categorizer.render_transparency_block(categorization_result)
+        description = receipt + description if description else receipt
     if not bc_project_id or not todolist_id:
         return {"ok": False,
                 "error": "anchor_not_set",
@@ -1019,6 +1090,300 @@ def _tool_get_asset(user, args: dict) -> dict:
                 "asset_id": asset_id, "category": category,
                 "owning_company_id": owning}
     return {"ok": True, "asset": asdict(meta)}
+
+
+def _tool_categorize_session(user, args: dict) -> dict:
+    """Pick which todolist in a Basecamp project a new session anchor
+    should be filed under, based on the session title + snippet.
+
+    Returns the full categorization receipt (chosen list, confidence,
+    rationale, alternatives, should_ask_user flag). The caller
+    (typically create_ticket internally, or Claude explicitly) uses
+    `should_ask_user` to decide whether to pause and confirm.
+    """
+    from . import session_categorizer
+
+    session_title = (args.get("session_title") or "").strip()
+    session_snippet = (args.get("session_snippet") or "").strip()
+    if not session_title and not session_snippet:
+        return {"ok": False, "error": "session_title or session_snippet required"}
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        # Default to the user's personal project when not supplied.
+        anchor = _resolve_default_anchor(user)
+        bc_project_id = anchor.get("bc_project_id") or 0
+        if not bc_project_id:
+            return {"ok": False, "error": "bc_project_id required and no personal anchor configured"}
+
+    # Fetch candidate lists by reusing the same code path we just shipped.
+    lists_result = _tool_list_project_todolists(
+        user, {"bc_project_id": bc_project_id},
+    )
+    if not lists_result.get("ok"):
+        return {"ok": False,
+                "error": "could_not_load_lists",
+                "detail": lists_result.get("error", "")}
+
+    result = session_categorizer.categorize(
+        session_title=session_title,
+        session_snippet=session_snippet,
+        candidate_lists=lists_result.get("todolists", []),
+        user_email=getattr(user, "email", "") or "",
+    )
+    # Log the categorization decision for future "why?" answers and as
+    # training data for the v2 LLM categorizer.
+    session_categorizer.log_decision(
+        getattr(user, "email", "") or "",
+        session_title=session_title,
+        result=result,
+        bc_project_id=bc_project_id,
+    )
+
+    return {
+        "ok": True,
+        "bc_project_id": bc_project_id,
+        "chosen_list_id": result.chosen_list_id,
+        "chosen_list_name": result.chosen_list_name,
+        "confidence": result.confidence,
+        "rationale": result.rationale,
+        "matched_tokens": result.matched_tokens,
+        "history_hits": result.history_hits,
+        "alternatives": result.alternatives,
+        "should_ask_user": result.should_ask_user,
+        "suggest_new_list_name": result.suggest_new_list_name,
+    }
+
+
+def _tool_create_todolist(user, args: dict) -> dict:
+    """Create a new todolist (category) in a Basecamp project. Use this
+    when colaberry_categorize_session returns suggest_new_list_name OR
+    when the user explicitly says 'create a list called X'.
+    """
+    name = (args.get("name") or "").strip()
+    description = (args.get("description") or "").strip()
+    if not name:
+        return {"ok": False, "error": "name required"}
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        anchor = _resolve_default_anchor(user)
+        bc_project_id = anchor.get("bc_project_id") or 0
+        if not bc_project_id:
+            return {"ok": False, "error": "bc_project_id required and no personal anchor configured"}
+
+    # Need the project's todoset id to know where to POST the new list.
+    try:
+        proj = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/projects/{bc_project_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "project_unreachable", "detail": str(e)[:200]}
+    todoset_url = ""
+    for dock in proj.get("dock", []) or []:
+        if dock.get("name") == "todoset":
+            todoset_url = dock.get("url") or ""
+            break
+    if not todoset_url:
+        return {"ok": False, "error": "project_has_no_todoset"}
+    try:
+        ts = _bc_request("GET", todoset_url, user=user)
+        todolists_url = ts.get("todolists_url") or ""
+        if not todolists_url:
+            return {"ok": False, "error": "todoset_missing_todolists_url"}
+        created = _bc_request(
+            "POST", todolists_url,
+            payload={"name": name,
+                            "description": description or
+                                          f"<p>Created by Claude Code categorization "
+                                          f"on behalf of {getattr(user, 'email', '')}.</p>"},
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "create_todolist_failed", "detail": str(e)[:200]}
+
+    return {
+        "ok": True,
+        "todolist_id": created.get("id"),
+        "name": created.get("name", name),
+        "url": created.get("app_url", ""),
+        "bc_project_id": bc_project_id,
+    }
+
+
+def _tool_recategorize_session(user, args: dict) -> dict:
+    """Move a session anchor ticket to a different todolist AND log the
+    override so future categorization respects the user's correction.
+
+    Call this when the user explicitly says 'move this ticket to <list>'
+    or 'this should be filed under <list>'.
+    """
+    try:
+        ticket_id = int(args.get("ticket_id") or 0)
+        new_list_id = int(args.get("new_todolist_id") or 0)
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "ticket_id, new_todolist_id, bc_project_id required as integers"}
+    if not ticket_id or not new_list_id or not bc_project_id:
+        return {"ok": False, "error": "ticket_id, new_todolist_id, bc_project_id all required"}
+    user_reason = (args.get("reason") or "").strip()
+
+    # Read the current ticket to capture session_title + old list.
+    try:
+        ticket = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "ticket_unreachable", "detail": str(e)[:200]}
+
+    session_title = ticket.get("title", "") or ticket.get("content", "")
+    old_parent = ticket.get("parent") or {}
+    old_list_id = int(old_parent.get("id", 0)) if old_parent.get("id") else 0
+    old_list_name = old_parent.get("title", "")
+
+    # Look up the new list's name for the log + audit trail.
+    try:
+        new_list = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{new_list_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "new_list_unreachable", "detail": str(e)[:200]}
+    new_list_name = new_list.get("name", "")
+
+    # Move the ticket. Basecamp's API for moving a todo between lists is
+    # a POST to /buckets/{bid}/todolists/{new_list_id}/todos with the
+    # existing content + url. Simpler: delete-then-recreate is destructive;
+    # use the official "move" position endpoint when available, else
+    # update the todo's todolist_id field.
+    moved = False
+    move_url = (f"https://3.basecampapi.com/{_bc_account()}/buckets/"
+                          f"{bc_project_id}/todolists/{new_list_id}/position.json")
+    try:
+        # Some BC accounts expose a "move to list" via PUT /todos/{id}.json
+        # with todolist_id. Try that first.
+        _bc_request(
+            "PUT",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}.json",
+            payload={"todolist_id": new_list_id},
+            user=user,
+        )
+        moved = True
+    except RuntimeError:
+        moved = False
+
+    # Log the override regardless of whether the move succeeded -- the
+    # user's INTENT is the signal we want for future categorization, even
+    # if BC's API didn't cooperate on this one move.
+    from . import session_categorizer
+    session_categorizer.log_override(
+        getattr(user, "email", "") or "",
+        ticket_id=ticket_id,
+        old_list_id=old_list_id, old_list_name=old_list_name,
+        new_list_id=new_list_id, new_list_name=new_list_name,
+        session_title=session_title,
+        reason=user_reason,
+    )
+
+    return {
+        "ok": True,
+        "moved": moved,
+        "ticket_id": ticket_id,
+        "old_list_name": old_list_name,
+        "new_list_name": new_list_name,
+        "override_logged": True,
+        "note": (
+            "BC API doesn't always permit programmatic moves between "
+            "lists. If 'moved' is false, the user should move the "
+            "ticket manually in the BC UI -- the override is logged "
+            "regardless and will bias future categorization."
+        ) if not moved else "",
+    }
+
+
+TOOLS.append(Tool(
+    name="colaberry_categorize_session",
+    description=(
+        "Pick which Basecamp todolist a new session anchor should be filed "
+        "under, based on the session's title + snippet. Returns the chosen "
+        "list, a confidence score (0-1), the rationale (matched keywords, "
+        "history boost), and a should_ask_user flag. When should_ask_user "
+        "is true, STOP and confirm with the user instead of silently filing "
+        "under a low-confidence guess. Used internally by colaberry_create_ticket "
+        "when no todolist_id is supplied AND the project is the operator's "
+        "personal project."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "session_title": {"type": "string",
+                                          "description": "The proposed ticket title."},
+            "session_snippet": {"type": "string",
+                                              "description": "A few sentences of context from the user's prompt."},
+            "bc_project_id": {"type": "integer",
+                                          "description": "Optional. Defaults to the operator's personal project."},
+        },
+        "required": ["session_title"],
+    },
+    handler=_tool_categorize_session,
+))
+
+TOOLS.append(Tool(
+    name="colaberry_create_todolist",
+    description=(
+        "Create a new todolist (category) inside a Basecamp project. Use "
+        "this when colaberry_categorize_session returns a "
+        "suggest_new_list_name and the user agrees, OR when the user "
+        "explicitly says 'create a list called X'. Returns the new list's "
+        "id so you can pass it as todolist_id to colaberry_create_ticket."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string",
+                              "description": "Title-cased list name, e.g. 'Engineering' or 'Q4 Planning'."},
+            "description": {"type": "string",
+                                      "description": "Optional HTML description shown at the top of the list in BC."},
+            "bc_project_id": {"type": "integer",
+                                          "description": "Optional. Defaults to the operator's personal project."},
+        },
+        "required": ["name"],
+    },
+    handler=_tool_create_todolist,
+))
+
+TOOLS.append(Tool(
+    name="colaberry_recategorize_session",
+    description=(
+        "Move a session anchor ticket to a different todolist AND log the "
+        "override so future similar topics bias toward the user's choice. "
+        "Call this whenever the user says 'this should be filed under X' "
+        "or 'move this to Engineering' -- the BC move may or may not "
+        "succeed via API depending on the account, but the override IS "
+        "always logged as a strong training signal for next time."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "ticket_id": {"type": "integer", "description": "The BC todo id"},
+            "new_todolist_id": {"type": "integer", "description": "Target list id"},
+            "bc_project_id": {"type": "integer", "description": "BC project id"},
+            "reason": {"type": "string",
+                              "description": "Optional one-line user explanation, logged for future bias."},
+        },
+        "required": ["ticket_id", "new_todolist_id", "bc_project_id"],
+    },
+    handler=_tool_recategorize_session,
+))
 
 
 TOOLS.append(Tool(

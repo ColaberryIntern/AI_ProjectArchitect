@@ -176,6 +176,55 @@ call `colaberry_list_assets(category=..., query=<name fragment>)`. If
 there's an obvious match, don't re-propose; if there isn't, fire
 `colaberry_propose_asset`. The server auto-tags proposals to the
 operator's own company.
+
+## 8. Categorize personal-project session anchors
+
+When you create a session anchor in the operator's personal BC project,
+the server auto-categorizes it: pick one of the operator's existing
+todolists by matching keywords from the title + snippet against the list
+names (with synonyms) AND prior categorizations the operator has made.
+
+You don't have to call `colaberry_categorize_session` manually --
+`colaberry_create_ticket` does it for you whenever:
+  - `bc_project_id` equals the operator's personal_bc_project_id, AND
+  - no `todolist_id` was supplied
+
+What you DO have to handle:
+
+  a. If `create_ticket` returns `error: "categorization_low_confidence"`,
+     STOP. The response carries:
+       - the top-guess list (with confidence %),
+       - up to 4 alternative lists,
+       - a `suggest_new_list_name` (the server's guess at a new category
+         name based on the topic).
+
+     Ask the user, plainly:
+       "I'd file this under <top guess> (<confidence>%). Other options:
+        <alt1>, <alt2>, <alt3>. Or I can create a new list called
+        <suggest_new_list_name>. Which?"
+
+     Then call `create_ticket` again with an explicit `todolist_id`, OR
+     call `colaberry_create_todolist(name=...)` first and use the new
+     list's id.
+
+  b. When the user says "move this ticket to <list>" or "this should be
+     filed under <X>", call `colaberry_recategorize_session(ticket_id,
+     new_todolist_id, bc_project_id, reason=...)`. This both moves the
+     ticket AND logs the override so future similar topics bias toward
+     the user's choice. Manual moves in the BC UI are NOT seen by us;
+     get the user to ask Claude so the learning loop closes.
+
+  c. NEVER override the auto-categorization silently by passing your
+     own `todolist_id` when the user didn't ask you to. The whole point
+     is making categorization auditable -- every decision should be
+     either auto + receipt-on-ticket OR explicit + user-driven.
+
+The receipt: every auto-categorized ticket has a visible "Filed under:
+<list> (confidence N%)" line at the top of the description plus a
+hidden HTML comment with the full rationale (matched keywords,
+alternatives considered, history hits). When team members ask 'why is
+this in <list>?', read the receipt back from the ticket -- you don't
+need to re-run the categorizer.
 """
 
 
