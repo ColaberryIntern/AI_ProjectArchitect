@@ -402,6 +402,55 @@ async def mcp_revoke(request: Request, label: str = Form("")):
     })
 
 
+@router.post("/profile/mcp-token-reissue")
+async def mcp_token_reissue(request: Request, label: str = Form(...)):
+    """Atomically revoke the existing device-token for `label` and mint a
+    fresh one with the same label. Used by the "Reshow install" button on
+    awaiting-ping rows: the user lost the original token (shown once at
+    mint time), so we give them a new one without piling up duplicate
+    rows or label suffixes.
+    """
+    user = _require_web_user(request)
+    label = label.strip()
+    if not label:
+        return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
+    mcp_token.revoke_device(user.user_id, label)
+    # Re-mint with the same label. Since the prior entry is now revoked,
+    # the dedup check in generate_for_user won't auto-suffix.
+    plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
+    shell_command = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http --header "Authorization: Bearer {plain_token}"'
+    )
+    install_mac_linux = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: $(hostname)"'
+    )
+    install_win_cmd = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: %COMPUTERNAME%"'
+    )
+    install_win_ps = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: $env:COMPUTERNAME"'
+    )
+    return JSONResponse({
+        "ok": True,
+        "token": plain_token,
+        "label": label,
+        "install_command": shell_command,
+        "install_command_mac_linux": install_mac_linux,
+        "install_command_win_cmd": install_win_cmd,
+        "install_command_win_ps": install_win_ps,
+    })
+
+
 @router.post("/profile/mcp-revoke-unidentified")
 async def mcp_revoke_unidentified(request: Request):
     """Revoke tokens for devices that never reported a hostname.

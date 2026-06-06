@@ -424,63 +424,57 @@ function tryAutoGuessCurrentDevice(devices) {
 }
 
 function highlightCurrentRow() {
-  // Two signals can claim "this is THIS COMPUTER":
-  //   1. IP match (server-side flag, data-likely-current="1") -- strong:
-  //      the device actually pinged from the browser's public IP.
-  //   2. localStorage mark -- weaker: user clicked + Add or Mark earlier.
-  //
-  // When they're on DIFFERENT rows (Ali's screenshot: localStorage on
-  // never-pinged Bottom Laptop; IP match on actually-connected Top laptop),
-  // IP match wins because it's ground truth. We sync localStorage to the
-  // IP-matched row so future visits stay consistent.
+  // Source-of-truth for "THIS COMPUTER" is the USER's explicit choice
+  // (localStorage). IP match is shown as a separate soft hint -- "same
+  // network as your browser" -- because two computers behind the same
+  // router share a public IP, so it's a NETWORK match, not a MACHINE
+  // match. Don't override the user with it.
 
-  // 1. Find the row(s) with IP match (server flag).
-  let ipMatchLabel = '';
-  document.querySelectorAll('#devicesTbody tr[data-likely-current="1"]').forEach(tr => {
-    if (!ipMatchLabel) ipMatchLabel = tr.dataset.label;
+  const currentLabel = getCurrentDeviceLabel();
+  // The data-likely-current attribute was rendered on the TD; lift to
+  // the parent TR for easier finding.
+  document.querySelectorAll('#devicesTbody td[data-likely-current="1"]').forEach(td => {
+    if (td.parentElement) td.parentElement.dataset.likelyCurrent = '1';
   });
-
-  // 2. Resolve the authoritative current device.
-  let currentLabel;
-  let badgeText;
-  if (ipMatchLabel) {
-    currentLabel = ipMatchLabel;
-    badgeText = '✓ THIS COMPUTER (IP verified)';
-    // Auto-sync localStorage to match ground truth
-    try {
-      if (localStorage.getItem(_currentDeviceKey) !== ipMatchLabel) {
-        localStorage.setItem(_currentDeviceKey, ipMatchLabel);
-      }
-    } catch (e) {}
-  } else {
-    currentLabel = getCurrentDeviceLabel();
-    badgeText = '← THIS COMPUTER (your mark)';
-  }
 
   document.querySelectorAll('#devicesTbody tr').forEach(tr => {
     const isCurrent = !!currentLabel && tr.dataset.label === currentLabel;
+    const isLikely = tr.dataset.likelyCurrent === '1';
     tr.classList.toggle('current-device', isCurrent);
 
     const labelCell = tr.querySelector('td:first-child');
+    if (!labelCell) return;
 
-    // Single THIS COMPUTER badge per page; remove any stale ones first
+    // (1) The single authoritative "THIS COMPUTER" badge -- only on the
+    // localStorage-marked row.
     let badge = tr.querySelector('.current-device-badge');
-    if (isCurrent && !badge && labelCell) {
+    if (isCurrent && !badge) {
       const span = document.createElement('span');
       span.className = 'current-device-badge';
-      span.textContent = badgeText;
+      span.textContent = '← THIS COMPUTER (your mark)';
       labelCell.appendChild(span);
-    } else if (isCurrent && badge && badge.textContent !== badgeText) {
-      badge.textContent = badgeText;
     } else if (!isCurrent && badge) {
       badge.remove();
     }
 
-    // "Mark as this computer" button on non-current rows. Hide on rows
-    // that haven't pinged AND have no localStorage mark -- pointless
-    // (clicking would mark a never-pinged row as current, which is wrong).
+    // (2) Soft "same network" hint badge -- on every IP-matched row
+    // INCLUDING the current one. Visually distinct (smaller, gray) so
+    // it doesn't compete with the THIS COMPUTER badge.
+    let hint = tr.querySelector('.same-network-hint');
+    if (isLikely && !hint) {
+      const span = document.createElement('span');
+      span.className = 'same-network-hint';
+      span.style.cssText = 'display:inline-block;background:#f0f7ff;color:#0550ae;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:600;letter-spacing:0.4px;margin-left:6px;border:1px solid #c6e2ff;';
+      span.textContent = '📡 same network';
+      span.title = 'This device last pinged from the same public IP as your browser. Same WiFi or router. Not the same machine necessarily.';
+      labelCell.appendChild(span);
+    } else if (!isLikely && hint) {
+      hint.remove();
+    }
+
+    // (3) "Mark as this computer" button on non-current rows.
     let markBtn = tr.querySelector('.mark-current-btn');
-    if (!isCurrent && !markBtn && labelCell) {
+    if (!isCurrent && !markBtn) {
       const btn = document.createElement('button');
       btn.className = 'mark-current-btn';
       btn.dataset.label = tr.dataset.label;
@@ -491,6 +485,57 @@ function highlightCurrentRow() {
       markBtn.remove();
     }
   });
+
+  // (4) Action column: add a "📋 Reshow install" button on every row whose
+  // status is "Awaiting ping" -- the row was minted but never pinged, so
+  // the user lost the original install command. Lets them re-issue without
+  // having to revoke + re-add manually.
+  document.querySelectorAll('#devicesTbody tr').forEach(tr => {
+    const statusCell = tr.children[1];
+    const actionCell = tr.children[4];
+    if (!statusCell || !actionCell) return;
+    const isAwaiting = statusCell.textContent.includes('Awaiting');
+    let installBtn = actionCell.querySelector('.reshow-install-btn');
+    if (isAwaiting && !installBtn) {
+      const btn = document.createElement('button');
+      btn.className = 'mcp-btn reshow-install-btn';
+      btn.style.cssText = 'background:#1a1a1a;color:#fff;padding:5px 10px;font-size:11px;margin-right:6px;';
+      btn.textContent = '📋 Reshow install';
+      btn.onclick = () => reshowInstall(tr.dataset.label);
+      actionCell.insertBefore(btn, actionCell.firstChild);
+    } else if (!isAwaiting && installBtn) {
+      installBtn.remove();
+    }
+  });
+}
+
+async function reshowInstall(label) {
+  // Atomically revoke the existing token for this row + mint a fresh one
+  // with the same label + show the install steps. One-click path for users
+  // who minted a token but lost the install command (token is shown once).
+  if (!confirm(
+    'Re-issue install command for "' + label + '"?\n\n' +
+    'The previous token for this row will be revoked (it was never used).\n' +
+    'A NEW token will be minted with the same label, and the install steps will show.\n\n' +
+    'Continue?'
+  )) return;
+  const fd = new FormData();
+  fd.set('label', label);
+  const r = await fetch('/profile/mcp-token-reissue', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (!j.ok) { alert('Reissue failed: ' + (j.error || 'unknown')); return; }
+  // Reuse the existing token-display flow
+  _lastGenResponse = j;
+  document.getElementById('tokenValue').innerText = j.token;
+  document.getElementById('claudePrompt').innerText = j.claude_install_prompt || '';
+  document.getElementById('setupSteps').style.display = 'block';
+  document.getElementById('connectedStep').style.display = 'none';
+  document.getElementById('waitingStep').style.display = 'block';
+  switchOsTab(detectOsTab());
+  // Mark as current since they're re-installing on this machine
+  setCurrentDeviceLabel(label);
+  startPolling();
+  setTimeout(() => document.getElementById('setupSteps').scrollIntoView({behavior: 'smooth', block: 'start'}), 100);
 }
 
 async function generateToken(label) {
