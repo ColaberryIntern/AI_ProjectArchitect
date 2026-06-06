@@ -49,26 +49,54 @@ def _resolve_user_id(email_or_id: str) -> str | None:
 
 def get_user_token(email_or_id: str) -> tuple[str | None, str]:
     """Return (token, source) where source is one of:
-        'vault'    — per-user AI clone token from the vault (preferred)
-        'ccpp'     — legacy CB System token (Ali-only transition)
-        'missing'  — neither available; sync should skip
+        'vault-oauth' — per-user BC OAuth grant resolved via the new
+                                  basecamp_oauth_token chain (refresh-aware,
+                                  always returns a fresh access token). Preferred.
+        'vault-legacy'— bare-string entry (admin paste-form era, no refresh).
+                                  Returned as-is.
+        'ccpp'        — legacy CB System token (Ali-only transition)
+        'missing'     — neither available; sync should skip
 
     Accepts either an email or a tenancy user_id; vault is keyed on user_id.
+
+    History: the vault entry under `basecamp_ai_clone` used to be a
+    bare BC bearer token. Once we shipped /profile/connect-basecamp,
+    the entry became wrapped JSON (`{"v":1,"access_token":...,"refresh_token":...}`).
+    The old code path returned the entire JSON blob as a token, which
+    BC tried to bearer-auth as-is and rejected with 401 "OAuth token
+    checksum failed" (visible to Ali in the Extract preview). We now
+    delegate to basecamp_oauth_token which knows both formats AND
+    refreshes the access token automatically.
     """
     uid = _resolve_user_id(email_or_id)
     if uid:
         try:
-            from execution.products.library import vault
-            t = vault.read_secret(
-                user_id=uid,
-                tool_name="basecamp_ai_clone",
-                caller_id="ops.sync",
-                purpose="Basecamp todo sync for the AI Ops Command Center",
+            from execution.products.library import (
+                basecamp_oauth_token, tenancy,
             )
-            if t:
-                # Belt-and-suspenders: strip whitespace tokens may pick up
-                # along the way (echo, bash interpolation, heredocs, etc.).
-                return t.strip(), "vault"
+            user = tenancy.get_user(uid)
+            if user:
+                try:
+                    tok = basecamp_oauth_token.get_access_token_for_operator(user)
+                    if tok:
+                        return tok.strip(), "vault-oauth"
+                except basecamp_oauth_token.OAuthError as e:
+                    # legacy grant -> still readable as a plain token,
+                    # but it'll stop working at the 14-day BC TTL.
+                    if e.code == "basecamp_grant_legacy_no_refresh":
+                        try:
+                            from execution.products.library import vault
+                            raw = vault.read_secret(
+                                user_id=uid,
+                                tool_name="basecamp_ai_clone",
+                                caller_id="ops.sync",
+                                purpose="Basecamp todo sync (legacy bare-string grant)",
+                            )
+                            if raw and not raw.strip().startswith("{"):
+                                return raw.strip(), "vault-legacy"
+                        except Exception:
+                            pass
+                    # no_basecamp_oauth_grant / vault_read_failed / network: fall through.
         except Exception:
             pass
 
