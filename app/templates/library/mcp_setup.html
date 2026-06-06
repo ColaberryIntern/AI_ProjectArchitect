@@ -171,9 +171,22 @@
      asking, so users have to look at the table to know whether THIS computer
      has installed yet. Labels are user-chosen ("Work Mac", "Home Win"). #}
   <div style="background: #fff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 20px;">
-    <div style="padding: 12px 16px; border-bottom: 1px solid #d0d7de; display: flex; align-items: center; justify-content: space-between;">
-      <h3 style="margin: 0; font-size: 14px;">Your devices</h3>
-      <button class="mcp-btn" onclick="promptAddDevice()" style="padding: 6px 14px; font-size: 12px;">+ Add this device</button>
+    <div style="padding: 12px 16px; border-bottom: 1px solid #d0d7de; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+      <div>
+        <h3 style="margin: 0; font-size: 14px;">Your devices</h3>
+        {% if browser_ip %}
+        <div style="font-size: 11px; color: #57606a; margin-top: 2px;">
+          Your browser's public IP: <code style="background: #f6f8fa; padding: 1px 5px; border-radius: 3px;">{{ browser_ip }}</code>
+          &nbsp;·&nbsp; rows below pinging from this IP are auto-flagged as likely THIS computer.
+        </div>
+        {% endif %}
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="mcp-btn" onclick="promptAddDevice()" style="padding: 6px 14px; font-size: 12px;">+ Add this device</button>
+        {% if devices %}
+        <button class="mcp-btn mcp-btn-danger" onclick="revokeAll()" style="padding: 6px 14px; font-size: 12px;">🗑️ Revoke all + start fresh</button>
+        {% endif %}
+      </div>
     </div>
 
     {% if devices %}
@@ -190,15 +203,19 @@
       <tbody id="devicesTbody">
         {% for d in devices %}
         <tr data-label="{{ d.label }}" style="border-top: 1px solid #eaeef2;">
-          <td style="padding: 10px 16px; font-weight: 600;">
+          <td style="padding: 10px 16px; font-weight: 600;"
+              {% if d.is_likely_current %}data-likely-current="1"{% endif %}>
             {{ d.label }}
+            {% if d.is_likely_current %}
+              <span class="likely-current-badge" style="display: inline-block; background: #fff4d5; color: #8a5a00; padding: 1px 8px; border-radius: 999px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; margin-left: 6px; border: 1px solid #d4a72c;">← LIKELY THIS COMPUTER (matching IP)</span>
+            {% endif %}
             {% if d.hostname %}
               <div style="font-size: 12px; color: #1f2328; font-weight: 600; margin-top: 4px;">
                 💻 <code style="background: #f6f8fa; padding: 1px 6px; border-radius: 3px;">{{ d.hostname }}</code>
               </div>
             {% endif %}
             {% if d.last_client_ip %}
-              <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">from {{ d.last_client_ip }}</div>
+              <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">from {{ d.last_client_ip }}{% if d.is_likely_current %} (matches your browser){% endif %}</div>
             {% endif %}
             {% if d.last_user_agent and not d.hostname %}
               <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">{{ d.last_user_agent[:60] }}</div>
@@ -481,6 +498,29 @@ async function revokeDevice(label) {
   setStatus(j.status || 'red', 'Revoked "' + label + '".');
 }
 
+// Nuclear option: revoke EVERY active token. After this, the user re-installs
+// fresh on each machine using the new install flow (which embeds hostname).
+// The resulting device table has clean, identifiable rows from the start.
+async function revokeAll() {
+  if (!confirm(
+    'Revoke ALL devices and start fresh?\n\n' +
+    '• Every laptop\'s Claude Code will stop talking to Colaberry\n' +
+    '• You\'ll need to re-install on each computer you actively use\n' +
+    '• The benefit: every new row will have hostname + IP captured at install time, so you can clearly tell which is which\n\n' +
+    'Recommended if your current device table has too many half-finished or unrecognizable rows.'
+  )) return;
+  // POST with no label -> revoke_all_for_user
+  const r = await fetch('/profile/mcp-revoke', { method: 'POST' });
+  const j = await r.json();
+  if (!j.ok) { alert('Revoke all failed'); return; }
+  // Also clear the localStorage "this computer" mark since the device list reset
+  try { localStorage.removeItem(_currentDeviceKey); } catch (e) {}
+  rebuildDeviceTable(j.devices || []);
+  setStatus('red', 'All devices revoked. Click "+ Add this device" to install fresh.');
+  // Scroll the (now empty) table area into view so the user sees the clean slate
+  setTimeout(() => document.querySelector('table')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 100);
+}
+
 // Three OS variants (each embedding hostname via its native shell syntax)
 // + a Claude Code session prompt. Picked by navigator.platform at first
 // render so the user lands on the right tab without thinking.
@@ -559,8 +599,7 @@ function rebuildDeviceTable(devices) {
     const lastSeen = d.last_used_at ? d.last_used_at.substring(0, 19).replace('T', ' ') : 'never';
     const issued = d.issued_at ? d.issued_at.substring(0, 10) : '--';
     // Hostname is the strongest identifier; show it big + monospaced.
-    // Fall back to user_agent only when we don't have a hostname yet (the
-    // device hasn't pinged with X-MCP-Hostname).
+    // Fall back to user_agent only when we don't have a hostname yet.
     let hostBlock = '';
     if (d.hostname) {
       hostBlock = '<div style="font-size:12px;color:#1f2328;font-weight:600;margin-top:4px;">💻 <code style="background:#f6f8fa;padding:1px 6px;border-radius:3px;">' + d.hostname + '</code></div>';
@@ -569,13 +608,18 @@ function rebuildDeviceTable(devices) {
     }
     let ipBlock = '';
     if (d.last_client_ip) {
-      ipBlock = '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">from ' + d.last_client_ip + '</div>';
+      const matchNote = d.is_likely_current ? ' (matches your browser)' : '';
+      ipBlock = '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">from ' + d.last_client_ip + matchNote + '</div>';
+    }
+    let likelyBadge = '';
+    if (d.is_likely_current) {
+      likelyBadge = '<span class="likely-current-badge" style="display:inline-block;background:#fff4d5;color:#8a5a00;padding:1px 8px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:6px;border:1px solid #d4a72c;">← LIKELY THIS COMPUTER (matching IP)</span>';
     }
     const revokeBtn = d.status !== 'revoked'
       ? `<button class="mcp-btn mcp-btn-danger" onclick="revokeDevice('${d.label.replace(/'/g, "\\'")}')" style="padding:5px 12px;font-size:11px;">Revoke</button>`
       : '';
     tr.innerHTML =
-      '<td style="padding:10px 16px;font-weight:600;">' + d.label + hostBlock + ipBlock + '</td>' +
+      '<td style="padding:10px 16px;font-weight:600;">' + d.label + likelyBadge + hostBlock + ipBlock + '</td>' +
       '<td style="padding:10px 8px;">' + statusPill(d.status) + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + issued + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + lastSeen + '</td>' +

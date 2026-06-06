@@ -203,6 +203,22 @@ async def mcp_setup_page(request: Request):
         tenancy.upsert_user(user)
     status = mcp_token.status_for_user(user)
     devices = mcp_token.list_devices(user)
+
+    # Best-effort "this computer" auto-detect: compare the browser's public
+    # IP against each device's last_client_ip. Same IP -> almost certainly
+    # the same physical machine (one laptop running both a browser and
+    # Claude Code from the same network). Won't match across VPNs or when
+    # browser/CLI run on different machines, but covers the common case.
+    browser_ip = (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
+    for d in devices:
+        d["is_likely_current"] = bool(
+            browser_ip and d.get("last_client_ip") and
+            d["last_client_ip"] == browser_ip
+        )
     # Compute the user's personal BC project URL for the quick-link card.
     import os as _os
     bc_account = _os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
@@ -235,6 +251,7 @@ async def mcp_setup_page(request: Request):
             "mcp_status": status,
             "personal_bc_url": personal_bc_url,
             "devices": devices,
+            "browser_ip": browser_ip or "",
             # Safe defaults for library/_library_base.html
             "actor": user.display_name or user.email,
             "workspace": "global",
