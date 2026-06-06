@@ -95,8 +95,15 @@ def _strip_html(html: str) -> str:
 
 
 def _bc_request(method: str, url: str, bc_token: str,
-                       payload: Optional[dict] = None) -> dict:
-    """Thin BC API caller. Returns parsed JSON. Raises on non-2xx."""
+                       payload: Optional[dict] = None,
+                       *, _retries_left: int = 3) -> dict:
+    """Thin BC API caller. Returns parsed JSON. Raises on non-2xx.
+
+    Auto-retries transient 429 (rate-limited) and 503 (service down)
+    responses using the Retry-After header when present, else linear
+    backoff (5s, 10s, 15s). Up to 3 retries total; final failure raises
+    a clean error including the wait it would have used."""
+    import time as _t
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
         url, method=method, data=data,
@@ -113,6 +120,22 @@ def _bc_request(method: str, url: str, bc_token: str,
             body = r.read()
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as e:
+        # Transient: 429 (rate limit) and 503 (BC briefly down). Honor
+        # the Retry-After header if BC sent one; else linear backoff.
+        if e.code in (429, 503) and _retries_left > 0:
+            wait_s = 5
+            try:
+                ra = e.headers.get("Retry-After") if e.headers else None
+                if ra:
+                    wait_s = max(1, min(int(float(ra)), 30))
+            except Exception:
+                pass
+            # Backoff if BC didn't tell us; grows with each retry.
+            attempt = 4 - _retries_left  # 1, 2, 3
+            wait_s = max(wait_s, attempt * 5)
+            _t.sleep(wait_s)
+            return _bc_request(method, url, bc_token, payload,
+                                              _retries_left=_retries_left - 1)
         msg = ""
         try:
             msg = e.read().decode("utf-8", errors="replace")[:300]

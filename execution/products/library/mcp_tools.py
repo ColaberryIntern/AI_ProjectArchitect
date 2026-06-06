@@ -124,7 +124,14 @@ def _bc_account() -> str:
     return os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
 
 
-def _bc_request(method: str, url: str, payload: dict | None = None, user=None) -> Any:
+def _bc_request(method: str, url: str, payload: dict | None = None, user=None,
+                       *, _retries_left: int = 3) -> Any:
+    """BC API caller for MCP tools. Auto-retries 429 / 503 using
+    Retry-After when BC sends it, else linear backoff. Without this
+    every Claude session that ran into a brief rate limit would surface
+    the raw HTTP error to the user; with it, transient throttles are
+    invisible to humans."""
+    import time as _t
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
         url, method=method, data=data,
@@ -141,6 +148,19 @@ def _bc_request(method: str, url: str, payload: dict | None = None, user=None) -
             body = r.read()
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as e:
+        if e.code in (429, 503) and _retries_left > 0:
+            wait_s = 5
+            try:
+                ra = e.headers.get("Retry-After") if e.headers else None
+                if ra:
+                    wait_s = max(1, min(int(float(ra)), 30))
+            except Exception:
+                pass
+            attempt = 4 - _retries_left
+            wait_s = max(wait_s, attempt * 5)
+            _t.sleep(wait_s)
+            return _bc_request(method, url, payload, user,
+                                              _retries_left=_retries_left - 1)
         msg = ""
         try:
             msg = e.read().decode("utf-8", errors="replace")[:300]
