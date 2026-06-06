@@ -317,6 +317,128 @@ def write_and_commit(src, output_type: str, slug: str,
     return artifact
 
 
+_AUTO_SENTINEL = "[AUTO-EXTRACTED: review and fill in]"
+
+
+def _extract_section(body: str, *headings) -> str:
+    """Return the body of a '## <heading>' section from a markdown
+    string, stopping at the next ## or end. Case-insensitive across
+    every heading variant supplied. Returns '' on no match.
+    """
+    import re
+    for h in headings:
+        pat = re.compile(
+            rf"^##\s+{re.escape(h)}\s*$([\s\S]*?)(?=^##\s|\Z)",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        m = pat.search(body or "")
+        if m:
+            text = m.group(1).strip()
+            if text:
+                return text
+    return ""
+
+
+def _derive_category_required_fields(category: str, src, body: str) -> dict:
+    """For each category whose schema requires a domain-specific field
+    not in the AssetMetadata base (e.g. system_prompt for agents,
+    prompt_body for prompts, install_command for mcp), derive the field
+    from the rendered body. Falls back to a sentinel string so the
+    schema validator is satisfied and Ali can filter for unfilled
+    auto-extracted assets via the 'auto-extracted' tag.
+
+    Returns a kwargs dict to merge into AssetMetadata(...).
+    """
+    out: dict = {}
+    src_body = (getattr(src, "body", "") or "").strip()
+
+    if category == "agents":
+        out["role"] = (
+            _extract_section(body, "Role", "Persona", "Agent role")
+            or _AUTO_SENTINEL
+        )
+        out["system_prompt"] = (
+            _extract_section(body, "System prompt", "System Prompt",
+                                              "Instructions", "Behavior")
+            or src_body  # the source body is at least a starting prompt
+            or _AUTO_SENTINEL
+        )
+    elif category == "prompts":
+        out["prompt_body"] = (
+            _extract_section(body, "Prompt body", "Prompt", "Template")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+    elif category == "mcp":
+        out["install_command"] = (
+            _extract_section(body, "Install command", "Install", "Setup")
+            or _AUTO_SENTINEL
+        )
+    elif category == "templates":
+        out["blueprint_path"] = (
+            _extract_section(body, "Blueprint path", "Blueprint",
+                                              "Scaffolding path", "Path")
+            or _AUTO_SENTINEL
+        )
+    elif category == "policies":
+        out["rule_text"] = (
+            _extract_section(body, "Rule text", "Rule", "Policy",
+                                              "What it enforces")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+    elif category == "governance":
+        out["rule_text"] = (
+            _extract_section(body, "Rule text", "Rule", "Scorecard rule",
+                                              "What it scores", "Controls")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+    elif category == "evals":
+        out["dataset_url"] = (
+            _extract_section(body, "Dataset URL", "Dataset", "Data")
+            or _AUTO_SENTINEL
+        )
+    elif category == "workflows":
+        out["steps"] = (
+            _extract_section(body, "Steps", "Ordered steps",
+                                              "Sub-steps", "Procedure")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+        out["invocation_pattern"] = (
+            _extract_section(body, "Invocation pattern", "How it's invoked",
+                                              "Trigger", "When it runs")
+            or _AUTO_SENTINEL
+        )
+    elif category == "recovery":
+        out["trigger_condition"] = (
+            _extract_section(body, "Trigger condition", "Trigger",
+                                              "When this fires")
+            or _AUTO_SENTINEL
+        )
+        out["mitigation_action"] = (
+            _extract_section(body, "Mitigation action", "Mitigation",
+                                              "What to do", "Response")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+    elif category == "chaos":
+        out["fault_scenario"] = (
+            _extract_section(body, "Fault scenario", "Scenario",
+                                              "What this simulates")
+            or src_body
+            or _AUTO_SENTINEL
+        )
+    elif category == "projections":
+        out["event_source"] = (
+            _extract_section(body, "Event source", "Source", "Events")
+            or _AUTO_SENTINEL
+        )
+
+    return out
+
+
 def _register_as_library_asset(artifact: "ExtractedArtifact",
                                                           src, content: str, output_type: str,
                                                           *,
@@ -370,6 +492,20 @@ def _register_as_library_asset(artifact: "ExtractedArtifact",
     )
     tags = ["auto-extracted", artifact.source_kind or "extracted",
                   f"output:{output_type}"]
+    # Derive category-specific required fields (system_prompt for
+    # agents, prompt_body for prompts, install_command for mcp, etc.).
+    # Returns kwargs; empty for categories whose required fields are
+    # already in the common base (name, description, how_to_use, example).
+    category_kwargs = _derive_category_required_fields(category, src, body_text)
+    # Anything we filled with the sentinel gets an extra tag so Ali can
+    # filter /library/<cat>?tag=needs-polish to find unfinished ones.
+    if any(v == _AUTO_SENTINEL for v in category_kwargs.values()):
+        tags = list(tags) + ["needs-polish"]
+    # Only set kwargs that AssetMetadata actually accepts (defensive against
+    # category fields not yet present in the dataclass).
+    valid_field_names = {f.name for f in store.AssetMetadata.__dataclass_fields__.values()}
+    category_kwargs = {k: v for k, v in category_kwargs.items()
+                                    if k in valid_field_names}
     try:
         meta = store.AssetMetadata(
             asset_id=artifact.slug,
@@ -391,6 +527,7 @@ def _register_as_library_asset(artifact: "ExtractedArtifact",
             enrichment_state="enriched",
             enriched_at=artifact.created_at,
             enriched_by="extract-flow",
+            **category_kwargs,
         )
         # Auto-approve when the rollout flag is set: mark vetted so the
         # asset detail page shows the green badge + visibility opens.

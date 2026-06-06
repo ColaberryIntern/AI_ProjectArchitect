@@ -93,6 +93,36 @@ class AssetMetadata:
     # (or a future ?scope=community). Cross-company visibility is
     # governed by tenancy.ItemApproval rows + visibility tiers.
     owning_company_id: str = "community"
+    # ── Per-category schema fields (category_schemas.SCHEMAS) ─────
+    # Added so the extracted-asset pipeline + submit form can populate
+    # the category-specific required fields without resorting to a dict
+    # blob. Empty defaults are fine; only the categories that need a
+    # given field will set it. The submit-form schema (Piece 1 of the
+    # asset-flow-unify work) is the authoritative requiredness check.
+    role: str = ""                        # agents
+    system_prompt: str = ""               # agents
+    autonomy_level: str = ""              # agents
+    allowed_tools: list[str] = field(default_factory=list)  # agents
+    guardrails: str = ""                  # agents
+    prompt_body: str = ""                 # prompts
+    expected_output: str = ""             # prompts
+    model_hint: str = ""                  # prompts
+    config_template: str = ""             # mcp
+    env_vars: str = ""                    # mcp
+    blueprint_path: str = ""              # templates
+    scaffolding_config: str = ""          # templates
+    rule_text: str = ""                   # policies / governance
+    enforcement_point: str = ""           # policies / governance
+    steps: str = ""                       # workflows  (multi-line string, one step per line)
+    invocation_pattern: str = ""          # workflows
+    success_criteria: str = ""            # workflows
+    trigger_condition: str = ""           # recovery
+    mitigation_action: str = ""           # recovery
+    fault_scenario: str = ""              # chaos
+    event_source: str = ""                # projections
+    rebuild_strategy: str = ""            # projections
+    dataset_url: str = ""                 # evals
+    scoring_method: str = ""              # evals
 
 
 def meta_path(workspace: str, category: str, asset_id: str) -> Path:
