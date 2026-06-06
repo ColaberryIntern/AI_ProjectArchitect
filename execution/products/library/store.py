@@ -86,10 +86,13 @@ class AssetMetadata:
     docs_url: str = ""                   # external docs link
     homepage_url: str = ""               # project homepage if different from source
     # ── Multi-tenant ownership ([Auth 1]) ─────────────────────────
-    # Which company owns this asset record. Defaults to "colaberry" for
-    # the legacy/global catalog. Cross-company visibility is governed by
-    # tenancy.ItemApproval rows + visibility tiers.
-    owning_company_id: str = "colaberry"
+    # Which company owns this asset record. Defaults to "community" so
+    # the legacy/global catalog isn't auto-attributed to any one paying
+    # tenant. Companies see their own assets by default; community
+    # assets are visible only when the user opts in to ?scope=all
+    # (or a future ?scope=community). Cross-company visibility is
+    # governed by tenancy.ItemApproval rows + visibility tiers.
+    owning_company_id: str = "community"
 
 
 def meta_path(workspace: str, category: str, asset_id: str) -> Path:

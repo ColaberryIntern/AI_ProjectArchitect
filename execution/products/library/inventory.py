@@ -204,7 +204,11 @@ def filter_for_company(rows: list[dict[str, Any]], category: str,
         if not asset_id:
             continue
         meta = store.get_metadata("global", category, asset_id)
-        owning = getattr(meta, "owning_company_id", "colaberry")
+        # Treat empty/missing owning_company_id as "community" -- the
+        # default for legacy catalog rows. Otherwise empty-string rows
+        # leak into the org-wide "all" scope only, and a freshly
+        # imported skill silently belongs to nobody.
+        owning = (getattr(meta, "owning_company_id", "") or "").strip() or "community"
         if owning == viewer_company_id:
             out.append(row)
             continue
