@@ -53,8 +53,15 @@ from execution.products.library import google_oauth_token, tenancy  # noqa: E402
 
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+# Match the scopes registered on the OAuth consent screen exactly.
+# gmail.modify lets the system read AND draft AND send AND label messages
+# (but NOT permanently delete), which is what Ali wants for future
+# email-sending MCP tools (not just attachment fetch).
+# drive.file lets the system create + manage Drive files our app uploaded
+# (the staged attachment copies), without exposing the rest of the user's
+# Drive. See directives/colaberry-attachment-fetch.md.
 SCOPES = " ".join([
-    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/drive.file",
 ])
 

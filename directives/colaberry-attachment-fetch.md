@@ -152,9 +152,14 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
   to the audit JSONL.
 - **No raw bytes returned through MCP.** The Drive staging step is non-optional
   except for `source="drive"` passthrough.
-- **Least-privilege scopes.** App uses `gmail.readonly` + `drive.file` only.
-  `drive.file` restricts us to files our app created — we cannot read or
-  modify arbitrary user Drive content. This is an explicit security choice.
+- **Least-privilege Drive scope.** App uses `drive.file` only — restricts
+  us to files our app created. We cannot read or modify arbitrary user
+  Drive content. This is an explicit security choice.
+- **Broader Gmail scope.** App uses `gmail.modify` (read + compose + send +
+  label, but NOT permanent delete). Chosen over `gmail.readonly` so future
+  email-sending MCP tools (compose draft, send reply, archive, etc.) don't
+  require operators to re-bootstrap. The attachment-fetch tool itself only
+  uses the read portion. The "no permanent delete" boundary is preserved.
 - **Idempotent on retry.** Calling twice with the same key MUST return the
   same Drive ref without re-uploading.
 - **Failure-first.** Explicit 15s HTTP timeout per outbound call. Capped 3
@@ -182,7 +187,7 @@ operator on their own machine:
 
 1. Prompts for the operator's Google account (defaults to bearer-token owner)
 2. Spins a temporary localhost callback server
-3. Opens browser to Google OAuth consent for `gmail.readonly` + `drive.file`
+3. Opens browser to Google OAuth consent for `gmail.modify` + `drive.file`
 4. Exchanges code for refresh token
 5. Writes refresh token to advisor's vault via `vault.store_secret(
    user.user_id, "google_oauth_refresh", refresh_token, ttl_days=180)`
