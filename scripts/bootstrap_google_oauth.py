@@ -154,11 +154,22 @@ def main() -> int:
                                   help="Localhost callback port (0 = pick random)")
     args = parser.parse_args()
 
-    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
-    client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+    # Prefer the Desktop OAuth client (purpose-built for this flow); fall
+    # back to the legacy SSO Web client only if the Desktop vars are absent.
+    client_id = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+        or ""
+    ).strip()
+    client_secret = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+        or ""
+    ).strip()
     if not client_id or not client_secret:
-        print("ERROR: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET "
-                  "must be set in the environment.", file=sys.stderr)
+        print("ERROR: GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID and "
+                  "GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET must be set in the environment.",
+                  file=sys.stderr)
         return 2
     if not os.environ.get("LIBRARY_VAULT_MASTER_KEY"):
         print("ERROR: LIBRARY_VAULT_MASTER_KEY must be set so the vault can "

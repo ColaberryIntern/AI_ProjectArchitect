@@ -70,16 +70,30 @@ _CACHE_LOCK = threading.Lock()
 def _client_credentials() -> tuple[str, str]:
     """Read the OAuth client id + secret from env.
 
-    GOOGLE_OAUTH_CLIENT_ID is already present in prod for SSO. We reuse the
-    same OAuth app for API access -- the additional scopes (gmail.readonly,
-    drive.file) get added to the consent screen at bootstrap time.
+    Prefers GOOGLE_OAUTH_ATTACHMENT_* (the Desktop OAuth client created
+    specifically for the attachment-fetch flow -- supports dynamic
+    localhost callback ports per Desktop client semantics). Falls back to
+    GOOGLE_OAUTH_CLIENT_ID/_SECRET (the SSO Web client) only so existing
+    deployments don't break if the new vars haven't been set yet.
+
+    The SSO Web client is the wrong type for this flow -- a Web client
+    requires registering each redirect URI exactly, and the bootstrap
+    script picks a random localhost port. Use the Desktop client.
     """
-    cid = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-    secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    cid = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+        or ""
+    )
+    secret = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+        or ""
+    )
     if not cid or not secret:
         raise OAuthError(
             "google_oauth_app_not_configured",
-            "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET env vars missing on advisor",
+            "GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID / _SECRET env vars missing on advisor",
         )
     return cid, secret
 
