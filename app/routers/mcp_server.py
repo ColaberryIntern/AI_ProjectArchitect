@@ -402,22 +402,10 @@ async def mcp_revoke(request: Request, label: str = Form("")):
     })
 
 
-@router.post("/profile/mcp-token-reissue")
-async def mcp_token_reissue(request: Request, label: str = Form(...)):
-    """Atomically revoke the existing device-token for `label` and mint a
-    fresh one with the same label. Used by the "Reshow install" button on
-    awaiting-ping rows: the user lost the original token (shown once at
-    mint time), so we give them a new one without piling up duplicate
-    rows or label suffixes.
+def _build_install_payload(plain_token: str, user_email: str, label: str) -> dict:
+    """Shared between /profile/mcp-token and /profile/mcp-token-reissue.
+    Returns the same shape so the UI flow that consumes it is identical.
     """
-    user = _require_web_user(request)
-    label = label.strip()
-    if not label:
-        return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
-    mcp_token.revoke_device(user.user_id, label)
-    # Re-mint with the same label. Since the prior entry is now revoked,
-    # the dedup check in generate_for_user won't auto-suffix.
-    plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
     shell_command = (
         f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
         f'--transport http --header "Authorization: Bearer {plain_token}"'
@@ -440,15 +428,88 @@ async def mcp_token_reissue(request: Request, label: str = Form(...)):
         f'--header "Authorization: Bearer {plain_token}" '
         f'--header "X-MCP-Hostname: $env:COMPUTERNAME"'
     )
-    return JSONResponse({
-        "ok": True,
+    claude_prompt = (
+        f"INSTALL TASK: Register the Colaberry MCP server for the operator "
+        f"{user_email}. This is a one-time install on this machine.\n\n"
+        f"DO ALL STEPS BELOW. Don't ask the user what the goal is or which "
+        f"approach to use -- pick automatically. Don't echo the token in chat. "
+        f"Report a short result line for each step.\n\n"
+        f"--- Step 1: detect hostname ---\n"
+        f"Run via Bash: `hostname` (Mac/Linux) or `echo %COMPUTERNAME%` "
+        f"(Windows cmd) or `$env:COMPUTERNAME` (PowerShell). Whichever your "
+        f"OS supports. Capture the result as <HOSTNAME> -- you'll need it.\n\n"
+        f"--- Step 2: try the CLI path FIRST ---\n"
+        f"Run: `claude --version`\n"
+        f"   - If exit 0: run the install via CLI -- `claude mcp add colaberry "
+        f"https://advisor.colaberry.ai/mcp/v1 --transport http "
+        f"--header \"Authorization: Bearer {plain_token}\" "
+        f"--header \"X-MCP-Hostname: <HOSTNAME>\"` -- then jump to Step 4.\n"
+        f"   - If exit non-zero or \"command not found\": fall through to Step 3 "
+        f"(direct config edit). This is the case for users with only the "
+        f"VSCode extension, not the standalone CLI.\n\n"
+        f"--- Step 3: direct config edit (universal fallback) ---\n"
+        f"Locate the Claude Code config file:\n"
+        f"  Mac/Linux: ~/.claude.json\n"
+        f"  Windows:   %USERPROFILE%\\.claude.json (e.g. C:\\Users\\<name>\\.claude.json)\n\n"
+        f"Use your Read + Write tools (NOT Bash, so JSON is parsed cleanly):\n"
+        f"  1. Read the file. If missing, treat as empty object `{{}}`.\n"
+        f"  2. Backup: copy to .claude.json.bak.\n"
+        f"  3. Ensure the JSON has an `mcpServers` object key; set/overwrite "
+        f"its `colaberry` entry to EXACTLY:\n"
+        f"     {{\n"
+        f"       \"type\": \"http\",\n"
+        f"       \"url\": \"https://advisor.colaberry.ai/mcp/v1\",\n"
+        f"       \"headers\": {{\n"
+        f"         \"Authorization\": \"Bearer {plain_token}\",\n"
+        f"         \"X-MCP-Hostname\": \"<HOSTNAME>\"\n"
+        f"       }}\n"
+        f"     }}\n"
+        f"  4. PRESERVE all other mcpServers entries -- only set the "
+        f"`colaberry` key. Don't drop sibling servers.\n"
+        f"  5. Write the file back as pretty-printed JSON.\n\n"
+        f"--- Step 4: verify ---\n"
+        f"Read the config file back. Confirm the `colaberry` entry is present "
+        f"with the right URL. Report success or failure.\n\n"
+        f"--- Step 5: tell the user and STOP ---\n"
+        f"Print exactly:\n"
+        f"  ✅ MCP installed for {user_email} as host <HOSTNAME>.\n"
+        f"  Close this Claude Code window and open a new one so the new\n"
+        f"  Colaberry MCP server is loaded. After restart, ask Claude to\n"
+        f"  list its tools -- you should see the colaberry_* tool family.\n\n"
+        f"Then STOP. Don't run further tools. Don't ask questions. Don't echo "
+        f"the token. The token grants this machine permission to call "
+        f"Colaberry MCP tools (BC tickets, doctrine, memory) on the user's "
+        f"behalf -- treat it like a credential.\n"
+    )
+    return {
         "token": plain_token,
         "label": label,
         "install_command": shell_command,
         "install_command_mac_linux": install_mac_linux,
         "install_command_win_cmd": install_win_cmd,
         "install_command_win_ps": install_win_ps,
-    })
+        "claude_install_prompt": claude_prompt,
+    }
+
+
+@router.post("/profile/mcp-token-reissue")
+async def mcp_token_reissue(request: Request, label: str = Form(...)):
+    """Atomically revoke the existing device-token for `label` and mint a
+    fresh one with the same label. Used by the "Reshow install" button on
+    awaiting-ping rows: the user lost the original token (shown once at
+    mint time), so we give them a new one without piling up duplicate
+    rows or label suffixes.
+    """
+    user = _require_web_user(request)
+    label = label.strip()
+    if not label:
+        return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
+    mcp_token.revoke_device(user.user_id, label)
+    plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
+    payload = _build_install_payload(plain_token, user.email, updated.mcp_token_label or label)
+    payload["ok"] = True
+    payload["issued_at"] = updated.mcp_token_issued_at
+    return JSONResponse(payload)
 
 
 @router.post("/profile/mcp-revoke-unidentified")
