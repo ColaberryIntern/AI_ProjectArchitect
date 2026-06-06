@@ -79,21 +79,39 @@ def _bc_token(user=None) -> str:
     """Resolve the BC token to use for this call.
 
     Order:
-      1. Per-user "<Name> AI" token from the vault (preferred -- BC writes
-         appear authored by Ralph AI, not by CB System). Looked up by user
-         when supplied.
-      2. Shared CB System token from BASECAMP_ACCESS_TOKEN env (fallback
-         until per-user AI personas are provisioned across the company).
+      1. Per-user "<Name> AI" token, auto-refreshed via basecamp_oauth_token
+         module if a refresh_token is on file. BC writes appear authored
+         by the user's AI persona, not by CB System.
+      2. Legacy bare-token vault entry (admin paste-form era, no refresh).
+         Returned as-is; will 401 once the 14-day TTL elapses.
+      3. Shared CB System token from BASECAMP_ACCESS_TOKEN env (fallback
+         until every operator has their own per-user AI persona).
     """
-    if user is not None and getattr(user, "bc_ai_user_id", None):
+    if user is not None and getattr(user, "user_id", None):
+        try:
+            from . import basecamp_oauth_token
+            tok = basecamp_oauth_token.get_access_token_for_operator(user)
+            if tok:
+                return tok
+        except basecamp_oauth_token.OAuthError:
+            pass
+        except ImportError:
+            pass
+        except Exception:
+            pass
         try:
             from . import vault
-            plain = vault.read_secret(
-                user.user_id, "basecamp_ai",
-                caller_id="mcp-server", purpose="BC write as AI persona",
-            )
-            if plain:
-                return plain
+            for key in ("basecamp_ai_clone", "basecamp_ai"):
+                try:
+                    plain = vault.read_secret(
+                        user.user_id, key,
+                        caller_id="mcp-server",
+                        purpose="BC write as AI persona",
+                    )
+                    if plain:
+                        return plain
+                except KeyError:
+                    continue
         except Exception:
             pass
     tok = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
@@ -154,6 +172,29 @@ def _tool_derive_title(user, args: dict) -> dict:
     return {"ok": True, "title": ticket_creation_flow.derive_proposed_title(prompt)}
 
 
+def _with_attribution(user, body: str) -> str:
+    """Prepend a one-line attribution to BC write-tool bodies so readers
+    can distinguish automated MCP posts from manual ones. Authorship in
+    BC still shows the human's real name (we use their personal OAuth
+    grant); this prefix says "the typing came through Claude."
+
+    If the body starts with HTML comments (Op 3 idempotency markers
+    `<!-- step:KIND:HASH -->`), the prefix is inserted AFTER them so the
+    markers remain at the head where upstream idempotency scanners look.
+    """
+    if not body:
+        return body
+    import re
+    name = (getattr(user, "display_name", "") or "").strip()
+    if not name:
+        name = (getattr(user, "email", "") or "").split("@")[0] or "Unknown"
+    prefix = f"<p><em>via {name}'s Claude Code</em></p>\n"
+    m = re.match(r"^(\s*(?:<!--.*?-->\s*)+)", body, flags=re.DOTALL)
+    if m:
+        return body[:m.end()] + prefix + body[m.end():]
+    return prefix + body
+
+
 def _resolve_default_anchor(user) -> dict:
     """Return the user's personal BC project + todolist for session anchoring."""
     pid = getattr(user, "personal_bc_project_id", None)
@@ -195,7 +236,7 @@ def _tool_create_ticket(user, args: dict) -> dict:
         body = _bc_request(
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{todolist_id}/todos.json",
-            payload={"content": title, "description": description},
+            payload={"content": title, "description": _with_attribution(user, description)},
             user=user,
         )
     except RuntimeError as e:
@@ -223,7 +264,7 @@ def _tool_post_progress(user, args: dict) -> dict:
         body = _bc_request(
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/recordings/{ticket_id}/comments.json",
-            payload={"content": html_body},
+            payload={"content": _with_attribution(user, html_body)},
             user=user,
         )
     except RuntimeError as e:

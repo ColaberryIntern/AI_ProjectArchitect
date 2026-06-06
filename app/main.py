@@ -16,6 +16,7 @@ from app.routers import (
     admin,
     auth,
     auto_build,
+    basecamp_connect,
     chapter_build,
     chat,
     demo,
@@ -112,6 +113,7 @@ async def mcp_first_login_gate(request, call_next):
         "/profile/mcp-setup", "/profile/mcp-token", "/profile/mcp-revoke",
         "/profile/mcp-status.json",
         "/profile/connect-google", "/profile/google-status.json",
+        "/profile/connect-basecamp", "/profile/basecamp-status.json",
         "/auth/", "/static/", "/advisory/static/",
         "/mcp", "/api/", "/favicon",
         "/openapi.json", "/docs", "/redoc",
@@ -187,6 +189,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(mcp_server.router)
 app.include_router(google_connect.router)
+app.include_router(basecamp_connect.router)
 
 
 @app.exception_handler(ValueError)
