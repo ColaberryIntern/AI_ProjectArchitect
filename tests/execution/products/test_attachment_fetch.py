@@ -102,46 +102,104 @@ def _gmail_attachment_json(data: bytes) -> bytes:
     return json.dumps({"size": len(data), "data": b64url}).encode("utf-8")
 
 
-def test_gmail_happy_path():
+def test_gmail_happy_path_by_attachment_id():
     payload = b"binary-spreadsheet-content"
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = [
             _make_urlopen_response(_gmail_message_json("ATT_ID")),
             _make_urlopen_response(_gmail_attachment_json(payload)),
         ]
-        result = gmail_source.fetch("MSG_ID", "ATT_ID", "test-access-token")
+        result = gmail_source.fetch(
+            "MSG_ID", "test-access-token", attachment_id="ATT_ID",
+        )
     assert result.filename == "February Commission 2026.xlsx"
     assert result.sender.startswith("Jackie Chalk")
     assert result.data == payload
     assert result.size_bytes == len(payload)
 
 
+def test_gmail_happy_path_by_filename():
+    """Caller passes filename; we resolve canonical attachment_id internally."""
+    payload = b"binary-spreadsheet-content"
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_urlopen_response(_gmail_message_json("CANONICAL_ATT_ID")),
+            _make_urlopen_response(_gmail_attachment_json(payload)),
+        ]
+        result = gmail_source.fetch(
+            "MSG_ID", "test-access-token",
+            filename="February Commission 2026.xlsx",
+        )
+    assert result.filename == "February Commission 2026.xlsx"
+    assert result.data == payload
+
+
+def test_gmail_filename_case_insensitive():
+    """Match is case-insensitive on the basename."""
+    payload = b"x"
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_urlopen_response(_gmail_message_json("CANONICAL_ATT_ID")),
+            _make_urlopen_response(_gmail_attachment_json(payload)),
+        ]
+        result = gmail_source.fetch(
+            "MSG_ID", "test-access-token",
+            filename="FEBRUARY COMMISSION 2026.XLSX",  # all caps
+        )
+    assert result.filename == "February Commission 2026.xlsx"  # original case preserved
+
+
+def test_gmail_requires_filename_or_attachment_id():
+    with pytest.raises(gmail_source.GmailError) as exc:
+        gmail_source.fetch("MSG_ID", "test-token")
+    assert exc.value.code == "missing_required"
+
+
 def test_gmail_401_raises():
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = _make_http_error(401)
         with pytest.raises(gmail_source.GmailError) as exc:
-            gmail_source.fetch("MSG_ID", "ATT_ID", "test-token")
+            gmail_source.fetch("MSG_ID", "test-token", attachment_id="ATT_ID")
     assert exc.value.code == "gmail_unauthorized"
 
 
-def test_gmail_404_raises():
+def test_gmail_message_not_found_distinct_code():
+    """404 on the message GET surfaces as gmail_message_not_found, NOT
+    gmail_attachment_*_not_in_message -- so callers can distinguish.
+    """
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = _make_http_error(404)
         with pytest.raises(gmail_source.GmailError) as exc:
-            gmail_source.fetch("MSG_ID", "ATT_ID", "test-token")
-    assert exc.value.code == "gmail_not_found"
+            gmail_source.fetch("MSG_ID", "test-token", attachment_id="ATT_ID")
+    assert exc.value.code == "gmail_message_not_found"
 
 
-def test_gmail_attachment_not_in_message():
-    """Message exists but attachment id doesn't appear in any MIME part."""
+def test_gmail_attachment_id_not_in_message():
+    """Message exists but attachment_id doesn't appear in any MIME part."""
     with patch("urllib.request.urlopen") as mock_urlopen:
         # Use a payload with a DIFFERENT attachment id than what we request
         mock_urlopen.side_effect = [
             _make_urlopen_response(_gmail_message_json("OTHER_ATT_ID")),
         ]
         with pytest.raises(gmail_source.GmailError) as exc:
-            gmail_source.fetch("MSG_ID", "ATT_ID", "test-token")
-    assert exc.value.code == "gmail_attachment_not_in_message"
+            gmail_source.fetch("MSG_ID", "test-token", attachment_id="ATT_ID")
+    assert exc.value.code == "gmail_attachment_id_not_in_message"
+    # The error message lists what filenames ARE present so the caller can fix
+    assert "February Commission 2026.xlsx" in str(exc.value)
+
+
+def test_gmail_filename_not_in_message():
+    """Message exists but no part filename matches the caller's request."""
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_urlopen_response(_gmail_message_json("ATT_ID")),
+        ]
+        with pytest.raises(gmail_source.GmailError) as exc:
+            gmail_source.fetch(
+                "MSG_ID", "test-token", filename="something-else.pdf",
+            )
+    assert exc.value.code == "gmail_filename_not_in_message"
+    assert "present attachments" in str(exc.value).lower()
 
 
 def test_gmail_malformed_response():
@@ -150,7 +208,7 @@ def test_gmail_malformed_response():
             _make_urlopen_response(b"<html>this is not json</html>"),
         ]
         with pytest.raises(gmail_source.GmailError) as exc:
-            gmail_source.fetch("MSG_ID", "ATT_ID", "test-token")
+            gmail_source.fetch("MSG_ID", "test-token", attachment_id="ATT_ID")
     assert exc.value.code == "gmail_malformed_response"
 
 

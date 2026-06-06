@@ -332,9 +332,19 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
     if source == "gmail":
         message_id = (args.get("message_id") or "").strip()
         attachment_id = (args.get("attachment_id") or "").strip()
-        if not message_id or not attachment_id:
-            return {"ok": False, "error": "missing_required: gmail needs message_id + attachment_id"}
-        id_echo = {"message_id": message_id, "attachment_id": attachment_id}
+        filename = (args.get("filename") or "").strip()
+        if not message_id:
+            return {"ok": False, "error": "missing_required: gmail needs message_id"}
+        if not attachment_id and not filename:
+            return {
+                "ok": False,
+                "error": "missing_required: gmail needs `filename` (preferred) or `attachment_id`",
+            }
+        id_echo = {
+            "message_id": message_id,
+            "attachment_id": attachment_id,
+            "filename": filename,
+        }
     elif source == "basecamp":
         project_id = args.get("project_id")
         recording_id = args.get("recording_id")
@@ -349,10 +359,17 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
         id_echo = {"drive_file_id": drive_file_id}
 
     # 2. Compute idempotency key + check the per-operator index.
+    # For Gmail, prefer filename for the idempotency key when given (since
+    # attachment_ids from different Gmail wrappers don't always match the
+    # canonical Gmail v1 form -- a second call with the same wrapper id
+    # would correctly hit cache, but if the caller switches to filename on
+    # the second call the underlying file is the same yet the cache misses.
+    # Filename is the stable user-visible identity).
+    gmail_id_for_key = id_echo.get("filename") or id_echo.get("attachment_id") or ""
     idempotency_key = attachment_index.compute_key(
         source=source,
         message_id=id_echo.get("message_id", "") or "",
-        attachment_id=id_echo.get("attachment_id", "") or "",
+        attachment_id=gmail_id_for_key,
         project_id=id_echo.get("project_id", "") or "",
         recording_id=id_echo.get("recording_id", "") or "",
         sgid=id_echo.get("attachment_sgid", "") or "",
@@ -400,7 +417,10 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
         try:
             if source == "gmail":
                 fetched = gmail_source.fetch(
-                    id_echo["message_id"], id_echo["attachment_id"], access_token,
+                    id_echo["message_id"],
+                    access_token,
+                    attachment_id=id_echo.get("attachment_id") or "",
+                    filename=id_echo.get("filename") or "",
                 )
             elif source == "basecamp":
                 # Reuse the existing per-user BC token resolution.
@@ -660,8 +680,9 @@ TOOLS: list[Tool] = [
                     "enum": ["gmail", "basecamp", "drive"],
                     "description": "Where to download from",
                 },
-                "message_id": {"type": "string", "description": "Gmail message/thread id"},
-                "attachment_id": {"type": "string", "description": "Gmail attachment id from the message's payload.parts"},
+                "message_id": {"type": "string", "description": "Gmail message id (the stable rfc822 id, NOT the connector-side wrapper id)"},
+                "filename": {"type": "string", "description": "Gmail attachment filename (preferred over attachment_id -- robust against id-format drift across Gmail-API wrappers). Case-insensitive basename match."},
+                "attachment_id": {"type": "string", "description": "Canonical Gmail v1 attachment id from `users.messages.get(format=full).payload.parts[*].body.attachmentId`. Use `filename` instead if your Gmail client returns a wrapper-internal id format."},
                 "project_id": {"type": "integer", "description": "Basecamp bucket id"},
                 "recording_id": {"type": "integer", "description": "Basecamp recording id (todo / comment) hosting the attachment"},
                 "attachment_sgid": {"type": "string", "description": "Basecamp blob sgid"},
