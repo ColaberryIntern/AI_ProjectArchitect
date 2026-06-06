@@ -51,6 +51,53 @@ RETURN_COOKIE_NAME = "colaberry_basecamp_return"
 STATE_TTL_SEC = 600
 
 
+def is_ai_account_email(email: str) -> bool:
+    """True when the BC account behind this email is the operator's
+    'X AI' identity rather than their human account.
+
+    Recognized patterns (case-insensitive):
+      - <base>-ai@<domain>      e.g. karun-ai@colaberry.com
+      - <base>+ai@<domain>      e.g. karun+ai@colaberry.com (Gmail aliasing)
+      - <base>.ai@<domain>      e.g. karun.ai@colaberry.com (dot alias)
+
+    Anything else is treated as the user's human account. We deliberately
+    DON'T require the AI account to be on the colaberry.com domain --
+    contractors / partners might use a different domain.
+    """
+    if not email:
+        return False
+    e = email.strip().lower()
+    if "@" not in e:
+        return False
+    local, _, _ = e.partition("@")
+    if not local:
+        return False
+    return (
+        local.endswith("-ai")
+        or local.endswith("+ai")
+        or local.endswith(".ai")
+        or local == "ai"
+    )
+
+
+def _friendly_ai_name(email: str, fallback_suffix: str = "") -> str:
+    """Derive 'Karun AI' from 'karun-ai@colaberry.com' for display."""
+    if not email or "@" not in email:
+        return ""
+    local = email.split("@", 1)[0].lower()
+    base = local
+    for suf in ("-ai", "+ai", ".ai"):
+        if local.endswith(suf):
+            base = local[: -len(suf)]
+            break
+    if not base:
+        return "AI"
+    name = base.replace(".", " ").replace("-", " ").replace("+", " ").title()
+    if is_ai_account_email(email):
+        return f"{name} AI"
+    return f"{name}{fallback_suffix}"
+
+
 def _session_user(request: Request) -> tenancy.User | None:
     cookie = request.cookies.get(auth_google.SESSION_COOKIE_NAME)
     user = auth_google.current_user_from_cookie(cookie)
@@ -142,13 +189,41 @@ async def connect_basecamp_page(request: Request, status: str | None = None,
         exp = meta.get("access_token_expires_at")
         exp_str = time.strftime("%Y-%m-%d %H:%M UTC",
                                 time.gmtime(exp)) if exp else "unknown"
+        bc_email = meta.get("bc_user_email") or ""
+        is_ai = is_ai_account_email(bc_email)
+        if is_ai:
+            # Connected as the dedicated AI account -- BC posts will show
+            # under that identity (e.g. "Karun AI"), exactly what Ali wants
+            # for the team rollout.
+            ai_badge = (
+                '<span style="display:inline-block;background:#137333;'
+                'color:#fff;padding:3px 9px;border-radius:4px;font-size:11px;'
+                'font-weight:700;margin-left:8px;vertical-align:middle;">'
+                "AI ACCOUNT</span>"
+            )
+            posting_as = (
+                f"Posts from your Claude Code will show as <strong>"
+                f"{_friendly_ai_name(bc_email)}</strong> in Basecamp."
+            )
+        else:
+            ai_badge = ""
+            posting_as = (
+                "Posts from your Claude Code will show as your HUMAN BC "
+                "name. If you want them to show as a separate "
+                f"<strong>{_friendly_ai_name(bc_email, fallback_suffix=' AI')}</strong> "
+                "identity, open this page in an Incognito window after "
+                "signing into BC as your "
+                "<code>&lt;you&gt;-ai@colaberry.com</code> account, then "
+                "click Reconnect."
+            )
         grant_state = (
             '<div style="background:#dafbe1;border:1px solid #aceebb;'
             'padding:12px 16px;border-radius:8px;margin-bottom:16px;color:#137333;">'
             "🟢 <strong>Connected.</strong> Authorized as "
-            f"<code>{meta.get('bc_user_email')}</code> "
+            f"<code>{bc_email}</code>{ai_badge} "
             f"(BC user id <code>{meta.get('bc_user_id')}</code>). "
             f"Access token expires <code>{exp_str}</code> — refreshed automatically."
+            f"<div style='margin-top:8px;font-size:13px;'>{posting_as}</div>"
             "</div>"
         )
         button_label = "🔄 Reconnect (replace existing grant)"
