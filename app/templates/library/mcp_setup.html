@@ -212,9 +212,6 @@
           <td style="padding: 10px 16px; font-weight: 600;"
               {% if d.is_likely_current %}data-likely-current="1"{% endif %}>
             {{ d.label }}
-            {% if d.is_likely_current %}
-              <span class="likely-current-badge" style="display: inline-block; background: #fff4d5; color: #8a5a00; padding: 1px 8px; border-radius: 999px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; margin-left: 6px; border: 1px solid #d4a72c;">← LIKELY THIS COMPUTER (matching IP)</span>
-            {% endif %}
             {% if d.hostname %}
               <div style="font-size: 12px; color: #1f2328; font-weight: 600; margin-top: 4px;">
                 💻 <code style="background: #f6f8fa; padding: 1px 6px; border-radius: 3px;">{{ d.hostname }}</code>
@@ -427,22 +424,61 @@ function tryAutoGuessCurrentDevice(devices) {
 }
 
 function highlightCurrentRow() {
-  const current = getCurrentDeviceLabel();
+  // Two signals can claim "this is THIS COMPUTER":
+  //   1. IP match (server-side flag, data-likely-current="1") -- strong:
+  //      the device actually pinged from the browser's public IP.
+  //   2. localStorage mark -- weaker: user clicked + Add or Mark earlier.
+  //
+  // When they're on DIFFERENT rows (Ali's screenshot: localStorage on
+  // never-pinged Bottom Laptop; IP match on actually-connected Top laptop),
+  // IP match wins because it's ground truth. We sync localStorage to the
+  // IP-matched row so future visits stay consistent.
+
+  // 1. Find the row(s) with IP match (server flag).
+  let ipMatchLabel = '';
+  document.querySelectorAll('#devicesTbody tr[data-likely-current="1"]').forEach(tr => {
+    if (!ipMatchLabel) ipMatchLabel = tr.dataset.label;
+  });
+
+  // 2. Resolve the authoritative current device.
+  let currentLabel;
+  let badgeText;
+  if (ipMatchLabel) {
+    currentLabel = ipMatchLabel;
+    badgeText = '✓ THIS COMPUTER (IP verified)';
+    // Auto-sync localStorage to match ground truth
+    try {
+      if (localStorage.getItem(_currentDeviceKey) !== ipMatchLabel) {
+        localStorage.setItem(_currentDeviceKey, ipMatchLabel);
+      }
+    } catch (e) {}
+  } else {
+    currentLabel = getCurrentDeviceLabel();
+    badgeText = '← THIS COMPUTER (your mark)';
+  }
+
   document.querySelectorAll('#devicesTbody tr').forEach(tr => {
-    const isCurrent = tr.dataset.label === current;
+    const isCurrent = !!currentLabel && tr.dataset.label === currentLabel;
     tr.classList.toggle('current-device', isCurrent);
-    // Toggle the "← THIS COMPUTER" badge presence
-    let badge = tr.querySelector('.current-device-badge');
+
     const labelCell = tr.querySelector('td:first-child');
+
+    // Single THIS COMPUTER badge per page; remove any stale ones first
+    let badge = tr.querySelector('.current-device-badge');
     if (isCurrent && !badge && labelCell) {
       const span = document.createElement('span');
       span.className = 'current-device-badge';
-      span.textContent = '← THIS COMPUTER';
+      span.textContent = badgeText;
       labelCell.appendChild(span);
+    } else if (isCurrent && badge && badge.textContent !== badgeText) {
+      badge.textContent = badgeText;
     } else if (!isCurrent && badge) {
       badge.remove();
     }
-    // Toggle "Mark as this computer" button
+
+    // "Mark as this computer" button on non-current rows. Hide on rows
+    // that haven't pinged AND have no localStorage mark -- pointless
+    // (clicking would mark a never-pinged row as current, which is wrong).
     let markBtn = tr.querySelector('.mark-current-btn');
     if (!isCurrent && !markBtn && labelCell) {
       const btn = document.createElement('button');
@@ -637,15 +673,18 @@ function rebuildDeviceTable(devices) {
       const matchNote = d.is_likely_current ? ' (matches your browser)' : '';
       ipBlock = '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">from ' + d.last_client_ip + matchNote + '</div>';
     }
-    let likelyBadge = '';
+    // No inline likely-current badge; highlightCurrentRow() decides which
+    // ONE row gets the "THIS COMPUTER" badge after de-duping IP match
+    // vs localStorage signals.
     if (d.is_likely_current) {
-      likelyBadge = '<span class="likely-current-badge" style="display:inline-block;background:#fff4d5;color:#8a5a00;padding:1px 8px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:6px;border:1px solid #d4a72c;">← LIKELY THIS COMPUTER (matching IP)</span>';
+      // Stamp the cell-level data attr so highlightCurrentRow can find it
+      tr.dataset.likelyCurrent = '1';
     }
     const revokeBtn = d.status !== 'revoked'
       ? `<button class="mcp-btn mcp-btn-danger" onclick="revokeDevice('${d.label.replace(/'/g, "\\'")}')" style="padding:5px 12px;font-size:11px;">Revoke</button>`
       : '';
     tr.innerHTML =
-      '<td style="padding:10px 16px;font-weight:600;">' + d.label + likelyBadge + hostBlock + ipBlock + '</td>' +
+      '<td style="padding:10px 16px;font-weight:600;">' + d.label + hostBlock + ipBlock + '</td>' +
       '<td style="padding:10px 8px;">' + statusPill(d.status) + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + issued + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + lastSeen + '</td>' +
