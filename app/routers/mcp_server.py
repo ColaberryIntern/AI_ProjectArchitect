@@ -197,6 +197,7 @@ async def mcp_rpc(request: Request,
 @router.get("/profile/mcp-setup")
 async def mcp_setup_page(request: Request):
     user = _require_web_user(request)
+    return_to_welcome = (request.query_params.get("return") or "").strip() == "welcome"
     # Persist any legacy single-token -> mcp_tokens migration once so
     # subsequent loads don't redo the in-memory upgrade.
     if mcp_token._migrate_legacy(user):
@@ -254,6 +255,7 @@ async def mcp_setup_page(request: Request):
             "personal_bc_url": personal_bc_url,
             "devices": devices,
             "browser_ip": browser_ip or "",
+            "return_to_welcome": return_to_welcome,
             # Safe defaults for library/_library_base.html
             "actor": user.display_name or user.email,
             "workspace": "global",

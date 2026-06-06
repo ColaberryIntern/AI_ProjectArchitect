@@ -37,6 +37,7 @@ import urllib.request
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from app.routers import welcome as _welcome_helpers
 from execution.products.library import (
     auth_google, google_oauth_token, tenancy, vault,
 )
@@ -57,6 +58,7 @@ SCOPES = " ".join([
 # with LIBRARY_SESSION_SECRET so a forged state from another tab can't
 # replay against a legitimate session.
 STATE_COOKIE_NAME = "colaberry_google_connect_state"
+RETURN_COOKIE_NAME = "colaberry_google_connect_return"
 STATE_TTL_SEC = 600
 
 
@@ -223,6 +225,16 @@ async def connect_google_page(request: Request, status: str | None = None,
             "</details>"
         )
 
+    next_path = _welcome_helpers.next_step_path(user)
+    next_label = _welcome_helpers.next_step_label(user)
+    if next_path.startswith("/profile/connect-google"):
+        next_html = ""
+    else:
+        next_html = (
+            f' · <a href="{next_path}" style="font-weight:600;">'
+            f"Next: {next_label} →</a>"
+        )
+
     html = (
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<title>Connect Google · Colaberry</title>"
@@ -235,6 +247,7 @@ async def connect_google_page(request: Request, status: str | None = None,
         f"Signed in as <code>{user.email}</code>. "
         '<a href="/my-day/">My Day</a> · '
         '<a href="/profile/mcp-setup">MCP setup</a>'
+        f"{next_html}"
         "</p></body></html>"
     )
     response = HTMLResponse(html)
@@ -244,6 +257,16 @@ async def connect_google_page(request: Request, status: str | None = None,
         httponly=True, samesite="lax", secure=True,
         path=CALLBACK_PATH,  # only sent on the callback URL
     )
+    # If the user came here from the onboarding wizard, persist that so the
+    # callback redirects back to /profile/welcome instead of this page.
+    return_dest = (request.query_params.get("return") or "").strip()
+    if return_dest == "welcome":
+        response.set_cookie(
+            RETURN_COOKIE_NAME, "welcome",
+            max_age=STATE_TTL_SEC,
+            httponly=True, samesite="lax", secure=True,
+            path=CALLBACK_PATH,
+        )
     return response
 
 
@@ -339,12 +362,15 @@ async def google_attachment_callback(request: Request,
         actor_id="google_connect_web_flow",
     )
 
-    response = RedirectResponse(
-        "/profile/connect-google?status=ok",
-        status_code=303,
-    )
-    # Clear the state cookie -- single use
+    # Round-trip to /profile/welcome if the user came from there.
+    return_dest = (request.cookies.get(RETURN_COOKIE_NAME) or "").strip()
+    if return_dest == "welcome":
+        success_url = "/profile/welcome?step=3"
+    else:
+        success_url = "/profile/connect-google?status=ok"
+    response = RedirectResponse(success_url, status_code=303)
     response.delete_cookie(STATE_COOKIE_NAME, path=CALLBACK_PATH)
+    response.delete_cookie(RETURN_COOKIE_NAME, path=CALLBACK_PATH)
     return response
 
 

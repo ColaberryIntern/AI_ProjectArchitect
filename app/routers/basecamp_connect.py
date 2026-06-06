@@ -32,6 +32,7 @@ import urllib.request
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from app.routers import welcome as _welcome_helpers
 from execution.products.library import (
     auth_google, basecamp_oauth_token, tenancy,
 )
@@ -46,6 +47,7 @@ PROFILE_ENDPOINT = "https://launchpad.37signals.com/authorization.json"
 CALLBACK_PATH = "/auth/basecamp-callback"
 
 STATE_COOKIE_NAME = "colaberry_basecamp_state"
+RETURN_COOKIE_NAME = "colaberry_basecamp_return"
 STATE_TTL_SEC = 600
 
 
@@ -205,10 +207,27 @@ async def connect_basecamp_page(request: Request, status: str | None = None,
         httponly=True, samesite="lax", secure=True,
         path=CALLBACK_PATH,
     )
+    return_dest = (request.query_params.get("return") or "").strip()
+    if return_dest == "welcome":
+        response.set_cookie(
+            RETURN_COOKIE_NAME, "welcome",
+            max_age=STATE_TTL_SEC,
+            httponly=True, samesite="lax", secure=True,
+            path=CALLBACK_PATH,
+        )
     return response
 
 
 def _wrap(body_html: str, user) -> str:
+    next_path = _welcome_helpers.next_step_path(user)
+    next_label = _welcome_helpers.next_step_label(user)
+    if next_path.startswith("/profile/connect-basecamp"):
+        next_html = ""
+    else:
+        next_html = (
+            f' · <a href="{next_path}" style="font-weight:600;">'
+            f"Next: {next_label} →</a>"
+        )
     return (
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<title>Connect Basecamp · Colaberry</title>"
@@ -223,6 +242,7 @@ def _wrap(body_html: str, user) -> str:
         '<a href="/profile/connect-google">Connect Google</a> · '
         '<a href="/my-day/">My Day</a> · '
         '<a href="/profile/mcp-setup">MCP setup</a>'
+        f"{next_html}"
         "</p></body></html>"
     )
 
@@ -336,11 +356,14 @@ async def basecamp_callback(request: Request,
         user.bc_user_id = granted_id
         tenancy.upsert_user(user)
 
-    response = RedirectResponse(
-        "/profile/connect-basecamp?status=ok",
-        status_code=303,
-    )
+    return_dest = (request.cookies.get(RETURN_COOKIE_NAME) or "").strip()
+    if return_dest == "welcome":
+        success_url = "/profile/welcome?step=3"
+    else:
+        success_url = "/profile/connect-basecamp?status=ok"
+    response = RedirectResponse(success_url, status_code=303)
     response.delete_cookie(STATE_COOKIE_NAME, path=CALLBACK_PATH)
+    response.delete_cookie(RETURN_COOKIE_NAME, path=CALLBACK_PATH)
     return response
 
 

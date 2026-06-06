@@ -4,6 +4,44 @@
 {% block content %}
 {% include "my_day/_my_day_styles.html" %}
 
+{# Welcome banner -- shown once after onboarding completes. Dismissal
+   persists in localStorage so we don't show again on subsequent visits. #}
+{% if show_welcome_banner %}
+<div id="welcome-banner" style="background: linear-gradient(135deg, #dafbe1 0%, #ddf4ff 100%);
+                                 border: 1px solid #aceebb; border-radius: 10px;
+                                 padding: 16px 20px; margin-bottom: 18px;
+                                 display: none; position: relative;">
+  <button onclick="dismissWelcomeBanner()" aria-label="Dismiss"
+          style="position: absolute; top: 8px; right: 10px;
+                 background: transparent; border: none; cursor: pointer;
+                 color: #57606a; font-size: 18px; padding: 2px 8px;">×</button>
+  <div style="font-size: 16px; font-weight: 600; color: #137333; margin-bottom: 4px;">
+    🎉 You're all set. Try these in Claude Code:
+  </div>
+  <div style="color: #1f2328; font-size: 13px; line-height: 1.7; margin-top: 10px;">
+    <div style="margin-bottom: 6px;"><strong>1.</strong> Ask: <em>"What's on my plate today?"</em>
+      <span style="color:#57606a;"> — Claude reads your queue via <code>colaberry_get_personal_anchor</code> + <code>colaberry_find_project</code>.</span></div>
+    <div style="margin-bottom: 6px;"><strong>2.</strong> Ask: <em>"Create a session anchor for the Acme refactor"</em>
+      <span style="color:#57606a;"> — exercises <code>colaberry_create_ticket</code>; BC posts will show <code>via {{ actor }}'s Claude Code</code>.</span></div>
+    <div><strong>3.</strong> Ask: <em>"Pull the latest contract draft from my Gmail"</em>
+      <span style="color:#57606a;"> — exercises <code>colaberry_attachment_fetch</code>; staged in your Drive.</span></div>
+  </div>
+</div>
+<script>
+(function () {
+  var KEY = 'colaberry-welcome-banner-dismissed';
+  var el = document.getElementById('welcome-banner');
+  if (!el) return;
+  if (window.localStorage && localStorage.getItem(KEY) === '1') return;
+  el.style.display = 'block';
+  window.dismissWelcomeBanner = function () {
+    if (window.localStorage) localStorage.setItem(KEY, '1');
+    el.style.display = 'none';
+  };
+})();
+</script>
+{% endif %}
+
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day</h1>
   <div style="display: flex; gap: 8px; align-items: center;">

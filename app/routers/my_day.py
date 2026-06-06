@@ -561,7 +561,10 @@ async def ops_home(request: Request):
              human_todos=human_todos,
              ai_todos=ai_todos,
              total_open=status.open_count,
-             my_day_total_open=status.open_count),
+             my_day_total_open=status.open_count,
+             show_welcome_banner=(
+                 request.query_params.get("welcome") == "1"
+             )),
     )
     # Disable browser caching so post-action redirects (?done=, ?skip=) and
     # background-sync refreshes always see fresh state. Without this, hitting
