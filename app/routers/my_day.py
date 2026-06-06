@@ -282,16 +282,6 @@ async def ops_home(request: Request):
     tier_counts_total["human"] = sum(1 for t in active_unfiltered if t.category == "human_required")
     tier_counts_total["ai"] = sum(1 for t in active_unfiltered if t.category != "human_required")
 
-    # People chip data — collapsed by default in the UI. Includes counts so
-    # the user can spot heavy-hitters at a glance. Top 50 (most projects
-    # have <30 distinct assignees; cap keeps the chip row finite).
-    people_counts: Counter = Counter()
-    for t in active_unfiltered:
-        for a in (t.assignee_names or []):
-            if a:
-                people_counts[a] += 1
-    people_for_chips = people_counts.most_common(50)
-
     # Apply project filter (parsed earlier as _early_proj for the
     # natural-flow sync; re-bind to the name the downstream code uses).
     project_filter_id = _early_proj
@@ -307,6 +297,24 @@ async def ops_home(request: Request):
     # or the "Filter by person" collapsed chip row does. Substring match on
     # assignee_names so 'Christian' matches 'Christian Outlaw'.
     person_filter = (request.query_params.get("person", "") or "").strip() or None
+
+    # People chip data — scoped to the active project + list filters (but
+    # NOT the person filter, since selecting a person would otherwise
+    # collapse the chip row to just that one name). This mirrors how the
+    # list chips are already scoped to the active project: pick a project,
+    # see only people who appear in that project; drill into a list, see
+    # only people on that list. Top 50 keeps the chip row finite.
+    people_scope_todos = active_unfiltered
+    if project_filter_id is not None:
+        people_scope_todos = [t for t in people_scope_todos if t.bc_project_id == project_filter_id]
+    if list_filter_id is not None:
+        people_scope_todos = [t for t in people_scope_todos if t.bc_todolist_id == list_filter_id]
+    people_counts: Counter = Counter()
+    for t in people_scope_todos:
+        for a in (t.assignee_names or []):
+            if a:
+                people_counts[a] += 1
+    people_for_chips = people_counts.most_common(50)
 
     if project_filter_id is not None:
         scoped_todos = [t for t in todos if t.bc_project_id == project_filter_id]
