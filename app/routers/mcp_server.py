@@ -294,25 +294,62 @@ async def mcp_token_generate(request: Request, label: str = Form("device")):
         f'--header "Authorization: Bearer {plain_token}" '
         f'--header "X-MCP-Hostname: $env:COMPUTERNAME"'
     )
-    # Self-orienting instruction block to paste into either a terminal OR a
-    # live Claude Code session. The preamble tells Claude Code exactly what to
-    # do (run the command + verify + restart) so it doesn't lapse into a
-    # "what's the goal?" meta-question.
+    # Self-orienting instruction block. Designed to work whether the user has
+    # the `claude` CLI on PATH (uses `claude mcp add`) or only has the VSCode
+    # extension (must direct-edit ~/.claude.json). The prompt detects which
+    # works and falls through gracefully -- no questions asked.
     claude_prompt = (
         f"INSTALL TASK: Register the Colaberry MCP server for the operator "
         f"{user.email}. This is a one-time install on this machine.\n\n"
-        f"Do these steps in order. Don't ask what the goal is; just execute "
-        f"and report each step's result:\n\n"
-        f"1. Run this shell command via your Bash tool:\n"
-        f"   {shell_command}\n\n"
-        f"2. Run `claude mcp list` and confirm `colaberry` is listed with "
-        f"a status of `Connected` (or `OK`).\n\n"
-        f"3. Print: \"MCP installed for {user.email}. Restart Claude Code "
-        f"(close this session and open a new one) so the new server is loaded.\"\n\n"
-        f"4. STOP. Don't run other tools or ask questions about the token. "
-        f"The token grants this machine permission to call Colaberry MCP tools "
-        f"(BC ticket creation, doctrine loading, operator memory) on the user's behalf. "
-        f"Never echo it back or write it to a file.\n"
+        f"DO ALL STEPS BELOW. Don't ask the user what the goal is or which "
+        f"approach to use -- pick automatically. Don't echo the token in chat. "
+        f"Report a short result line for each step.\n\n"
+        f"--- Step 1: detect hostname ---\n"
+        f"Run via Bash: `hostname` (Mac/Linux) or `echo %COMPUTERNAME%` "
+        f"(Windows cmd) or `$env:COMPUTERNAME` (PowerShell). Whichever your "
+        f"OS supports. Capture the result as <HOSTNAME> -- you'll need it.\n\n"
+        f"--- Step 2: try the CLI path FIRST ---\n"
+        f"Run: `claude --version`\n"
+        f"   - If exit 0: run the install via CLI -- `claude mcp add colaberry "
+        f"https://advisor.colaberry.ai/mcp/v1 --transport http "
+        f"--header \"Authorization: Bearer {plain_token}\" "
+        f"--header \"X-MCP-Hostname: <HOSTNAME>\"` -- then jump to Step 4.\n"
+        f"   - If exit non-zero or \"command not found\": fall through to Step 3 "
+        f"(direct config edit). This is the case for users with only the "
+        f"VSCode extension, not the standalone CLI.\n\n"
+        f"--- Step 3: direct config edit (universal fallback) ---\n"
+        f"Locate the Claude Code config file:\n"
+        f"  Mac/Linux: ~/.claude.json\n"
+        f"  Windows:   %USERPROFILE%\\.claude.json (e.g. C:\\Users\\<name>\\.claude.json)\n\n"
+        f"Use your Read + Write tools (NOT Bash, so JSON is parsed cleanly):\n"
+        f"  1. Read the file. If missing, treat as empty object `{{}}`.\n"
+        f"  2. Backup: copy to .claude.json.bak.\n"
+        f"  3. Ensure the JSON has an `mcpServers` object key; set/overwrite "
+        f"its `colaberry` entry to EXACTLY:\n"
+        f"     {{\n"
+        f"       \"type\": \"http\",\n"
+        f"       \"url\": \"https://advisor.colaberry.ai/mcp/v1\",\n"
+        f"       \"headers\": {{\n"
+        f"         \"Authorization\": \"Bearer {plain_token}\",\n"
+        f"         \"X-MCP-Hostname\": \"<HOSTNAME>\"\n"
+        f"       }}\n"
+        f"     }}\n"
+        f"  4. PRESERVE all other mcpServers entries -- only set the "
+        f"`colaberry` key. Don't drop sibling servers.\n"
+        f"  5. Write the file back as pretty-printed JSON.\n\n"
+        f"--- Step 4: verify ---\n"
+        f"Read the config file back. Confirm the `colaberry` entry is present "
+        f"with the right URL. Report success or failure.\n\n"
+        f"--- Step 5: tell the user and STOP ---\n"
+        f"Print exactly:\n"
+        f"  ✅ MCP installed for {user.email} as host <HOSTNAME>.\n"
+        f"  Close this Claude Code window and open a new one so the new\n"
+        f"  Colaberry MCP server is loaded. After restart, ask Claude to\n"
+        f"  list its tools -- you should see the colaberry_* tool family.\n\n"
+        f"Then STOP. Don't run further tools. Don't ask questions. Don't echo "
+        f"the token. The token grants this machine permission to call "
+        f"Colaberry MCP tools (BC tickets, doctrine, memory) on the user's "
+        f"behalf -- treat it like a credential.\n"
     )
     return JSONResponse({
         "ok": True,
