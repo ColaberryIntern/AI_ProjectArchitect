@@ -310,6 +310,187 @@ def _tool_remember(user, args: dict) -> dict:
     return {"ok": True, "scope": scope, "saved": True}
 
 
+def _tool_attachment_fetch(user, args: dict) -> dict:
+    """Stage an attachment from Gmail / Basecamp / Drive into the operator's
+    Google Drive and return a Drive ref. See
+    directives/colaberry-attachment-fetch.md for the contract.
+    """
+    from . import attachment_index, drive_staging, google_oauth_token
+    from .attachment_sources import (
+        basecamp as bc_source,
+        drive as drive_source,
+        gmail as gmail_source,
+    )
+
+    source = (args.get("source") or "").strip().lower()
+    if source not in ("gmail", "basecamp", "drive"):
+        return {"ok": False, "error": "missing_required: source must be gmail|basecamp|drive"}
+
+    # 1. Per-source arg validation. Echo IDs back so the caller's result
+    # is self-describing without re-emitting the raw args dict.
+    id_echo: dict = {}
+    if source == "gmail":
+        message_id = (args.get("message_id") or "").strip()
+        attachment_id = (args.get("attachment_id") or "").strip()
+        if not message_id or not attachment_id:
+            return {"ok": False, "error": "missing_required: gmail needs message_id + attachment_id"}
+        id_echo = {"message_id": message_id, "attachment_id": attachment_id}
+    elif source == "basecamp":
+        project_id = args.get("project_id")
+        recording_id = args.get("recording_id")
+        attachment_sgid = (args.get("attachment_sgid") or "").strip()
+        if not project_id or not recording_id or not attachment_sgid:
+            return {"ok": False, "error": "missing_required: basecamp needs project_id + recording_id + attachment_sgid"}
+        id_echo = {"project_id": project_id, "recording_id": recording_id, "attachment_sgid": attachment_sgid}
+    else:  # drive
+        drive_file_id = (args.get("drive_file_id") or "").strip()
+        if not drive_file_id:
+            return {"ok": False, "error": "missing_required: drive needs drive_file_id"}
+        id_echo = {"drive_file_id": drive_file_id}
+
+    # 2. Compute idempotency key + check the per-operator index.
+    idempotency_key = attachment_index.compute_key(
+        source=source,
+        message_id=id_echo.get("message_id", "") or "",
+        attachment_id=id_echo.get("attachment_id", "") or "",
+        project_id=id_echo.get("project_id", "") or "",
+        recording_id=id_echo.get("recording_id", "") or "",
+        sgid=id_echo.get("attachment_sgid", "") or "",
+        drive_file_id=id_echo.get("drive_file_id", "") or "",
+    )
+    existing = attachment_index.lookup(user.email, idempotency_key)
+    if existing:
+        return {
+            "ok": True,
+            "drive_file_id": existing.drive_file_id,
+            "drive_url": existing.drive_url,
+            "mime_type": existing.mime_type,
+            "size_bytes": existing.size_bytes,
+            "source": existing.source,
+            "source_message_id": existing.source_message_id,
+            "sender": existing.sender,
+            "filename": existing.filename,
+            "saved_at": existing.saved_at,
+            "reused_existing": True,
+        }
+
+    # 3. Concurrency guard. Two MCP calls with the same key shouldn't both
+    # upload; second caller gets a clean retry signal.
+    if not attachment_index.begin_inflight(user.email, idempotency_key):
+        return {
+            "ok": False,
+            "error": "fetch_in_progress: another call is already staging this attachment; retry shortly",
+            "source": source,
+            "source_id_echo": id_echo,
+        }
+
+    try:
+        # 4. Resolve credentials.
+        try:
+            access_token = google_oauth_token.get_access_token_for_operator(user)
+        except google_oauth_token.OAuthError as e:
+            return {
+                "ok": False,
+                "error": f"{e.code}",
+                "source": source,
+                "source_id_echo": id_echo,
+            }
+
+        # 5. Source-specific fetch.
+        try:
+            if source == "gmail":
+                fetched = gmail_source.fetch(
+                    id_echo["message_id"], id_echo["attachment_id"], access_token,
+                )
+            elif source == "basecamp":
+                # Reuse the existing per-user BC token resolution.
+                bc_token = _bc_token(user)
+                fetched = bc_source.fetch(
+                    int(id_echo["project_id"]),
+                    int(id_echo["recording_id"]),
+                    id_echo["attachment_sgid"],
+                    bc_token,
+                )
+            else:  # drive passthrough
+                fetched = drive_source.fetch(id_echo["drive_file_id"], access_token)
+        except (gmail_source.GmailError, bc_source.BasecampError,
+                  drive_source.DriveError) as e:
+            return {"ok": False, "error": e.code, "source": source, "source_id_echo": id_echo}
+
+        # 6. Stage to Drive (skip for drive passthrough -- it already IS Drive).
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        year_month = time.strftime("%Y-%m", time.gmtime())
+        destination_subpath = (args.get("destination_subpath") or "").strip() or None
+
+        if source == "drive":
+            drive_file_id = fetched.drive_file_id or id_echo["drive_file_id"]
+            drive_url = fetched.drive_url or f"https://drive.google.com/file/d/{drive_file_id}/view"
+            source_message_id = id_echo["drive_file_id"]
+        else:
+            try:
+                meta = drive_staging.upload(
+                    data=fetched.data,
+                    filename=fetched.filename,
+                    mime_type=fetched.mime_type,
+                    source=source,
+                    sender_slug=fetched.sender,
+                    year_month=year_month,
+                    access_token=access_token,
+                    destination_subpath=destination_subpath,
+                )
+            except drive_staging.DriveStagingError as e:
+                return {"ok": False, "error": e.code, "source": source, "source_id_echo": id_echo}
+            drive_file_id = meta.get("id") or ""
+            drive_url = meta.get("webViewLink") or (
+                f"https://drive.google.com/file/d/{drive_file_id}/view" if drive_file_id else ""
+            )
+            if source == "gmail":
+                source_message_id = id_echo["message_id"]
+            else:  # basecamp
+                source_message_id = str(id_echo["recording_id"])
+
+        if not drive_file_id:
+            return {"ok": False, "error": "drive_upload_returned_no_id",
+                            "source": source, "source_id_echo": id_echo}
+
+        # 7. Record in idempotency index.
+        ref = attachment_index.AttachmentRef(
+            idempotency_key=idempotency_key,
+            source=source,
+            drive_file_id=drive_file_id,
+            drive_url=drive_url,
+            mime_type=fetched.mime_type,
+            size_bytes=fetched.size_bytes,
+            filename=fetched.filename,
+            sender=fetched.sender,
+            saved_at=now_iso,
+            source_message_id=source_message_id,
+            source_attachment_id=(
+                id_echo.get("attachment_id")
+                or id_echo.get("attachment_sgid")
+                or id_echo.get("drive_file_id")
+                or ""
+            ),
+        )
+        attachment_index.record(user.email, ref)
+
+        return {
+            "ok": True,
+            "drive_file_id": drive_file_id,
+            "drive_url": drive_url,
+            "mime_type": fetched.mime_type,
+            "size_bytes": fetched.size_bytes,
+            "source": source,
+            "source_message_id": source_message_id,
+            "sender": fetched.sender,
+            "filename": fetched.filename,
+            "saved_at": now_iso,
+            "reused_existing": False,
+        }
+    finally:
+        attachment_index.end_inflight(user.email, idempotency_key)
+
+
 # ── Tool registry ────────────────────────────────────────────────────
 
 
@@ -460,6 +641,36 @@ TOOLS: list[Tool] = [
             "required": ["fact"],
         },
         handler=_tool_remember,
+    ),
+    Tool(
+        name="colaberry_attachment_fetch",
+        description=(
+            "Download a file attachment from Gmail, Basecamp, or Drive and stage it in the operator's "
+            "Google Drive under Colaberry Inbound/<source>/<sender>/<YYYY-MM>/<filename>. Returns "
+            "a Drive ref (file id + URL + metadata) -- never the raw bytes -- so downstream Claude "
+            "sessions can read the file with their existing Google Drive connector. Idempotent: "
+            "repeat calls with the same source identifiers return the previously-staged file. "
+            "Operator must have run scripts/bootstrap_google_oauth.py first."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "enum": ["gmail", "basecamp", "drive"],
+                    "description": "Where to download from",
+                },
+                "message_id": {"type": "string", "description": "Gmail message/thread id"},
+                "attachment_id": {"type": "string", "description": "Gmail attachment id from the message's payload.parts"},
+                "project_id": {"type": "integer", "description": "Basecamp bucket id"},
+                "recording_id": {"type": "integer", "description": "Basecamp recording id (todo / comment) hosting the attachment"},
+                "attachment_sgid": {"type": "string", "description": "Basecamp blob sgid"},
+                "drive_file_id": {"type": "string", "description": "Drive file id for passthrough mode"},
+                "destination_subpath": {"type": "string", "description": "Optional override for the YYYY-MM folder segment"},
+            },
+            "required": ["source"],
+        },
+        handler=_tool_attachment_fetch,
     ),
 ]
 
