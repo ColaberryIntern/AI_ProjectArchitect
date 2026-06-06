@@ -201,6 +201,8 @@ async def mcp_setup_page(request: Request):
     # subsequent loads don't redo the in-memory upgrade.
     if mcp_token._migrate_legacy(user):
         tenancy.upsert_user(user)
+    # Hard-purge revoked entries -- user explicitly doesn't want them.
+    user, _purged = mcp_token.purge_revoked_for_user(user.user_id)
     status = mcp_token.status_for_user(user)
     devices = mcp_token.list_devices(user)
 

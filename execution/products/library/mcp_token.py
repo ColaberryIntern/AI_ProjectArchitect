@@ -224,11 +224,37 @@ def _device_status(entry: dict) -> str:
     return "red"
 
 
+def purge_revoked_for_user(user_id_or_email: str) -> tuple[tenancy.User | None, int]:
+    """Hard-delete revoked entries from mcp_tokens. Returns (user, removed_count).
+
+    The token hash is dropped entirely -- revoked tokens were already
+    unusable (validate_token skips revoked entries), but this trims the
+    stored list so the user's record stays compact and the UI doesn't have
+    to filter out historical noise on every render.
+    """
+    user = tenancy.get_user(user_id_or_email)
+    if not user:
+        return None, 0
+    _migrate_legacy(user)
+    if not user.mcp_tokens:
+        return user, 0
+    before = len(user.mcp_tokens)
+    user.mcp_tokens = [t for t in user.mcp_tokens if not t.get("revoked_at")]
+    removed = before - len(user.mcp_tokens)
+    if removed:
+        tenancy.upsert_user(user)
+    return user, removed
+
+
 def list_devices(user: tenancy.User) -> list[dict]:
-    """Return per-device info for the setup page table."""
+    """Return per-device info for the setup page table. Excludes revoked
+    entries -- they're noise to the user.
+    """
     _migrate_legacy(user)
     out = []
     for t in (user.mcp_tokens or []):
+        if t.get("revoked_at"):
+            continue
         out.append({
             "label": t.get("label", "?"),
             "issued_at": t.get("issued_at"),
