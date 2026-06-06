@@ -345,6 +345,31 @@ def _register_as_library_asset(artifact: "ExtractedArtifact",
     body_text = content or ""
     description = (src.body or "").strip()[:280] if hasattr(src, "body") else ""
     name = (getattr(src, "title", "") or artifact.slug).strip()
+    # Derive the per-category schema fields from the source so the
+    # AssetMetadata isn't half-empty when /library/<cat>/<id> renders.
+    # The BC body usually describes the work; we surface that as
+    # how_to_use. what_its_for gets the first sentence of the body
+    # (or the title as fallback). example references the source for
+    # provenance. Auto-extracted assets are tagged so Ali can filter
+    # /library/<cat>?tag=auto-extracted to find ones that need polish.
+    src_body = (getattr(src, "body", "") or "").strip()
+    first_sentence = ""
+    if src_body:
+        # Cheap "first sentence": split on '. ', take the first 240 chars.
+        for sep in (". ", ".\n", "\n\n"):
+            if sep in src_body[:400]:
+                first_sentence = src_body.split(sep, 1)[0].strip() + "."
+                break
+        if not first_sentence:
+            first_sentence = src_body[:240].strip()
+    what_its_for = first_sentence or (name or artifact.slug)
+    how_to_use = src_body or ""
+    example = (
+        f"See the source ticket for the original context: "
+        f"{artifact.raw_url or artifact.source_kind + ':' + artifact.source_bc_id}"
+    )
+    tags = ["auto-extracted", artifact.source_kind or "extracted",
+                  f"output:{output_type}"]
     try:
         meta = store.AssetMetadata(
             asset_id=artifact.slug,
@@ -352,12 +377,16 @@ def _register_as_library_asset(artifact: "ExtractedArtifact",
             workspace="global",
             name=name,
             description=description or f"Extracted {output_type} from {artifact.source_kind} {artifact.source_bc_id}",
+            how_to_use=how_to_use,
+            example=example,
+            what_its_for=what_its_for,
             readme_markdown=body_text,
             source=artifact.raw_url or "extracted",
             source_url=artifact.raw_url or "",
             submitted_by=created_by or "extract-flow",
             submitted_at=artifact.created_at,
             owner=created_by or "extract-flow",
+            tags=tags,
             owning_company_id=owning_company_id or "community",
             enrichment_state="enriched",
             enriched_at=artifact.created_at,
