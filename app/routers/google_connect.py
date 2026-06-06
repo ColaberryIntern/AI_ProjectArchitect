@@ -98,14 +98,27 @@ def _redirect_uri() -> str:
 
 
 def _client_credentials() -> tuple[str, str]:
-    """SSO Web client creds (NOT the Desktop client used by the CLI bootstrap).
+    """Web-flow OAuth client creds for the in-app connect-google flow.
 
-    These are the same vars auth_google.py already uses, so SSO and this
-    Web-flow share the OAuth client. The Desktop client (used by
-    scripts/bootstrap_google_oauth.py) is separate.
+    Prefers GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID/_SECRET so this flow can
+    use a Web client in the SAME Google Cloud project as the consent
+    screen that has gmail.modify + drive.file registered (and the same
+    project as the Desktop client used by the CLI bootstrap). Falls back
+    to the SSO web client only so the page renders without crashing
+    before the new env vars are set -- consent itself will fail at the
+    Google /token exchange because the SSO client's consent screen
+    doesn't have the right scopes.
     """
-    cid = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
-    secret = (os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
+    cid = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+        or ""
+    ).strip()
+    secret = (
+        os.environ.get("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET")
+        or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+        or ""
+    ).strip()
     return cid, secret
 
 
