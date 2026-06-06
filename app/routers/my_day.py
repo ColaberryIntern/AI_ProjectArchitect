@@ -140,6 +140,118 @@ def _greeting() -> str:
     return "Good evening"
 
 
+_STOPWORDS = {"a", "an", "and", "the", "of", "for", "to", "in", "on", "with",
+                          "from", "by", "or", "is", "are", "was", "were", "be", "been",
+                          "this", "that", "these", "those", "as", "at", "it", "its",
+                          "if", "then", "so", "but", "we", "i", "me", "my", "your",
+                          "their", "them", "they", "do", "does", "did", "will", "can",
+                          "could", "should", "would", "have", "has", "had", "than"}
+
+
+def _tokenize(text: str) -> set:
+    if not text:
+        return set()
+    out = set()
+    cur = []
+    for ch in (text or "").lower():
+        if ch.isalnum():
+            cur.append(ch)
+        else:
+            if cur:
+                w = "".join(cur)
+                if len(w) >= 3 and w not in _STOPWORDS:
+                    out.add(w)
+                cur = []
+    if cur:
+        w = "".join(cur)
+        if len(w) >= 3 and w not in _STOPWORDS:
+            out.add(w)
+    return out
+
+
+def _suggest_library_assets_for_focus(user, focus) -> list:
+    """Return up to 3 library assets whose name/description/tags overlap
+    the focus task. Same-company hits rank above community.
+
+    Output items are template-friendly dicts: category, asset_id, name,
+    description, why_useful, claude_prompt, owning_company_id, vetted.
+
+    Best-effort: if anything fails, returns []. Never raises.
+    """
+    if not focus:
+        return []
+    try:
+        from execution.products.library import inventory
+        from app.routers import library as _library_routes
+
+        focus_keywords = (
+            _tokenize(getattr(focus, "title", ""))
+            | _tokenize(getattr(focus, "description", "") or "")
+            | set(getattr(focus, "tags", []) or [])
+            | _tokenize(getattr(focus, "bc_project_name", "") or "")
+        )
+        if len(focus_keywords) < 2:
+            return []
+    except Exception:
+        return []
+
+    viewer_co = getattr(user, "company_id", None) or "community"
+    scored = []
+    try:
+        # Search across the categories most likely to be actionable in My
+        # Day. Skipping policy / governance / chaos etc. -- those don't
+        # typically apply to an in-flight task.
+        for category in ("skills", "agents", "prompts", "workflows",
+                                  "capabilities", "templates", "mcp"):
+            try:
+                rows = inventory.load_category(category)
+            except Exception:
+                continue
+            # Try same-company first (those rank higher); fall back to all
+            # visible to the operator (which includes community via the
+            # filter -- see inventory.filter_for_company).
+            visible = inventory.filter_for_company(rows, category, viewer_co)
+            for r in visible:
+                name = r.get("name") or r.get("id") or ""
+                desc = r.get("description") or ""
+                tags = r.get("tags") or []
+                asset_tokens = (
+                    _tokenize(name) | _tokenize(desc) | set(t.lower() for t in tags)
+                )
+                overlap = len(focus_keywords & asset_tokens)
+                if overlap == 0:
+                    continue
+                owning = (r.get("owning_company_id") or "community").strip() or "community"
+                # Same-company gets a +5 boost so a slightly-fuzzier
+                # match from your own company beats a strong community match.
+                score = overlap + (5 if owning == viewer_co else 0)
+                scored.append((score, owning != viewer_co, category, r))
+    except Exception:
+        return []
+
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    top = scored[:3]
+    out = []
+    for _score, _is_community, category, row in top:
+        asset_id = row.get("id") or row.get("name") or ""
+        try:
+            claude_prompt = _library_routes.build_claude_prompt(
+                category, asset_id, row.get("name") or asset_id,
+            )
+        except Exception:
+            claude_prompt = ""
+        out.append({
+            "category": category,
+            "asset_id": asset_id,
+            "name": row.get("name") or asset_id,
+            "description": (row.get("description") or "")[:200],
+            "owning_company_id": (row.get("owning_company_id") or "community"),
+            "vetted": bool(row.get("vetted")),
+            "claude_prompt": claude_prompt,
+        })
+    return out
+
+
 def _sync_relative(last_sync_iso: str) -> str:
     if not last_sync_iso:
         return ""
@@ -473,6 +585,11 @@ async def ops_home(request: Request):
         "extract": "my_day/extract_tab.html",
     }.get(view, "my_day/home.html")
 
+    # Suggested library assets for the focus task: query inventory for
+    # assets whose name / description / tags overlap the focus task's
+    # title + tags. Same-company hits rank above community. Top 3 only.
+    library_suggestions = _suggest_library_assets_for_focus(user, focus) if focus else []
+
     # Extract tab needs per-list completed-todo rollup + classifier tags.
     # Cheap to compute (filters the in-memory todos list once) so we do it
     # inline rather than gating behind view==extract; downstream templates
@@ -564,6 +681,7 @@ async def ops_home(request: Request):
              ai_todos=ai_todos,
              total_open=status.open_count,
              my_day_total_open=status.open_count,
+             library_suggestions=library_suggestions,
              show_welcome_banner=(
                  request.query_params.get("welcome") == "1"
              )),

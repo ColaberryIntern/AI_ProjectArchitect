@@ -19,6 +19,14 @@
     <h1 class="mb-1">
       {{ asset_id }}
       {% if meta.vetted %}<span class="vetted-badge ms-2">Colaberry vetted</span>{% endif %}
+      {% if live_in_mcp %}
+      <span class="ms-2" style="display: inline-block; background: #137333; color: #fff;
+                                  padding: 3px 9px; border-radius: 4px; font-size: 12px;
+                                  font-weight: 600; vertical-align: middle;"
+            title="This is natively provided by your Colaberry MCP Server -- no install needed.">
+        ✓ Live in your Colaberry MCP Server
+      </span>
+      {% endif %}
     </h1>
     <div class="text-muted">
       {% if raw %}{{ raw.kind or category.label|lower }} · v{{ raw.version or meta.version or '1.0' }} · owner: {{ raw.owner or meta.owner or '—' }}{% endif %}

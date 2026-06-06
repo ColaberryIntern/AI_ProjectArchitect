@@ -892,6 +892,55 @@ def build_claude_prompt(category: str, asset_id: str, name: str) -> str:
     return tpl.format(name=name or asset_id, asset_id=asset_id, category=category)
 
 
+# ── "Live in your Colaberry MCP Server" badge detection ───────────
+# An asset is "live in MCP" when it represents a tool / capability the
+# Colaberry MCP server natively provides (no install needed). The user
+# wants a visible cue so they don't go install something they already
+# have via the SSO + MCP-setup flow.
+#
+# Heuristic (no per-user telemetry; works server-side only):
+#   1. Asset name or asset_id matches one of the registered colaberry_*
+#      MCP tools by exact match (case-insensitive, underscores match
+#      spaces).
+#   2. Asset has the tag "colaberry-builtin" (admin override).
+#   3. Asset source_url points at this advisor's /mcp/v1 endpoint.
+
+def _builtin_tool_names() -> set:
+    """Return the lowercase names of every colaberry_* tool the live
+    MCP server exposes. Cached after first call (it's static per process)."""
+    global _BUILTIN_TOOLS_CACHE
+    try:
+        return _BUILTIN_TOOLS_CACHE
+    except NameError:
+        pass
+    try:
+        from execution.products.library import mcp_tools
+        names = {t.name.lower() for t in mcp_tools.TOOLS}
+    except Exception:
+        names = set()
+    globals()["_BUILTIN_TOOLS_CACHE"] = names
+    return names
+
+
+def is_live_in_colaberry_mcp(name: str, asset_id: str,
+                                                      tags: list | None = None,
+                                                      source: str = "") -> bool:
+    """Return True iff the asset is natively provided by the operator's
+    Colaberry MCP server (no install needed)."""
+    builtins = _builtin_tool_names()
+    name_l = (name or "").lower().strip().replace(" ", "_")
+    aid_l = (asset_id or "").lower().strip().replace(" ", "_")
+    if name_l in builtins or aid_l in builtins:
+        return True
+    if tags:
+        for t in tags:
+            if (t or "").lower() == "colaberry-builtin":
+                return True
+    if source and "advisor.colaberry.ai/mcp" in source.lower():
+        return True
+    return False
+
+
 # ── Per-asset detail page ─────────────────────────────────────────
 
 
@@ -962,6 +1011,13 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
         (meta.name if meta and meta.name else (raw.get("name") or asset_id)),
     )
 
+    live_in_mcp = is_live_in_colaberry_mcp(
+        name=(meta.name if meta else (raw.get("name") or asset_id)),
+        asset_id=asset_id,
+        tags=(raw.get("tags") if raw else []) or (meta.tags if meta else []),
+        source=(raw.get("source") if raw else "") or (meta.source if meta else ""),
+    )
+
     return request.app.state.templates.TemplateResponse(
         request, "library/asset.html",
         _ctx(request,
@@ -975,7 +1031,8 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
                   linked_use_cases=linked_use_cases,
                   provenance=provenance,
                   follow_state=follow_state,
-                  claude_prompt=claude_prompt),
+                  claude_prompt=claude_prompt,
+                  live_in_mcp=live_in_mcp),
     )
 
 

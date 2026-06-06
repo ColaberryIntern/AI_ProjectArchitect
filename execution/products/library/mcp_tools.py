@@ -826,6 +826,172 @@ def _tool_get_asset(user, args: dict) -> dict:
     return {"ok": True, "asset": asdict(meta)}
 
 
+def _tool_propose_asset(user, args: dict) -> dict:
+    """Light-weight asset proposal from inside a live Claude Code session.
+
+    Triggered when Claude notices the user authoring or invoking a
+    reusable thing (skill / agent / prompt / MCP / template / workflow /
+    etc.) that isn't yet in the operator's Colaberry library. Creates a
+    Submission tagged to the operator's company; when
+    LIBRARY_AUTO_APPROVE_ON_SUBMIT=1 (the default rollout posture) the
+    submission accepts immediately and the asset shows up at
+    /library/<category>/<id> for everyone at the company.
+
+    Deliberately tiny argument surface so Claude can fire it without
+    belaboring the proposal: category, name, description plus a brief
+    why-useful + source_url. Anything richer (full readme, install
+    steps, code samples) can be edited in later via the asset detail
+    page; the point of this tool is fast capture, not exhaustive
+    documentation.
+    """
+    from . import inventory, store
+    import os
+
+    category = (args.get("category") or "").strip()
+    name = (args.get("name") or "").strip()
+    description = (args.get("description") or "").strip()
+    if not category or not name or not description:
+        return {"ok": False,
+                "error": "category, name, and description are required"}
+    if not inventory.get_category(category):
+        return {"ok": False,
+                "error": f"unknown category {category!r}; valid: "
+                                + ", ".join(c.key for c in inventory.CATEGORIES)}
+
+    why_useful = (args.get("why_useful") or "").strip()
+    source_url = (args.get("source_url") or "").strip()
+    tags = args.get("tags") or []
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if not isinstance(tags, list):
+        tags = []
+
+    # Owner: the operator's own company. This is the locked-in answer
+    # from the rollout (proposals are private-to-Colaberry by default;
+    # admins can re-tag to community later).
+    owning_company_id = (getattr(user, "company_id", "") or "").strip() or "community"
+
+    # Compose the Submission. `how_to_use` is left for later edit; the
+    # why_useful blurb lands in `payload` so reviewers see it.
+    payload = {}
+    if why_useful:
+        payload["what_its_for"] = why_useful
+    body = args.get("body") or ""
+    if isinstance(body, str) and body.strip():
+        payload["readme_markdown"] = body.strip()
+    if args.get("install_command"):
+        payload["install_command"] = str(args["install_command"]).strip()
+    if args.get("docs_url"):
+        payload["docs_url"] = str(args["docs_url"]).strip()
+
+    try:
+        sub = store.submit(
+            workspace="global",
+            category=category,
+            submitted_by=getattr(user, "email", "") or "claude-proposal",
+            name=name,
+            description=description,
+            how_to_use="",
+            example="",
+            tags=tags,
+            source=source_url or "claude-proposal",
+            payload=payload,
+            owning_company_id=owning_company_id,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"submission_failed: {e}"}
+
+    asset_id = ""
+    auto_approve = (os.environ.get("LIBRARY_AUTO_APPROVE_ON_SUBMIT", "") or "").strip() in ("1", "true", "yes", "on")
+    auto_approved = False
+    if auto_approve:
+        try:
+            store.review_submission(
+                workspace="global",
+                submission_id=sub.submission_id,
+                decision="accepted",
+                reviewer=getattr(user, "email", "") or "claude-proposal",
+                notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy (propose_asset)",
+            )
+            asset_id = f"sub-{sub.submission_id}"
+            auto_approved = True
+            # Also flip the tenancy approval row so the asset's visibility
+            # opens for the owner's company without needing an admin pass.
+            try:
+                from . import tenancy
+                tenancy.record_approval(
+                    item_kind="library_asset",
+                    item_id=asset_id,
+                    category=category,
+                    company_id=owning_company_id,
+                    approved_by_user_id=getattr(user, "user_id", "system"),
+                    status="approved",
+                    notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy (propose_asset)",
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            return {"ok": True, "submission_id": sub.submission_id,
+                    "auto_approved": False,
+                    "warning": f"auto_approve_failed: {e}",
+                    "owning_company_id": owning_company_id}
+
+    return {
+        "ok": True,
+        "submission_id": sub.submission_id,
+        "asset_id": asset_id,
+        "category": category,
+        "owning_company_id": owning_company_id,
+        "auto_approved": auto_approved,
+        "library_url": (f"/library/{category}/{asset_id}" if asset_id
+                                else f"/library/pending"),
+    }
+
+
+TOOLS.append(Tool(
+    name="colaberry_propose_asset",
+    description=(
+        "Propose adding a reusable thing (skill / agent / prompt / MCP server / "
+        "template / workflow / policy / etc.) to the operator's Colaberry library "
+        "WHILE they're working in any project. Fire this whenever the user authors "
+        "a new asset OR invokes an existing 3rd-party asset that's not yet in their "
+        "Colaberry catalog -- the goal is fast, opportunistic capture so the library "
+        "grows naturally from real work. Keep arguments minimal: name, category, "
+        "description, plus a one-line why_useful and (if you have it) source_url. "
+        "Don't pre-write extensive docs -- the operator can flesh those out from the "
+        "asset detail page later. Server auto-approves into the operator's company "
+        "library when the rollout flag is on."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string",
+                                  "description": "Category key: skills, agents, prompts, mcp, capabilities, "
+                                                              "templates, workflows, policies, governance, recovery, chaos, "
+                                                              "projections, evals, connectors, adapters."},
+            "name": {"type": "string",
+                              "description": "Human-readable name (Title Case ok)."},
+            "description": {"type": "string",
+                                      "description": "One sentence on what this asset does."},
+            "why_useful": {"type": "string",
+                                      "description": "Optional one-liner on why an operator would reach for this."},
+            "source_url": {"type": "string",
+                                      "description": "Optional URL where the asset lives (GitHub, npm, PyPI, docs page)."},
+            "body": {"type": "string",
+                              "description": "Optional fuller markdown body (readme, instructions). Skip if you don't have it -- the operator can fill it in later."},
+            "install_command": {"type": "string",
+                                          "description": "Optional install command for MCP servers / packaged tools."},
+            "docs_url": {"type": "string",
+                                  "description": "Optional documentation URL."},
+            "tags": {"type": "array",
+                              "items": {"type": "string"},
+                              "description": "Optional list of tag strings for filtering."},
+        },
+        "required": ["category", "name", "description"],
+    },
+    handler=_tool_propose_asset,
+))
+
 TOOLS.append(Tool(
     name="colaberry_list_assets",
     description=(

@@ -121,6 +121,46 @@ anchor is used until the user references a project explicitly.
     one prompt; log a bypass record.
   - `--ticket <prompt>` at prompt start: force ticket creation even if the
     prompt looks read-only.
+
+## 7. Grow the Colaberry library opportunistically
+
+### 7a. User-initiated adds (explicit)
+
+When the user explicitly says ANY of:
+  - "add this to our library"
+  - "save this as a Colaberry skill / agent / prompt / MCP / workflow / ..."
+  - "remember this for the team"
+  - "put this in the library"
+
+...fire `colaberry_propose_asset` IMMEDIATELY with whatever you have in
+context. Don't ask 20 questions first -- pick a category (your best
+guess), a name (Title Case from the artifact), and a one-line
+description. The server tags the proposal to the user as `submitted_by`,
+auto-approves it during the rollout window, and surfaces it at
+`/library/<category>/<id>` so the user sees their addition the next
+time they visit the library.
+
+### 7b. Opportunistic adds (your judgment)
+
+ALSO call `colaberry_propose_asset` when, during normal project work,
+you notice the user:
+  - authors a new reusable thing (skill, agent, prompt, MCP server,
+    template, workflow, policy, etc.) that isn't yet in Colaberry's
+    library
+  - invokes an existing 3rd-party asset (an npm MCP server, a public
+    skill from elsewhere, etc.) that probably ISN'T in their Colaberry
+    catalog yet
+
+Be light-touch: name + category + one-line description + one-line
+`why_useful` is enough. The user can flesh details out from the asset
+detail page later. The goal is fast capture so the company catalog grows
+naturally from real project work.
+
+Before proposing, check whether the asset already exists in the library:
+call `colaberry_list_assets(category=..., query=<name fragment>)`. If
+there's an obvious match, don't re-propose; if there isn't, fire
+`colaberry_propose_asset`. The server auto-tags proposals to the
+operator's own company.
 """
 
 
