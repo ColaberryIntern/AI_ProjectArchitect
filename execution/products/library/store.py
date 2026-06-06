@@ -291,6 +291,15 @@ class Submission:
     reviewed_at: str | None = None
     reviewed_by: str | None = None
     asset_id: str | None = None  # set when accepted (links to created asset)
+    # Category-specific extras (steps, prompt_body, system_prompt, etc.).
+    # Keys here come from category_schemas.SCHEMAS[category]. Anything that
+    # maps 1:1 to AssetMetadata fields is promoted at acceptance time;
+    # anything that doesn't is preserved verbatim for future use.
+    payload: dict = field(default_factory=dict)
+    # Submitter's company at submit time, captured so the asset can default
+    # to the right owning_company_id when accepted. Empty / "anonymous" for
+    # not-signed-in submissions.
+    owning_company_id: str = ""
 
 
 def _sub_dir(workspace: str) -> Path:
@@ -301,13 +310,17 @@ def _sub_dir(workspace: str) -> Path:
 
 def submit(workspace: str, category: str, submitted_by: str, name: str,
              description: str, how_to_use: str = "", example: str = "",
-             tags: list[str] | None = None, source: str = "") -> Submission:
+             tags: list[str] | None = None, source: str = "",
+             payload: dict | None = None,
+             owning_company_id: str = "") -> Submission:
     s = Submission(
         submission_id=str(uuid.uuid4())[:8],
         workspace=workspace, category=category, submitted_by=submitted_by,
         name=name.strip(), description=description.strip(),
         how_to_use=how_to_use.strip(), example=example.strip(),
         tags=tags or [], source=source, submitted_at=_now(),
+        payload=payload or {},
+        owning_company_id=owning_company_id or "",
     )
     p = _sub_dir(workspace) / f"{s.submission_id}.json"
     p.write_text(json.dumps(asdict(s), indent=2), encoding="utf-8")
@@ -352,6 +365,18 @@ def review_submission(workspace: str, submission_id: str, decision: str,
     if decision == "accepted":
         asset_id = f"sub-{s.submission_id}"
         s.asset_id = asset_id
+        # Promote category-specific extras from payload into AssetMetadata
+        # for any key that maps 1:1 to a field. Anything else stays in the
+        # Submission's payload (preserved for audit / future schema growth).
+        valid_keys = {f.name for f in AssetMetadata.__dataclass_fields__.values()}
+        meta_extras = {k: v for k, v in (s.payload or {}).items()
+                                  if k in valid_keys and k not in {
+                                      "asset_id", "category", "workspace", "name",
+                                      "description", "owner", "tags", "source",
+                                      "vetted", "vetted_by", "vetted_at",
+                                      "vetted_status", "submitted_by", "submitted_at",
+                                      "owning_company_id",
+                                  }}
         meta = AssetMetadata(
             asset_id=asset_id, category=s.category, workspace=s.workspace,
             name=s.name, description=s.description,
@@ -360,6 +385,8 @@ def review_submission(workspace: str, submission_id: str, decision: str,
             vetted=True, vetted_by=reviewer, vetted_at=_now(),
             vetted_status="vetted",
             submitted_by=s.submitted_by, submitted_at=s.submitted_at,
+            owning_company_id=s.owning_company_id or "community",
+            **meta_extras,
         )
         save_metadata(meta)
     p.write_text(json.dumps(asdict(s), indent=2), encoding="utf-8")

@@ -737,6 +737,144 @@ TOOLS: list[Tool] = [
 ]
 
 
+def _tool_list_assets(user, args: dict) -> dict:
+    """List library assets visible to the calling operator's company.
+
+    Returns asset summaries (asset_id, name, short description) for the
+    category requested, optionally narrowed by a free-text query. Scoping:
+    the operator's own-company assets + any community-owned assets that
+    have an approval row for their company.
+    """
+    from . import inventory
+    category = (args.get("category") or "").strip()
+    if not category:
+        return {"ok": False, "error": "category is required"}
+    if not inventory.get_category(category):
+        return {"ok": False,
+                "error": f"unknown category {category!r}; valid: "
+                                + ", ".join(c.key for c in inventory.CATEGORIES)}
+    q = (args.get("query") or "").strip().lower()
+    try:
+        limit = max(1, min(int(args.get("limit", 20)), 100))
+    except (TypeError, ValueError):
+        limit = 20
+    try:
+        rows = inventory.load_category(category)
+    except Exception as e:
+        return {"ok": False, "error": f"could not load category: {e}"}
+    visible = inventory.filter_for_company(
+        rows, category, getattr(user, "company_id", None),
+    )
+    if q:
+        visible = [
+            r for r in visible
+            if q in (r.get("name") or "").lower()
+            or q in (r.get("description") or "").lower()
+            or q in " ".join((r.get("tags") or [])).lower()
+        ]
+    out = []
+    for r in visible[:limit]:
+        out.append({
+            "asset_id": r.get("id") or r.get("name") or "",
+            "name": r.get("name") or "",
+            "description": (r.get("description") or "")[:240],
+            "tags": list(r.get("tags") or []),
+            "vetted": bool(r.get("vetted")),
+        })
+    return {"ok": True, "category": category, "count": len(out),
+            "total_visible": len(visible), "assets": out}
+
+
+def _tool_get_asset(user, args: dict) -> dict:
+    """Return full content of a library asset so Claude can read + apply it.
+
+    Visibility: same-company assets and community assets are returned
+    directly; assets owned by another company require an approval row for
+    the caller's company (companies_with_access). On miss, returns a
+    clean error code so Claude can render a useful message to the user.
+    """
+    from dataclasses import asdict
+    from . import store, inventory
+    category = (args.get("category") or "").strip()
+    asset_id = (args.get("asset_id") or "").strip()
+    if not category or not asset_id:
+        return {"ok": False, "error": "category and asset_id are required"}
+    if not inventory.get_category(category):
+        return {"ok": False, "error": f"unknown category {category!r}"}
+    # store.get_metadata returns an empty default record when no file
+    # exists, so probe the file directly to distinguish "no asset" from
+    # "asset exists but has no metadata yet".
+    if not store.meta_path("global", category, asset_id).exists():
+        return {"ok": False, "error": "asset_not_found",
+                "asset_id": asset_id, "category": category}
+    meta = store.get_metadata("global", category, asset_id)
+    owning = (getattr(meta, "owning_company_id", "") or "community").strip() or "community"
+    viewer_co = getattr(user, "company_id", None)
+    visible = (owning == viewer_co) or (owning == "community")
+    if not visible:
+        try:
+            from . import tenancy
+            visible = bool(tenancy.companies_with_access(
+                "library_asset", asset_id, category, viewer_co,
+            ))
+        except Exception:
+            visible = False
+    if not visible:
+        return {"ok": False, "error": "asset_not_visible_to_your_company",
+                "asset_id": asset_id, "category": category,
+                "owning_company_id": owning}
+    return {"ok": True, "asset": asdict(meta)}
+
+
+TOOLS.append(Tool(
+    name="colaberry_list_assets",
+    description=(
+        "List library assets visible to the caller's company in a given "
+        "category (skills, agents, prompts, mcp, workflows, capabilities, "
+        "templates, policies, governance, recovery, chaos, projections, "
+        "evals, connectors, adapters). Optional `query` filters by name / "
+        "description / tag substring. Use this to discover assets before "
+        "fetching one with colaberry_get_asset."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string",
+                                  "description": "Category key, e.g. 'skills'"},
+            "query": {"type": "string",
+                              "description": "Optional substring filter"},
+            "limit": {"type": "integer",
+                              "description": "Max rows to return (1-100, default 20)"},
+        },
+        "required": ["category"],
+    },
+    handler=_tool_list_assets,
+))
+
+TOOLS.append(Tool(
+    name="colaberry_get_asset",
+    description=(
+        "Fetch the full content of one library asset (metadata + readme "
+        "body + install command + code samples + ...) so Claude can read + "
+        "apply it in the current session. Respects company-scoped visibility: "
+        "the caller can only fetch their own company's assets and community "
+        "assets. The user-facing 'Copy Claude prompt' button on every asset "
+        "detail page generates an instruction that invokes this tool."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string",
+                                  "description": "Category key, e.g. 'skills'"},
+            "asset_id": {"type": "string",
+                                  "description": "The asset's stable id (from list_assets)"},
+        },
+        "required": ["category", "asset_id"],
+    },
+    handler=_tool_get_asset,
+))
+
+
 TOOL_BY_NAME: dict[str, Tool] = {t.name: t for t in TOOLS}
 
 

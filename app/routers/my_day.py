@@ -1247,16 +1247,27 @@ async def extract_preview(request: Request,
         return JSONResponse({"ok": False, "error": "BC token missing (no user token and no CB System fallback)"}, status_code=500)
 
     from execution.products.library import skill_extractor
-    result = skill_extractor.extract(
-        source_kind=source_kind,
-        bc_id=bc_id,
-        output_type=output_type,
-        slug=slug or None,
-        commit=False,
-        bc_token=token,
-        bucket_id=resolved_bucket,
-        created_by=user.email,
-    )
+    try:
+        result = skill_extractor.extract(
+            source_kind=source_kind,
+            bc_id=bc_id,
+            output_type=output_type,
+            slug=slug or None,
+            commit=False,
+            bc_token=token,
+            bucket_id=resolved_bucket,
+            created_by=user.email,
+        )
+    except Exception as e:
+        # Without this catch, an exception inside extract() (template
+        # render error, BC API hiccup, GitHub auth issue) escapes to
+        # FastAPI's default handler which returns an HTML 500 page --
+        # the client-side fetch chokes parsing "Internal Server Error"
+        # as JSON and shows a misleading "Unexpected token I" error.
+        return JSONResponse(
+            {"ok": False, "error": str(e), "error_type": type(e).__name__},
+            status_code=500,
+        )
     return JSONResponse(result)
 
 
@@ -1316,17 +1327,24 @@ async def extract_commit(request: Request,
         workspace_repo = user.workspace_repo.replace("https://github.com/", "").strip("/")
 
     from execution.products.library import skill_extractor
-    result = skill_extractor.extract(
-        source_kind=source_kind,
-        bc_id=bc_id,
-        output_type=output_type,
-        slug=slug or None,
-        commit=True,
-        bc_token=token,
-        bucket_id=resolved_bucket,
-        workspace_repo=workspace_repo,
-        created_by=user.email,
-    )
+    try:
+        result = skill_extractor.extract(
+            source_kind=source_kind,
+            bc_id=bc_id,
+            output_type=output_type,
+            slug=slug or None,
+            commit=True,
+            bc_token=token,
+            bucket_id=resolved_bucket,
+            workspace_repo=workspace_repo,
+            created_by=user.email,
+            owning_company_id=getattr(user, "company_id", "") or "community",
+        )
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": str(e), "error_type": type(e).__name__},
+            status_code=500,
+        )
 
     # BC echo: per-task only (we have an exact recording to comment on).
     # List-level extracts skip the echo since there's no canonical single source.

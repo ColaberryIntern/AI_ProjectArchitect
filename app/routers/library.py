@@ -282,30 +282,121 @@ async def library_comment(request: Request, category_key: str, asset_id: str,
 
 @router.get("/submit")
 async def library_submit_form(request: Request):
+    from execution.products.library import category_schemas
+    # Build a JSON-serializable map of category -> schema so the template
+    # can drive client-side field show/hide via JS without a server round-
+    # trip on every category dropdown change.
+    schemas_json = {c.key: category_schemas.schema_for(c.key)
+                              for c in inventory.CATEGORIES}
     return request.app.state.templates.TemplateResponse(
         request, "library/submit.html",
         _ctx(request,
                   library_nav_active="submit",
-                  categories=inventory.CATEGORIES),
+                  categories=inventory.CATEGORIES,
+                  category_schemas_json=schemas_json),
     )
 
 
 @router.post("/submit")
-async def library_submit(request: Request,
-                                category: str = Form(...),
-                                name: str = Form(...),
-                                description: str = Form(...),
-                                how_to_use: str = Form(""),
-                                example: str = Form(""),
-                                tags: str = Form(""),
-                                source: str = Form("")):
+async def library_submit(request: Request):
+    """Per-category submit. Reads ALL form fields generically (Form() with
+    fixed param names couldn't handle the variable schema), validates against
+    category_schemas, persists to store.submit(), and optionally auto-approves
+    when LIBRARY_AUTO_APPROVE_ON_SUBMIT=1.
+    """
+    import os
+    from execution.products.library import category_schemas
+    from execution.products.library import tenancy
+
+    form = await request.form()
+    category = (form.get("category") or "").strip()
+    if category not in {c.key for c in inventory.CATEGORIES}:
+        raise HTTPException(400, f"unknown category: {category!r}")
+
     workspace = _ws(request)
-    submitter = _user(request)
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    s = store.submit(workspace, category, submitter, name, description,
-                            how_to_use, example, tag_list, source)
+    # Prefer the SSO'd session user for company attribution; fall back to
+    # the legacy ?as / X-User string for compatibility.
+    session_user = _session_user(request)
+    submitter_email = session_user.email if session_user else _user(request)
+    submitter_company = session_user.company_id if session_user else ""
+
+    # Build the payload from every form field the schema mentions. Unknown
+    # fields (e.g. the category dropdown itself) are skipped.
+    schema = category_schemas.schema_for(category)
+    fields = list(schema["required"]) + list(schema["optional"])
+    payload: dict = {}
+    for fname in fields:
+        raw = (form.get(fname) or "").strip()
+        if not raw:
+            continue
+        # List fields: textarea OR comma-separated text get split.
+        if fname in {"tags", "languages", "allowed_tools"}:
+            payload[fname] = category_schemas.normalize_list_field(raw, sep=",")
+        elif fname in {"steps", "dependencies", "install_steps"}:
+            payload[fname] = category_schemas.normalize_list_field(raw, sep="\n")
+        else:
+            payload[fname] = raw
+
+    missing = category_schemas.validate_payload(category, payload)
+    if missing:
+        raise HTTPException(400, f"missing required fields for {category!r}: "
+                                                          f"{', '.join(missing)}")
+
+    # Pull out the fields the Submission dataclass holds at the top level;
+    # everything else stays in payload.
+    name = payload.pop("name", "")
+    description = payload.pop("description", "")
+    how_to_use = payload.pop("how_to_use", "")
+    example = payload.pop("example", "")
+    tags_list = payload.pop("tags", [])
+    source_str = payload.pop("source", "")
+
+    s = store.submit(
+        workspace, category, submitter_email,
+        name, description, how_to_use, example,
+        tags_list if isinstance(tags_list, list) else [],
+        source_str if isinstance(source_str, str) else "",
+        payload=payload,
+        owning_company_id=submitter_company,
+    )
+
+    # Piece 2: auto-approve switch. When LIBRARY_AUTO_APPROVE_ON_SUBMIT=1
+    # accept the submission immediately so the asset shows up on
+    # /library/<category> with no manual review step. Audit log records
+    # the bypass honestly so it's traceable.
+    auto_approve = (os.environ.get("LIBRARY_AUTO_APPROVE_ON_SUBMIT", "") or "").strip() in ("1", "true", "yes", "on")
+    if auto_approve:
+        try:
+            store.review_submission(
+                workspace, s.submission_id,
+                decision="accepted",
+                reviewer=submitter_email,
+                notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy",
+            )
+            # Also record the tenancy approval row so company-scoped
+            # visibility opens for the owning company.
+            owner_co = submitter_company or "community"
+            asset_id = f"sub-{s.submission_id}"
+            try:
+                tenancy.record_approval(
+                    item_kind="library_asset",
+                    item_id=asset_id,
+                    category=category,
+                    company_id=owner_co,
+                    approved_by_user_id=(session_user.user_id if session_user else "system"),
+                    status="approved",
+                    notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy",
+                )
+            except Exception:
+                # Tenancy is advisory here; failure shouldn't block the asset.
+                pass
+        except Exception:
+            # If auto-approve fails, the asset remains in pending state --
+            # the manual review path still works.
+            pass
+
     return RedirectResponse(
-        url=f"/library/submit/{s.submission_id}?ws={workspace}&as={submitter}",
+        url=f"/library/submit/{s.submission_id}?ws={workspace}&as={submitter_email}",
         status_code=303,
     )
 
@@ -697,6 +788,110 @@ async def library_run_scan(request: Request):
     )
 
 
+# ── Claude Code "use this asset" prompt builder ────────────────────
+# Per-category prompt template. Inlined here rather than separate .j2
+# files because it's a one-liner per category and centralizing keeps
+# them easy to tune. Each template references the new
+# colaberry_get_asset MCP tool (Piece 6); the prompt won't work until
+# that tool is registered.
+
+_CLAUDE_PROMPT_TEMPLATES = {
+    "skills": (
+        'Use the "{name}" skill from our Colaberry library. Call '
+        'colaberry_get_asset(category="skills", asset_id="{asset_id}") '
+        "to fetch its full body and how-to-use instructions, then apply "
+        "it to: <YOUR TASK HERE>."
+    ),
+    "agents": (
+        'Spawn the "{name}" agent from our Colaberry library. Call '
+        'colaberry_get_asset(category="agents", asset_id="{asset_id}") '
+        "to fetch its role, system prompt, and allowed tools, then run "
+        "it against: <YOUR TASK HERE>."
+    ),
+    "prompts": (
+        'Use the "{name}" prompt from our Colaberry library. Call '
+        'colaberry_get_asset(category="prompts", asset_id="{asset_id}") '
+        "to fetch the prompt body, then substitute your context for any "
+        "{{placeholders}} and run it."
+    ),
+    "mcp": (
+        'I want to install + use the "{name}" MCP server from our '
+        'Colaberry library. Call colaberry_get_asset(category="mcp", '
+        'asset_id="{asset_id}") to fetch its install command + config, '
+        "then walk me through installing it in Claude Code."
+    ),
+    "workflows": (
+        'Run the "{name}" workflow from our Colaberry library. Call '
+        'colaberry_get_asset(category="workflows", asset_id="{asset_id}") '
+        "to fetch its steps + invocation pattern, then execute them on: "
+        "<YOUR CONTEXT HERE>."
+    ),
+    "capabilities": (
+        'Reference the "{name}" capability from our Colaberry library. '
+        'Call colaberry_get_asset(category="capabilities", '
+        'asset_id="{asset_id}") and apply it to: <YOUR TASK HERE>.'
+    ),
+    "templates": (
+        'Use the "{name}" template from our Colaberry library. Call '
+        'colaberry_get_asset(category="templates", asset_id="{asset_id}") '
+        "to fetch the blueprint + scaffolding notes, then bootstrap a "
+        "new build against: <YOUR PROJECT NAME HERE>."
+    ),
+    "policies": (
+        'Review the "{name}" policy from our Colaberry library. Call '
+        'colaberry_get_asset(category="policies", asset_id="{asset_id}") '
+        "to fetch the rule text + enforcement point, then check whether "
+        "the following situation complies: <SITUATION HERE>."
+    ),
+    "governance": (
+        'Apply the "{name}" governance rule from our Colaberry library. '
+        'Call colaberry_get_asset(category="governance", '
+        'asset_id="{asset_id}") and evaluate: <SITUATION HERE>.'
+    ),
+    "recovery": (
+        'Apply the "{name}" recovery playbook from our Colaberry library. '
+        'Call colaberry_get_asset(category="recovery", '
+        'asset_id="{asset_id}") to fetch the trigger + mitigation, then '
+        "respond to: <INCIDENT HERE>."
+    ),
+    "chaos": (
+        'Run the "{name}" chaos drill from our Colaberry library. Call '
+        'colaberry_get_asset(category="chaos", asset_id="{asset_id}") '
+        "to fetch the fault scenario, then walk through it against: "
+        "<TARGET SYSTEM HERE>."
+    ),
+    "evals": (
+        'Score outputs against the "{name}" eval dataset from our '
+        'Colaberry library. Call colaberry_get_asset(category="evals", '
+        'asset_id="{asset_id}") to fetch the dataset + scoring method, '
+        "then grade: <OUTPUTS HERE>."
+    ),
+    "connectors": (
+        'Connect to the "{name}" integration via our Colaberry library. '
+        'Call colaberry_get_asset(category="connectors", '
+        'asset_id="{asset_id}") to fetch the install + how-to.'
+    ),
+    "adapters": (
+        'Use the "{name}" tool adapter from our Colaberry library. Call '
+        'colaberry_get_asset(category="adapters", asset_id="{asset_id}") '
+        "to fetch the install + how-to."
+    ),
+}
+
+_CLAUDE_PROMPT_FALLBACK = (
+    'Use the "{name}" {category} asset from our Colaberry library. '
+    'Call colaberry_get_asset(category="{category}", asset_id="{asset_id}") '
+    "to fetch its full content, then apply it to: <YOUR TASK HERE>."
+)
+
+
+def build_claude_prompt(category: str, asset_id: str, name: str) -> str:
+    """Return the one-line "Copy to your Claude Code session" prompt that
+    pulls this asset into the conversation via colaberry_get_asset."""
+    tpl = _CLAUDE_PROMPT_TEMPLATES.get(category, _CLAUDE_PROMPT_FALLBACK)
+    return tpl.format(name=name or asset_id, asset_id=asset_id, category=category)
+
+
 # ── Per-asset detail page ─────────────────────────────────────────
 
 
@@ -762,6 +957,11 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
             "target_name": provenance.get("author_name", ""),
         }
 
+    claude_prompt = build_claude_prompt(
+        cat.key, asset_id,
+        (meta.name if meta and meta.name else (raw.get("name") or asset_id)),
+    )
+
     return request.app.state.templates.TemplateResponse(
         request, "library/asset.html",
         _ctx(request,
@@ -774,7 +974,8 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
                   comments=comments,
                   linked_use_cases=linked_use_cases,
                   provenance=provenance,
-                  follow_state=follow_state),
+                  follow_state=follow_state,
+                  claude_prompt=claude_prompt),
     )
 
 

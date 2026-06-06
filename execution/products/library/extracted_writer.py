@@ -45,6 +45,29 @@ DEFAULT_LIBRARY_REPO = os.environ.get(
 )
 BRANCH_PREFIX = "skill-extracted/"
 
+# Map extracted output_type -> live library category key. Lets us upsert
+# the extracted artifact into store.AssetMetadata so it shows up at
+# /library/<category>/<slug> immediately, not just on an unmerged branch.
+# Anything not mapped here falls back to "skills" -- a safe default since
+# the legacy templates were skill-shaped.
+OUTPUT_TYPE_TO_CATEGORY: dict[str, str] = {
+    "skill": "skills",
+    "agent": "agents",
+    "prompt": "prompts",
+    "mcp": "mcp",
+    "capability": "capabilities",
+    "template": "templates",
+    "directive": "policies",      # closest existing category
+    "policy": "policies",
+    "scorecard": "governance",
+    "eval": "evals",
+    "report": "templates",        # no first-class "report" category yet
+    "connector": "connectors",
+    "adapter": "adapters",
+    "cron": "workflows",          # crons orchestrate steps
+    "workflow": "workflows",
+}
+
 
 @dataclass
 class ExtractedArtifact:
@@ -217,7 +240,8 @@ def write_and_commit(src, output_type: str, slug: str,
                                     library_path_prefix: str = "library",
                                     created_by: str = "",
                                     commit_message: str = "",
-                                    workspace_repo: str = "") -> ExtractedArtifact:
+                                    workspace_repo: str = "",
+                                    owning_company_id: str = "community") -> ExtractedArtifact:
     """Render `src` -> write to disk -> push to a skill-extracted/<slug> branch.
 
     Returns an ExtractedArtifact with the branch + file_path + raw_url for the
@@ -287,7 +311,87 @@ def write_and_commit(src, output_type: str, slug: str,
         workspace_url=workspace_url,
     )
     _record_artifact(artifact)
+    _register_as_library_asset(artifact, src, content, output_type,
+                                                 owning_company_id=owning_company_id,
+                                                 created_by=created_by)
     return artifact
+
+
+def _register_as_library_asset(artifact: "ExtractedArtifact",
+                                                          src, content: str, output_type: str,
+                                                          *,
+                                                          owning_company_id: str,
+                                                          created_by: str) -> None:
+    """Promote a fresh extract into a live /library/<category>/<slug> asset.
+
+    Without this, the extracted artifact lives on an unmerged GitHub branch
+    (skill-extracted/<slug>) and never appears in /library/ -- the user sees
+    a "Previous extracts" entry but can't browse or invoke it via MCP.
+
+    Best-effort: failures here are logged-and-swallowed so the extract HTTP
+    response still succeeds. The artifact remains on disk + GitHub branch
+    + records.json regardless; the worst case is the user has to manually
+    re-trigger after fixing whatever broke.
+
+    Auto-approve gating: when LIBRARY_AUTO_APPROVE_ON_SUBMIT=1, also write
+    a tenancy.ItemApproval row so the owning company's My Day view sees
+    the asset immediately without a separate review step.
+    """
+    try:
+        from . import store
+    except Exception:
+        return
+    category = OUTPUT_TYPE_TO_CATEGORY.get(output_type, "skills")
+    body_text = content or ""
+    description = (src.body or "").strip()[:280] if hasattr(src, "body") else ""
+    name = (getattr(src, "title", "") or artifact.slug).strip()
+    try:
+        meta = store.AssetMetadata(
+            asset_id=artifact.slug,
+            category=category,
+            workspace="global",
+            name=name,
+            description=description or f"Extracted {output_type} from {artifact.source_kind} {artifact.source_bc_id}",
+            readme_markdown=body_text,
+            source=artifact.raw_url or "extracted",
+            source_url=artifact.raw_url or "",
+            submitted_by=created_by or "extract-flow",
+            submitted_at=artifact.created_at,
+            owner=created_by or "extract-flow",
+            owning_company_id=owning_company_id or "community",
+            enrichment_state="enriched",
+            enriched_at=artifact.created_at,
+            enriched_by="extract-flow",
+        )
+        # Auto-approve when the rollout flag is set: mark vetted so the
+        # asset detail page shows the green badge + visibility opens.
+        auto_approve = (os.environ.get("LIBRARY_AUTO_APPROVE_ON_SUBMIT", "") or "").strip() in ("1", "true", "yes", "on")
+        if auto_approve:
+            meta.vetted = True
+            meta.vetted_by = created_by or "extract-flow"
+            meta.vetted_at = artifact.created_at
+            meta.vetted_status = "vetted"
+            meta.vetted_notes = "auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy"
+        store.save_metadata(meta)
+
+        if auto_approve:
+            try:
+                from . import tenancy
+                tenancy.record_approval(
+                    item_kind="library_asset",
+                    item_id=artifact.slug,
+                    category=category,
+                    company_id=owning_company_id or "community",
+                    approved_by_user_id=created_by or "extract-flow",
+                    status="approved",
+                    notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy (extract flow)",
+                )
+            except Exception:
+                # Tenancy is advisory; failure shouldn't block.
+                pass
+    except Exception:
+        # Don't crash the extract route on metadata-write failures.
+        pass
 
 
 # ── Records index (so we can list extracted artifacts) ────────────────

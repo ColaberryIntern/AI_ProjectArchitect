@@ -381,7 +381,8 @@ def extract(source_kind: str,
                   bucket_id: str = "",
                   repo: str = "",
                   workspace_repo: str = "",
-                  created_by: str = "") -> dict:
+                  created_by: str = "",
+                  owning_company_id: str = "community") -> dict:
     """Extract from a source -> render template -> optionally commit to library.
 
     Args:
@@ -439,6 +440,7 @@ def extract(source_kind: str,
                 src, output_type, final_slug,
                 repo=repo, created_by=created_by,
                 workspace_repo=workspace_repo,
+                owning_company_id=owning_company_id,
             )
             content = extracted_writer.render(src, output_type, final_slug,
                                                                 created_at=artifact.created_at)

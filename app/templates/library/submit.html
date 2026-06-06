@@ -9,7 +9,7 @@
   <div style="font-size: 48px; line-height: 1; margin-right: 16px;">➕</div>
   <div>
     <h1 class="mb-1">Submit to the Library</h1>
-    <p class="text-muted mb-0">Share something the team would find useful. Goes to the pending review queue.</p>
+    <p class="text-muted mb-0">Share something the team would find useful. Different categories ask for different fields.</p>
   </div>
 </div>
 
@@ -20,43 +20,25 @@
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Category *</label>
-          <select name="category" class="form-select" required>
+          <select name="category" id="category-select" class="form-select" required>
             {% for cat in categories %}
             <option value="{{ cat.key }}">{{ cat.emoji }} {{ cat.label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-8">
-          <label class="form-label">Name *</label>
-          <input name="name" class="form-control" required placeholder="e.g. RFP Summary Prompt v2">
+        <div class="col-md-8 d-flex align-items-end">
+          <div id="category-hint" class="text-muted small" style="line-height: 1.4;"></div>
         </div>
+      </div>
 
-        <div class="col-12">
-          <label class="form-label">What it does *</label>
-          <textarea name="description" rows="3" class="form-control" required
-                    placeholder="One paragraph — what this asset accomplishes, who it's for, why it's worth keeping."></textarea>
-        </div>
+      <hr class="my-4">
 
-        <div class="col-12">
-          <label class="form-label">How to use it</label>
-          <textarea name="how_to_use" rows="4" class="form-control"
-                    placeholder="Step-by-step instructions or invocation. Keep it concrete."></textarea>
-        </div>
-
-        <div class="col-12">
-          <label class="form-label">Example</label>
-          <textarea name="example" rows="4" class="form-control"
-                    placeholder="A concrete example — input + output, or sample code, or a screenshot URL."></textarea>
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Tags (comma-separated)</label>
-          <input name="tags" class="form-control" placeholder="sales, summarization, gpt-4">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Source (URL or path, optional)</label>
-          <input name="source" class="form-control" placeholder="https://... or path/to/file.md">
-        </div>
+      {# Per-category field area. JS swaps which set is visible based on
+         the category dropdown. Server-side, every named input is read into
+         the payload via request.form() so adding a new field anywhere is
+         a one-template-change job. #}
+      <div id="category-fields">
+        {# All possible fields rendered as templates. JS clones from here. #}
       </div>
 
       <div class="mt-4 d-flex align-items-center gap-3">
@@ -70,11 +52,82 @@
 <div class="mt-4 p-4 rounded" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
   <h5>🧭 What happens next?</h5>
   <ol class="mb-0 text-muted">
-    <li>Your submission lands in the <strong>pending review queue</strong>.</li>
-    <li>A Colaberry curator reviews it for clarity, originality, and fit.</li>
-    <li>If accepted, it gets a <span class="vetted-badge">Colaberry vetted</span> badge and appears in the catalog.</li>
+    <li>Your submission lands in the <strong>pending review queue</strong> (or is <strong>auto-approved</strong> during the current rollout window).</li>
+    <li>If approved, it gets a <span class="vetted-badge">Colaberry vetted</span> badge and appears in the catalog for your company.</li>
     <li>Other team members can rate, comment, and improve it over time.</li>
   </ol>
 </div>
+
+<script>
+(function () {
+  // Schemas: { category_key: { required: [...], optional: [...], field_meta: { name: {label, control, ...} } } }
+  var SCHEMAS = {{ category_schemas_json | tojson }};
+
+  function buildField(fieldName, meta, isRequired) {
+    var label = meta.label || fieldName;
+    var placeholder = meta.placeholder || '';
+    var control = meta.control || 'text';
+    var wrap = document.createElement('div');
+    wrap.className = 'col-12';
+    var labelEl = document.createElement('label');
+    labelEl.className = 'form-label';
+    labelEl.textContent = label + (isRequired ? ' *' : '');
+    wrap.appendChild(labelEl);
+    var input;
+    if (control === 'textarea') {
+      input = document.createElement('textarea');
+      input.rows = meta.rows || 3;
+    } else if (control === 'select') {
+      input = document.createElement('select');
+      input.className = 'form-select';
+      (meta.options || []).forEach(function (opt) {
+        var o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        input.appendChild(o);
+      });
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+    }
+    if (!input.className) input.className = 'form-control';
+    if (control === 'textarea') input.className = 'form-control';
+    input.name = fieldName;
+    if (placeholder) input.placeholder = placeholder;
+    if (isRequired) input.required = true;
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function render(category) {
+    var area = document.getElementById('category-fields');
+    area.innerHTML = '';
+    var schema = SCHEMAS[category];
+    if (!schema) return;
+    var row = document.createElement('div');
+    row.className = 'row g-3';
+    schema.required.forEach(function (f) {
+      row.appendChild(buildField(f, schema.field_meta[f] || { label: f }, true));
+    });
+    schema.optional.forEach(function (f) {
+      row.appendChild(buildField(f, schema.field_meta[f] || { label: f }, false));
+    });
+    area.appendChild(row);
+
+    var hint = document.getElementById('category-hint');
+    if (hint) {
+      var req = schema.required.length;
+      var opt = schema.optional.length;
+      hint.textContent = req + ' required · ' + opt + ' optional field' + (opt === 1 ? '' : 's') + ' for ' + category + '.';
+    }
+  }
+
+  var sel = document.getElementById('category-select');
+  if (sel) {
+    sel.addEventListener('change', function () { render(sel.value); });
+    render(sel.value);
+  }
+})();
+</script>
 
 {% endblock %}
