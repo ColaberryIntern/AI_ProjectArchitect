@@ -515,8 +515,9 @@ async function reshowInstall(label) {
   // who minted a token but lost the install command (token is shown once).
   if (!confirm(
     'Re-issue install command for "' + label + '"?\n\n' +
-    'The previous token for this row will be revoked (it was never used).\n' +
-    'A NEW token will be minted with the same label, and the install steps will show.\n\n' +
+    '• Existing token is revoked\n' +
+    '• Hostname and IP info from prior pings (if any) are PRESERVED on the new entry\n' +
+    '• New install steps show below\n\n' +
     'Continue?'
   )) return;
   const fd = new FormData();

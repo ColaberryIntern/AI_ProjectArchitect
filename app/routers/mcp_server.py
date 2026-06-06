@@ -499,16 +499,49 @@ async def mcp_token_reissue(request: Request, label: str = Form(...)):
     awaiting-ping rows: the user lost the original token (shown once at
     mint time), so we give them a new one without piling up duplicate
     rows or label suffixes.
+
+    Preserves identifying info (hostname, last_client_ip, last_user_agent)
+    from the old entry onto the new one so the user can still tell which
+    physical computer this row represents after rotation -- losing that on
+    every reissue would make rows indistinguishable.
     """
     user = _require_web_user(request)
     label = label.strip()
     if not label:
         return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
+
+    # Capture identifying info from the existing entry BEFORE revoking
+    prior_hostname = None
+    prior_client_ip = None
+    prior_user_agent = None
+    for t in (user.mcp_tokens or []):
+        if t.get("label") == label and not t.get("revoked_at"):
+            prior_hostname = t.get("hostname")
+            prior_client_ip = t.get("last_client_ip")
+            prior_user_agent = t.get("last_user_agent")
+            break
+
     mcp_token.revoke_device(user.user_id, label)
     plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
+
+    # Restore identifying info onto the new entry so the row stays
+    # recognizable until the user's first ping with the new token updates it.
+    if prior_hostname or prior_client_ip or prior_user_agent:
+        for t in (updated.mcp_tokens or []):
+            if t.get("label") == (updated.mcp_token_label or label) and not t.get("revoked_at"):
+                if prior_hostname:
+                    t["hostname"] = prior_hostname
+                if prior_client_ip:
+                    t["last_client_ip"] = prior_client_ip
+                if prior_user_agent:
+                    t["last_user_agent"] = prior_user_agent
+                break
+        tenancy.upsert_user(updated)
+
     payload = _build_install_payload(plain_token, user.email, updated.mcp_token_label or label)
     payload["ok"] = True
     payload["issued_at"] = updated.mcp_token_issued_at
+    payload["preserved_hostname"] = prior_hostname
     return JSONResponse(payload)
 
 
