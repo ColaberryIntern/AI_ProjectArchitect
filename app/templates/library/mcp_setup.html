@@ -123,10 +123,17 @@
     </div>
   </div>
 
-  {# Loud-and-clear banner about THIS browser's machine. The aggregate green
-     pill above can be misleading: it says "at least one device connected"
-     even when you're sitting at a NEW computer that hasn't installed yet.
-     This banner directly answers "should I install on THIS machine?". #}
+  {# Banner about THIS browser's machine. Server-renders an initial state
+     that's then refined by JS once localStorage + device statuses are
+     reconciled in refreshBanner(). Five terminal states:
+       A. Marked row exists and is green   -> "this computer is connected"
+       B. Marked row exists but yellow     -> "install incomplete on '<label>'"
+       C. Marked row missing               -> "your prior mark gone -- add device"
+       D. No mark, has green               -> "some device connected; mark which"
+       E. No mark, no green                -> original red banner
+     Server picks A/D/E based on what it can see; JS reconciles to B/C if
+     the localStorage mark changes things. #}
+  <div id="mcpBanner">
   {% if not devices or devices|selectattr('status', 'equalto', 'green')|list|length == 0 %}
   <div style="background: #ffeef0; border: 2px solid #cf222e; border-radius: 10px; padding: 16px 20px; margin-bottom: 22px;">
     <div style="font-weight: 700; color: #cf222e; font-size: 15px; margin-bottom: 6px;">
@@ -148,6 +155,7 @@
     ✅ At least one of your devices is actively pinging. Check the device table for which one. If this is a NEW computer, click "+ Add this device" for a separate token.
   </div>
   {% endif %}
+  </div>
 
   <div id="statusCard" class="mcp-status-card s-{{ status }}" style="display: none;">
     <span class="dot"></span>
@@ -423,6 +431,73 @@ function tryAutoGuessCurrentDevice(devices) {
   }
 }
 
+// Render the right banner based on localStorage mark + device-row statuses.
+// Called after page load and after every device-table mutation (revoke,
+// generate, poll).
+function refreshBanner() {
+  const banner = document.getElementById('mcpBanner');
+  if (!banner) return;
+
+  const rows = Array.from(document.querySelectorAll('#devicesTbody tr'));
+  const marked = getCurrentDeviceLabel();
+  const markedRow = marked ? rows.find(r => r.dataset.label === marked) : null;
+  const markedStatus = markedRow
+    ? (markedRow.children[1]?.textContent.includes('Connected') ? 'green'
+       : markedRow.children[1]?.textContent.includes('Awaiting') ? 'yellow'
+       : markedRow.children[1]?.textContent.includes('Stale') ? 'red' : 'unknown')
+    : null;
+  const anyGreen = rows.some(r => r.children[1]?.textContent.includes('Connected'));
+
+  let html;
+  if (marked && markedRow && markedStatus === 'green') {
+    // Case A: marked row is connected -> all good
+    html = '<div style="background:#dafbe1;border:1px solid #aceebb;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#137333;">' +
+           '✅ <strong>This computer is connected.</strong> Your "' + escapeHtml(marked) + '" install is actively pinging. Claude Code on this machine has full Colaberry MCP access.' +
+           '</div>';
+  } else if (marked && markedRow && markedStatus === 'yellow') {
+    // Case B: marked row is awaiting ping -> install not finished
+    html = '<div style="background:#fff4d5;border:2px solid #d4a72c;border-radius:10px;padding:16px 20px;margin-bottom:22px;">' +
+           '<div style="font-weight:700;color:#8a5a00;font-size:15px;margin-bottom:6px;">⚠ Install incomplete on "' + escapeHtml(marked) + '"</div>' +
+           '<div style="font-size:13px;color:#1f2328;line-height:1.5;">' +
+           'You marked "' + escapeHtml(marked) + '" as THIS computer, but it has never pinged the MCP server -- the install command was either never run, never finished, or the local Claude Code session hasn\'t restarted yet to pick up the new MCP entry.' +
+           '</div>' +
+           '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">' +
+           '<button class="mcp-btn" onclick="reshowInstall(' + JSON.stringify(marked) + ')" style="background:#8a5a00;">📋 Reshow install for "' + escapeHtml(marked) + '"</button>' +
+           '</div>' +
+           '</div>';
+  } else if (marked && !markedRow) {
+    // Case C: marked label no longer exists (revoked etc.)
+    html = '<div style="background:#ffeef0;border:2px solid #cf222e;border-radius:10px;padding:16px 20px;margin-bottom:22px;">' +
+           '<div style="font-weight:700;color:#cf222e;font-size:15px;margin-bottom:6px;">🚨 Your prior mark is gone</div>' +
+           '<div style="font-size:13px;color:#1f2328;line-height:1.5;">' +
+           'You previously marked "' + escapeHtml(marked) + '" as this computer, but that device is no longer in the table (revoked or purged). Add this device again to reconnect.' +
+           '</div>' +
+           '<button class="mcp-btn" onclick="promptAddDevice()" style="margin-top:12px;background:#cf222e;">+ Add this device now →</button>' +
+           '</div>';
+  } else if (!marked && anyGreen) {
+    // Case D: connected rows exist but user hasn't marked which is THIS
+    html = '<div style="background:#dafbe1;border:1px solid #aceebb;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#137333;">' +
+           '✅ At least one device is actively pinging. Click "Mark as this computer" on the row that represents the laptop you\'re on right now.' +
+           '</div>';
+  } else {
+    // Case E: no mark, no green -> nothing installed yet
+    html = '<div style="background:#ffeef0;border:2px solid #cf222e;border-radius:10px;padding:16px 20px;margin-bottom:22px;">' +
+           '<div style="font-weight:700;color:#cf222e;font-size:15px;margin-bottom:6px;">🚨 This computer isn\'t connected yet</div>' +
+           '<div style="font-size:13px;color:#1f2328;line-height:1.5;">' +
+           'No device tokens are actively pinging. Click "+ Add this device" to install Colaberry MCP on this computer.' +
+           '</div>' +
+           '<button class="mcp-btn" onclick="promptAddDevice()" style="margin-top:12px;background:#cf222e;">+ Add this device now →</button>' +
+           '</div>';
+  }
+  banner.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
 function highlightCurrentRow() {
   // Source-of-truth for "THIS COMPUTER" is the USER's explicit choice
   // (localStorage). IP match is shown as a separate soft hint -- "same
@@ -485,6 +560,8 @@ function highlightCurrentRow() {
       markBtn.remove();
     }
   });
+
+  refreshBanner();
 
   // (4) Action column: add a "📋 Reshow install" button on every row whose
   // status is "Awaiting ping" -- the row was minted but never pinged, so
