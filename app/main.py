@@ -22,6 +22,7 @@ from app.routers import (
     feature_discovery,
     final_assembly,
     generate,
+    google_connect,
     idea_intake,
     library,
     mcp_server,
@@ -110,6 +111,7 @@ async def mcp_first_login_gate(request, call_next):
     skip_prefixes = (
         "/profile/mcp-setup", "/profile/mcp-token", "/profile/mcp-revoke",
         "/profile/mcp-status.json",
+        "/profile/connect-google", "/profile/google-status.json",
         "/auth/", "/static/", "/advisory/static/",
         "/mcp", "/api/", "/favicon",
         "/openapi.json", "/docs", "/redoc",
@@ -184,6 +186,7 @@ app.include_router(my_day.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(mcp_server.router)
+app.include_router(google_connect.router)
 
 
 @app.exception_handler(ValueError)
