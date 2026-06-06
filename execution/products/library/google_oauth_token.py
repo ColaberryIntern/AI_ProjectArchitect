@@ -230,8 +230,8 @@ def store_refresh_token_for_operator(user, refresh_token: str,
         user.user_id,
         VAULT_TOOL_NAME,
         refresh_token,
+        caller_id=actor_id,
         ttl_days=180,
-        actor_id=actor_id,
     )
     # Clear any cached access token tied to the old refresh token.
     invalidate_access_token_cache(user)
