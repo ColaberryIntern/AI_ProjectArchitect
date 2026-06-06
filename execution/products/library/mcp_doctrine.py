@@ -62,6 +62,13 @@ a. Call `colaberry_classify_prompt(text=<the prompt>)`. If kind == "readonly",
 
 b. If kind == "substantive":
    - Read the user's personal anchor via `colaberry_get_personal_anchor()`.
+   - **Check the `valid` flag in the response.** If `valid: false`, the
+     anchor is broken (stale ids, missing config, unreachable BC). Read
+     `validation_error` + `validation_message` and STOP. Tell the user
+     exactly what's wrong and what to do (the validation_message has the
+     remediation copy). DO NOT call create_ticket against a known-broken
+     anchor and DO NOT silently fall back to some other project -- that
+     destroys the audit trail.
    - Also check the working directory for a `.colaberry.json` file. If it
      exists, the project's bc_project_id + default_list_id are in it; this
      is the project-context anchor.
@@ -71,6 +78,14 @@ b. If kind == "substantive":
      then call `colaberry_create_ticket` to create the session anchor in
      personal. ALSO create-or-anchor against the project ticket if the work
      is project-scoped.
+
+If `colaberry_create_ticket` returns `ok: false` with an error like
+`anchor_not_set`, `anchor_stale_no_recoverable_list`, or
+`create_ticket_failed_even_after_recovery`, STOP. Read the
+`remediation` field and tell the user. Do not proceed with substantive
+work until the anchor is established -- Op 2 is non-negotiable. If
+the call succeeds with `self_healed: true`, mention the warning to the
+user so they know their tenancy needs an admin update.
 
 ## 2. Faithful progress updates (Op 3)
 

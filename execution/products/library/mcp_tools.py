@@ -209,8 +209,138 @@ def _resolve_default_anchor(user) -> dict:
     }
 
 
+def _probe_bc_todolist(bc_project_id: int, todolist_id: int, user) -> tuple:
+    """Cheap HEAD-style probe of a (project, todolist) pair. Returns
+    (ok: bool, http_status: int, error: str). Reuses _bc_request's
+    token-resolution + retry logic so we exercise the same auth path
+    the live tools use.
+    """
+    try:
+        _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{todolist_id}.json",
+            user=user,
+        )
+        return True, 200, ""
+    except RuntimeError as e:
+        # _bc_request wraps urllib HTTPError as RuntimeError with code in
+        # the message; parse defensively.
+        msg = str(e)
+        code = 0
+        if "404" in msg:
+            code = 404
+        elif "401" in msg or "403" in msg:
+            code = 401 if "401" in msg else 403
+        elif "5" in msg:
+            code = 500
+        return False, code, msg
+    except Exception as e:
+        return False, 0, str(e)
+
+
 def _tool_get_personal_anchor(user, args: dict) -> dict:
-    return {"ok": True, "anchor": _resolve_default_anchor(user)}
+    """Return the operator's personal BC anchor + probe whether the
+    cached (project, todolist) pair still resolves at Basecamp. When
+    the anchor is stale (BC 404), the caller MUST stop and surface the
+    problem to the user instead of silently falling back to a doomed
+    create_ticket attempt. See doctrine Section 1 + Section 8.
+    """
+    anchor = _resolve_default_anchor(user)
+    if not anchor.get("bc_project_id") or not anchor.get("todolist_id"):
+        return {
+            "ok": True,
+            "anchor": anchor,
+            "valid": False,
+            "validation_error": "anchor_not_set",
+            "validation_message": (
+                "The operator has no personal BC anchor configured. Tell "
+                "the user we need a personal_bc_project_id + "
+                "personal_bc_todolist_id on their tenancy User record."
+            ),
+        }
+    ok, code, err = _probe_bc_todolist(
+        anchor["bc_project_id"], anchor["todolist_id"], user,
+    )
+    if ok:
+        return {"ok": True, "anchor": anchor, "valid": True}
+    if code == 404:
+        return {
+            "ok": True,
+            "anchor": anchor,
+            "valid": False,
+            "validation_error": "anchor_stale",
+            "http_status": code,
+            "validation_message": (
+                "The cached personal_bc_todolist_id no longer exists in "
+                "Basecamp (HTTP 404). DO NOT proceed with create_ticket "
+                "against this anchor. STOP and tell the operator: "
+                "'Your personal BC anchor is stale -- the cached todolist "
+                "id does not exist. Ask Ali (or an admin) to repair it via "
+                "the /admin/users/<you>/ai-clone form, or pick a new "
+                "todolist via colaberry_list_project_todolists.'"
+            ),
+        }
+    return {
+        "ok": True,
+        "anchor": anchor,
+        "valid": False,
+        "validation_error": "anchor_unreachable",
+        "http_status": code,
+        "validation_message": (
+            f"Anchor probe failed with HTTP {code}: {err[:160]}. "
+            "Treat as unsafe to use; ask the user before falling back."
+        ),
+    }
+
+
+def _tool_list_project_todolists(user, args: dict) -> dict:
+    """List active todolists in a Basecamp project so Claude can recover
+    when the cached anchor todolist 404s, or so the operator can pick
+    a different list for project-scoped session anchoring.
+    """
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        return {"ok": False, "error": "bc_project_id required"}
+    try:
+        proj = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/projects/{bc_project_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "project_unreachable", "detail": str(e)[:200]}
+    todoset_url = ""
+    for dock in proj.get("dock", []) or []:
+        if dock.get("name") == "todoset":
+            todoset_url = dock.get("url") or ""
+            break
+    if not todoset_url:
+        return {"ok": False, "error": "project_has_no_todoset",
+                "project_name": proj.get("name", "")}
+    try:
+        ts = _bc_request("GET", todoset_url, user=user)
+        lists = _bc_request("GET", ts.get("todolists_url") or "", user=user)
+    except RuntimeError as e:
+        return {"ok": False, "error": "todolists_unreachable",
+                "detail": str(e)[:200]}
+    out = []
+    for ll in (lists or [])[:50]:
+        out.append({
+            "id": ll.get("id"),
+            "name": ll.get("name", ""),
+            "completed": bool(ll.get("completed")),
+            "url": ll.get("app_url", ""),
+        })
+    return {
+        "ok": True,
+        "bc_project_id": bc_project_id,
+        "project_name": proj.get("name", ""),
+        "count": len(out),
+        "todolists": out,
+    }
 
 
 def _tool_create_ticket(user, args: dict) -> dict:
@@ -231,7 +361,15 @@ def _tool_create_ticket(user, args: dict) -> dict:
         bc_project_id = bc_project_id or anchor["bc_project_id"]
         todolist_id = todolist_id or anchor["todolist_id"]
     if not bc_project_id or not todolist_id:
-        return {"ok": False, "error": "bc_project_id + todolist_id required (and user has no personal project configured)"}
+        return {"ok": False,
+                "error": "anchor_not_set",
+                "remediation": (
+                    "The operator has no personal_bc_project_id and "
+                    "personal_bc_todolist_id configured. Stop and tell "
+                    "them: 'I can't create your session anchor -- your "
+                    "personal BC anchor isn't set. Visit /admin/users/<you>/ai-clone "
+                    "or ask an admin to repair it.'"
+                )}
     try:
         body = _bc_request(
             "POST",
@@ -240,6 +378,63 @@ def _tool_create_ticket(user, args: dict) -> dict:
             user=user,
         )
     except RuntimeError as e:
+        # Self-heal on 404: cached todolist may have been deleted. Try to
+        # list active todolists in the project and retry with the first
+        # non-completed one. Surface the recovery in the response so the
+        # caller can update the user's tenancy on success.
+        if "404" in str(e):
+            list_result = _tool_list_project_todolists(
+                user, {"bc_project_id": bc_project_id},
+            )
+            if list_result.get("ok"):
+                active_lists = [tl for tl in list_result.get("todolists", [])
+                                              if not tl.get("completed")]
+                if active_lists:
+                    recovered_id = active_lists[0]["id"]
+                    try:
+                        body = _bc_request(
+                            "POST",
+                            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{recovered_id}/todos.json",
+                            payload={"content": title,
+                                            "description": _with_attribution(user, description)},
+                            user=user,
+                        )
+                        return {
+                            "ok": True,
+                            "ticket_id": body.get("id"),
+                            "url": body.get("app_url"),
+                            "bc_project_id": int(bc_project_id),
+                            "todolist_id": int(recovered_id),
+                            "self_healed": True,
+                            "warning": (
+                                f"The configured personal_bc_todolist_id "
+                                f"({todolist_id}) 404'd; created the ticket "
+                                f"in '{active_lists[0]['name']}' (id={recovered_id}) "
+                                "instead. The operator should ask an admin "
+                                "to update their tenancy so future tickets "
+                                "land in the intended list."
+                            ),
+                        }
+                    except RuntimeError as e2:
+                        return {"ok": False,
+                                "error": "create_ticket_failed_even_after_recovery",
+                                "first_attempt": str(e)[:200],
+                                "second_attempt": str(e2)[:200],
+                                "remediation": (
+                                    "Both the cached todolist and the "
+                                    "fallback list failed. Tell the user "
+                                    "the project itself may be the problem; "
+                                    "ask them to repair personal_bc_project_id."
+                                )}
+                return {"ok": False,
+                        "error": "anchor_stale_no_recoverable_list",
+                        "project_id": int(bc_project_id),
+                        "remediation": (
+                            f"The cached todolist_id {todolist_id} 404'd "
+                            f"and the project has no active todolists to "
+                            f"fall back to. STOP and tell the user. Do not "
+                            "create the ticket in a different project."
+                        )}
         return {"ok": False, "error": str(e)}
     return {
         "ok": True,
@@ -824,6 +1019,27 @@ def _tool_get_asset(user, args: dict) -> dict:
                 "asset_id": asset_id, "category": category,
                 "owning_company_id": owning}
     return {"ok": True, "asset": asdict(meta)}
+
+
+TOOLS.append(Tool(
+    name="colaberry_list_project_todolists",
+    description=(
+        "List active todolists in a Basecamp project. Use this to recover "
+        "when colaberry_create_ticket reports 'anchor_stale' OR when the "
+        "user wants to anchor to a specific list in a project (rather than "
+        "the project's default). Returns id + name + completed flag for "
+        "each list so you can pick the right one and proceed."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "bc_project_id": {"type": "integer",
+                                          "description": "Basecamp project (bucket) id"},
+        },
+        "required": ["bc_project_id"],
+    },
+    handler=_tool_list_project_todolists,
+))
 
 
 def _tool_propose_asset(user, args: dict) -> dict:
