@@ -329,14 +329,15 @@ async def google_attachment_callback(request: Request,
             status_code=303,
         )
 
-    vault.store_secret(
-        user.user_id,
-        "google_oauth_refresh",
-        refresh_token,
-        caller_id="google_connect_web_flow",
-        ttl_days=180,
+    # Tag the vault entry as web-issued so the runtime pairs it with the
+    # matching GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_* env creds at exchange
+    # time. Without this tag the runtime defaults to Desktop creds and
+    # Google rejects with invalid_grant.
+    google_oauth_token.store_refresh_token_for_operator(
+        user, refresh_token,
+        client_type="web",
+        actor_id="google_connect_web_flow",
     )
-    google_oauth_token.invalidate_access_token_cache(user)
 
     response = RedirectResponse(
         "/profile/connect-google?status=ok",

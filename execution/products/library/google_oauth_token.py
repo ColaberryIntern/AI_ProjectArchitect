@@ -67,29 +67,67 @@ _ACCESS_TOKEN_CACHE: dict[str, _CachedAccessToken] = {}
 _CACHE_LOCK = threading.Lock()
 
 
-def _client_credentials() -> tuple[str, str]:
-    """Read the OAuth client id + secret from env.
+def _parse_stored(stored: str) -> tuple[str, str]:
+    """Decode a vault-stored credential.
 
-    Prefers GOOGLE_OAUTH_ATTACHMENT_* (the Desktop OAuth client created
-    specifically for the attachment-fetch flow -- supports dynamic
-    localhost callback ports per Desktop client semantics). Falls back to
-    GOOGLE_OAUTH_CLIENT_ID/_SECRET (the SSO Web client) only so existing
-    deployments don't break if the new vars haven't been set yet.
+    Two formats coexist for backwards compat:
+      - new (wrapped): JSON `{"v":1,"refresh_token":"...","client_type":"web"|"desktop"}`
+      - legacy (bare string): just the refresh token; treated as desktop
 
-    The SSO Web client is the wrong type for this flow -- a Web client
-    requires registering each redirect URI exactly, and the bootstrap
-    script picks a random localhost port. Use the Desktop client.
+    Returns (refresh_token, client_type). client_type is always 'web' or
+    'desktop'. Unknown values default to desktop so we never accidentally
+    swap to a client the operator never consented under.
     """
+    if not stored:
+        return ("", "desktop")
+    s = stored.strip()
+    if s.startswith("{"):
+        try:
+            obj = json.loads(s)
+            if isinstance(obj, dict) and obj.get("refresh_token"):
+                ct = obj.get("client_type", "desktop")
+                if ct not in ("web", "desktop"):
+                    ct = "desktop"
+                return (obj["refresh_token"], ct)
+        except json.JSONDecodeError:
+            pass
+    return (s, "desktop")
+
+
+def _client_credentials_for(client_type: str) -> tuple[str, str]:
+    """Read OAuth client_id + secret matching the issuing client type.
+
+    Google ties refresh_token validity to the (client_id, client_secret)
+    pair that issued it. Mismatched creds at exchange time -> invalid_grant.
+    So we must use Web creds for Web-issued tokens and Desktop creds for
+    Desktop-issued tokens.
+
+    Web   (in-app /profile/connect-google flow):
+        GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID / _SECRET
+    Desktop (CLI bootstrap_google_oauth.py + localhost redirect):
+        GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID / _SECRET
+        falls back to GOOGLE_OAUTH_CLIENT_ID / _SECRET for legacy compat
+    """
+    if client_type == "web":
+        cid = (os.environ.get("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID") or "").strip()
+        secret = (os.environ.get("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET") or "").strip()
+        if not cid or not secret:
+            raise OAuthError(
+                "google_oauth_app_not_configured",
+                "GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID / _SECRET env vars missing on advisor",
+            )
+        return cid, secret
+
     cid = (
         os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID")
         or os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
         or ""
-    )
+    ).strip()
     secret = (
         os.environ.get("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET")
         or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
         or ""
-    )
+    ).strip()
     if not cid or not secret:
         raise OAuthError(
             "google_oauth_app_not_configured",
@@ -98,27 +136,49 @@ def _client_credentials() -> tuple[str, str]:
     return cid, secret
 
 
-def get_refresh_token_for_operator(user) -> Optional[str]:
-    """Resolve the operator's stored Google refresh token. Returns None when
-    no vault entry exists -- caller should return the
-    `no_google_oauth_grant` error code so the operator knows to bootstrap.
+def _client_credentials() -> tuple[str, str]:
+    """Legacy helper. Returns Desktop creds. Kept so existing callers that
+    don't know about per-token client_type tagging still resolve. New code
+    should use _client_credentials_for(client_type).
+    """
+    return _client_credentials_for("desktop")
+
+
+def _read_stored_credential(user, *, caller_id: str, purpose: str) -> Optional[str]:
+    """Raw vault read. May return wrapped JSON or legacy bare string.
+    Returns None when no vault entry exists.
     """
     try:
-        plain = vault.read_secret(
+        return vault.read_secret(
             user.user_id,
             VAULT_TOOL_NAME,
-            caller_id="mcp_attachment_fetch",
-            purpose="exchange for Google access token to fetch attachment",
+            caller_id=caller_id,
+            purpose=purpose,
         )
     except KeyError:
         return None
     except Exception as e:
-        # Surface vault internal errors with a stable code; don't include the
-        # exception message (might leak path/file info from the vault impl).
         logger.warning("vault read failed for user=%s tool=%s err_type=%s",
                                   user.user_id, VAULT_TOOL_NAME, type(e).__name__)
         raise OAuthError("vault_read_failed", "could not read stored credential")
-    return plain or None
+
+
+def get_refresh_token_for_operator(user) -> Optional[str]:
+    """Resolve the operator's stored Google refresh token. Returns None when
+    no vault entry exists. Transparently unwraps either storage format.
+
+    Callers using this only as a boolean "is this operator connected?"
+    check don't need to know about client_type tagging.
+    """
+    stored = _read_stored_credential(
+        user,
+        caller_id="mcp_attachment_fetch",
+        purpose="exchange for Google access token to fetch attachment",
+    )
+    if not stored:
+        return None
+    rt, _ = _parse_stored(stored)
+    return rt or None
 
 
 def invalidate_access_token_cache(user) -> None:
@@ -145,14 +205,24 @@ def get_access_token_for_operator(user) -> str:
     if cached and cached.expires_at_epoch > time.time() + ACCESS_TOKEN_REFRESH_BUFFER_SEC:
         return cached.access_token
 
-    refresh_token = get_refresh_token_for_operator(user)
+    stored = _read_stored_credential(
+        user,
+        caller_id="mcp_attachment_fetch",
+        purpose="exchange for Google access token to fetch attachment",
+    )
+    if not stored:
+        raise OAuthError(
+            "no_google_oauth_grant",
+            "operator needs to visit /profile/connect-google or run scripts/bootstrap_google_oauth.py",
+        )
+    refresh_token, client_type = _parse_stored(stored)
     if not refresh_token:
         raise OAuthError(
             "no_google_oauth_grant",
-            "operator needs to run scripts/bootstrap_google_oauth.py",
+            "operator needs to visit /profile/connect-google or run scripts/bootstrap_google_oauth.py",
         )
 
-    client_id, client_secret = _client_credentials()
+    client_id, client_secret = _client_credentials_for(client_type)
     body = urllib.parse.urlencode({
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -214,24 +284,36 @@ def get_access_token_for_operator(user) -> str:
 
 
 def store_refresh_token_for_operator(user, refresh_token: str,
+                                                                *, client_type: str = "desktop",
                                                                 actor_id: str = "bootstrap_script") -> None:
     """Write/overwrite the operator's refresh token in the vault.
 
-    Called by scripts/bootstrap_google_oauth.py after the interactive consent
-    flow. ttl_days=180 = 6 months; Google revokes idle refresh tokens at
+    client_type tags which OAuth client issued the refresh_token so the
+    runtime knows which env credentials to pair with it at exchange time.
+    Web-issued tokens (in-app /profile/connect-google) and Desktop-issued
+    tokens (CLI bootstrap) coexist; mixing creds across types fails with
+    Google's invalid_grant.
+
+    ttl_days=180 = 6 months; Google revokes idle refresh tokens at
     that point so it doubles as a re-consent reminder.
 
-    Refresh token text is NEVER logged. The actor_id appears in the vault's
+    Refresh token text is NEVER logged. actor_id appears in the vault's
     audit log; the token does not.
     """
     if not refresh_token or not refresh_token.strip():
         raise ValueError("refresh_token must be non-empty")
+    if client_type not in ("web", "desktop"):
+        raise ValueError("client_type must be 'web' or 'desktop'")
+    blob = json.dumps({
+        "v": 1,
+        "refresh_token": refresh_token,
+        "client_type": client_type,
+    })
     vault.store_secret(
         user.user_id,
         VAULT_TOOL_NAME,
-        refresh_token,
+        blob,
         caller_id=actor_id,
         ttl_days=180,
     )
-    # Clear any cached access token tied to the old refresh token.
     invalidate_access_token_cache(user)

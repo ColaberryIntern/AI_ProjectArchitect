@@ -406,3 +406,165 @@ def test_no_log_line_contains_test_token(fake_user, monkeypatch, caplog):
         assert "VERY-SECRET-XYZ" not in msg, (
             f"client_secret leaked in log: {msg}"
         )
+
+
+# ── Tagged vault entries (client_type) ────────────────────────────────
+
+
+def test_parse_stored_legacy_bare_string_treated_as_desktop():
+    """Pre-tag vault entries are bare refresh tokens. Must remain readable
+    and tagged as desktop (the only client that existed before tagging)."""
+    rt, ct = google_oauth_token._parse_stored("1//0xLEGACY-DESKTOP-RT")
+    assert rt == "1//0xLEGACY-DESKTOP-RT"
+    assert ct == "desktop"
+
+
+def test_parse_stored_wrapped_web():
+    blob = json.dumps({"v": 1, "refresh_token": "1//WEB", "client_type": "web"})
+    rt, ct = google_oauth_token._parse_stored(blob)
+    assert rt == "1//WEB"
+    assert ct == "web"
+
+
+def test_parse_stored_wrapped_desktop():
+    blob = json.dumps({"v": 1, "refresh_token": "1//DESK", "client_type": "desktop"})
+    rt, ct = google_oauth_token._parse_stored(blob)
+    assert rt == "1//DESK"
+    assert ct == "desktop"
+
+
+def test_parse_stored_unknown_client_type_falls_back_to_desktop():
+    """Defensive: a future client_type or a corrupted entry should NOT
+    accidentally promote to Web (which could cause invalid_grant). Default
+    to desktop -- the legacy interpretation -- so existing Desktop-issued
+    tokens keep working."""
+    blob = json.dumps({"v": 1, "refresh_token": "1//X", "client_type": "alien"})
+    rt, ct = google_oauth_token._parse_stored(blob)
+    assert rt == "1//X"
+    assert ct == "desktop"
+
+
+def test_parse_stored_empty_returns_desktop():
+    rt, ct = google_oauth_token._parse_stored("")
+    assert rt == ""
+    assert ct == "desktop"
+
+
+def test_client_credentials_for_web_uses_web_env(monkeypatch):
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID", "web-cid")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET", "web-sec")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID", "desk-cid")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET", "desk-sec")
+    cid, sec = google_oauth_token._client_credentials_for("web")
+    assert cid == "web-cid"
+    assert sec == "web-sec"
+
+
+def test_client_credentials_for_desktop_uses_desktop_env(monkeypatch):
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID", "web-cid")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET", "web-sec")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID", "desk-cid")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET", "desk-sec")
+    cid, sec = google_oauth_token._client_credentials_for("desktop")
+    assert cid == "desk-cid"
+    assert sec == "desk-sec"
+
+
+def test_client_credentials_for_web_missing_env_raises(monkeypatch):
+    monkeypatch.delenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET", raising=False)
+    with pytest.raises(google_oauth_token.OAuthError) as exc:
+        google_oauth_token._client_credentials_for("web")
+    assert exc.value.code == "google_oauth_app_not_configured"
+
+
+def test_get_access_token_web_tagged_uses_web_creds(fake_user, monkeypatch):
+    """Critical regression test: a Web-issued vault entry must trigger
+    exchange with Web env creds. If we picked Desktop creds here, Google
+    would reject with invalid_grant in production."""
+    blob = json.dumps({"v": 1, "refresh_token": "RT-WEB", "client_type": "web"})
+    monkeypatch.setattr(
+        google_oauth_token.vault, "read_secret",
+        MagicMock(return_value=blob),
+    )
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID", "web-cid-marker")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET", "web-sec-marker")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID", "desk-cid-should-not-appear")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET", "desk-sec-should-not-appear")
+    google_oauth_token.invalidate_access_token_cache(fake_user)
+
+    captured_body = {}
+    class _FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self):
+            return json.dumps({"access_token": "AT-WEB", "expires_in": 3600}).encode()
+
+    def _fake_urlopen(req, timeout):
+        captured_body["data"] = req.data.decode()
+        return _FakeResp()
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+        at = google_oauth_token.get_access_token_for_operator(fake_user)
+    assert at == "AT-WEB"
+    assert "client_id=web-cid-marker" in captured_body["data"]
+    assert "client_secret=web-sec-marker" in captured_body["data"]
+    assert "desk-cid-should-not-appear" not in captured_body["data"]
+
+
+def test_get_access_token_legacy_bare_string_uses_desktop_creds(fake_user, monkeypatch):
+    """Existing operators (Ali pre-rotation) have bare-string vault entries.
+    Those must continue to exchange with Desktop creds. Regression guard
+    against accidentally treating bare strings as Web."""
+    monkeypatch.setattr(
+        google_oauth_token.vault, "read_secret",
+        MagicMock(return_value="bare-rt-legacy"),
+    )
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_ID", "web-cid-must-not-be-used")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_WEB_CLIENT_SECRET", "web-sec-must-not-be-used")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_ID", "desk-cid-expected")
+    monkeypatch.setenv("GOOGLE_OAUTH_ATTACHMENT_CLIENT_SECRET", "desk-sec-expected")
+    google_oauth_token.invalidate_access_token_cache(fake_user)
+
+    captured_body = {}
+    class _FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self):
+            return json.dumps({"access_token": "AT-DESK", "expires_in": 3600}).encode()
+    def _fake_urlopen(req, timeout):
+        captured_body["data"] = req.data.decode()
+        return _FakeResp()
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+        at = google_oauth_token.get_access_token_for_operator(fake_user)
+    assert at == "AT-DESK"
+    assert "client_id=desk-cid-expected" in captured_body["data"]
+    assert "web-cid-must-not-be-used" not in captured_body["data"]
+
+
+def test_store_refresh_token_web_writes_wrapped_blob(fake_user, monkeypatch):
+    captured = {}
+    def _fake_store(uid, tool, val, *, caller_id, ttl_days):
+        captured["uid"] = uid
+        captured["tool"] = tool
+        captured["val"] = val
+        captured["caller_id"] = caller_id
+    monkeypatch.setattr(google_oauth_token.vault, "store_secret", _fake_store)
+
+    google_oauth_token.store_refresh_token_for_operator(
+        fake_user, "RT-NEW", client_type="web", actor_id="test_caller",
+    )
+    obj = json.loads(captured["val"])
+    assert obj["refresh_token"] == "RT-NEW"
+    assert obj["client_type"] == "web"
+    assert obj["v"] == 1
+    assert captured["caller_id"] == "test_caller"
+
+
+def test_store_refresh_token_invalid_client_type_rejects(fake_user, monkeypatch):
+    monkeypatch.setattr(google_oauth_token.vault, "store_secret", MagicMock())
+    with pytest.raises(ValueError):
+        google_oauth_token.store_refresh_token_for_operator(
+            fake_user, "RT", client_type="hybrid",
+        )

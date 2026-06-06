@@ -254,7 +254,9 @@ def main() -> int:
         return 1
 
     google_oauth_token.store_refresh_token_for_operator(
-        user, refresh_token, actor_id="bootstrap_script",
+        user, refresh_token,
+        client_type="desktop",
+        actor_id="bootstrap_script",
     )
     # NEVER print the token.
     print(f"Bootstrap complete for {args.email}.")
