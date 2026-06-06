@@ -263,13 +263,15 @@ async def ops_home(request: Request):
         view = "briefing"
     # Tier filter: assignment-based (assigned|due|unassigned|all) OR
     # kind-based (human|ai). The 6 values are mutually exclusive in the UI.
-    # Default is 'all' so projects show every task they actually have —
-    # otherwise tasks tagged with [Ali] in BC title (but not formally
-    # assigned to Ali's BC user id) get hidden under the 'assigned' tier,
-    # which surprised the user when AI Pathway projects appeared empty.
-    tier = request.query_params.get("tier", "all")
+    # Default is 'assigned' so each operator's first view of My Day is
+    # their own plate, not the org-wide queue. Earlier we defaulted to
+    # 'all' because BC-title-tagged tasks (e.g. '[Ali] foo') without a
+    # formal assignee get hidden under 'assigned' and that surprised
+    # the operator — that's still true, but most users want to see
+    # their assigned work first and can toggle to All for the org view.
+    tier = request.query_params.get("tier", "assigned")
     if tier not in ("assigned", "due", "unassigned", "watching", "all", "human", "ai"):
-        tier = "all"
+        tier = "assigned"
 
     # Pre-compute counts per tier for the chip row (BEFORE filtering)
     from collections import Counter
