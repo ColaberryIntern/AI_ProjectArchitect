@@ -139,23 +139,33 @@ def revoke_all_for_user(user_id_or_email: str) -> tenancy.User | None:
 # ── Validate ──────────────────────────────────────────────────────────
 
 
-def validate_token(token: str, user_agent: str | None = None) -> tenancy.User | None:
+def validate_token(token: str,
+                                user_agent: str | None = None,
+                                hostname: str | None = None,
+                                client_ip: str | None = None) -> tenancy.User | None:
     """Look up the user owning this token. Updates last_used_at on the
     matched device entry (and the legacy field for back-compat).
-    Returns None if no match or revoked.
+
+    Captures hostname (from X-MCP-Hostname header) + client_ip + user_agent
+    so the setup page can identify WHICH physical computer each row
+    represents. Hostname is the most reliable identifier; the others are
+    backups.
     """
     if not token or not token.startswith(TOKEN_PREFIX):
         return None
     h = _hash_token(token)
     for u in tenancy.list_users(active_only=False):
-        # Make sure legacy is migrated so list contains the legacy entry
         migrated = _migrate_legacy(u)
         for t in (u.mcp_tokens or []):
             if t.get("hash") == h and not t.get("revoked_at"):
                 t["last_used_at"] = _now()
                 if user_agent:
                     t["last_user_agent"] = user_agent[:200]
-                u.mcp_token_last_used_at = t["last_used_at"]  # legacy mirror
+                if hostname:
+                    t["hostname"] = hostname[:120]
+                if client_ip:
+                    t["last_client_ip"] = client_ip[:64]
+                u.mcp_token_last_used_at = t["last_used_at"]
                 tenancy.upsert_user(u)
                 return u
         if migrated:
@@ -196,6 +206,8 @@ def list_devices(user: tenancy.User) -> list[dict]:
             "last_used_at": t.get("last_used_at"),
             "revoked_at": t.get("revoked_at"),
             "last_user_agent": t.get("last_user_agent"),
+            "hostname": t.get("hostname"),
+            "last_client_ip": t.get("last_client_ip"),
             "status": _device_status(t),
         })
     # Sort: active first (green/yellow), revoked last; within each, newest issued first

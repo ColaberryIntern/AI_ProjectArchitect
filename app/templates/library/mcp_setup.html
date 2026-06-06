@@ -192,7 +192,15 @@
         <tr data-label="{{ d.label }}" style="border-top: 1px solid #eaeef2;">
           <td style="padding: 10px 16px; font-weight: 600;">
             {{ d.label }}
-            {% if d.last_user_agent %}
+            {% if d.hostname %}
+              <div style="font-size: 12px; color: #1f2328; font-weight: 600; margin-top: 4px;">
+                💻 <code style="background: #f6f8fa; padding: 1px 6px; border-radius: 3px;">{{ d.hostname }}</code>
+              </div>
+            {% endif %}
+            {% if d.last_client_ip %}
+              <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">from {{ d.last_client_ip }}</div>
+            {% endif %}
+            {% if d.last_user_agent and not d.hostname %}
               <div style="font-size: 10px; color: #57606a; font-weight: 400; margin-top: 2px;">{{ d.last_user_agent[:60] }}</div>
             {% endif %}
           </td>
@@ -249,19 +257,21 @@
         If you suspect a leak, click "Regenerate token" above; the old one is dead.
       </div>
 
-      <div style="display: flex; gap: 6px; margin-bottom: 8px; font-size: 12px;">
-        <button onclick="switchTab('terminal')" id="tabTerminal" class="ic-tab active">In a terminal</button>
-        <button onclick="switchTab('claude')" id="tabClaude" class="ic-tab">In a live Claude Code session</button>
+      <div style="display: flex; gap: 6px; margin-bottom: 8px; font-size: 12px; flex-wrap: wrap;">
+        <button onclick="switchOsTab('mac')" id="osTabMac" class="ic-tab">🍎 macOS / Linux</button>
+        <button onclick="switchOsTab('wincmd')" id="osTabWinCmd" class="ic-tab">🪟 Windows (cmd)</button>
+        <button onclick="switchOsTab('winps')" id="osTabWinPs" class="ic-tab">🪟 Windows (PowerShell)</button>
+        <button onclick="switchOsTab('claude')" id="osTabClaude" class="ic-tab">💬 In a live Claude Code session</button>
       </div>
 
       <div id="paneTerminal">
-        <p style="font-size: 13px; margin: 0 0 8px;">Open a terminal and run:</p>
+        <p style="font-size: 13px; margin: 0 0 8px;">Open a terminal and run this command. <strong>This command embeds your computer's hostname so the device table shows which physical machine each row is.</strong></p>
         <div class="mcp-cmd">
           <button class="copy-btn" onclick="copyToClipboard('installCmd', this)">Copy</button>
           <span id="installCmd">--</span>
         </div>
         <p style="font-size: 12px; color: #57606a; margin: 6px 0 0;">
-          After it succeeds: <code>claude mcp list</code> should show <code>colaberry</code>. Restart any open Claude Code session so it picks up the new server.
+          After it succeeds: <code>claude mcp list</code> should show <code>colaberry</code>. Restart any open Claude Code session so it picks up the new server. Your hostname will show in the device table within a few seconds of the first ping.
         </p>
       </div>
 
@@ -433,12 +443,14 @@ async function generateToken(label) {
   // The user just minted from THIS browser -> remember which device label
   // belongs to this computer so we can highlight the right row going forward.
   setCurrentDeviceLabel(j.label || label);
+  _lastGenResponse = j;
   document.getElementById('tokenValue').innerText = j.token;
-  document.getElementById('installCmd').innerText = j.install_command;
   document.getElementById('claudePrompt').innerText = j.claude_install_prompt || '';
   document.getElementById('setupSteps').style.display = 'block';
   document.getElementById('connectedStep').style.display = 'none';
   document.getElementById('waitingStep').style.display = 'block';
+  // Pick the right OS tab automatically + populate installCmd accordingly
+  switchOsTab(detectOsTab());
   startPolling();
   setStatus('yellow', 'Token issued for "' + (j.label || label) + '". Run the install command on that laptop.');
   // Scroll the steps into view so the new install instructions are visible
@@ -469,11 +481,45 @@ async function revokeDevice(label) {
   setStatus(j.status || 'red', 'Revoked "' + label + '".');
 }
 
-function switchTab(which) {
-  document.getElementById('paneTerminal').style.display = (which === 'terminal') ? 'block' : 'none';
+// Three OS variants (each embedding hostname via its native shell syntax)
+// + a Claude Code session prompt. Picked by navigator.platform at first
+// render so the user lands on the right tab without thinking.
+let _lastGenResponse = null;
+
+function switchOsTab(which) {
+  // Show one of the panes
+  document.getElementById('paneTerminal').style.display = (which !== 'claude') ? 'block' : 'none';
   document.getElementById('paneClaude').style.display = (which === 'claude') ? 'block' : 'none';
-  document.getElementById('tabTerminal').classList.toggle('active', which === 'terminal');
-  document.getElementById('tabClaude').classList.toggle('active', which === 'claude');
+  // Highlight the active tab
+  ['Mac', 'WinCmd', 'WinPs', 'Claude'].forEach(k => {
+    const tab = document.getElementById('osTab' + k);
+    if (tab) tab.classList.toggle('active', which.toLowerCase() === k.toLowerCase());
+  });
+  // Swap the command shown in the terminal pane to the right variant
+  if (which !== 'claude' && _lastGenResponse) {
+    const cmd = (
+      which === 'wincmd' ? _lastGenResponse.install_command_win_cmd :
+      which === 'winps'  ? _lastGenResponse.install_command_win_ps :
+                                         _lastGenResponse.install_command_mac_linux
+    ) || _lastGenResponse.install_command;
+    document.getElementById('installCmd').innerText = cmd;
+  }
+}
+
+function detectOsTab() {
+  try {
+    const p = (navigator.platform || '').toLowerCase();
+    if (p.startsWith('win')) return 'wincmd';  // most common; user can switch to PS
+    if (p.startsWith('mac')) return 'mac';
+    if (p.startsWith('linux')) return 'mac';   // same shell syntax
+  } catch (e) {}
+  return 'mac';
+}
+
+// Legacy alias used by an older inline onclick (not yet removed elsewhere)
+function switchTab(which) {
+  if (which === 'terminal') switchOsTab(detectOsTab());
+  else if (which === 'claude') switchOsTab('claude');
 }
 
 function copyToClipboard(elId, btnEl) {
@@ -512,12 +558,24 @@ function rebuildDeviceTable(devices) {
     tr.style.borderTop = '1px solid #eaeef2';
     const lastSeen = d.last_used_at ? d.last_used_at.substring(0, 19).replace('T', ' ') : 'never';
     const issued = d.issued_at ? d.issued_at.substring(0, 10) : '--';
-    const ua = d.last_user_agent ? '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">' + d.last_user_agent.substring(0, 60) + '</div>' : '';
+    // Hostname is the strongest identifier; show it big + monospaced.
+    // Fall back to user_agent only when we don't have a hostname yet (the
+    // device hasn't pinged with X-MCP-Hostname).
+    let hostBlock = '';
+    if (d.hostname) {
+      hostBlock = '<div style="font-size:12px;color:#1f2328;font-weight:600;margin-top:4px;">💻 <code style="background:#f6f8fa;padding:1px 6px;border-radius:3px;">' + d.hostname + '</code></div>';
+    } else if (d.last_user_agent) {
+      hostBlock = '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">' + d.last_user_agent.substring(0, 60) + '</div>';
+    }
+    let ipBlock = '';
+    if (d.last_client_ip) {
+      ipBlock = '<div style="font-size:10px;color:#57606a;font-weight:400;margin-top:2px;">from ' + d.last_client_ip + '</div>';
+    }
     const revokeBtn = d.status !== 'revoked'
       ? `<button class="mcp-btn mcp-btn-danger" onclick="revokeDevice('${d.label.replace(/'/g, "\\'")}')" style="padding:5px 12px;font-size:11px;">Revoke</button>`
       : '';
     tr.innerHTML =
-      '<td style="padding:10px 16px;font-weight:600;">' + d.label + ua + '</td>' +
+      '<td style="padding:10px 16px;font-weight:600;">' + d.label + hostBlock + ipBlock + '</td>' +
       '<td style="padding:10px 8px;">' + statusPill(d.status) + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + issued + '</td>' +
       '<td style="padding:10px 8px;color:#57606a;font-size:12px;">' + lastSeen + '</td>' +

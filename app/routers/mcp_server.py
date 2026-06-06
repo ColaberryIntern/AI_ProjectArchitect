@@ -58,12 +58,16 @@ def _require_web_user(request: Request) -> tenancy.User:
 
 
 def _bearer_user(authorization: str | None,
-                                user_agent: str | None = None) -> tenancy.User | None:
+                                user_agent: str | None = None,
+                                hostname: str | None = None,
+                                client_ip: str | None = None) -> tenancy.User | None:
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
     return mcp_token.validate_token(
         authorization.split(" ", 1)[1].strip(),
         user_agent=user_agent,
+        hostname=hostname,
+        client_ip=client_ip,
     )
 
 
@@ -148,9 +152,24 @@ def _handle_rpc(user: tenancy.User, msg: dict) -> dict | None:
 @router.post("/mcp")
 async def mcp_rpc(request: Request,
                                 authorization: str | None = Header(default=None),
-                                user_agent: str | None = Header(default=None)):
-    """JSON-RPC endpoint. Handles single requests; MCP batching not yet supported."""
-    user = _bearer_user(authorization, user_agent=user_agent)
+                                user_agent: str | None = Header(default=None),
+                                x_mcp_hostname: str | None = Header(default=None)):
+    """JSON-RPC endpoint. Handles single requests; MCP batching not yet supported.
+
+    Captures X-MCP-Hostname header (embedded by the install command via shell
+    substitution -- $(hostname) on Mac/Linux, %COMPUTERNAME% on Windows cmd,
+    $env:COMPUTERNAME on PowerShell) so the setup page can identify WHICH
+    physical computer each device row represents.
+    """
+    # Best-effort client IP -- behind nginx + Cloudflare, walk the forwarded
+    # chain so we get the real public IP, not Cloudflare's edge address.
+    client_ip = (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
+    user = _bearer_user(authorization, user_agent=user_agent,
+                                          hostname=x_mcp_hostname, client_ip=client_ip)
     if not user:
         return JSONResponse(
             _rpc_error(None, -32001, "invalid or missing MCP token; generate one at /profile/mcp-setup"),
@@ -245,9 +264,35 @@ async def mcp_token_generate(request: Request, label: str = Form("device")):
     """
     user = _require_web_user(request)
     plain_token, updated = mcp_token.generate_for_user(user.user_id, label=label)
+    # Base install command (no hostname). Used as a fallback for the
+    # "live Claude Code session" pane where shell substitution wouldn't apply
+    # cleanly (Claude will run via Bash tool which handles the variant).
     shell_command = (
         f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
         f'--transport http --header "Authorization: Bearer {plain_token}"'
+    )
+    # Platform-specific variants that EMBED the user's hostname via shell
+    # substitution. After `claude mcp add` runs, the resolved literal
+    # hostname is baked into ~/.claude/settings.json, so every MCP request
+    # sends X-MCP-Hostname automatically -- giving the portal a stable
+    # identifier per physical computer in the device table.
+    shell_command_mac_linux = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: $(hostname)"'
+    )
+    shell_command_win_cmd = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: %COMPUTERNAME%"'
+    )
+    shell_command_win_ps = (
+        f'claude mcp add colaberry https://advisor.colaberry.ai/mcp/v1 '
+        f'--transport http '
+        f'--header "Authorization: Bearer {plain_token}" '
+        f'--header "X-MCP-Hostname: $env:COMPUTERNAME"'
     )
     # Self-orienting instruction block to paste into either a terminal OR a
     # live Claude Code session. The preamble tells Claude Code exactly what to
@@ -273,9 +318,15 @@ async def mcp_token_generate(request: Request, label: str = Form("device")):
         "ok": True,
         "token": plain_token,
         "issued_at": updated.mcp_token_issued_at,
-        "label": updated.mcp_token_label,
-        "install_command": shell_command,        # raw shell command (terminal users)
-        "claude_install_prompt": claude_prompt,  # paste-into-Claude-Code instruction
+        "label": label,
+        # Legacy single-shell command (kept for back-compat; UI now picks
+        # the platform variant below)
+        "install_command": shell_command,
+        # Platform variants that embed hostname via shell substitution
+        "install_command_mac_linux": shell_command_mac_linux,
+        "install_command_win_cmd": shell_command_win_cmd,
+        "install_command_win_ps": shell_command_win_ps,
+        "claude_install_prompt": claude_prompt,
     })
 
 
