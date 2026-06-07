@@ -190,7 +190,11 @@ async def connect_basecamp_page(request: Request, status: str | None = None,
         exp_str = time.strftime("%Y-%m-%d %H:%M UTC",
                                 time.gmtime(exp)) if exp else "unknown"
         bc_email = meta.get("bc_user_email") or ""
-        is_ai = is_ai_account_email(bc_email)
+        # Context-aware check so hardcoded overrides (Ali -> CB System)
+        # also light up the AI badge. Falls back to the suffix-only
+        # check when no human user is in scope.
+        from execution.products.library import basecamp_provisioning as _bp
+        is_ai = _bp.is_ai_account_for_user(bc_email, user)
         if is_ai:
             # Connected as the dedicated AI account -- BC posts will show
             # under that identity (e.g. "Karun AI"), exactly what Ali wants

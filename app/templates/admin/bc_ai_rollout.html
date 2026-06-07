@@ -1,0 +1,127 @@
+{% extends "admin/_admin_base.html" %}
+
+{% block main %}
+<h1 style="font-size: 22px; margin-bottom: 4px;">🤖 Basecamp AI rollout</h1>
+<div style="color: #57606a; font-size: 13px; margin-bottom: 18px;">
+  One row per operator. Shows where each person is in the BC AI pipeline:
+  personal project &rarr; human BC OAuth &rarr; AI account invited &rarr; AI BC OAuth granted.
+  Use "Provision all unprovisioned" to fire BC invites in one batch.
+</div>
+
+{% if bulk_msg %}
+<div style="background: #dafbe1; border: 1px solid #aceebb; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; color: #137333;">
+  ✓ {{ bulk_msg }}
+</div>
+{% endif %}
+{% if bulk_err %}
+<div style="background: #ffeef0; border: 1px solid #ffabba; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; color: #b3261e;">
+  ✗ {{ bulk_err }}
+</div>
+{% endif %}
+
+<form method="post" action="/admin/bc-ai-rollout/provision-all"
+      style="display: inline-block; margin-bottom: 14px;">
+  <button type="submit"
+          style="background: #0969da; color: #fff; border: 0; padding: 8px 16px;
+                 border-radius: 5px; font-weight: 600; font-size: 13px; cursor: pointer;"
+          onclick="return confirm('Provision AI accounts in BC for every user currently in state=not_provisioned?')">
+    Provision all unprovisioned
+  </button>
+</form>
+<a href="/admin/bc-ai-rollout.json" style="font-size: 12px; color: #0969da; margin-left: 10px;">JSON view</a>
+
+<div style="background: #fff; border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden;">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+<thead>
+  <tr style="background: #f6f8fa; text-align: left;">
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">User</th>
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">Personal project</th>
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">Human BC OAuth</th>
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">AI account</th>
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">Current state</th>
+    <th style="padding: 10px 12px; border-bottom: 1px solid #d0d7de;">Action</th>
+  </tr>
+</thead>
+<tbody>
+{% for row in rows %}
+{% set u = row.user %}
+{% set s = row.status or {} %}
+{% set state = s.get('state', 'unknown') %}
+<tr style="border-bottom: 1px solid #eaeef2;">
+  <td style="padding: 10px 12px; vertical-align: top;">
+    <div style="font-weight: 600;">{{ u.display_name or u.email }}</div>
+    <div style="color: #57606a; font-size: 11px;"><code>{{ u.email }}</code></div>
+    <div style="color: #57606a; font-size: 11px;">{{ u.company_id }}</div>
+  </td>
+  <td style="padding: 10px 12px; vertical-align: top;">
+    {% if u.personal_bc_project_id %}
+      <span style="color: #137333;">✓</span>
+      <code style="font-size: 11px;">{{ u.personal_bc_project_id }}</code>
+    {% else %}
+      <span style="color: #b3261e;">✗</span> <span style="color: #57606a; font-size: 11px;">missing</span>
+    {% endif %}
+  </td>
+  <td style="padding: 10px 12px; vertical-align: top;">
+    {% if s.get('vault_oauth_granted') %}
+      <span style="color: #137333;">✓</span>
+      <span style="font-size: 11px;">{{ s.get('vault_oauth_email', '') }}</span>
+      {% if s.get('vault_oauth_is_ai') %}
+        <span style="background: #137333; color: #fff; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-left: 4px;">AI</span>
+      {% else %}
+        <span style="background: #f0d678; color: #8a5a00; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-left: 4px;">HUMAN</span>
+      {% endif %}
+    {% else %}
+      <span style="color: #b3261e;">✗</span>
+      <span style="color: #57606a; font-size: 11px;">not granted</span>
+    {% endif %}
+  </td>
+  <td style="padding: 10px 12px; vertical-align: top;">
+    {% if s.get('provisioned') %}
+      <span style="color: #137333;">✓</span>
+      <div style="font-size: 11px;"><code>{{ s.get('ai_email', '') }}</code></div>
+      <div style="font-size: 11px; color: #57606a;">{{ s.get('ai_display_name', '') }} · BC id {{ s.get('ai_user_id', '') }}</div>
+      {% if s.get('provisioned_at') %}<div style="font-size: 10px; color: #57606a;">{{ s.get('provisioned_at')[:10] }}</div>{% endif %}
+    {% else %}
+      <span style="color: #b3261e;">✗</span>
+      <div style="font-size: 11px; color: #57606a;">would invite <code>{{ s.get('ai_email', '') }}</code></div>
+    {% endif %}
+  </td>
+  <td style="padding: 10px 12px; vertical-align: top;">
+    {% if state == 'oauth_granted_ai' %}
+      <span style="background: #dafbe1; color: #137333; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">READY</span>
+    {% elif state == 'oauth_granted_human' %}
+      <span style="background: #fff4d5; color: #8a5a00; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">HUMAN OAUTH</span>
+    {% elif state == 'invited' %}
+      <span style="background: #ddf4ff; color: #0969da; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">INVITED</span>
+    {% elif state == 'not_provisioned' %}
+      <span style="background: #ffeef0; color: #b3261e; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">NOT STARTED</span>
+    {% else %}
+      <span style="background: #eaeef2; color: #57606a; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ state|upper }}</span>
+    {% endif %}
+  </td>
+  <td style="padding: 10px 12px; vertical-align: top;">
+    <a href="/admin/users/{{ u.user_id }}/ai-clone"
+       style="font-size: 11px; color: #0969da; text-decoration: none;
+              border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 4px;
+              display: inline-block;">Open →</a>
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+{% if rows|length == 0 %}
+<div style="text-align: center; padding: 40px; color: #57606a;">No users in this tenant.</div>
+{% endif %}
+
+<div style="margin-top: 24px; color: #57606a; font-size: 12px; line-height: 1.6;">
+  <strong>State legend:</strong>
+  <ul style="margin-top: 6px;">
+    <li><strong>NOT STARTED</strong> — no AI account invited. Click "Provision in BC" on the per-user page (or use "Provision all").</li>
+    <li><strong>INVITED</strong> — AI account exists in BC. User must accept their email + Incognito-reconnect via <code>/profile/connect-basecamp</code>.</li>
+    <li><strong>HUMAN OAUTH</strong> — user connected as their HUMAN BC account. Posts won't show under the AI persona; they need to reconnect from their AI account in Incognito.</li>
+    <li><strong>READY</strong> — full pipeline complete; posts will show under the AI persona.</li>
+  </ul>
+</div>
+{% endblock %}

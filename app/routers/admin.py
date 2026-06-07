@@ -21,6 +21,7 @@ super-admin (a Colaberry-tenant user with `admin` role).
 from __future__ import annotations
 
 import os
+import urllib.parse
 from datetime import datetime
 from typing import Optional
 
@@ -683,10 +684,174 @@ async def ai_clone_form(request: Request, user_id: str):
          if c.tool_name == "basecamp_ai_clone"),
         None,
     )
+    # Compute the BC AI account provisioning status for the new
+    # admin block. Best-effort: status_for_user touches BC + vault and
+    # may fail in dev; an empty status dict still renders the form.
+    bc_ai_status = {}
+    try:
+        from execution.products.library import basecamp_provisioning
+        bc_ai_status = basecamp_provisioning.status_for_user(u)
+    except Exception as e:
+        bc_ai_status = {"error": f"{type(e).__name__}: {e}"}
+
+    provision_msg = request.query_params.get("provision_msg") or ""
+    provision_error = request.query_params.get("provision_error") or ""
+
     return request.app.state.templates.TemplateResponse(
         request, "admin/user_ai_clone.html",
         _ctx(request, page_title=f"AI clone — {u.display_name}",
-             target_user=u, existing_credential=existing),
+             target_user=u, existing_credential=existing,
+             bc_ai_status=bc_ai_status,
+             provision_msg=provision_msg,
+             provision_error=provision_error),
+    )
+
+
+@router.get("/bc-ai-rollout")
+async def bc_ai_rollout_dashboard(request: Request):
+    """Fleet-view of every user's BC AI provisioning status.
+
+    One row per user in the admin's tenant; columns surface where each
+    person is in the 4-step pipeline (personal project provisioned,
+    human BC OAuth granted, AI account invited, AI OAuth granted).
+    Bulk "Provision all unprovisioned" action lives at the top.
+    """
+    admin = _require_admin(request)
+    from execution.products.library import basecamp_provisioning
+    # Same-company users only unless the admin is a Colaberry super_admin.
+    users = [u for u in tenancy.list_users()
+                      if admin.company_id == "colaberry"
+                      or u.company_id == admin.company_id]
+    users.sort(key=lambda u: (u.company_id, u.email))
+    rows = []
+    for u in users:
+        try:
+            st = basecamp_provisioning.status_for_user(u)
+        except Exception as e:
+            st = {"error": str(e), "state": "error"}
+        rows.append({
+            "user": u,
+            "status": st,
+        })
+
+    msg = request.query_params.get("msg") or ""
+    err = request.query_params.get("err") or ""
+    return request.app.state.templates.TemplateResponse(
+        request, "admin/bc_ai_rollout.html",
+        _ctx(request, page_title="BC AI rollout",
+                  rows=rows, bulk_msg=msg, bulk_err=err),
+    )
+
+
+@router.post("/bc-ai-rollout/provision-all")
+async def bc_ai_rollout_provision_all(request: Request):
+    """Provision every not_provisioned user in one batch. Returns a
+    summary in the redirect's query string."""
+    admin = _require_admin(request)
+    from execution.products.library import basecamp_provisioning
+    users = [u for u in tenancy.list_users()
+                      if admin.company_id == "colaberry"
+                      or u.company_id == admin.company_id]
+    provisioned: list[str] = []
+    skipped: list[str] = []
+    errored: list[str] = []
+    for u in users:
+        try:
+            st = basecamp_provisioning.status_for_user(u)
+        except Exception:
+            errored.append(u.email + " (status-check failed)")
+            continue
+        if st.get("state") != "not_provisioned":
+            skipped.append(f"{u.email}({st.get('state')})")
+            continue
+        result = basecamp_provisioning.provision_bc_ai_account(u)
+        if result.ok:
+            provisioned.append(f"{u.email}->{result.bc_user_email}")
+            _audit(admin.user_id, "bc_ai.provisioned_via_api",
+                          target=u.user_id,
+                          notes=(f"bulk; bc_user_id={result.bc_user_id} "
+                                      f"email={result.bc_user_email}"))
+        else:
+            errored.append(f"{u.email}({result.error_code})")
+
+    parts = []
+    if provisioned:
+        parts.append(f"provisioned {len(provisioned)}: " + "; ".join(provisioned))
+    if skipped:
+        parts.append(f"skipped {len(skipped)}")
+    if errored:
+        parts.append(f"errored {len(errored)}: " + "; ".join(errored))
+    msg = " | ".join(parts) or "nothing to do"
+    return RedirectResponse(
+        url=f"/admin/bc-ai-rollout?msg={urllib.parse.quote(msg)}",
+        status_code=303,
+    )
+
+
+@router.get("/bc-ai-rollout.json")
+async def bc_ai_rollout_json(request: Request):
+    """JSON view of the same fleet matrix. Useful for a future user-
+    facing dashboard widget or for scripted checks."""
+    admin = _require_admin(request)
+    from execution.products.library import basecamp_provisioning
+    users = [u for u in tenancy.list_users()
+                      if admin.company_id == "colaberry"
+                      or u.company_id == admin.company_id]
+    payload = []
+    for u in users:
+        try:
+            st = basecamp_provisioning.status_for_user(u)
+        except Exception as e:
+            st = {"error": str(e), "state": "error"}
+        payload.append({
+            "user_id": u.user_id,
+            "email": u.email,
+            "display_name": u.display_name,
+            "company_id": u.company_id,
+            "status": st,
+        })
+    return JSONResponse({"ok": True, "count": len(payload), "rows": payload})
+
+
+@router.post("/users/{user_id}/bc-ai-provision")
+async def ai_clone_provision(request: Request, user_id: str,
+                                                          ai_email: str = Form(""),
+                                                          ai_display_name: str = Form("")):
+    """Programmatically invite the user's "<Name> AI" Basecamp account
+    via the BC API. After this returns, the user still has to accept
+    the email invite + Incognito-reconnect via /profile/connect-basecamp;
+    that's BC's design, not ours.
+    """
+    admin = _require_admin(request)
+    u = tenancy.get_user(user_id)
+    if not u:
+        raise HTTPException(404, "user not found")
+    if admin.company_id != "colaberry" and u.company_id != admin.company_id:
+        raise HTTPException(403, "can only modify users in your own company")
+
+    from execution.products.library import basecamp_provisioning
+    result = basecamp_provisioning.provision_bc_ai_account(
+        u, ai_email=ai_email.strip(), ai_display_name=ai_display_name.strip(),
+    )
+    if result.ok:
+        _audit(admin.user_id, "bc_ai.provisioned_via_api",
+                      target=user_id,
+                      notes=(f"bc_user_id={result.bc_user_id} "
+                                  f"email={result.bc_user_email} "
+                                  f"project_id={result.project_id}"))
+        msg = (f"Invited {result.bc_user_email} (BC user id "
+                      f"{result.bc_user_id}). The user must now accept the "
+                      f"invite email + Incognito-reconnect.")
+        return RedirectResponse(
+            url=f"/admin/users/{user_id}/ai-clone?provision_msg={urllib.parse.quote(msg)}",
+            status_code=303,
+        )
+    _audit(admin.user_id, "bc_ai.provision_failed", target=user_id,
+                  notes=f"{result.error_code}: {result.error_detail[:140]}")
+    err = f"{result.error_code}: {result.error_detail}"
+    return RedirectResponse(
+        url=f"/admin/users/{user_id}/ai-clone?provision_error={urllib.parse.quote(err)}",
+        status_code=303,
     )
 
 
