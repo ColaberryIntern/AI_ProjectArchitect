@@ -56,7 +56,12 @@
   <td style="padding: 10px 12px; vertical-align: top;">
     {% if u.personal_bc_project_id %}
       <span style="color: #137333;">✓</span>
-      <code style="font-size: 11px;">{{ u.personal_bc_project_id }}</code>
+      <a href="https://3.basecamp.com/3945211/projects/{{ u.personal_bc_project_id }}"
+         target="_blank" rel="noopener"
+         style="color: #0969da; text-decoration: none; font-family: ui-monospace, monospace;"
+         title="Open in Basecamp">
+        <code style="font-size: 11px;">{{ u.personal_bc_project_id }}</code> ↗
+      </a>
     {% else %}
       <span style="color: #b3261e;">✗</span> <span style="color: #57606a; font-size: 11px;">missing</span>
     {% endif %}
