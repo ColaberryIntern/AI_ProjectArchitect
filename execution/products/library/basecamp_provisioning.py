@@ -45,16 +45,18 @@ logger = logging.getLogger(__name__)
 
 # Hardcoded overrides for users whose AI account doesn't follow the
 # `<local>+ai@` / `-ai@` / `.ai@` convention. Keyed by the human's
-# email. Ali's AI account is the pre-existing CB System BC user
-# (vishnu@colaberry.com, name "CB System"); the system treats that
-# identity as Ali's AI for both display + AI-detection purposes.
-HARDCODED_AI_OVERRIDES: dict[str, dict] = {
-    "ali@colaberry.com": {
-        "ai_email": "vishnu@colaberry.com",
-        "ai_user_id": 37708014,
-        "ai_display_name": "CB System",
-    },
-}
+# email.
+#
+# History: Ali was initially mapped to the pre-existing CB System BC
+# user (vishnu@colaberry.com) since that's the account our backend
+# admin token already belonged to. Switched away on 2026-06-08 because
+# Ali doesn't have Vishnu's login password (CB System was setup long
+# ago for API use only). Ali now follows the standard naming
+# convention (ali+ai@colaberry.com), same as the rest of the team.
+# CB System remains the BASECAMP_ACCESS_TOKEN admin identity -- it's
+# still what creates invites + provisions personal projects -- it's
+# just no longer Ali's personal posting identity.
+HARDCODED_AI_OVERRIDES: dict[str, dict] = {}
 
 
 def derive_ai_email(human_email: str) -> str:

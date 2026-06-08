@@ -52,10 +52,12 @@ def test_derive_ai_email_dot_scheme(monkeypatch):
     assert bp.derive_ai_email("karun@colaberry.com") == "karun.ai@colaberry.com"
 
 
-def test_derive_ai_email_hardcoded_override_for_ali():
-    """Ali's AI account is the pre-existing CB System BC user
-    (vishnu@colaberry.com), NOT ali+ai@."""
-    assert bp.derive_ai_email("ali@colaberry.com") == "vishnu@colaberry.com"
+def test_derive_ai_email_ali_uses_standard_scheme():
+    """Ali follows the same +ai@ scheme as everyone else. (CB System
+    remains the BASECAMP_ACCESS_TOKEN admin identity but is no longer
+    Ali's per-user AI persona since Ali never had Vishnu's login
+    password.)"""
+    assert bp.derive_ai_email("ali@colaberry.com") == "ali+ai@colaberry.com"
 
 
 def test_derive_ai_email_empty_safe():
@@ -71,9 +73,9 @@ def test_derive_display_name_default():
     assert bp.derive_ai_display_name(u) == "Karun Vellanki AI"
 
 
-def test_derive_display_name_hardcoded_ali_is_cb_system():
+def test_derive_display_name_ali_uses_standard_scheme():
     u = _u("ali@colaberry.com", display_name="Ali Muwwakkil")
-    assert bp.derive_ai_display_name(u) == "CB System"
+    assert bp.derive_ai_display_name(u) == "Ali Muwwakkil AI"
 
 
 def test_derive_display_name_no_display_name_uses_local_part():
@@ -91,18 +93,19 @@ def test_is_ai_for_user_suffix_works_for_anyone():
     assert bp.is_ai_account_for_user("anything-ai@example.org", karun)
 
 
-def test_is_ai_for_user_cb_system_only_for_ali():
-    """vishnu@colaberry.com is Ali's AI account but Vishnu's HUMAN
-    account. The check is context-aware to handle this correctly."""
+def test_is_ai_for_user_no_overrides_currently():
+    """HARDCODED_AI_OVERRIDES is empty in the current rollout (Ali
+    switched off CB System on 2026-06-08). vishnu@ is no longer
+    treated as an AI account for anyone; only suffix-matching
+    addresses are. Test guards against silent re-introduction of an
+    override (regression check)."""
     ali = _u("ali@colaberry.com")
-    vishnu = _u("vishnu@colaberry.com")
     karun = _u("karun@colaberry.com")
-    # For Ali: vishnu@ IS the AI
-    assert bp.is_ai_account_for_user("vishnu@colaberry.com", ali)
-    # For Vishnu: vishnu@ is his HUMAN account, NOT AI
-    assert not bp.is_ai_account_for_user("vishnu@colaberry.com", vishnu)
-    # For Karun: vishnu@ isn't his AI either
+    # vishnu@ doesn't match -ai/+ai/.ai suffix, so it's not AI for anyone
+    assert not bp.is_ai_account_for_user("vishnu@colaberry.com", ali)
     assert not bp.is_ai_account_for_user("vishnu@colaberry.com", karun)
+    # The map is empty (no per-user overrides currently)
+    assert bp.HARDCODED_AI_OVERRIDES == {}
 
 
 def test_is_ai_for_user_rejects_lookalike_names():
@@ -174,24 +177,24 @@ def test_status_oauth_ai_when_user_connected_ai_account(monkeypatch):
     assert st["vault_oauth_is_ai"] is True
 
 
-def test_status_ali_recognizes_cb_system_as_ai(monkeypatch):
-    """End-to-end: when Ali's connected via CB System, the status
-    should be oauth_granted_ai even though vishnu@ doesn't match the
-    suffix patterns."""
+def test_status_ali_oauth_ai_when_bound_to_ali_plus_ai(monkeypatch):
+    """Post-2026-06-08: Ali uses ali+ai@colaberry.com like everyone
+    else. When his vault grant is bound to that, state is
+    oauth_granted_ai."""
     u = _u("ali@colaberry.com", display_name="Ali Muwwakkil",
-                bc_ai_user_id=37708014)
+                bc_ai_user_id=99000999)
     from execution.products.library import basecamp_oauth_token
     monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata",
                                             MagicMock(return_value={
                                                 "legacy": False,
-                                                "bc_user_email": "vishnu@colaberry.com",
-                                                "bc_user_id": 37708014,
+                                                "bc_user_email": "ali+ai@colaberry.com",
+                                                "bc_user_id": 99000999,
                                             }))
     st = bp.status_for_user(u)
     assert st["state"] == "oauth_granted_ai"
     assert st["vault_oauth_is_ai"] is True
-    assert st["ai_email"] == "vishnu@colaberry.com"
-    assert st["ai_display_name"] == "CB System"
+    assert st["ai_email"] == "ali+ai@colaberry.com"
+    assert st["ai_display_name"] == "Ali Muwwakkil AI"
 
 
 # ── provision_bc_ai_account error guards ──────────────────────────────
