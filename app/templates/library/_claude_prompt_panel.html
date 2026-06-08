@@ -1,0 +1,117 @@
+{# Use-this-in-Claude-Code panel. Renders the server-built prompt with three
+   client-side controls: Copy, Download as .txt, Open in Claude (claude.ai deep-link).
+
+   Included by asset.html and use_case_detail.html.
+
+   Inputs:
+     claude_prompt  required, the prompt text (already-escaped on render in <pre>).
+     prompt_slug    optional, used as the .txt filename + part of the Claude title.
+                    If missing, JS derives a slug from window.location.pathname. #}
+
+<div class="mt-3" style="background: linear-gradient(135deg, #ddf4ff 0%, #f6f8fa 100%);
+                         border: 1px solid #54aeff; border-radius: 10px;
+                         padding: 12px 14px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+    <div style="font-size: 12px; color: #0969da; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">
+      🚀 Use this in Claude Code
+    </div>
+    <div class="claude-prompt-actions"
+         data-prompt="{{ claude_prompt | e }}"
+         data-slug="{{ prompt_slug | default('', true) | e }}"
+         style="display: flex; gap: 6px; flex-wrap: wrap;">
+      <button type="button" class="cp-btn-copy"
+              style="background: #1a1a1a; color: #fff; border: 0;
+                     padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                     font-size: 12px; cursor: pointer;">
+        📋 Copy prompt
+      </button>
+      <button type="button" class="cp-btn-download"
+              style="background: #fff; color: #1a1a1a; border: 1px solid #d0d7de;
+                     padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                     font-size: 12px; cursor: pointer;">
+        ⬇️ Download .txt
+      </button>
+      <button type="button" class="cp-btn-open"
+              style="background: #fff; color: #c2410c; border: 1px solid #fb923c;
+                     padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                     font-size: 12px; cursor: pointer;">
+        🌐 Open in Claude
+      </button>
+    </div>
+  </div>
+  <pre style="margin: 8px 0 0; padding: 10px 12px; background: #fff;
+              border: 1px solid #d0d7de; border-radius: 6px;
+              font-size: 12px; white-space: pre-wrap; word-break: break-word;
+              line-height: 1.5; color: #1f2328;">{{ claude_prompt }}</pre>
+</div>
+
+<script>
+(function () {
+  // Idempotent: same partial included on different pages, only wire each
+  // .claude-prompt-actions group once.
+  document.querySelectorAll('.claude-prompt-actions:not([data-wired])').forEach(function (group) {
+    group.setAttribute('data-wired', '1');
+    var prompt = group.dataset.prompt || '';
+    var slug = group.dataset.slug || '';
+    if (!slug) {
+      // Derive from the URL last segment; strip query, trailing slash.
+      var path = window.location.pathname.replace(/\/$/, '');
+      slug = (path.split('/').pop() || 'claude-prompt')
+                 .replace(/[^a-z0-9_-]+/gi, '-')
+                 .toLowerCase() || 'claude-prompt';
+    }
+
+    var copyBtn = group.querySelector('.cp-btn-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        navigator.clipboard.writeText(prompt).then(function () {
+          var original = copyBtn.textContent;
+          copyBtn.textContent = '✅ Copied';
+          setTimeout(function () { copyBtn.textContent = original; }, 2200);
+        });
+      });
+    }
+
+    var dlBtn = group.querySelector('.cp-btn-download');
+    if (dlBtn) {
+      dlBtn.addEventListener('click', function () {
+        var blob = new Blob([prompt], { type: 'text/plain;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = slug + '.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Revoke the blob URL after the browser has had a chance to start
+        // the download. 1s is conservative; Chrome/Firefox both start
+        // download in under 100ms in practice.
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      });
+    }
+
+    var openBtn = group.querySelector('.cp-btn-open');
+    if (openBtn) {
+      openBtn.addEventListener('click', function () {
+        // claude.ai/new accepts ?q=... as a prefilled first-message.
+        // Cap at ~6000 chars to stay under common URL-length limits; if
+        // longer, copy + open empty so the user can paste manually.
+        var MAX = 6000;
+        var url, copied = false;
+        if (prompt.length <= MAX) {
+          url = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
+        } else {
+          url = 'https://claude.ai/new';
+          try { navigator.clipboard.writeText(prompt); copied = true; } catch (e) {}
+        }
+        window.open(url, '_blank', 'noopener');
+        if (copied) {
+          var original = openBtn.textContent;
+          openBtn.textContent = '📋 Copied + opened';
+          setTimeout(function () { openBtn.textContent = original; }, 3500);
+        }
+      });
+    }
+  });
+})();
+</script>

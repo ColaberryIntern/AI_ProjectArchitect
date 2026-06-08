@@ -660,11 +660,13 @@ async def use_case_detail(request: Request, uc_id: str):
         })
     ratings = use_cases.list_ratings(workspace, uc_id)
     comments = use_cases.list_comments(workspace, uc_id)
+    claude_prompt = build_use_case_prompt(uc)
     return request.app.state.templates.TemplateResponse(
         request, "library/use_case_detail.html",
         _ctx(request, library_nav_active="use_cases",
                   uc=uc, tools=hydrated_tools,
-                  ratings=ratings, comments=comments),
+                  ratings=ratings, comments=comments,
+                  claude_prompt=claude_prompt),
     )
 
 
@@ -891,11 +893,77 @@ _CLAUDE_PROMPT_FALLBACK = (
 )
 
 
-def build_claude_prompt(category: str, asset_id: str, name: str) -> str:
+_LIVE_IN_MCP_PROMPT = (
+    'The "{name}" tool is already live in your Colaberry MCP server at '
+    "advisor.colaberry.ai/mcp/v1. Invoke it directly via the registered "
+    "colaberry_{asset_id} tool: no .mcp.json edits, no install steps. "
+    "Use it now to: <YOUR TASK HERE>."
+)
+
+
+def build_claude_prompt(category: str, asset_id: str, name: str,
+                                            live_in_mcp: bool = False) -> str:
     """Return the one-line "Copy to your Claude Code session" prompt that
-    pulls this asset into the conversation via colaberry_get_asset."""
+    pulls this asset into the conversation via colaberry_get_asset.
+
+    When live_in_mcp=True on an mcp-category asset the user gets a
+    different message: the tool is already exposed via their per-user
+    bearer token, no install needed. Saves them from chasing install
+    steps for tools they already have."""
+    if live_in_mcp and category == "mcp":
+        return _LIVE_IN_MCP_PROMPT.format(
+            name=name or asset_id, asset_id=asset_id,
+        )
     tpl = _CLAUDE_PROMPT_TEMPLATES.get(category, _CLAUDE_PROMPT_FALLBACK)
     return tpl.format(name=name or asset_id, asset_id=asset_id, category=category)
+
+
+def build_use_case_prompt(uc) -> str:
+    """Return a self-contained Claude Code prompt that walks Claude
+    through executing this use case end-to-end. Unlike build_claude_prompt
+    (which pulls an asset into context via colaberry_get_asset), a use
+    case prompt is the full walkthrough inlined so the user can paste it
+    into any Claude session with no other setup."""
+    lines: list[str] = []
+    lines.append(f'You are helping me execute the "{uc.title}" workflow.')
+    lines.append("")
+    if uc.summary:
+        lines.append(f"Context: {uc.summary}")
+        lines.append("")
+    if uc.persona:
+        lines.append(f"Persona this is for: {uc.persona}")
+        lines.append("")
+    if uc.problem:
+        lines.append("Problem:")
+        lines.append(uc.problem)
+        lines.append("")
+    if uc.solution:
+        lines.append("Approach:")
+        lines.append(uc.solution)
+        lines.append("")
+    if uc.walkthrough:
+        lines.append("Walk through these steps in order. Pause between steps "
+                              "if you need an input I have not given you.")
+        for i, step in enumerate(uc.walkthrough, 1):
+            lines.append(f"  {i}. {step}")
+        lines.append("")
+    if uc.tools_used:
+        lines.append("Tools / assets referenced (call colaberry_get_asset to "
+                              "fetch each if not already in context):")
+        for t in uc.tools_used:
+            cat = t.get("category", "")
+            aid = t.get("asset_id", "")
+            role = t.get("role", "")
+            if role:
+                lines.append(f"  - {cat}: {aid} -- {role}")
+            else:
+                lines.append(f"  - {cat}: {aid}")
+        lines.append("")
+    if uc.outcome_metric:
+        lines.append(f"Expected outcome: {uc.outcome_metric}")
+        lines.append("")
+    lines.append("Begin step 1. Ask only if you need missing inputs.")
+    return "\n".join(lines).strip()
 
 
 # ── "Live in your Colaberry MCP Server" badge detection ───────────
@@ -1012,16 +1080,17 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
             "target_name": provenance.get("author_name", ""),
         }
 
-    claude_prompt = build_claude_prompt(
-        cat.key, asset_id,
-        (meta.name if meta and meta.name else (raw.get("name") or asset_id)),
-    )
-
     live_in_mcp = is_live_in_colaberry_mcp(
         name=(meta.name if meta else (raw.get("name") or asset_id)),
         asset_id=asset_id,
         tags=(raw.get("tags") if raw else []) or (meta.tags if meta else []),
         source=(raw.get("source") if raw else "") or (meta.source if meta else ""),
+    )
+
+    claude_prompt = build_claude_prompt(
+        cat.key, asset_id,
+        (meta.name if meta and meta.name else (raw.get("name") or asset_id)),
+        live_in_mcp=live_in_mcp,
     )
 
     return request.app.state.templates.TemplateResponse(

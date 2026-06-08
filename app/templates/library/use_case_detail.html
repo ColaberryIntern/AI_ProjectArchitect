@@ -43,6 +43,15 @@
 <div class="row g-4">
   <div class="col-lg-8">
 
+    {# Use-this-in-Claude-Code panel. Same partial as the asset detail page.
+       The prompt for a use case is the full walkthrough inlined (built by
+       build_use_case_prompt), not a colaberry_get_asset call: use cases
+       have no asset_id in the MCP catalog. Per Workflow 3a. #}
+    {% if claude_prompt %}
+    {% set prompt_slug = uc.use_case_id %}
+    {% include "library/_claude_prompt_panel.html" %}
+    {% endif %}
+
     {# Persona #}
     {% if uc.persona %}
     <div class="library-card">
