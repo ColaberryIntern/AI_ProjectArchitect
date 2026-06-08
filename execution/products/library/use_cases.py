@@ -80,6 +80,11 @@ class UseCase:
     vetted_by: str | None = None
     vetted_at: str | None = None
     vetted_notes: str = ""
+    # Tenancy — mirrors AssetMetadata.owning_company_id. "community" means
+    # the case is visible to every tenant; a company_id slug scopes it to
+    # that single tenant. Default is "community" so seeded global cases
+    # stay visible to everyone.
+    owning_company_id: str = "community"
     # Aggregates
     rating_avg: float = 0.0
     rating_count: int = 0
@@ -122,8 +127,16 @@ def get(workspace: str, use_case_id: str) -> UseCase | None:
 
 
 def list_all(workspace: str = "global", limit: int | None = None,
-                  vetted_only: bool = False, sort: str = "newest") -> list[UseCase]:
-    """List use cases for a workspace. Sort: newest | rating | persona."""
+                  vetted_only: bool = False, sort: str = "newest",
+                  viewer_company_id: str | None = None) -> list[UseCase]:
+    """List use cases for a workspace. Sort: newest | rating | persona.
+
+    viewer_company_id (Auth 1): when set, keep only cases this tenant
+    owns. Mirrors inventory.filter_for_company: under "my-company" scope
+    we show ONLY company-owned content, not community-owned (community
+    shows up under "all" scope). Empty/missing tags treated as
+    "community" so legacy rows are explicitly community-scoped.
+    """
     d = _uc_dir(workspace)
     out: list[UseCase] = []
     for p in d.glob("*.json"):
@@ -133,6 +146,10 @@ def list_all(workspace: str = "global", limit: int | None = None,
             uc = UseCase(**cleaned)
             if vetted_only and not uc.vetted:
                 continue
+            if viewer_company_id:
+                owning = (uc.owning_company_id or "").strip() or "community"
+                if owning != viewer_company_id:
+                    continue
             out.append(uc)
         except Exception:
             pass
@@ -145,8 +162,15 @@ def list_all(workspace: str = "global", limit: int | None = None,
     return out[:limit] if limit else out
 
 
-def count(workspace: str = "global") -> int:
-    return len(list(_uc_dir(workspace).glob("*.json")))
+def count(workspace: str = "global",
+              viewer_company_id: str | None = None) -> int:
+    """Total visible cases. When viewer_company_id is None, returns the
+    raw file count (cheap, no JSON parsing). When set, applies the same
+    tenant filter as list_all so the badge in the library nav matches
+    what the page actually renders."""
+    if viewer_company_id is None:
+        return len(list(_uc_dir(workspace).glob("*.json")))
+    return len(list_all(workspace, viewer_company_id=viewer_company_id))
 
 
 def find_by_tool(workspace: str, category: str, asset_id: str) -> list[UseCase]:

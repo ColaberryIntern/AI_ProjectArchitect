@@ -106,7 +106,7 @@ def _ctx(request: Request, **extra) -> dict:
         "actor": _user(request),
         "counts": counts,
         "pending_count": pending_count,
-        "use_case_count": use_cases.count(ws),
+        "use_case_count": use_cases.count(ws, viewer_company_id=viewer_co),
         # [Library 2] identity-aware context
         "current_session_user": session_user,
         "scope": scope,
@@ -205,9 +205,11 @@ async def library_home(request: Request):
     new_this_week = scanner.candidates_this_week()
     pending = store.list_submissions(status="pending")
     # Lead with Use Cases — top 6 by rating, then by recency
-    top_use_cases = use_cases.list_all(workspace, limit=6, sort="rating")
+    top_use_cases = use_cases.list_all(workspace, limit=6, sort="rating",
+                                                          viewer_company_id=viewer_co)
     if not top_use_cases:
-        top_use_cases = use_cases.list_all(workspace, limit=6, sort="newest")
+        top_use_cases = use_cases.list_all(workspace, limit=6, sort="newest",
+                                                              viewer_company_id=viewer_co)
     # Word cloud preview — real text frequency (same encoding as Use Cases page)
     home_cloud = word_cloud.cloud_for_use_cases(
         workspace=workspace, mode="frequency", dimension="keyword",
@@ -585,7 +587,11 @@ async def use_case_index(request: Request):
                   if request.query_params.get(k)}
 
     # Apply filters before sort
-    all_cases = use_cases.list_all(workspace, sort=sort)
+    session_user = _session_user(request)
+    scope = _scope(request, session_user)
+    viewer_co = _viewer_company_id(session_user, scope)
+    all_cases = use_cases.list_all(workspace, sort=sort,
+                                                viewer_company_id=viewer_co)
     cases = word_cloud._apply_uc_filters(all_cases, filters)
     if vetted_only:
         cases = [c for c in cases if c.vetted]

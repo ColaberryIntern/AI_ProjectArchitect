@@ -102,7 +102,7 @@
 <details class="lists-filter" {% if list_filter %}open{% endif %} style="margin-top: 6px; margin-bottom: 8px;">
   <summary style="cursor: pointer; font-size: 12px; color: #57606a; font-weight: 600; padding: 4px 0; list-style: none; user-select: none;">
     <span style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 999px; padding: 4px 10px; display: inline-block;">
-      📋 Filter by list ({{ all_list_rollups_total }}{% if all_list_rollups_total > 50 %}, top 50{% endif %}){% if list_filter %} · 1 active{% endif %} ▾
+      📋 Filter by list ({{ all_list_rollups_total }}{% if all_list_rollups_total > 50 %}, top 50{% endif %}{% if project_filter %} <span style="color:#0550ae;font-weight:700;">⤳ in this project</span>{% endif %}){% if list_filter %} · 1 active{% endif %} ▾
     </span>
   </summary>
   <div class="project-chips" style="margin-top: 8px; padding-top: 0;">
@@ -129,7 +129,7 @@
 <details class="people-filter" {% if person_filter %}open{% endif %} style="margin-top: 6px; margin-bottom: 10px;">
   <summary style="cursor: pointer; font-size: 12px; color: #57606a; font-weight: 600; padding: 4px 0; list-style: none; user-select: none;">
     <span style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 999px; padding: 4px 10px; display: inline-block;">
-      👥 Filter by person ({{ people_for_chips|length }}){% if person_filter %} · <strong>{{ person_filter }}</strong> active{% endif %} ▾
+      👥 Filter by person ({{ people_for_chips|length }}{% if project_filter and list_filter %} <span style="color:#0550ae;font-weight:700;">⤳ on this list</span>{% elif project_filter %} <span style="color:#0550ae;font-weight:700;">⤳ in this project</span>{% elif list_filter %} <span style="color:#0550ae;font-weight:700;">⤳ on this list</span>{% endif %}){% if person_filter %} · <strong>{{ person_filter }}</strong> active{% endif %} ▾
     </span>
   </summary>
   <div class="project-chips" style="margin-top: 8px; padding-top: 0;">
