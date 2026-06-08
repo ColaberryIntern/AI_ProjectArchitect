@@ -169,9 +169,16 @@ def _handle_rpc(user: tenancy.User, msg: dict) -> dict | None:
 @router.get("/.well-known/oauth-protected-resource/mcp")
 @router.get("/.well-known/oauth-protected-resource/mcp/v1")
 async def oauth_protected_resource_metadata(request: Request):
-    # nginx terminates TLS so request.url.scheme is "http" in prod;
-    # honor X-Forwarded-Proto so the metadata advertises https URLs.
-    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    # Scheme resolution. In prod the chain is browser -> Cloudflare (TLS)
+    # -> nginx :80 -> uvicorn :8000. Nginx sees scheme=http and forwards
+    # that. Cloudflare passes the original scheme via CF-Visitor:
+    # '{"scheme":"https"}'. Check that first, then X-Forwarded-Proto,
+    # then fall back to request.url.scheme.
+    cf_visitor = request.headers.get("cf-visitor") or ""
+    if '"scheme":"https"' in cf_visitor:
+        scheme = "https"
+    else:
+        scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.url.netloc
     base = f"{scheme}://{host}"
     return JSONResponse({
