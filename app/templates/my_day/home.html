@@ -143,10 +143,19 @@
   <div class="md-spinner" style="width: 16px; height: 16px; border-width: 2px; margin: 0;"></div>
   <span><strong>Sync started.</strong> Pulling latest from Basecamp in the background.
     This page will refresh automatically in <span id="md-sync-countdown">25</span>s.</span>
-  <a href="/my-day/" style="margin-left: auto; color: #0550ae; text-decoration: underline; font-size: 12px;">Stop waiting</a>
+  <a href="/my-day/" id="md-sync-stop" style="margin-left: auto; color: #0550ae; text-decoration: underline; font-size: 12px;">Stop waiting</a>
 </div>
 <script>
 (function() {
+  // Auto-refresh URL preserves the user's active filters (view/tier/project/
+  // list/person) and strips only the now-stale sync_started flag. Previously
+  // this hardcoded '/my-day/' which silently reset filters after 25s, even
+  // though the post-Sync redirect itself preserved them.
+  var url = new URL(window.location.href);
+  url.searchParams.delete('sync_started');
+  var refreshUrl = url.pathname + (url.search || '');
+  var stopLink = document.getElementById('md-sync-stop');
+  if (stopLink) stopLink.href = refreshUrl;
   var sec = 25;
   var cd = document.getElementById('md-sync-countdown');
   var tick = setInterval(function() {
@@ -154,7 +163,7 @@
     if (cd) cd.textContent = String(sec);
     if (sec <= 0) {
       clearInterval(tick);
-      window.location.href = '/my-day/';
+      window.location.href = refreshUrl;
     }
   }, 1000);
 })();
