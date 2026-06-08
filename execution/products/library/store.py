@@ -75,7 +75,12 @@ class AssetMetadata:
     code_samples: list[dict] = field(default_factory=list)  # [{path, language, content}]
     license: str = ""
     languages: list[str] = field(default_factory=list)
-    dependencies: list[str] = field(default_factory=list)
+    # [Workflow 3b] dependencies is a list of typed cross-asset edges so
+    # the install flow can walk them. Each entry: {category, asset_id,
+    # optional}. Legacy list[str] entries (opaque strings) are normalized
+    # to {category: "?", asset_id: s, optional: False} on load+save so
+    # the install walker can identify which entries still need curation.
+    dependencies: list[dict] = field(default_factory=list)
     repo_stats: dict = field(default_factory=dict)      # {stars, forks, last_commit, default_branch}
     snapshot_path: str = ""              # relative path under output/library/_snapshots/
     source_url: str = ""                 # canonical fetch URL (may differ from source label)
@@ -140,6 +145,32 @@ def _known_fields() -> set[str]:
     return _KNOWN_FIELDS
 
 
+def _normalize_dependencies(deps: Any) -> list[dict]:
+    """[Workflow 3b] Normalize an asset's dependencies into the typed
+    list[dict] form. Accepts the legacy list[str] shape (opaque package
+    or asset names) and wraps each entry as {category: "?", asset_id: s,
+    optional: False}. The "?" category is a sentinel: the install walker
+    can detect it, skip the unresolvable entry, and surface it as a TODO
+    in the PR body so a curator can map it later.
+    """
+    if not deps:
+        return []
+    out: list[dict] = []
+    for d in deps:
+        if isinstance(d, dict):
+            # Already typed. Backfill missing keys with defaults.
+            out.append({
+                "category": str(d.get("category") or "?"),
+                "asset_id": str(d.get("asset_id") or ""),
+                "optional": bool(d.get("optional", False)),
+            })
+        elif isinstance(d, str):
+            # Legacy opaque string. Wrap with "?" category sentinel.
+            out.append({"category": "?", "asset_id": d, "optional": False})
+        # silently drop anything else (e.g. None, ints) -- malformed data
+    return [e for e in out if e["asset_id"]]
+
+
 def get_metadata(workspace: str, category: str, asset_id: str) -> AssetMetadata:
     p = meta_path(workspace, category, asset_id)
     if p.exists():
@@ -147,6 +178,8 @@ def get_metadata(workspace: str, category: str, asset_id: str) -> AssetMetadata:
             data = json.loads(p.read_text(encoding="utf-8"))
             # Drop unknown keys (e.g. removed fields); fill missing with defaults
             cleaned = {k: v for k, v in data.items() if k in _known_fields()}
+            if "dependencies" in cleaned:
+                cleaned["dependencies"] = _normalize_dependencies(cleaned["dependencies"])
             return AssetMetadata(**cleaned)
         except Exception:
             pass
@@ -158,6 +191,9 @@ def save_metadata(meta: AssetMetadata) -> None:
     # asset_id may contain path separators (e.g. "n8n Cron/Schedule Trigger");
     # ensure the nested directory exists before write.
     p.parent.mkdir(parents=True, exist_ok=True)
+    # Normalize on write so any in-memory legacy string entries
+    # (e.g. populated by older code paths) get persisted in typed form.
+    meta.dependencies = _normalize_dependencies(meta.dependencies)
     p.write_text(json.dumps(asdict(meta), indent=2), encoding="utf-8")
 
 
