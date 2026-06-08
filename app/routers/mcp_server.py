@@ -169,7 +169,11 @@ def _handle_rpc(user: tenancy.User, msg: dict) -> dict | None:
 @router.get("/.well-known/oauth-protected-resource/mcp")
 @router.get("/.well-known/oauth-protected-resource/mcp/v1")
 async def oauth_protected_resource_metadata(request: Request):
-    base = f"{request.url.scheme}://{request.url.netloc}"
+    # nginx terminates TLS so request.url.scheme is "http" in prod;
+    # honor X-Forwarded-Proto so the metadata advertises https URLs.
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.url.netloc
+    base = f"{scheme}://{host}"
     return JSONResponse({
         "resource": f"{base}/mcp/v1",
         "authorization_servers": [],
