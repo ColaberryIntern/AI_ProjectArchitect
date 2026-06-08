@@ -148,6 +148,52 @@ def _handle_rpc(user: tenancy.User, msg: dict) -> dict | None:
     return _rpc_error(req_id, JSONRPC_METHOD_NOT_FOUND, f"unknown method {method!r}")
 
 
+# ── OAuth discovery (RFC 9728 + RFC 8414) ──────────────────────────
+#
+# Why this exists: Claude Code's MCP client (the @modelcontextprotocol/sdk
+# TypeScript implementation) probes OAuth discovery URLs before falling
+# back to bearer-token auth. When we returned FastAPI's default 404
+# payload {"detail":"Not Found"}, the client's Zod validator crashed
+# trying to parse it as an OAuth error response (which requires
+# {"error": "...", "error_description": "..."}). That manifested as a
+# "Failed" state on the MCP server card with a confusing ZodError.
+#
+# We don't run an OAuth authorization server. Tokens are minted by the
+# logged-in web user at /profile/mcp-setup and pasted into Claude Code's
+# mcp config out-of-band. RFC 9728 lets us signal that explicitly:
+# authorization_servers=[] + bearer_methods_supported=["header"] tells
+# compliant clients to use the static bearer token, not attempt a flow.
+
+
+@router.get("/.well-known/oauth-protected-resource")
+@router.get("/.well-known/oauth-protected-resource/mcp")
+@router.get("/.well-known/oauth-protected-resource/mcp/v1")
+async def oauth_protected_resource_metadata(request: Request):
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    return JSONResponse({
+        "resource": f"{base}/mcp/v1",
+        "authorization_servers": [],
+        "bearer_methods_supported": ["header"],
+        "resource_documentation": f"{base}/profile/mcp-setup",
+    })
+
+
+@router.get("/.well-known/oauth-authorization-server")
+@router.get("/.well-known/oauth-authorization-server/mcp")
+@router.get("/.well-known/oauth-authorization-server/mcp/v1")
+async def oauth_authorization_server_not_supported():
+    return JSONResponse(
+        {
+            "error": "not_supported",
+            "error_description": (
+                "No OAuth authorization server. Mint a bearer token at "
+                "/profile/mcp-setup and configure Claude Code with it."
+            ),
+        },
+        status_code=404,
+    )
+
+
 @router.post("/mcp/v1")
 @router.post("/mcp")
 async def mcp_rpc(request: Request,
