@@ -896,9 +896,21 @@ _CLAUDE_PROMPT_FALLBACK = (
 _LIVE_IN_MCP_PROMPT = (
     'The "{name}" tool is already live in your Colaberry MCP server at '
     "advisor.colaberry.ai/mcp/v1. Invoke it directly via the registered "
-    "colaberry_{asset_id} tool: no .mcp.json edits, no install steps. "
+    "{tool_name} tool: no .mcp.json edits, no install steps. "
     "Use it now to: <YOUR TASK HERE>."
 )
+
+
+def _live_mcp_tool_name(asset_id: str, name: str) -> str:
+    """Pick the canonical MCP tool identifier for a live-in-MCP asset.
+    The asset_id is the more reliable source (lowercased, spaces to
+    underscores); fall back to name. Both are expected to start with
+    'colaberry_' for builtins."""
+    for candidate in (asset_id, name):
+        s = (candidate or "").strip().lower().replace(" ", "_")
+        if s:
+            return s
+    return "colaberry_unknown"
 
 
 def build_claude_prompt(category: str, asset_id: str, name: str,
@@ -912,7 +924,8 @@ def build_claude_prompt(category: str, asset_id: str, name: str,
     steps for tools they already have."""
     if live_in_mcp and category == "mcp":
         return _LIVE_IN_MCP_PROMPT.format(
-            name=name or asset_id, asset_id=asset_id,
+            name=name or asset_id,
+            tool_name=_live_mcp_tool_name(asset_id, name),
         )
     tpl = _CLAUDE_PROMPT_TEMPLATES.get(category, _CLAUDE_PROMPT_FALLBACK)
     return tpl.format(name=name or asset_id, asset_id=asset_id, category=category)
