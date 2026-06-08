@@ -32,7 +32,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -425,84 +424,67 @@ def _walk_dependencies(meta_or_uc, workspace: str, repo: str,
 
 
 # ── PR creation ────────────────────────────────────────────────────
-
-
-def _gh_available() -> bool:
-    try:
-        subprocess.run(["gh", "--version"], capture_output=True,
-                                  check=True, timeout=10)
-        return True
-    except Exception:
-        return False
+#
+# Uses workspaces._gh_api which prefers gh CLI when available and falls
+# back to direct urllib + GITHUB_ADMIN_TOKEN otherwise. The prod
+# container does not have gh installed, so the urllib path is what
+# actually runs. Keeping the call shape identical (same payload dicts)
+# means if we install gh later, no code change needed.
 
 
 def _open_pr(repo: str, branch: str, changes: list[FileChange],
                        pr_title: str, pr_body: str) -> tuple[str, int | None]:
     """Create branch, PUT each file, open PR. Returns (pr_url, pr_number).
-    Raises on any non-zero exit."""
-    # 1. Latest main SHA
-    code, out, err = _run([
-        "gh", "api", f"/repos/{repo}/git/ref/heads/main",
-        "--jq", ".object.sha",
-    ])
-    if code != 0:
-        raise RuntimeError(f"resolve main SHA failed: {err.strip()[:200]}")
-    base_sha = out.strip()
+    Raises on any failure."""
+    import base64
+
+    # 1. Latest main SHA from the user's workspace_repo
+    ref = workspaces._gh_api("GET", f"/repos/{repo}/git/ref/heads/main")
+    base_sha = ((ref or {}).get("object") or {}).get("sha", "")
+    if not base_sha:
+        raise RuntimeError(f"could not resolve main SHA on {repo}")
 
     # 2. Branch from main
-    code, _, err = _run([
-        "gh", "api", "--method", "POST",
-        f"/repos/{repo}/git/refs",
-        "-f", f"ref=refs/heads/{branch}",
-        "-f", f"sha={base_sha}",
-    ])
-    if code != 0:
-        raise RuntimeError(f"create branch failed: {err.strip()[:200]}")
+    workspaces._gh_api("POST", f"/repos/{repo}/git/refs", payload={
+        "ref": f"refs/heads/{branch}",
+        "sha": base_sha,
+    })
 
     # 3. PUT each file on the branch.
-    import base64
     for ch in changes:
         b64 = base64.b64encode(ch.content.encode("utf-8")).decode("ascii")
-        # Look up existing sha on the branch (required for PUT update).
+        # Look up existing sha on the branch if the file already exists.
+        # Required for PUT-as-update; harmless for PUT-as-create.
         existing_sha = ""
-        code, out, _ = _run([
-            "gh", "api", f"/repos/{repo}/contents/{ch.path}?ref={branch}",
-            "--jq", ".sha",
-        ])
-        if code == 0:
-            existing_sha = out.strip()
-        put_cmd = [
-            "gh", "api", "--method", "PUT",
-            f"/repos/{repo}/contents/{ch.path}",
-            "-f", f"branch={branch}",
-            "-f", f"message=Install: {ch.path}",
-            "-f", f"content={b64}",
-        ]
+        try:
+            existing = workspaces._gh_api(
+                "GET", f"/repos/{repo}/contents/{ch.path}?ref={branch}",
+            )
+            if isinstance(existing, dict):
+                existing_sha = str(existing.get("sha") or "")
+        except Exception:
+            existing_sha = ""
+        payload = {
+            "branch": branch,
+            "message": f"Install: {ch.path}",
+            "content": b64,
+        }
         if existing_sha:
-            put_cmd += ["-f", f"sha={existing_sha}"]
-        code, _, err = _run(put_cmd)
-        if code != 0:
-            raise RuntimeError(f"PUT {ch.path} failed: {err.strip()[:200]}")
+            payload["sha"] = existing_sha
+        workspaces._gh_api(
+            "PUT", f"/repos/{repo}/contents/{ch.path}", payload=payload,
+        )
 
     # 4. Open PR
-    code, out, err = _run([
-        "gh", "pr", "create",
-        "--repo", repo, "--head", branch, "--base", "main",
-        "--title", pr_title, "--body", pr_body,
-    ])
-    if code != 0:
-        raise RuntimeError(f"open PR failed: {err.strip()[:200]}")
-    pr_url = out.strip()
-    m = re.search(r"/pull/(\d+)", pr_url or "")
-    pr_number = int(m.group(1)) if m else None
+    pr = workspaces._gh_api("POST", f"/repos/{repo}/pulls", payload={
+        "title": pr_title,
+        "body": pr_body,
+        "head": branch,
+        "base": "main",
+    })
+    pr_url = str((pr or {}).get("html_url") or "")
+    pr_number = pr.get("number") if isinstance(pr, dict) else None
     return (pr_url, pr_number)
-
-
-def _run(cmd: list[str], timeout: int = 90) -> tuple[int, str, str]:
-    """Narrow subprocess wrapper so tests can monkeypatch."""
-    proc = subprocess.run(cmd, capture_output=True, text=True,
-                                       timeout=timeout, check=False)
-    return proc.returncode, proc.stdout, proc.stderr
 
 
 # ── Public entrypoint ──────────────────────────────────────────────
@@ -587,13 +569,6 @@ def open_install_pr(user: tenancy.User, category: str, asset_id: str,
     if dry_run:
         result.status = "dry_run"
         result.pr_url = "(dry_run)"
-        result.finished_at = _now()
-        _append_audit(result)
-        return result
-
-    if not _gh_available():
-        result.status = "failed"
-        result.error = "gh CLI not available on host"
         result.finished_at = _now()
         _append_audit(result)
         return result
