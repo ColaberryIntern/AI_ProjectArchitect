@@ -321,31 +321,27 @@ def _maybe_async_sync(user_email: str, state) -> None:
 
 
 def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) -> bool:
-    """Page-load 'natural flow' sync: when the store is stale (>90s), sync
-    the project the user is about to view INLINE (~2-3s) so the focus task
-    they see is computed against fresh data. Always kicks a background full
-    sync so projects outside the current filter also catch up. Returns True
-    if any inline work was done.
+    """Page-load 'natural flow' sync: ALWAYS non-blocking. Kicks a
+    background sync when the store is stale, returns immediately.
 
-    This is what keeps the system synced through the natural flow of using
-    the app — independent of whether the background APScheduler cron is
-    firing. Mark Done's targeted sync (ops_complete) covers the same gap
-    on the write path; this covers the read path.
+    History: this used to do an inline pull_todos_for_project (~2-3s
+    typically, but observed up to 30s when BC was slow or the project
+    had many lists). That froze the page for the user. Now we always
+    just kick the background sync; the user sees current store data
+    (which is at worst a few minutes stale), and the next page load /
+    Sync-button click picks up the freshly-synced data.
+
+    The background scheduler still runs every 5 min as a backstop.
+    Mark Done's targeted sync (ops_complete) covers the write path's
+    freshness need without blocking.
     """
     age = _store_age_seconds(state)
     if age < 90:
-        return False
-
-    inline_did_work = False
-    if project_filter_id is not None:
-        try:
-            r = sync.pull_todos_for_project(user_email, project_filter_id)
-            inline_did_work = (r.get("status") == "ok")
-        except Exception:
-            pass
-
+        return False  # store is already fresh enough
+    # Kick a full bg sync. This includes whichever project the user is
+    # currently viewing, plus everything else. Returns immediately.
     _kick_bg_full_sync(user_email)
-    return inline_did_work
+    return False  # never reload state inline -- avoid the 30s freeze
 
 
 @router.get("/")
