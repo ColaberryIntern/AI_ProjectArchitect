@@ -20,7 +20,10 @@
    Form posts to /library/install/{category}/{asset_id} with target=_blank
    so the resulting PR opens in a new tab. #}
 
-{% if not live_in_mcp|default(false) %}
+{# Hard suppressions:
+   1. live-in-MCP assets (gap-3 decision)
+   2. anonymous users (W3b spec: anonymous sees only Generate prompt) #}
+{% if not live_in_mcp|default(false) and current_session_user %}
 <div class="mt-3" style="background: linear-gradient(135deg, #e6ffec 0%, #f6f8fa 100%);
                          border: 1px solid #2da44e; border-radius: 10px;
                          padding: 12px 14px;">
@@ -35,7 +38,7 @@
       </div>
     </div>
 
-    {% if current_session_user and current_session_user.workspace_repo %}
+    {% if current_session_user.workspace_repo %}
       <form method="post"
             action="/library/install/{{ install_category }}/{{ install_asset_id }}"
             target="_blank"
@@ -51,7 +54,7 @@
           📥 Install to workspace
         </button>
       </form>
-    {% elif current_session_user %}
+    {% else %}
       <button type="button" disabled
               title="Your account does not have a workspace repo configured. Ask Ali to provision one."
               style="background: #f6f8fa; color: #8c959f; border: 1px solid #d0d7de;
@@ -59,13 +62,6 @@
                      font-size: 12px; cursor: not-allowed;">
         📥 Install to workspace (no workspace repo)
       </button>
-    {% else %}
-      <a href="/auth/login?next={{ request.url.path | urlencode }}"
-         style="background: #f6f8fa; color: #0969da; border: 1px solid #d0d7de;
-                padding: 6px 14px; border-radius: 6px; font-weight: 600;
-                font-size: 12px; text-decoration: none;">
-        🔒 Sign in to install
-      </a>
     {% endif %}
   </div>
 
