@@ -706,7 +706,14 @@ async def ops_todo(bc_id: int, request: Request):
 
 
 @router.post("/sync")
-async def ops_sync(request: Request):
+async def ops_sync(
+    request: Request,
+    view: str = Form(""),
+    tier: str = Form(""),
+    project: str = Form(""),
+    list_id: str = Form("", alias="list"),
+    person: str = Form(""),
+):
     """Kick a background sync and redirect immediately.
 
     User feedback: the previous blocking sync left the dim 'Syncing…'
@@ -715,6 +722,12 @@ async def ops_sync(request: Request):
     ?sync_started=1; the home page shows an in-progress banner and
     auto-refreshes 25s later so fresh data is visible without the
     user having to click refresh.
+
+    Filter preservation: the Sync forms in home/kanban/heatmap emit the
+    active view/tier/project/list/person as hidden inputs so the redirect
+    lands the user back on the same filtered view. Previously we hard-
+    coded the destination to bare /my-day/, which silently dropped every
+    URL-driven filter and felt like a state reset.
 
     Reuses the per-user lock dict from _maybe_async_sync so we don't
     race the background scheduler — if a sync is already in flight,
@@ -743,7 +756,27 @@ async def ops_sync(request: Request):
 
         _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
 
-    return RedirectResponse("/my-day/?sync_started=1", status_code=303)
+    # Defensive fallback: if the form lacked any filter fields (a stale
+    # template version, a proxy stripping the POST body, or a direct
+    # curl), parse the Referer query string so we still preserve filters.
+    if not (view or tier or project or list_id or person):
+        from urllib.parse import urlparse, parse_qs
+        ref_qs = parse_qs(urlparse(request.headers.get("Referer", "")).query)
+        view = ref_qs.get("view", [""])[0]
+        tier = ref_qs.get("tier", [""])[0]
+        project = ref_qs.get("project", [""])[0]
+        list_id = ref_qs.get("list", [""])[0]
+        person = ref_qs.get("person", [""])[0]
+
+    from urllib.parse import urlencode
+    params: list[tuple[str, str]] = []
+    if view: params.append(("view", view))
+    if tier: params.append(("tier", tier))
+    if project: params.append(("project", project))
+    if list_id: params.append(("list", list_id))
+    if person: params.append(("person", person))
+    params.append(("sync_started", "1"))
+    return RedirectResponse(f"/my-day/?{urlencode(params)}", status_code=303)
 
 
 @router.post("/todo/{bc_id}/dismiss")

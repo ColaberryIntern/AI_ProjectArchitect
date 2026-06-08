@@ -57,6 +57,13 @@
     </a>
     {% endif %}
     <form method="post" action="/my-day/sync" style="margin: 0;">
+      {# Preserve active filters across the post→redirect so the user lands
+         back on the same filtered view instead of bare /my-day/. #}
+      {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+      {% if tier %}<input type="hidden" name="tier" value="{{ tier }}">{% endif %}
+      {% if project_filter %}<input type="hidden" name="project" value="{{ project_filter }}">{% endif %}
+      {% if list_filter %}<input type="hidden" name="list" value="{{ list_filter }}">{% endif %}
+      {% if person_filter %}<input type="hidden" name="person" value="{{ person_filter }}">{% endif %}
       <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
     </form>
   </div>
