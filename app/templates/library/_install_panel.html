@@ -1,0 +1,78 @@
+{# [Workflow 3b] Install-to-workspace panel.
+
+   Renders the Install button + Subscribe-to-updates checkbox on every
+   library item detail view (asset.html and use_case_detail.html).
+
+   Inputs (the parent template must set these):
+     install_category  -- e.g. "skills" / "agents" / "use_case"
+     install_asset_id  -- the asset id or use_case_id
+
+   Hidden entirely when:
+     - live_in_mcp is True (per gap-3 decision: live-in-MCP assets are
+       already in the user's per-user MCP, so the Install button would
+       only confuse + risk a bearer-token leak if the user later checked
+       in the file)
+
+   Disabled with tooltip when:
+     - current_session_user is anonymous (no workspace_repo)
+     - current_session_user has no workspace_repo
+
+   Form posts to /library/install/{category}/{asset_id} with target=_blank
+   so the resulting PR opens in a new tab. #}
+
+{% if not live_in_mcp|default(false) %}
+<div class="mt-3" style="background: linear-gradient(135deg, #e6ffec 0%, #f6f8fa 100%);
+                         border: 1px solid #2da44e; border-radius: 10px;
+                         padding: 12px 14px;">
+  <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+    <div style="flex: 1 1 280px;">
+      <div style="font-size: 12px; color: #1a7f37; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">
+        📥 Install to your workspace
+      </div>
+      <div style="font-size: 12px; color: #57606a; margin-top: 4px;">
+        Opens a PR in your workspace repo writing the artifact to the type-appropriate path.
+        Dependencies bundle into the same PR.
+      </div>
+    </div>
+
+    {% if current_session_user and current_session_user.workspace_repo %}
+      <form method="post"
+            action="/library/install/{{ install_category }}/{{ install_asset_id }}"
+            target="_blank"
+            style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #1f2328; cursor: pointer;">
+          <input type="checkbox" name="subscribe" value="on">
+          Subscribe to updates
+        </label>
+        <button type="submit"
+                style="background: #2da44e; color: #fff; border: 0;
+                       padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                       font-size: 12px; cursor: pointer;">
+          📥 Install to workspace
+        </button>
+      </form>
+    {% elif current_session_user %}
+      <button type="button" disabled
+              title="Your account does not have a workspace repo configured. Ask Ali to provision one."
+              style="background: #f6f8fa; color: #8c959f; border: 1px solid #d0d7de;
+                     padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                     font-size: 12px; cursor: not-allowed;">
+        📥 Install to workspace (no workspace repo)
+      </button>
+    {% else %}
+      <a href="/auth/login?next={{ request.url.path | urlencode }}"
+         style="background: #f6f8fa; color: #0969da; border: 1px solid #d0d7de;
+                padding: 6px 14px; border-radius: 6px; font-weight: 600;
+                font-size: 12px; text-decoration: none;">
+        🔒 Sign in to install
+      </a>
+    {% endif %}
+  </div>
+
+  {% if current_session_user and current_session_user.workspace_repo %}
+  <div style="font-size: 11px; color: #57606a; margin-top: 6px;">
+    Target: <code>{{ current_session_user.workspace_repo.split('/')[-2] }}/{{ current_session_user.workspace_repo.split('/')[-1] }}</code>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

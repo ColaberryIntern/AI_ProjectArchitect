@@ -1,0 +1,70 @@
+{% extends "library/_library_base.html" %}
+
+{% block title %}Install failed · Colaberry Library{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb" style="font-size: 13px; margin: 0;">
+    <li class="breadcrumb-item"><a href="/library/?ws={{ workspace }}">📚 Library</a></li>
+    <li class="breadcrumb-item active">Install failed</li>
+  </ol>
+</nav>
+
+<div class="library-card">
+  <div class="library-card-header">
+    <h1 style="margin: 0;">
+      {% if result.status == 'refused' %}
+        🛑 Install refused
+      {% else %}
+        ❌ Install failed
+      {% endif %}
+    </h1>
+  </div>
+  <div class="p-4">
+
+    <div style="font-size: 15px; color: #1f2328; margin-bottom: 18px;">
+      Asset: <strong>{{ category }}</strong> / <code>{{ asset_id }}</code>
+    </div>
+
+    {% if result.error %}
+    <div style="background: #ffeef0; border: 1px solid #ffc1c1; border-radius: 8px;
+                padding: 12px 14px; font-size: 13px; color: #cf222e; margin-bottom: 18px;">
+      {{ result.error }}
+    </div>
+    {% endif %}
+
+    <table style="width: 100%; font-size: 13px;" class="table">
+      <tbody>
+        <tr><td style="width: 220px; color: #57606a;">install_id</td><td><code>{{ result.install_id }}</code></td></tr>
+        <tr><td style="color: #57606a;">status</td><td><code>{{ result.status }}</code></td></tr>
+        <tr><td style="color: #57606a;">target_repo</td><td><code>{{ result.target_repo or '—' }}</code></td></tr>
+        <tr><td style="color: #57606a;">branch</td><td><code>{{ result.branch or '—' }}</code></td></tr>
+        <tr><td style="color: #57606a;">files_written</td><td>
+          {% if result.files_written %}
+            <ul style="margin: 0;">{% for f in result.files_written %}<li><code>{{ f }}</code></li>{% endfor %}</ul>
+          {% else %}—{% endif %}
+        </td></tr>
+        <tr><td style="color: #57606a;">deps_bundled</td><td>
+          {% if result.deps_bundled %}
+            <ul style="margin: 0;">{% for d in result.deps_bundled %}<li><code>{{ d.category }} / {{ d.asset_id }}</code></li>{% endfor %}</ul>
+          {% else %}none{% endif %}
+        </td></tr>
+        <tr><td style="color: #57606a;">deps_skipped</td><td>
+          {% if result.deps_skipped %}
+            <ul style="margin: 0;">{% for d in result.deps_skipped %}<li><code>{{ d.category }} / {{ d.asset_id }}</code> — {{ d.reason }}</li>{% endfor %}</ul>
+          {% else %}none{% endif %}
+        </td></tr>
+        <tr><td style="color: #57606a;">started_at</td><td><code>{{ result.started_at }}</code></td></tr>
+        <tr><td style="color: #57606a;">finished_at</td><td><code>{{ result.finished_at }}</code></td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 18px;">
+      <a href="{{ back_url }}" class="btn btn-outline-secondary">← Back to asset</a>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

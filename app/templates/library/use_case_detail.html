@@ -52,6 +52,15 @@
     {% include "library/_claude_prompt_panel.html" %}
     {% endif %}
 
+    {# [Workflow 3b] Install-to-workspace panel. Use cases install a
+       reference doc at docs/use-cases/{slug}.md plus, via the dep walker,
+       any tools_used assets that exist in the catalog. live_in_mcp is
+       N/A here so the panel never suppresses. #}
+    {% set install_category = "use_case" %}
+    {% set install_asset_id = uc.use_case_id %}
+    {% set live_in_mcp = false %}
+    {% include "library/_install_panel.html" %}
+
     {# Persona #}
     {% if uc.persona %}
     <div class="library-card">

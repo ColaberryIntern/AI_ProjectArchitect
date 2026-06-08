@@ -1124,6 +1124,69 @@ async def library_asset_detail(request: Request, category_key: str, asset_id: st
     )
 
 
+# ── [Workflow 3b] Install to workspace ────────────────────────────
+
+
+@router.post("/install/{category}/{asset_id:path}")
+async def library_install(request: Request, category: str, asset_id: str):
+    """Open a PR in the user's workspace_repo installing this asset
+    (and its direct dependencies). Auth required, workspace_repo required.
+
+    Form fields:
+      subscribe  -- if "on", record an ItemSubscription so the user gets
+                    an upgrade PR when the source asset is bumped.
+
+    Live-in-Colaberry-MCP assets refuse server-side (gap 3 decision):
+    we do not write a bearer-bound .mcp.json entry. The UI already
+    suppresses the button; this endpoint enforces it defensively.
+    """
+    session_user = _session_user(request)
+    if session_user is None:
+        from urllib.parse import quote
+        full = request.url.path + ("?" + request.url.query if request.url.query else "")
+        return RedirectResponse(
+            url=f"/auth/login?next={quote(full, safe='')}",
+            status_code=303,
+        )
+    if not session_user.workspace_repo:
+        raise HTTPException(
+            status_code=400,
+            detail=("No workspace repo configured. The admin needs to "
+                          "provision your workspace before you can install."),
+        )
+
+    form = await request.form()
+    subscribe = form.get("subscribe") in ("on", "true", "1", "yes")
+
+    from execution.products.library import workspace_install
+    result = workspace_install.open_install_pr(
+        session_user, category, asset_id,
+        workspace=_ws(request),
+        subscribe=subscribe,
+        triggered_by=f"web:{session_user.email}",
+    )
+
+    if result.status == "opened" and result.pr_url:
+        # PR opened -- redirect the user to the GitHub review page.
+        # The form has target="_blank" so this lands in a new tab.
+        return RedirectResponse(url=result.pr_url, status_code=303)
+
+    # Anything else -- render an error page with the InstallResult so
+    # the user can see why and what (if anything) landed.
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "library/install_error.html",
+        _ctx(request,
+                  result=result,
+                  category=category,
+                  asset_id=asset_id,
+                  back_url=(f"/library/{category}/{asset_id}"
+                                  if category not in ("use_case", "use_cases")
+                                  else f"/library/use-cases/{asset_id}")),
+        status_code=400 if result.status == "refused" else 500,
+    )
+
+
 # ── Category listing (with vetted filter) ─────────────────────────
 
 

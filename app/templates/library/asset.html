@@ -55,6 +55,12 @@
     {% include "library/_claude_prompt_panel.html" %}
     {% endif %}
 
+    {# [Workflow 3b] Install-to-workspace panel. Suppressed entirely for
+       live-in-MCP assets (gap-3: don't write bearer-bound .mcp.json). #}
+    {% set install_category = category.key %}
+    {% set install_asset_id = asset_id %}
+    {% include "library/_install_panel.html" %}
+
     {# Action row — every asset gets concrete next steps. No empty messaging. #}
     <div class="mt-3 d-flex gap-2 flex-wrap" id="asset-actions">
       {% if raw and raw.source %}
