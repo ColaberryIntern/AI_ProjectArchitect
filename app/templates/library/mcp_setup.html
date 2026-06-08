@@ -230,7 +230,7 @@
       </thead>
       <tbody id="devicesTbody">
         {% for d in devices %}
-        <tr data-label="{{ d.label }}" style="border-top: 1px solid #eaeef2;">
+        <tr data-label="{{ d.label }}" data-installed="{{ 'true' if d.installed else 'false' }}" data-status="{{ d.status }}" style="border-top: 1px solid #eaeef2;">
           <td style="padding: 10px 16px; font-weight: 600;"
               {% if d.is_likely_current %}data-likely-current="1"{% endif %}>
             {{ d.label }}
@@ -249,8 +249,10 @@
           <td style="padding: 10px 8px;">
             {% if d.status == 'green' %}
               <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #dafbe1; color: #137333;">🟢 Connected</span>
-            {% elif d.status == 'yellow' %}
+            {% elif d.status == 'yellow' and not d.installed %}
               <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #fff4d5; color: #8a5a00;">🟡 Awaiting ping</span>
+            {% elif d.status == 'yellow' and d.installed %}
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #fff4d5; color: #8a5a00;">🟡 Quiet (&gt;24h)</span>
             {% elif d.status == 'red' %}
               <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #ffeef0; color: #cf222e;">🔴 Stale (&gt;7d)</span>
             {% else %}
@@ -455,12 +457,15 @@ function refreshBanner() {
   const rows = Array.from(document.querySelectorAll('#devicesTbody tr'));
   const marked = getCurrentDeviceLabel();
   const markedRow = marked ? rows.find(r => r.dataset.label === marked) : null;
-  const markedStatus = markedRow
-    ? (markedRow.children[1]?.textContent.includes('Connected') ? 'green'
-       : markedRow.children[1]?.textContent.includes('Awaiting') ? 'yellow'
-       : markedRow.children[1]?.textContent.includes('Stale') ? 'red' : 'unknown')
-    : null;
-  const anyGreen = rows.some(r => r.children[1]?.textContent.includes('Connected'));
+  // Read status from data-status (set server-side). Text-matching the
+  // badge breaks when we add new badge variants (e.g. "Quiet" vs
+  // "Awaiting ping" -- both are status=yellow but different cells).
+  const markedStatus = markedRow?.dataset.status || null;
+  // installed = has ever successfully pinged. Distinct from green/yellow,
+  // which is freshness-only. A row can be installed=true + yellow if the
+  // laptop slept overnight; that's NOT an "install incomplete" situation.
+  const markedInstalled = markedRow?.dataset.installed === 'true';
+  const anyGreen = rows.some(r => r.dataset.status === 'green');
 
   let html;
   if (marked && markedRow && markedStatus === 'green') {
@@ -468,8 +473,8 @@ function refreshBanner() {
     html = '<div style="background:#dafbe1;border:1px solid #aceebb;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#137333;">' +
            '✅ <strong>This computer is connected.</strong> Your "' + escapeHtml(marked) + '" install is actively pinging. Claude Code on this machine has full Colaberry MCP access.' +
            '</div>';
-  } else if (marked && markedRow && markedStatus === 'yellow') {
-    // Case B: marked row is awaiting ping -> install not finished
+  } else if (marked && markedRow && markedStatus === 'yellow' && !markedInstalled) {
+    // Case B: marked row never pinged -> install never completed
     html = '<div style="background:#fff4d5;border:2px solid #d4a72c;border-radius:10px;padding:16px 20px;margin-bottom:22px;">' +
            '<div style="font-weight:700;color:#8a5a00;font-size:15px;margin-bottom:6px;">⚠ Install incomplete on "' + escapeHtml(marked) + '"</div>' +
            '<div style="font-size:13px;color:#1f2328;line-height:1.5;">' +
@@ -478,6 +483,14 @@ function refreshBanner() {
            '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">' +
            '<button class="mcp-btn" onclick="reshowInstall(' + JSON.stringify(marked) + ')" style="background:#8a5a00;">📋 Reshow install for "' + escapeHtml(marked) + '"</button>' +
            '</div>' +
+           '</div>';
+  } else if (marked && markedRow && markedStatus === 'yellow' && markedInstalled) {
+    // Case B': installed but ping is stale (24h-7d). Laptop probably
+    // slept or you haven't opened Claude Code today. Open it and run any
+    // MCP-touching command to refresh the heartbeat.
+    const lastSeenCell = markedRow.children[3]?.textContent.trim() || 'unknown';
+    html = '<div style="background:#fff4d5;border:1px solid #f0d678;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#8a5a00;">' +
+           '🟡 <strong>This computer is installed but quiet.</strong> "' + escapeHtml(marked) + '" last pinged ' + escapeHtml(lastSeenCell) + ' UTC. Open Claude Code on this machine and run any command that uses the Colaberry MCP (or restart Claude Code if you just changed MCP setup). Status will flip green once the next ping lands.' +
            '</div>';
   } else if (marked && !markedRow) {
     // Case C: marked label no longer exists (revoked etc.)

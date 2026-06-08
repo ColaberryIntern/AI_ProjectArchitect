@@ -264,6 +264,13 @@ def list_devices(user: tenancy.User) -> list[dict]:
             "hostname": t.get("hostname"),
             "last_client_ip": t.get("last_client_ip"),
             "status": _device_status(t),
+            # True iff this device has EVER successfully pinged. Separate
+            # from `status` (which is freshness-based: green<24h,
+            # yellow<7d, red>=7d). Lets the banner distinguish
+            # "install never completed" from "installed but laptop has
+            # been asleep" -- two very different situations that used to
+            # produce the same misleading "never pinged" warning.
+            "installed": bool(t.get("last_used_at")) and not t.get("revoked_at"),
         })
     # Sort: active first (green/yellow), revoked last; within each, newest issued first
     def _key(d):
