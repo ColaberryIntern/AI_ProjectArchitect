@@ -67,6 +67,28 @@ def test_mcp_legacy_single_token_field_counts():
     assert welcome.has_mcp_installed(u) is True
 
 
+def test_mcp_modern_user_only_has_mcp_tokens_entries_no_legacy_field():
+    """Regression: Kes minted his token via the per-device flow that
+    populates mcp_tokens but NOT the legacy mcp_token_issued_at field.
+    His Claude Code phoned home (last_used_at set on the device entry)
+    so he IS installed -- the page must reflect that. Previous bug
+    bailed early when legacy field was None, missing this case
+    entirely."""
+    u = _user(
+        mcp_token_issued_at=None,            # legacy field empty
+        mcp_token_last_used_at=None,         # legacy field empty
+        mcp_tokens=[{                        # modern multi-device entry
+            "hash": "kes-hash",
+            "label": "Windows laptop",
+            "issued_at": "2026-06-08T15:46:41Z",
+            "last_used_at": "2026-06-08T15:49:56Z",
+            "revoked_at": None,
+            "hostname": "Kesetebirhan",
+        }],
+    )
+    assert welcome.has_mcp_installed(u) is True
+
+
 def test_mcp_revoked_device_does_not_count():
     u = _user(
         mcp_token_issued_at="2026-06-06T12:00:00Z",

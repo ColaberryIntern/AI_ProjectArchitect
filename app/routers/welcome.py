@@ -38,17 +38,28 @@ router = APIRouter()
 
 def has_mcp_installed(user) -> bool:
     """True if the operator has minted a token AND at least one device has
-    actually called the MCP server. Catches the failure mode where a user
-    mints a token and never finishes installing -- in that case their
-    `mcp_token_issued_at` is set but no `last_used_at` exists anywhere.
+    actually called the MCP server.
+
+    Checks both storage models:
+      - Multi-device (Phase 8.3+): mcp_tokens list. At least one entry
+        with last_used_at and not revoked.
+      - Legacy single-token (pre-8.3): mcp_token_issued_at +
+        mcp_token_last_used_at on the User itself.
+
+    Critical: the previous version bailed early when mcp_token_issued_at
+    was None, but modern users only have entries in mcp_tokens (the
+    legacy field is never populated). That made Kes's page show 'Pending'
+    even though his Claude Code had successfully phoned home 3 minutes
+    after install. Now we check mcp_tokens FIRST.
     """
-    if not getattr(user, "mcp_token_issued_at", None):
-        return False
+    # New multi-device model: any active token that has phoned home.
     tokens = getattr(user, "mcp_tokens", None) or []
     for entry in tokens:
         if entry.get("last_used_at") and not entry.get("revoked_at"):
             return True
-    if getattr(user, "mcp_token_last_used_at", None):
+    # Legacy single-token model: both fields must be set.
+    if (getattr(user, "mcp_token_issued_at", None)
+                  and getattr(user, "mcp_token_last_used_at", None)):
         return True
     return False
 
