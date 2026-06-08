@@ -192,13 +192,40 @@ async def oauth_protected_resource_metadata(request: Request):
 @router.get("/.well-known/oauth-authorization-server")
 @router.get("/.well-known/oauth-authorization-server/mcp")
 @router.get("/.well-known/oauth-authorization-server/mcp/v1")
+@router.get("/.well-known/openid-configuration")
+@router.get("/.well-known/openid-configuration/mcp")
+@router.get("/.well-known/openid-configuration/mcp/v1")
+@router.get("/mcp/v1/.well-known/openid-configuration")
+@router.get("/mcp/.well-known/openid-configuration")
 async def oauth_authorization_server_not_supported():
+    # Claude Code probes BOTH oauth-authorization-server AND
+    # openid-configuration when DCR-discovering. Both need OAuth-shaped
+    # JSON or its Zod validator crashes parsing the body.
     return JSONResponse(
         {
             "error": "not_supported",
             "error_description": (
                 "No OAuth authorization server. Mint a bearer token at "
                 "/profile/mcp-setup and configure Claude Code with it."
+            ),
+        },
+        status_code=404,
+    )
+
+
+@router.post("/register")
+@router.post("/oauth/register")
+async def dcr_not_supported():
+    # OAuth 2.0 Dynamic Client Registration (RFC 7591). We don't
+    # support DCR; tokens come from out-of-band web mint. Return the
+    # spec'd OAuth error so the client's Zod validator parses cleanly
+    # and falls back to bearer-from-config.
+    return JSONResponse(
+        {
+            "error": "invalid_client_metadata",
+            "error_description": (
+                "Dynamic client registration not supported. "
+                "Mint a bearer token at /profile/mcp-setup."
             ),
         },
         status_code=404,

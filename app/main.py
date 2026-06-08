@@ -95,6 +95,44 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Project Architect & Build Companion", lifespan=lifespan)
 
+
+# Safety-net: Claude Code's MCP client probes a moving set of OAuth /
+# OIDC discovery URLs (oauth-protected-resource, oauth-authorization-
+# server, openid-configuration, DCR register) and chokes if the 404
+# body isn't OAuth-shaped. Explicit handlers cover the known paths in
+# routers/mcp_server.py; this handler catches any new path the SDK
+# starts probing in the future so we don't get a regression every time
+# they ship a new discovery URL.
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+
+_OAUTH_PROBE_PREFIXES = (
+    "/.well-known/oauth",
+    "/.well-known/openid",
+    "/register",
+    "/oauth/",
+)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _oauth_aware_404(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        path = request.url.path
+        if any(path.startswith(p) for p in _OAUTH_PROBE_PREFIXES):
+            return JSONResponse(
+                {
+                    "error": "not_supported",
+                    "error_description": (
+                        f"Endpoint {path} not implemented. "
+                        "Mint a bearer token at /profile/mcp-setup."
+                    ),
+                },
+                status_code=404,
+            )
+    # Preserve default FastAPI behavior for all other HTTP exceptions
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                                 headers=getattr(exc, "headers", None))
+
 # [Auth 2] Identity gate. No-op when SSO env vars are absent; gates
 # /library/ once Ali registers the OAuth app and populates .env.prod
 # (see docs/specs/auth-02-google-sso.md activation steps).
