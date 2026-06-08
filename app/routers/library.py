@@ -214,6 +214,7 @@ async def library_home(request: Request):
     home_cloud = word_cloud.cloud_for_use_cases(
         workspace=workspace, mode="frequency", dimension="keyword",
         current={}, base_url="/library/use-cases", limit=60,
+        viewer_company_id=viewer_co,
     )
     return request.app.state.templates.TemplateResponse(
         request, "library/home.html",
@@ -600,11 +601,13 @@ async def use_case_index(request: Request):
     cloud_terms = word_cloud.cloud_for_use_cases(
         workspace=workspace, mode=mode, dimension=dim, current=filters,
         base_url="/library/use-cases",
+        viewer_company_id=viewer_co,
     )
 
     # Refinement chips appear once at least one filter is active
     chips = (word_cloud.refinement_chips_for_use_cases(
-                  workspace, filters, base_url="/library/use-cases")
+                  workspace, filters, base_url="/library/use-cases",
+                  viewer_company_id=viewer_co)
                if filters else [])
 
     return request.app.state.templates.TemplateResponse(

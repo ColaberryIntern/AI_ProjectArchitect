@@ -231,12 +231,17 @@ def cloud_for_use_cases(workspace: str = "global",
                                 dimension: str = "industry",
                                 current: dict[str, str] | None = None,
                                 base_url: str = "/library/use-cases",
-                                limit: int = 60) -> list[Term]:
+                                limit: int = 60,
+                                viewer_company_id: str | None = None) -> list[Term]:
     """Build a word cloud over `dimension`:
        industry | persona | tool | tag | complexity
+
+    viewer_company_id mirrors use_cases.list_all so the cloud only surfaces
+    terms from cases the viewer can actually see — otherwise the "0 use
+    cases" hero and a populated cloud disagree.
     """
     current = current or {}
-    all_ucs = use_cases.list_all(workspace)
+    all_ucs = use_cases.list_all(workspace, viewer_company_id=viewer_company_id)
     counter: Counter = Counter()
     canonical_case: dict[str, str] = {}   # low → display form
     ratings_per: dict[str, list[float]] = {}
@@ -469,7 +474,8 @@ def cloud_for_assets(workspace: str = "global",
 def refinement_chips_for_use_cases(workspace: str,
                                                 current: dict[str, str],
                                                 base_url: str = "/library/use-cases",
-                                                limit: int = 30) -> list[Term]:
+                                                limit: int = 30,
+                                                viewer_company_id: str | None = None) -> list[Term]:
     """Given the current filter set, return co-occurring terms to suggest
     narrowing further. Each chip = a term you can click to add/remove
     from the filter.
@@ -477,7 +483,10 @@ def refinement_chips_for_use_cases(workspace: str,
     Mixes industries, tools, personas, complexities into one chip row.
     """
     # Start from use cases that match the current filter
-    matched = _apply_uc_filters(use_cases.list_all(workspace), current)
+    matched = _apply_uc_filters(
+        use_cases.list_all(workspace, viewer_company_id=viewer_company_id),
+        current,
+    )
     counter: Counter = Counter()
     for uc in matched:
         if uc.industry:
