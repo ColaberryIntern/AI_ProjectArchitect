@@ -24,7 +24,7 @@ from fastapi import Form
 from execution.products.library import auth_google, mcp_token, tenancy
 from execution.products.ops import (
     bc_comments, context_collector, llm_suggest, plan_inference,
-    rollup, scorer, store, suggestions, sync, tokens,
+    rollup, scorer, store, suggestions, sync, sync_coordinator, tokens,
 )
 
 router = APIRouter(prefix="/my-day", tags=["my-day"])
@@ -288,16 +288,17 @@ def _store_age_seconds(state) -> float:
 
 
 def _kick_bg_full_sync(user_email: str) -> None:
-    """Kick a background full sync if one isn't already in flight. Uses the
-    per-user lock dict so a slower auto-scheduler and a page-load nudge
-    can't double up."""
+    """Spawn a background full sync. Mutual exclusion is enforced INSIDE
+    pull_todos_for_user via SyncCoordinator (2026-06-09 audit H1/H2 fix)
+    — if a sync is already in flight, the thread no-ops via the inner
+    `already_running` short-circuit, so no router-level lock dict needed.
+
+    History: this used to manage a `_maybe_async_sync._locks` function-
+    attribute dict. That dict was a hidden global mutated from four
+    call sites with no TTL, racy check-then-set, and bypassed by the
+    cron scheduler. All four findings (H1, H2, M1, and the lock-clever-
+    ness L1) are retired by moving the gate into SyncCoordinator."""
     import threading
-    if getattr(_maybe_async_sync, "_locks", None) is None:
-        _maybe_async_sync._locks = {}
-    locks = _maybe_async_sync._locks
-    if locks.get(user_email):
-        return
-    locks[user_email] = True
 
     def _run():
         try:
@@ -306,8 +307,6 @@ def _kick_bg_full_sync(user_email: str) -> None:
                 scorer.score_all_todos(user_email)
         except Exception:
             pass
-        finally:
-            locks[user_email] = False
 
     threading.Thread(target=_run, daemon=True, name=f"bg-sync-{user_email}").start()
 
@@ -322,7 +321,16 @@ def _maybe_async_sync(user_email: str, state) -> None:
 
 def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) -> bool:
     """Page-load 'natural flow' sync: ALWAYS non-blocking. Kicks a
-    background sync when the store is stale, returns immediately.
+    background sync when the store is stale OR when the last sync
+    didn't complete cleanly, returns immediately.
+
+    H4 fix (2026-06-09 audit): the gate now requires BOTH (age < 90s)
+    AND (last_sync_status == "ok"). The prior version only checked
+    age, so a partial sync that errored on the user's most-active
+    project still bumped last_sync_at, and the gate would say 'fresh
+    enough' even though the data the user actually cares about
+    hadn't refreshed. We now treat 'partial' and 'failed' as reasons
+    to immediately retry on the next page load, regardless of age.
 
     History: this used to do an inline pull_todos_for_project (~2-3s
     typically, but observed up to 30s when BC was slow or the project
@@ -336,8 +344,10 @@ def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) ->
     freshness need without blocking.
     """
     age = _store_age_seconds(state)
-    if age < 90:
-        return False  # store is already fresh enough
+    last_status = state.last_sync_status or ""
+    # Fresh AND clean → no work. Stale OR last-was-bad → retry.
+    if age < 90 and last_status == "ok":
+        return False
     # Kick a full bg sync. This includes whichever project the user is
     # currently viewing, plus everything else. Returns immediately.
     _kick_bg_full_sync(user_email)
@@ -729,32 +739,26 @@ async def ops_sync(
     coded the destination to bare /my-day/, which silently dropped every
     URL-driven filter and felt like a state reset.
 
-    Reuses the per-user lock dict from _maybe_async_sync so we don't
-    race the background scheduler — if a sync is already in flight,
-    the request just acknowledges and lets the existing one finish.
+    Mutual exclusion is now enforced inside pull_todos_for_user via
+    SyncCoordinator. If a sync is already in flight (scheduler cron,
+    Mark Done's targeted refresh, a prior unfinished click), the thread
+    no-ops via the inner `already_running` short-circuit. We still
+    redirect with ?sync_started=1 so the user gets feedback; the page
+    will reload against whichever sync finishes first.
     """
     import threading as _th
     user = _require_user(request)
     legacy = ALI_LEGACY_BUCKET if user.email == "ali@colaberry.com" else None
 
-    if getattr(_maybe_async_sync, "_locks", None) is None:
-        _maybe_async_sync._locks = {}
-    locks = _maybe_async_sync._locks
+    def _bg():
+        try:
+            result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
+            if result.get("status") in ("ok", "partial"):
+                scorer.score_all_todos(user.email)
+        except Exception:
+            pass
 
-    if not locks.get(user.email):
-        locks[user.email] = True
-
-        def _bg():
-            try:
-                result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
-                if result.get("status") not in ("token_missing", "bc_user_id_missing"):
-                    scorer.score_all_todos(user.email)
-            except Exception:
-                pass
-            finally:
-                locks[user.email] = False
-
-        _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
+    _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
 
     # Defensive fallback: if the form lacked any filter fields (a stale
     # template version, a proxy stripping the POST body, or a direct
@@ -852,43 +856,34 @@ async def submit_handle(request: Request,
 
 
 def _sync_with_budget(user_email: str, budget_seconds: float = 6.0) -> bool:
-    """Kick a fresh BC sync + scorer pass, wait up to `budget_seconds` for it
-    to finish. Returns True if it completed in time. Used by Mark Done so
-    the next focus task is computed from fresh data — previously the local
-    store could lag BC by up to 5 min (auto-sync interval) causing already-
-    completed tasks to surface as the next 'YOUR TURN'.
+    """Kick a fresh BC sync + scorer pass, wait up to `budget_seconds` for
+    it to finish. Returns True if it completed in time. Used by Mark
+    Done so the next focus task is computed from fresh data — previously
+    the local store could lag BC by up to 5 min (auto-sync interval)
+    causing already-completed tasks to surface as the next 'YOUR TURN'.
 
-    Reuses the per-user lock dict from _maybe_async_sync so we don't race
-    the background scheduler — if a sync is already in flight, we poll the
-    lock until it clears or the budget runs out.
+    Coordinator integration: if a sync is already in flight, wait for IT
+    rather than spawning a competing one (which would just no-op via
+    `already_running` anyway). If no sync is in flight, spawn one and
+    block on its `done` Event up to the budget. Returns True iff the
+    spawned-or-awaited sync completed in time.
     """
     import threading
-    import time as _time
 
-    if getattr(_maybe_async_sync, "_locks", None) is None:
-        _maybe_async_sync._locks = {}
-    locks = _maybe_async_sync._locks
+    coord = sync_coordinator.get_coordinator()
+    if coord.is_sync_in_flight(user_email):
+        return coord.wait_for_sync(user_email, budget_seconds)
 
-    # If a background sync is already running, just wait for it.
-    if locks.get(user_email):
-        deadline = _time.time() + budget_seconds
-        while locks.get(user_email) and _time.time() < deadline:
-            _time.sleep(0.2)
-        return not locks.get(user_email)
-
-    locks[user_email] = True
     done = threading.Event()
 
     def _run():
         try:
-            from execution.products.ops import scorer as _scorer
             r = sync.pull_todos_for_user(user_email)
             if r.get("status") in ("ok", "partial"):
-                _scorer.score_all_todos(user_email)
+                scorer.score_all_todos(user_email)
         except Exception:
             pass
         finally:
-            locks[user_email] = False
             done.set()
 
     threading.Thread(target=_run, daemon=True, name=f"force-sync-{user_email}").start()
