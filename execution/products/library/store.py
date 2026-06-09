@@ -213,6 +213,18 @@ def _normalize_dependencies(deps: Any) -> list[dict]:
 
 def get_metadata(workspace: str, category: str, asset_id: str) -> AssetMetadata:
     p = meta_path(workspace, category, asset_id)
+    # Backwards-compat: if the literal-asset_id file is absent, try the
+    # slugified form. Old URLs that point at pre-migration asset_ids
+    # (e.g. /library/mcp/HTML%20to%20Markdown after we renamed the file
+    # to html-to-markdown.meta.json) continue to resolve. Write path is
+    # unchanged -- save_metadata still writes to whatever asset_id the
+    # caller passed, so new records are unaffected.
+    if not p.exists():
+        slug = slugify(asset_id)
+        if slug and slug != asset_id:
+            alt = meta_path(workspace, category, slug)
+            if alt.exists():
+                p = alt
     if p.exists():
         try:
             data = json.loads(p.read_text(encoding="utf-8"))

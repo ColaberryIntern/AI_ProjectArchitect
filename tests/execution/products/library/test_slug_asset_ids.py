@@ -254,3 +254,111 @@ class TestMigration:
         assert summary["scanned"] == 1
         assert summary["migrated"] == 0
         assert summary["skipped"][0]["reason"] == "no name field"
+
+    def test_migrates_literal_name_files(self, fake_full_root):
+        # Legacy enrichment_job / extracted_writer path wrote files with
+        # the human name as the filename, e.g. "HTML to Markdown.meta.json"
+        # containing {"asset_id": "HTML to Markdown", "name": "HTML to Markdown"}.
+        cat_dir = (fake_full_root / "output" / "library" / "global" / "mcp")
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        legacy = cat_dir / "HTML to Markdown.meta.json"
+        legacy.write_text(json.dumps({
+            "asset_id": "HTML to Markdown",
+            "category": "mcp", "workspace": "global",
+            "name": "HTML to Markdown", "description": "d",
+            "owning_company_id": "community",
+        }), encoding="utf-8")
+        summary = mig.migrate()
+        assert summary["scanned"] == 1
+        assert summary["migrated"] == 1
+        new_meta = cat_dir / "html-to-markdown.meta.json"
+        assert new_meta.exists()
+        assert not legacy.exists()
+        data = json.loads(new_meta.read_text(encoding="utf-8"))
+        assert data["asset_id"] == "html-to-markdown"
+        assert data["name"] == "HTML to Markdown"
+        # No submission file exists for legacy literal-name records,
+        # so the submission rewrite step is a no-op.
+        assert summary["submission_rewrites"] == 0
+
+    def test_skips_already_slug_filename_with_matching_asset_id(self, fake_full_root):
+        # A file that's already correctly named + has a slug asset_id
+        # is filtered out by _collect_sub_files (its stem matches
+        # slugify(name)) so it doesn't even count toward "scanned".
+        cat_dir = (fake_full_root / "output" / "library" / "global" / "mcp")
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        good = cat_dir / "html-to-markdown.meta.json"
+        good.write_text(json.dumps({
+            "asset_id": "html-to-markdown",
+            "category": "mcp", "workspace": "global",
+            "name": "HTML to Markdown", "description": "d",
+            "owning_company_id": "community",
+        }), encoding="utf-8")
+        summary = mig.migrate()
+        assert summary["scanned"] == 0
+        assert summary["migrated"] == 0
+        assert good.exists()
+
+    def test_idempotent_after_literal_name_migration(self, fake_full_root):
+        cat_dir = (fake_full_root / "output" / "library" / "global" / "mcp")
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        legacy = cat_dir / "HTML to Markdown.meta.json"
+        legacy.write_text(json.dumps({
+            "asset_id": "HTML to Markdown",
+            "category": "mcp", "workspace": "global",
+            "name": "HTML to Markdown", "description": "d",
+            "owning_company_id": "community",
+        }), encoding="utf-8")
+        mig.migrate()
+        # Second run finds the renamed file, sees slugify(name) == stem,
+        # and skips it entirely.
+        summary = mig.migrate()
+        assert summary["scanned"] == 0
+        assert summary["migrated"] == 0
+
+
+# ── get_metadata backwards-compat fallback ─────────────────────────
+
+
+class TestGetMetadataFallback:
+
+    def test_returns_literal_name_file_when_it_exists(self, fake_lib_root):
+        # Caller passes the literal asset_id, file exists at that exact
+        # path -> return it directly (no fallback needed).
+        d = fake_lib_root / "global" / "mcp"
+        d.mkdir(parents=True)
+        p = d / "HTML to Markdown.meta.json"
+        p.write_text(json.dumps({
+            "asset_id": "HTML to Markdown", "category": "mcp",
+            "workspace": "global", "name": "HTML to Markdown",
+            "description": "literal",
+        }), encoding="utf-8")
+        m = store.get_metadata("global", "mcp", "HTML to Markdown")
+        assert m.asset_id == "HTML to Markdown"
+        assert m.description == "literal"
+
+    def test_falls_back_to_slug_when_literal_missing(self, fake_lib_root):
+        # Caller passes legacy literal asset_id (e.g. from a bookmarked
+        # URL), but the file has been migrated to the slug path. The
+        # fallback re-tries with slugify(asset_id) and finds it.
+        d = fake_lib_root / "global" / "mcp"
+        d.mkdir(parents=True)
+        p = d / "html-to-markdown.meta.json"
+        p.write_text(json.dumps({
+            "asset_id": "html-to-markdown", "category": "mcp",
+            "workspace": "global", "name": "HTML to Markdown",
+            "description": "slug-form",
+        }), encoding="utf-8")
+        m = store.get_metadata("global", "mcp", "HTML to Markdown")
+        assert m.asset_id == "html-to-markdown"
+        assert m.description == "slug-form"
+
+    def test_returns_empty_when_both_miss(self, fake_lib_root):
+        # Neither literal nor slug file exists -> empty AssetMetadata
+        # preserving the requested asset_id verbatim (existing behavior).
+        m = store.get_metadata("global", "mcp", "Nonexistent Asset")
+        assert m.asset_id == "Nonexistent Asset"
+        assert m.category == "mcp"
+        assert m.workspace == "global"
+        assert m.description == ""
+        assert m.enrichment_state == "unenriched"
