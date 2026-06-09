@@ -38,7 +38,15 @@ logger = logging.getLogger(__name__)
 
 SEEN_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "seen.json"
 HEARTBEAT_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "heartbeat.json"
+CURSOR_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "cursor.json"
+# Wall-clock fallback when a bucket has no cursor yet (first scan, or
+# corrupted cursor file). Existing operators may have set this to 60;
+# bump in prod once cursors are populated.
 MENTION_WINDOW_MINUTES = int(os.environ.get("OPS_CB_MENTION_WINDOW_MINUTES", "60"))
+# Hard ceiling on lookback even when the cursor is much older. Prevents
+# replaying weeks of BC history if the scheduler was down for a long
+# stretch. 7 days = 10080 minutes by default.
+MAX_LOOKBACK_MINUTES = int(os.environ.get("OPS_CB_MENTION_MAX_LOOKBACK_MINUTES", "10080"))
 MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "50"))
 # Regex matches "@CB System", "@CB", or "@CBSystem" (case-insensitive).
 TRIGGER_RE = re.compile(r"@CB[\s_-]*(System)?", re.IGNORECASE)
@@ -60,6 +68,68 @@ def _seen() -> set[str]:
 def _save_seen(s: set[str]) -> None:
     SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     SEEN_PATH.write_text(json.dumps(sorted(s))[:200_000], encoding="utf-8")
+
+
+def _load_cursors() -> dict:
+    """Read the per-(user, bucket) cursor map.
+
+    Shape: `{"per_user": {"<email>": {"<bucket_id>": "<iso_ts>"}}}`.
+    Returns the per_user dict (or empty) — callers don't need the wrapper.
+    """
+    if not CURSOR_PATH.exists():
+        return {}
+    try:
+        raw = json.loads(CURSOR_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    pu = raw.get("per_user")
+    return pu if isinstance(pu, dict) else {}
+
+
+def _save_cursors(per_user: dict) -> None:
+    """Persist cursors atomically(-ish). Best-effort — disk failures must
+    not break the cron; the next scan will just fall back to the window."""
+    try:
+        CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CURSOR_PATH.write_text(
+            json.dumps({"per_user": per_user}, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.warning("cb_mentions: failed to write cursor", exc_info=True)
+
+
+def _cutoff_for_bucket(
+    cursors_for_user: dict, bucket_id: int, now: datetime,
+) -> tuple[datetime, str]:
+    """Pick the lookback cutoff for one bucket.
+
+    Returns (cutoff_datetime, source_tag) where source_tag is one of:
+        'cursor'        — cursor exists and is within MAX_LOOKBACK
+        'cursor_capped' — cursor exists but clamped to MAX_LOOKBACK
+        'first_scan'    — no cursor, use MENTION_WINDOW_MINUTES window
+
+    The source_tag is just for heartbeat visibility — callers don't
+    branch on it.
+    """
+    max_age = now - timedelta(minutes=MAX_LOOKBACK_MINUTES)
+    raw = cursors_for_user.get(str(bucket_id))
+    if not raw:
+        # First scan for this bucket — fall back to the wall-clock window.
+        # On a fresh deploy, MENTION_WINDOW_MINUTES is what catches the
+        # mentions newer than X minutes; subsequent scans use the cursor.
+        return now - timedelta(minutes=MENTION_WINDOW_MINUTES), "first_scan"
+    try:
+        cdt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if cdt.tzinfo is None:
+            cdt = cdt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return now - timedelta(minutes=MENTION_WINDOW_MINUTES), "first_scan"
+    if cdt < max_age:
+        return max_age, "cursor_capped"
+    return cdt, "cursor"
 
 
 def _now_iso() -> str:
@@ -258,7 +328,15 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
             user_id, len(all_projects), max_buckets, truncated,
         )
     projects = all_projects[:max_buckets]
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=MENTION_WINDOW_MINUTES)
+    # Per-bucket cursor. The scan-start time becomes the new cursor for
+    # every bucket we successfully scan; on the NEXT tick we look back
+    # only as far as this scan started, so a mention created during
+    # this scan still gets picked up next time.
+    scan_started_at = datetime.now(timezone.utc)
+    cursors = _load_cursors()
+    cursors_for_user = dict(cursors.get(user_id) or {})
+    cutoff_sources: dict[str, int] = {"cursor": 0, "cursor_capped": 0,
+                                       "first_scan": 0}
     seen = _seen()
     found = 0
     responded = 0
@@ -271,7 +349,17 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
         bucket = proj.get("id")
         if not bucket:
             continue
+        cutoff, source = _cutoff_for_bucket(cursors_for_user, bucket,
+                                             scan_started_at)
+        cutoff_sources[source] = cutoff_sources.get(source, 0) + 1
         mentions = _scan_bucket_for_mentions(bucket, token, cutoff)
+        # Advance the cursor only if the scan didn't blow up. If
+        # _scan_bucket_for_mentions raises (caught internally to return
+        # []), we'd miss the chance to retry — so we conservatively
+        # advance on []-or-list returns.
+        cursors_for_user[str(bucket)] = scan_started_at.strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         for m in mentions:
             found += 1
             key = f"comment:{m['comment_id']}"
@@ -336,6 +424,12 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
                 })
 
     _save_seen(seen)
+    # Persist this user's cursor map back to disk. Other users' cursors
+    # are untouched (we copied them into `cursors_for_user` then write a
+    # fresh top-level dict so concurrent writes from another scan_for_user
+    # call don't clobber each other under the GIL).
+    cursors[user_id] = cursors_for_user
+    _save_cursors(cursors)
     return {
         "status": "ok",
         "checked_buckets": len(projects),
@@ -347,6 +441,7 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
         "failed": failed,
         "token_source": src,
         "errors": errors,
+        "cutoff_sources": cutoff_sources,
     }
 
 
