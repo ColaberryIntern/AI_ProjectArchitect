@@ -84,9 +84,15 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
         raise
 
 
+# Bump PROMPT_VERSION when SYSTEM_PROMPT or claude_code_prompt rules change
+# so existing cache entries do not serve stale prompts. v2 = full-inline
+# context + 'DO the work or list missing inputs' close (Phase 2 2026-06-09).
+PROMPT_VERSION = "v2"
+
+
 def _cache_key(todo: OpsTodo, comments: str) -> str:
     h = hashlib.sha1(comments.encode("utf-8")).hexdigest()[:10]
-    return f"{todo.bc_id}|{todo.bc_updated_at}|{h}"
+    return f"{todo.bc_id}|{todo.bc_updated_at}|{h}|{PROMPT_VERSION}"
 
 
 SYSTEM_PROMPT = """You are helping Ali (a busy CEO/CTO) clear a Basecamp ticket. \
@@ -97,7 +103,7 @@ Respond with strict JSON matching this exact schema:
 
 {
   "action_kind": "decision|reply|email|build|research|meeting|schedule|review|default",
-  "goal_line": "One sentence: what 'done' concretely looks like — a deliverable, not an activity.",
+  "goal_line": "One sentence: what 'done' concretely looks like. A deliverable, not an activity.",
   "summary_paragraph": "ONE flowing paragraph (3-5 sentences) describing what to do AND how to do it. Mention specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. Just a clear paragraph a smart human can read in 15 seconds and know exactly what to do.",
   "specific_steps": [
     "<verb> <specific named thing>",
@@ -107,10 +113,10 @@ Respond with strict JSON matching this exact schema:
   "stop_conditions": [
     "Specific named conditions that should pause the work and get a human in the loop"
   ],
-  "claude_code_prompt": "A SHORT (5-12 line) prompt the user pastes into a fresh Claude Code session. Plain text, no markdown headers. Just: BC URL on line 1, goal on line 2, key context on lines 3-4, what to deliver on the last line. Trust Claude Code to read the BC URL for full context — do NOT inline the full description + comments in the prompt."
+  "claude_code_prompt": "A FULL-CONTEXT, ACTION-ORIENTED prompt the user pastes into a fresh Claude Code session. NOT short. Inline EVERYTHING Claude Code needs to either solve the ticket or write a precise list of missing inputs. The session may not have BC fetch capability so do NOT rely on the BC URL alone. See the MUST list below for required content."
 }
 
-ABSOLUTE RULES — these are violations of the contract:
+ABSOLUTE RULES. These are violations of the contract:
 
 ❌ BANNED step shapes (generic "thinking" verbs without a specific named target):
    - "Review the existing documentation"
@@ -130,12 +136,12 @@ ABSOLUTE RULES — these are violations of the contract:
 
    IF action_kind == 'reply' or 'email':
      - The FIRST step contains the draft reply text in full, in quotes.
-       Example: 'Send this reply: "Karun, attached is the stager training data export per our May 28 call. Columns A-E are pivot-tagged per your spec. Let me know if anything is off. — Ali"'
+       Example: 'Send this reply: "Karun, attached is the stager training data export per our May 28 call. Columns A-E are pivot-tagged per your spec. Let me know if anything is off. Ali"'
      - Subsequent steps confirm or adjust the draft.
 
    IF action_kind == 'decision':
      - Step 1 lists the 2-3 specific verdict options derived from the ticket, each with a one-line tradeoff.
-       Example: 'Choose ONE: (a) Approve and ship Friday — fastest, but skips integration testing. (b) Approve conditional on <specific test>. (c) Hold until <named blocker> resolves.'
+       Example: 'Choose ONE: (a) Approve and ship Friday: fastest, but skips integration testing. (b) Approve conditional on <specific test>. (c) Hold until <named blocker> resolves.'
 
    IF action_kind == 'meeting':
      - Step 1 contains the proposed agenda in 3-5 named bullets.
@@ -157,11 +163,19 @@ Length: 3-6 steps. Total response ≤ 1000 tokens.
 
 The claude_code_prompt MUST:
 - Be a single plain-text string (no markdown headers like ##), ready to paste.
-- Start with the ticket context (title, project, due, BC URL, full description).
-- Include the recent comments verbatim if they exist.
-- State the goal_line.
-- List the specific_steps as numbered actions.
-- End with: "Take action. Do not just narrate or summarize. If Step 1 is to send an email, DRAFT IT AND SHOW ME BEFORE SENDING. Begin."
+- Open with one line stating WHAT to do (the goal_line), so Claude reads the directive first and the context second.
+- Then inline the full ticket context block: title, project, list, due date, BC URL, AND the full description verbatim.
+- Then inline the recent comments verbatim with the author and date, oldest first.
+- Then state the specific_steps as numbered actions.
+- Then state any stop_conditions verbatim.
+- End with this EXACT closing block (replace nothing): "DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
+
+Length: do not constrain the prompt. Inline whatever context the ticket has. A short ticket produces a short prompt. A rich ticket produces a long one. Treat the prompt as self-sufficient: if Claude Code has zero ability to fetch external resources, it must still be able to act from this prompt alone.
+
+Forbidden in the claude_code_prompt:
+- em-dashes (use a colon or hyphen)
+- "as needed" / "where applicable" / "and so on"
+- "Review the situation" / "Understand what they need" without a named target
 """
 
 
