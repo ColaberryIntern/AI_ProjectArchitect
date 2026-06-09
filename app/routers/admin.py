@@ -937,3 +937,61 @@ async def cb_mentions_heartbeat(request: Request):
         "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
         "heartbeat": hb,
     })
+
+
+@router.get("/cb-webhooks.json")
+async def cb_webhooks_status(request: Request):
+    """Surface current BC webhook subscription state for ops visibility.
+
+    Shows which (user, bucket) pairs have subscriptions, plus whether the
+    secret + base URL env are configured so the operator can see at a
+    glance whether the inbound path is wired up.
+    """
+    _require_admin(request)
+    from execution.products.ops import cb_webhooks
+
+    subs = cb_webhooks._load_subs()
+    counts = {email: len(buckets) for email, buckets in subs.items()}
+    return JSONResponse({
+        "ok": True,
+        "secret_configured": cb_webhooks.webhook_secret() is not None,
+        "payload_url": cb_webhooks.payload_url(),
+        "subscription_counts": counts,
+        "subs": subs,
+    })
+
+
+@router.post("/cb-webhooks/subscribe")
+async def cb_webhooks_subscribe(request: Request,
+                                user_email: str = Form(...),
+                                max_buckets: Optional[int] = Form(None)):
+    """Idempotently subscribe BC webhooks for every bucket the named user
+    can see. Pre-condition: OPS_CB_WEBHOOK_SECRET must be set.
+
+    Returns the same summary as `cb_webhooks.subscribe_user_buckets()`:
+    `{status, buckets_added, buckets_existing, failed, errors}`. Safe to
+    invoke repeatedly — already-subscribed buckets are skipped (BC
+    doesn't dedupe, so subscribing twice would duplicate events per
+    comment).
+    """
+    admin = _require_admin(request)
+    from execution.products.ops import cb_webhooks
+
+    user_email = user_email.strip().lower()
+    if not user_email:
+        raise HTTPException(400, "user_email required")
+    # Multi-tenant guard: super_admin can subscribe any user; regular
+    # admins can only act on users in their own company.
+    if admin.company_id != "colaberry":
+        target = tenancy.get_user(user_email)
+        if not target or target.company_id != admin.company_id:
+            raise HTTPException(403, "can only subscribe users in your own company")
+
+    result = cb_webhooks.subscribe_user_buckets(
+        user_email, max_buckets=max_buckets,
+    )
+    _audit(admin.user_id, "cb_webhooks.subscribe", target=user_email,
+           notes=f"added={result.get('buckets_added')} "
+                 f"existing={result.get('buckets_existing')} "
+                 f"failed={result.get('failed')}")
+    return JSONResponse(result)
