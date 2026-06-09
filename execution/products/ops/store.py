@@ -7,12 +7,28 @@ Layout under output/ops/{user_id}/:
 
 Each json file is atomically written via tempfile+replace so partial-write
 corruption can't happen on a crash mid-sync.
+
+Concurrency: a per-user threading.Lock serializes every read-modify-write
+sequence (upsert_todos, update_todo, upsert_projects). Without this, a
+cron-triggered sync and a concurrent Mark Done can both load the file,
+each merge their change in isolation, and the second writer silently
+overwrites the first — the lost-update class flagged as H3 in the
+2026-06-09 sync chain audit. The lock is *internal* (no caller change
+needed) so every existing mutation path is automatically protected.
+
+Note on remaining race surface: this lock serializes file-level writes,
+which closes the lost-update race. It does NOT semantically reconcile a
+Mark Done that races a mid-walk full sync — that race exists at a
+higher level (the sync's already-fetched BC snapshot is from before the
+completion) and needs either targeted re-walk on Mark Done's path or a
+last_local_change_at field on OpsTodo. Tracked as a follow-up.
 """
 from __future__ import annotations
 
 import json
 import os
 import tempfile
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,6 +36,20 @@ from typing import Any
 from config.settings import PROJECT_ROOT
 
 OPS_ROOT = PROJECT_ROOT / "output" / "ops"
+
+# Per-user write lock for serializing read-modify-write sequences.
+# Initialized lazily — _get_write_lock pulls or creates the per-user
+# Lock under a single guard. Production processes have ~5 users max; the
+# dict never grows past low-tens. No GC needed.
+_WRITE_LOCKS: dict[str, threading.Lock] = {}
+_WRITE_LOCKS_GUARD = threading.Lock()
+
+
+def _get_write_lock(user_id: str) -> threading.Lock:
+    """Return the per-user write lock, creating it if needed. Atomic
+    under concurrent first-access."""
+    with _WRITE_LOCKS_GUARD:
+        return _WRITE_LOCKS.setdefault(user_id, threading.Lock())
 
 
 @dataclass
@@ -128,31 +158,36 @@ def upsert_todos(user_id: str, fresh: list[OpsTodo]) -> tuple[int, int]:
     Match by bc_id. Existing local-only fields (is_dismissed, etc.) survive.
     Items present locally but absent in `fresh` are kept (no auto-purge);
     they're filtered by status during reads.
+
+    Holds the per-user write lock for the entire load-merge-save so a
+    concurrent update_todo (Mark Done) or another upsert (cron + manual
+    sync overlap) can't sneak a write in between our read and write.
     """
-    by_id = {t.bc_id: t for t in load_todos(user_id)}
-    created = updated = 0
-    for f in fresh:
-        if f.bc_id in by_id:
-            local = by_id[f.bc_id]
-            # Preserve dismiss flag + scoring (re-scored separately)
-            preserved = {
-                "is_dismissed": local.is_dismissed,
-                "dismissed_at": local.dismissed_at,
-                "dismissed_by": local.dismissed_by,
-                "dismissed_reason": local.dismissed_reason,
-                "urgency_score": local.urgency_score,
-                "category": local.category,
-                "score_breakdown": local.score_breakdown,
-            }
-            for k, v in preserved.items():
-                setattr(f, k, v)
-            by_id[f.bc_id] = f
-            updated += 1
-        else:
-            by_id[f.bc_id] = f
-            created += 1
-    save_todos(user_id, list(by_id.values()))
-    return created, updated
+    with _get_write_lock(user_id):
+        by_id = {t.bc_id: t for t in load_todos(user_id)}
+        created = updated = 0
+        for f in fresh:
+            if f.bc_id in by_id:
+                local = by_id[f.bc_id]
+                # Preserve dismiss flag + scoring (re-scored separately)
+                preserved = {
+                    "is_dismissed": local.is_dismissed,
+                    "dismissed_at": local.dismissed_at,
+                    "dismissed_by": local.dismissed_by,
+                    "dismissed_reason": local.dismissed_reason,
+                    "urgency_score": local.urgency_score,
+                    "category": local.category,
+                    "score_breakdown": local.score_breakdown,
+                }
+                for k, v in preserved.items():
+                    setattr(f, k, v)
+                by_id[f.bc_id] = f
+                updated += 1
+            else:
+                by_id[f.bc_id] = f
+                created += 1
+        save_todos(user_id, list(by_id.values()))
+        return created, updated
 
 
 def get_todo(user_id: str, bc_id: int) -> OpsTodo | None:
@@ -188,17 +223,21 @@ def list_completed_for_user(user_id: str, days: int = 30) -> list[OpsTodo]:
 
 
 def update_todo(user_id: str, bc_id: int, **fields: Any) -> OpsTodo | None:
-    todos = load_todos(user_id)
-    found = None
-    for t in todos:
-        if t.bc_id == bc_id:
-            for k, v in fields.items():
-                setattr(t, k, v)
-            found = t
-            break
-    if found is not None:
-        save_todos(user_id, todos)
-    return found
+    """Mutate a single todo's fields and persist. Used by Mark Done,
+    Skip, and the scorer's per-todo writes. Lock-wrapped so a
+    concurrent upsert_todos can't drop our update on the floor."""
+    with _get_write_lock(user_id):
+        todos = load_todos(user_id)
+        found = None
+        for t in todos:
+            if t.bc_id == bc_id:
+                for k, v in fields.items():
+                    setattr(t, k, v)
+                found = t
+                break
+        if found is not None:
+            save_todos(user_id, todos)
+        return found
 
 
 # ── Projects ────────────────────────────────────────────────────────────────
@@ -224,20 +263,23 @@ def save_projects(user_id: str, projects: list[OpsProject]) -> None:
 
 
 def upsert_projects(user_id: str, fresh: list[OpsProject]) -> tuple[int, int]:
-    by_id = {p.bc_id: p for p in load_projects(user_id)}
-    created = updated = 0
-    for f in fresh:
-        if f.bc_id in by_id:
-            local = by_id[f.bc_id]
-            f.is_managed = local.is_managed
-            f.weight = local.weight
-            by_id[f.bc_id] = f
-            updated += 1
-        else:
-            by_id[f.bc_id] = f
-            created += 1
-    save_projects(user_id, list(by_id.values()))
-    return created, updated
+    """Merge fresh project list with existing; preserves operator
+    overrides (is_managed, weight). Lock-wrapped same as upsert_todos."""
+    with _get_write_lock(user_id):
+        by_id = {p.bc_id: p for p in load_projects(user_id)}
+        created = updated = 0
+        for f in fresh:
+            if f.bc_id in by_id:
+                local = by_id[f.bc_id]
+                f.is_managed = local.is_managed
+                f.weight = local.weight
+                by_id[f.bc_id] = f
+                updated += 1
+            else:
+                by_id[f.bc_id] = f
+                created += 1
+        save_projects(user_id, list(by_id.values()))
+        return created, updated
 
 
 # ── State ───────────────────────────────────────────────────────────────────

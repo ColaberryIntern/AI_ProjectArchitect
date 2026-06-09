@@ -40,6 +40,7 @@ def _sync_all_users() -> None:
 
     n_ran = 0
     n_skipped = 0
+    n_already_running = 0
     n_failed = 0
     for u in users:
         # Only run for users that have a vault entry for basecamp_ai_clone
@@ -55,6 +56,13 @@ def _sync_all_users() -> None:
             continue
         try:
             r = sync.pull_todos_for_user(u.email)
+            # already_running = a user-triggered sync is mid-flight. Skip
+            # without firing the scorer — the user-triggered sync will
+            # cover both. Without this, we'd race the manual sync and
+            # potentially overwrite its fresh state with stale data.
+            if r.get("status") == "already_running":
+                n_already_running += 1
+                continue
             if r.get("status") in ("ok", "partial"):
                 scorer.score_all_todos(u.email)
             n_ran += 1
@@ -63,7 +71,8 @@ def _sync_all_users() -> None:
             n_failed += 1
 
     logger.info(
-        "ops_sync cron: ran=%d skipped=%d failed=%d", n_ran, n_skipped, n_failed,
+        "ops_sync cron: ran=%d skipped=%d already_running=%d failed=%d",
+        n_ran, n_skipped, n_already_running, n_failed,
     )
 
 

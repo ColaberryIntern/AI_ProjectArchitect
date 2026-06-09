@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from . import store, tokens
+from . import store, sync_coordinator, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -298,35 +298,46 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
     Used by Mark Done so the just-touched project is refreshed before the
     user sees the next focus task — no more 'next' task surfacing while
     actually completed in BC.
+
+    Coordinator-gated: if a full sync is already in flight for this user,
+    return "already_running" rather than racing it. The in-flight full
+    sync will walk this same project as part of its sweep, so the data
+    will land naturally — no need to double-up BC API calls.
     """
-    token, _src = tokens.get_user_token(user_id)
-    if not token:
-        return {"status": "token_missing", "project_id": project_id}
-    bc_user_id = tokens.get_user_bc_id(user_id)
-    if not bc_user_id:
-        return {"status": "bc_user_id_missing", "project_id": project_id}
-    proj = _bc_get(f"/projects/{project_id}.json", token)
-    if not proj:
-        return {"status": "project_not_found", "project_id": project_id}
+    coord = sync_coordinator.get_coordinator()
+    if not coord.try_start_sync(user_id):
+        return {"status": "already_running", "project_id": project_id}
     try:
-        fresh_todos = _walk_project_todos(proj, token, bc_user_id)
-    except Exception as e:
-        err = f"{type(e).__name__}: {e}"
-        _record_error(user_id, f"project_walk:{project_id}", err)
-        return {"status": "error", "project_id": project_id, "error": err}
-    proj_name = proj.get("name") or f"Project {project_id}"
-    store.upsert_projects(user_id, [store.OpsProject(
-        bc_id=project_id, name=proj_name,
-        description=(proj.get("description") or "")[:500],
-        last_synced_at=_now_iso(),
-    )])
-    store.upsert_todos(user_id, fresh_todos)
-    return {
-        "status": "ok",
-        "project_id": project_id,
-        "project_name": proj_name,
-        "todos": len(fresh_todos),
-    }
+        token, _src = tokens.get_user_token(user_id)
+        if not token:
+            return {"status": "token_missing", "project_id": project_id}
+        bc_user_id = tokens.get_user_bc_id(user_id)
+        if not bc_user_id:
+            return {"status": "bc_user_id_missing", "project_id": project_id}
+        proj = _bc_get(f"/projects/{project_id}.json", token)
+        if not proj:
+            return {"status": "project_not_found", "project_id": project_id}
+        try:
+            fresh_todos = _walk_project_todos(proj, token, bc_user_id)
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            _record_error(user_id, f"project_walk:{project_id}", err)
+            return {"status": "error", "project_id": project_id, "error": err}
+        proj_name = proj.get("name") or f"Project {project_id}"
+        store.upsert_projects(user_id, [store.OpsProject(
+            bc_id=project_id, name=proj_name,
+            description=(proj.get("description") or "")[:500],
+            last_synced_at=_now_iso(),
+        )])
+        store.upsert_todos(user_id, fresh_todos)
+        return {
+            "status": "ok",
+            "project_id": project_id,
+            "project_name": proj_name,
+            "todos": len(fresh_todos),
+        }
+    finally:
+        coord.finish_sync(user_id)
 
 
 def _project_is_recently_active(proj: dict, cutoff: datetime) -> bool:
@@ -352,7 +363,28 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
     `ali_legacy_bucket` — Phase A escape hatch. When supplied, skips
     `projects.json` (which returns 0 for CB System) and walks a single
     known bucket. Pass None in normal multi-user operation.
+
+    Coordinator-gated: if another sync is already in flight for this
+    user (manual click during cron, double-click on Sync, Mark Done's
+    targeted sync racing the full one), return "already_running"
+    without firing any BC HTTP calls. Caller (router / scheduler)
+    treats this as "skipped" — not a failure. The stale-lock TTL in
+    SyncCoordinator ensures a crashed sync's slot eventually frees.
     """
+    coord = sync_coordinator.get_coordinator()
+    if not coord.try_start_sync(user_id):
+        return {"status": "already_running", "todos": 0, "projects": 0}
+    try:
+        return _pull_todos_for_user_inner(user_id, ali_legacy_bucket)
+    finally:
+        coord.finish_sync(user_id)
+
+
+def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> dict:
+    """The actual walk, extracted so the coordinator wrapping stays a
+    cheap pre-check. Exists because the prior body had early returns
+    on token/bc_user_id missing — keeping them in a separate function
+    means the wrapper's try/finally is shallow and obviously correct."""
     state = store.load_state(user_id)
     token, source = tokens.get_user_token(user_id)
     if not token:

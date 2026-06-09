@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.routers import my_day as my_day_router
+from execution.products.ops import sync_coordinator
 
 
 @pytest.fixture
@@ -46,9 +47,10 @@ def client(monkeypatch, stub_user):
         my_day_router.scorer, "score_all_todos",
         lambda *a, **kw: None,
     )
-    # Reset the per-user sync lock so each test starts clean.
-    if getattr(my_day_router._maybe_async_sync, "_locks", None) is not None:
-        my_day_router._maybe_async_sync._locks.clear()
+    # Reset the SyncCoordinator so each test starts with no in-flight
+    # slot from a prior test. Phase 2 retired the function-attribute
+    # `_locks` dict in favor of the coordinator.
+    sync_coordinator.reset_coordinator_for_tests()
 
     app = FastAPI()
     app.include_router(my_day_router.router)
