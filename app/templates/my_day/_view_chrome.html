@@ -3,6 +3,10 @@
    same top-of-page context. #}
 
 {% set sync_stale = state.last_sync_at and ('hr ago' in sync_relative or 'days ago' in sync_relative) %}
+{# Status-aware visual: 'ok' = neutral, 'partial' = amber, 'failed' = red.
+   Audit M4 (2026-06-09): the strip used to read identically for partial
+   and ok, hiding the case where some projects errored during the walk. #}
+{% set sync_status_label = state.last_sync_status or '' %}
 <div class="status-strip {{ status.state }}">
   <span class="greeting">{{ greeting }}, {{ first_name }} —</span>
   <span class="headline">{{ status.headline }}</span>
@@ -10,7 +14,13 @@
   <span style="margin-left: auto; font-size: 12px; color: #57606a;">
     {% if state.last_sync_at %}
       Synced {{ sync_relative }}
-      {% if sync_stale %}<span style="color: #cf222e;"> · stale</span>{% endif %}
+      {% if sync_status_label == 'partial' %}
+        <span style="color: #8a5a00; font-weight: 600;" title="{{ state.last_sync_error or 'some projects failed during the walk' }}"> · partial</span>
+      {% elif sync_status_label == 'failed' %}
+        <span style="color: #cf222e; font-weight: 600;" title="{{ state.last_sync_error or 'unknown' }}"> · failed</span>
+      {% elif sync_stale %}
+        <span style="color: #cf222e;"> · stale</span>
+      {% endif %}
       <span style="opacity: 0.6;"> · auto every 5 min</span>
     {% else %}
       Not synced yet
@@ -18,10 +28,42 @@
   </span>
 </div>
 
+{# ── Status-failed banner with context-specific remediation links ───
+   L4 (2026-06-09 audit): the previous banner showed the raw
+   last_sync_error string ('token_missing', 'bc_user_id_missing')
+   and pointed everyone at /admin. Now we surface the specific
+   recovery path per error code. #}
 {% if state.last_sync_status == 'failed' %}
+{% set _err = state.last_sync_error or '' %}
 <div style="background: #ffeef0; border: 1px solid #ffabba; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
-  <strong>Sync failed:</strong> {{ state.last_sync_error or 'unknown' }}.
-  Set up your AI clone in <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone">/admin</a>.
+  <strong>Sync failed:</strong>
+  {% if _err == 'token_missing' %}
+    Your Basecamp connection isn't set up yet.
+    <a href="/profile/connect-basecamp" style="color: #cf222e; font-weight: 600; text-decoration: underline;">Connect Basecamp →</a>
+  {% elif _err == 'bc_user_id_missing' %}
+    Your Basecamp account is connected but we couldn't resolve your BC user id.
+    <a href="/profile/connect-basecamp" style="color: #cf222e; font-weight: 600; text-decoration: underline;">Re-connect Basecamp →</a>
+    or
+    <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone" style="color: #cf222e;">/admin</a>.
+  {% else %}
+    {{ _err or 'unknown' }}.
+    Set up your AI clone in
+    <a href="/admin/users/{{ current_session_user.user_id }}/ai-clone" style="color: #cf222e; font-weight: 600;">/admin</a>.
+  {% endif %}
+</div>
+{% endif %}
+
+{# Partial-sync warning banner — separate from 'failed' so the user
+   sees that SOMETHING came through (vs. nothing) but at least one
+   project errored. Without this, the only signal is the small
+   amber ' · partial' in the status strip which is easy to miss. #}
+{% if state.last_sync_status == 'partial' and state.last_sync_error %}
+<div style="background: #fff8d6; border: 1px solid #f0d678; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #8a5a00;">
+  <strong>Partial sync:</strong> one or more projects errored during the last walk.
+  <span style="opacity: 0.85;">{{ state.last_sync_error[:160] }}</span>
+  {% if is_my_day_admin %}
+  · <a href="/my-day/_health" style="color: #8a5a00; font-weight: 600;">Health →</a>
+  {% endif %}
 </div>
 {% endif %}
 
