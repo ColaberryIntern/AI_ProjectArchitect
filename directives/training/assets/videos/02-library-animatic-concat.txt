@@ -1,0 +1,8 @@
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s1-what-library-is.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s2-browse.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s3-search-filter.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s4-install-panel.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s5-live-install.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s6-no-install.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s7-rating-contributing.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/02-library-s8-close.mp4'

@@ -1,0 +1,6 @@
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s1-why-connect.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s2-open-connect.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s3-oauth.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s4-verify.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s5-via-attribution.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/04-connect-basecamp-s6-close.mp4'

@@ -1,0 +1,6 @@
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s1-cold-open.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s2-the-problem.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s3-product-tour.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s4-daily-use.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s5-why-this-works.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/01-intro-s6-close.mp4'

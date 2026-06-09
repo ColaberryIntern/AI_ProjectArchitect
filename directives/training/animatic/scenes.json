@@ -1,0 +1,293 @@
+{
+  "videos": [
+    {
+      "id": "01-intro",
+      "title": "What is the AI Project Architect & Build Companion?",
+      "subtitle": "Video 1 of 4",
+      "scenes": [
+        {
+          "id": "s1-cold-open",
+          "timestamp": "0:00-0:15",
+          "heading": "Cold open",
+          "show": "Title card: 'Your daily command center for project work.'",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "AI Project Architect",
+            "subtitle": "Your daily command center for project work."
+          },
+          "say": "Every day, project work pulls you in three directions. Emails to act on. Tasks to triage. And reusable assets — prompts, agents, skills — scattered across a dozen places. This product brings all of that into one place."
+        },
+        {
+          "id": "s2-the-problem",
+          "timestamp": "0:15-0:45",
+          "heading": "The problem",
+          "show": "Three sources — Gmail, Basecamp, Library — all pulling at one user.",
+          "mockup": "problem_diagram",
+          "say": "If you're an operator at Colaberry, your work lives in three systems. Customer requests come in by email. Project tasks live in Basecamp. And the reusable building blocks you need — prompts, agent definitions, skills, MCP servers — live in a shared library. Switching between them costs you focus, and there's no single view of what actually needs your attention today."
+        },
+        {
+          "id": "s3-product-tour",
+          "timestamp": "0:45-1:30",
+          "heading": "Two surfaces, one product",
+          "show": "advisor.colaberry.ai My Day queue and Library, side by side.",
+          "mockup": "my_day_queue",
+          "say": "The product has two surfaces. My Day is your task command center — it pulls every task assigned to you from Basecamp, ranks them by urgency, and surfaces the ones that need a human decision. The Library is your shared catalog of reusable assets — skills, agents, prompts, MCP servers — that you can browse, install into your own workspace, and subscribe to for future updates. That's the whole product. Two pages."
+        },
+        {
+          "id": "s4-daily-use",
+          "timestamp": "1:30-2:15",
+          "heading": "What you do daily",
+          "show": "My Day ranked queue, then a quick jump to the Library.",
+          "mockup": "library_home",
+          "say": "Here's what daily use looks like. You open My Day in the morning. You see a ranked list of what needs you — assigned tasks, things coming due, customer requests pulled in from email. You work the top of the queue, you dismiss what's not yours, you click into the ones that need context. When you need a tool — a skill, an agent, a prompt — you go to the Library, find it, and install it into your workspace with one click. The system handles the wiring."
+        },
+        {
+          "id": "s5-why-this-works",
+          "timestamp": "2:15-2:45",
+          "heading": "Why this works",
+          "show": "Basecamp todo tagged 'via your Claude Code' — your team sees you, with AI assistance.",
+          "mockup": "bc_todo_attribution",
+          "say": "Behind the scenes, the system is doing real work for you. Your tasks sync from Basecamp automatically. When you act on something through Claude Code, the work posts back to Basecamp with your name on it — your team sees what you did, not an anonymous bot. Email attachments get staged into Google Drive in the right folder. You don't manage the plumbing; you just do the work."
+        },
+        {
+          "id": "s6-close",
+          "timestamp": "2:45-3:05",
+          "heading": "Next up",
+          "show": "Connect your Basecamp account — Video 4.",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "Up next: Connect Basecamp",
+            "subtitle": "Video 4 in this series  ·  one-time setup  ·  ~2 minutes"
+          },
+          "say": "The next video walks you through the one-time setup: connecting your Basecamp account so My Day can see your tasks. It takes two minutes. After that, you're ready to use the product every day."
+        }
+      ]
+    },
+    {
+      "id": "02-library",
+      "title": "Library Walkthrough: Find, Install, Subscribe",
+      "subtitle": "Video 2 of 4",
+      "scenes": [
+        {
+          "id": "s1-what-library-is",
+          "timestamp": "0:00-0:30",
+          "heading": "What the Library is",
+          "show": "/library/ — six categories of reusable assets.",
+          "mockup": "library_home",
+          "say": "The Library is Colaberry's shared catalog of reusable building blocks. There are six categories: skills, agents, prompts, MCP servers, use-cases, and capabilities. Every asset here has been contributed by someone on the team, gone through review, and is ready for you to use in your own work."
+        },
+        {
+          "id": "s2-browse",
+          "timestamp": "0:30-1:15",
+          "heading": "Browse by category",
+          "show": "Asset detail page — name, description, how-to-use, example, ratings, comments.",
+          "mockup": "library_detail",
+          "say": "Click into any category to browse. Each row shows the name, what the asset does, its rating from other users, and when it was last updated. Click into an asset and you get the full detail page: a description, exactly how to use it, an example, ratings from other users, and a comments section where you can ask questions or share what worked. This is where you decide if an asset is right for your task."
+        },
+        {
+          "id": "s3-search-filter",
+          "timestamp": "1:15-1:45",
+          "heading": "Search and filter",
+          "show": "Search query 'playwright' across all categories; narrow by company / vetting status.",
+          "mockup": "library_home",
+          "mockup_ctx": { "search": "playwright" },
+          "say": "If you know what you're looking for, search by keyword across all categories. You can also filter by company — to see only assets your company has access to — or by vetting status, to see only assets that have been formally reviewed. Use these filters when the catalog gets large; right now you can probably just browse."
+        },
+        {
+          "id": "s4-install-panel",
+          "timestamp": "1:45-2:45",
+          "heading": "The Install panel",
+          "show": "Green Install panel — click installs into your workspace_repo; Subscribe auto-PRs future bumps.",
+          "mockup": "library_detail",
+          "mockup_ctx": { "install_panel_state": "highlighted" },
+          "say": "When you've found an asset you want to use, scroll to the green Install panel near the bottom of the page. This is the heart of the Library. Click Install, and the system opens a pull request in your workspace repository with this asset's files written into the right places. You don't have to know where skills live, or where agents go — the system knows. Check the Subscribe to updates box, and any time this asset gets a new approved version, the system opens a follow-up pull request so you stay current."
+        },
+        {
+          "id": "s5-live-install",
+          "timestamp": "2:45-3:45",
+          "heading": "Live install demo",
+          "show": "Click Install → PR opens in your workspace_repo → ~10 seconds end-to-end.",
+          "mockup": "library_detail",
+          "mockup_ctx": { "install_panel_state": "success" },
+          "say": "Watch what happens when I click Install. The system bundles the asset, figures out its dependencies — if a skill depends on a specific agent, that agent comes along too — writes them to the right paths in your repo, and opens a pull request. Here's the PR in GitHub. You can see the files it added. Review it like you'd review any pull request, merge when you're ready, and the asset is live in your workspace. Total elapsed time: about ten seconds."
+        },
+        {
+          "id": "s6-no-install",
+          "timestamp": "3:45-4:15",
+          "heading": "When you can't install",
+          "show": "Live-in-MCP assets have no Install button — they're already in your Claude MCP.",
+          "mockup": "library_detail",
+          "mockup_ctx": {
+            "install_panel_state": "missing",
+            "asset_name": "colaberry_attachment_fetch",
+            "asset_kind": "MCP Server",
+            "asset_desc": "Fetch attachments from Gmail / Basecamp / Drive and stage them in a per-source folder."
+          },
+          "say": "One thing to know. Some assets — the ones already running as live MCP servers in your Claude session — don't have an Install button. That's intentional. They're already available to you; installing them again would risk leaking tokens. If you don't see the green panel, you don't need to do anything. Just use the asset from Claude directly."
+        },
+        {
+          "id": "s7-rating-contributing",
+          "timestamp": "4:15-4:45",
+          "heading": "Rate and contribute",
+          "show": "Leave a comment with what you used the asset for. Then submit your own via /library/ingest.",
+          "mockup": "library_detail",
+          "say": "After you've used an asset, come back and rate it. Your rating helps everyone else on the team. Drop a comment about what you used it for — that context is more valuable than the star rating itself. And if you have something to contribute, the Ingest page lets you submit a GitHub URL or a docs link. The system scans it, fills in the metadata, and queues it for review. That's how the Library grows."
+        },
+        {
+          "id": "s8-close",
+          "timestamp": "4:45-5:00",
+          "heading": "Next up",
+          "show": "Your daily task workflow in My Day — Video 3.",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "Up next: My Day",
+            "subtitle": "The daily task workflow  ·  Video 3"
+          },
+          "say": "Now that you can find what you need, let's look at where you'll actually spend most of your day: My Day."
+        }
+      ]
+    },
+    {
+      "id": "03-my-day",
+      "title": "My Day Workflow: Manage Your Tasks and Emails",
+      "subtitle": "Video 3 of 4",
+      "scenes": [
+        {
+          "id": "s1-open-my-day",
+          "timestamp": "0:00-0:25",
+          "heading": "Open My Day",
+          "show": "advisor.colaberry.ai/my-day/ — your ranked task queue.",
+          "mockup": "my_day_queue",
+          "say": "This is My Day. It's the page you open in the morning, and it's the page that should answer the question: what do I work on right now? In the center, your task queue, ranked by urgency. On the side, filters to narrow what you're looking at. And the Sync button at the top pulls the latest from Basecamp on demand. The page also auto-refreshes in the background, so you don't have to."
+        },
+        {
+          "id": "s2-how-queue-ranked",
+          "timestamp": "0:25-1:15",
+          "heading": "How the queue is ranked",
+          "show": "Three tiers: Assigned to you, Due soon, Unassigned. Urgency score inside each.",
+          "mockup": "my_day_queue",
+          "mockup_ctx": { "highlight": [0, 0] },
+          "say": "The queue isn't a flat list. It's tiered. At the top, things assigned directly to you. Then things coming due soon — even if they're not assigned to you, you should know they're on fire. Then unassigned items in projects you own, in case nobody else picks them up. Within each tier, the system uses an urgency score that factors in due date, comment activity, and how long it's been sitting. You work top-down."
+        },
+        {
+          "id": "s3-filtering",
+          "timestamp": "1:15-1:50",
+          "heading": "Filtering and tiers",
+          "show": "Filter sidebar — tiers and categories (human_required, waiting_dependency, unscored).",
+          "mockup": "my_day_queue",
+          "mockup_ctx": { "show_filter": true },
+          "say": "If your queue gets too dense, narrow it. You can filter to just tasks assigned to you — that hides the early-warning stuff. You can also filter by category: human required for tasks that genuinely need you to decide something, waiting on a dependency for tasks blocked on someone else, unscored for new arrivals. Most days, the default view is what you want. The filters are there for when you're overwhelmed and need to focus."
+        },
+        {
+          "id": "s4-task-detail",
+          "timestamp": "1:50-2:40",
+          "heading": "Clicking into a task",
+          "show": "Task detail — title, due date, Open in Basecamp, suggested Library assets, Dismiss.",
+          "mockup": "my_day_queue",
+          "mockup_ctx": { "highlight": [0, 0] },
+          "say": "Click any task and you get the full picture. The title and description come straight from Basecamp, so you're not switching tabs to read what the task is about. There's the due date. There's a one-click jump to the original Basecamp todo if you need the full thread or want to comment. At the bottom — this is the magic — the system suggests Library assets that look relevant. If the task says add a test for X, it might suggest the verify skill, or a Playwright agent. You don't have to remember what's in the Library; the system points at it."
+        },
+        {
+          "id": "s5-email-flow",
+          "timestamp": "2:40-3:40",
+          "heading": "Where emails fit in",
+          "show": "Gmail and Basecamp both feed BC todos; attachments stage to Drive; todos flow into My Day.",
+          "mockup": "email_flow_diagram",
+          "say": "Your emails get pulled into this flow too. When a customer email comes in and creates work, a Basecamp todo is opened, and it shows up in your My Day queue just like any other task. If the email had attachments, they're staged into Google Drive under a folder like Colaberry Inbound, Gmail, sender name, month — the system handles the filing. By the time you see the task in My Day, the context is already there. You don't have to go hunt through your inbox to find what the task is about."
+        },
+        {
+          "id": "s6-dismiss",
+          "timestamp": "3:40-4:15",
+          "heading": "Dismissing what isn't yours",
+          "show": "Click Dismiss — it disappears from your queue. Local only; does not close the Basecamp todo.",
+          "mockup": "my_day_queue",
+          "mockup_ctx": { "dismissed": [2, 0] },
+          "say": "Not every task in your queue is actually yours to do. Maybe it got assigned by mistake, or it's a watch-only ping. Hit Dismiss and it disappears from your queue. Important: this is a local dismiss. It does not close the Basecamp todo. The task still exists, the assignee still sees it; you've just told the system don't show this to me again unless something changes. If it gets updated or commented on later, it can come back. This way you can clear your queue without affecting your teammates."
+        },
+        {
+          "id": "s7-sync",
+          "timestamp": "4:15-4:55",
+          "heading": "Sync, refresh, trust",
+          "show": "Sync button + last-sync timestamp. Auto-refresh every 30s in the background.",
+          "mockup": "my_day_queue",
+          "say": "If you want the latest right now, hit Sync. Otherwise, the page refreshes itself every thirty seconds or so in the background. The timestamp shows you when the data was last pulled. If you ever see something stale, hit Sync. The point of this page is that you can trust it — what you see is what's in Basecamp, plus whatever filters you've set."
+        },
+        {
+          "id": "s8-close",
+          "timestamp": "4:55-5:15",
+          "heading": "That's the loop",
+          "show": "Work the queue. Dismiss what isn't yours. Install suggested assets. The system gets sharper.",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "That's the daily loop.",
+            "subtitle": "Work top-down  ·  install what's suggested  ·  trust the queue"
+          },
+          "say": "That's the full daily flow. Open My Day, work the top of the queue, dismiss what isn't yours, click into the ones that need context. When a task suggests a Library asset, click through and install it. Over time, this loop tightens — your queue gets cleaner, your Library use gets sharper, and the system gets better at predicting what you need."
+        }
+      ]
+    },
+    {
+      "id": "04-connect-basecamp",
+      "title": "Connect Your Basecamp Account",
+      "subtitle": "Video 4 of 4",
+      "scenes": [
+        {
+          "id": "s1-why-connect",
+          "timestamp": "0:00-0:20",
+          "heading": "Why connect",
+          "show": "One-time setup. Two minutes.",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "Connect Basecamp",
+            "subtitle": "One-time setup  ·  two minutes  ·  your name on every post"
+          },
+          "say": "Before you can use My Day, you need to connect your Basecamp account. This is a one-time step. It lets the system read the tasks assigned to you and post updates back to Basecamp on your behalf — with your name on them, not a bot's. Let's do it now."
+        },
+        {
+          "id": "s2-open-connect",
+          "timestamp": "0:20-0:45",
+          "heading": "Open Connect Basecamp",
+          "show": "/profile/connect-basecamp — what permissions will be granted; Connect button.",
+          "mockup": "bc_oauth",
+          "say": "Go to Profile, Connect Basecamp. Or paste the URL directly: slash profile slash connect-basecamp. You'll see a page explaining what the system will be able to do once connected, and a button to start the connection."
+        },
+        {
+          "id": "s3-oauth",
+          "timestamp": "0:45-1:25",
+          "heading": "Basecamp OAuth",
+          "show": "Basecamp's authorization screen — they ask, not us. Click Allow.",
+          "mockup": "bc_oauth",
+          "say": "Click Connect. Basecamp opens its own authorization screen. This is Basecamp asking you — not us — whether you want to grant the system access. Read what it's asking for. Click Allow. Basecamp redirects you back to our site, and you should see a success message confirming the connection. That's it."
+        },
+        {
+          "id": "s4-verify",
+          "timestamp": "1:25-1:50",
+          "heading": "Verify it worked",
+          "show": "/my-day/ loads with tasks — connection succeeded.",
+          "mockup": "my_day_queue",
+          "say": "To confirm it worked, go to My Day. You should see your tasks loading in. If you see an empty state asking you to connect Basecamp, the connection didn't take — go back and try again. If you see your tasks, you're done. You don't need to do this setup again."
+        },
+        {
+          "id": "s5-via-attribution",
+          "timestamp": "1:50-2:10",
+          "heading": "'via your Claude Code'",
+          "show": "Basecamp todo with comment tagged 'via your Claude Code' — trust between people.",
+          "mockup": "bc_todo_attribution",
+          "say": "One thing to know. Now that you're connected, when the system posts to Basecamp on your behalf — closing a task, adding a comment, attaching a file — the post is tagged with your name. Your teammates see via your Claude Code, so they know it was you, working with AI assistance, not some anonymous integration. This keeps the trust right where it should be: between people."
+        },
+        {
+          "id": "s6-close",
+          "timestamp": "2:10-2:20",
+          "heading": "You're set up",
+          "show": "Watch Video 3 — My Day Workflow — next.",
+          "mockup": "title_card",
+          "mockup_ctx": {
+            "title": "You're set up.",
+            "subtitle": "Watch Video 3 — My Day Workflow — next."
+          },
+          "say": "You're set up. Next, watch the My Day video to see what to do with the queue."
+        }
+      ]
+    }
+  ]
+}

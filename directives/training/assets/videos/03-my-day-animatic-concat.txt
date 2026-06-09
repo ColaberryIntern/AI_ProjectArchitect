@@ -1,0 +1,8 @@
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s1-open-my-day.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s2-how-queue-ranked.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s3-filtering.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s4-task-detail.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s5-email-flow.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s6-dismiss.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s7-sync.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/animatic/work/clips/03-my-day-s8-close.mp4'

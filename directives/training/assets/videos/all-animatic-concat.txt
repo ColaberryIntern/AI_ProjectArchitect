@@ -1,0 +1,4 @@
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/assets/videos/01-intro-animatic.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/assets/videos/02-library-animatic.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/assets/videos/03-my-day-animatic.mp4'
+file 'C:/Users/ali_m/OneDrive/Business/Colaberry Novedea/AI Projects/AI Project Architect & Build Companion/directives/training/assets/videos/04-connect-basecamp-animatic.mp4'

@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
+AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
+AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -73,6 +75,18 @@ def _scan_cb_mentions() -> None:
         logger.warning("ops_cb_mentions: scan_all_users threw", exc_info=True)
 
 
+def _scan_autopickup() -> None:
+    """[Auto-Pickup Worker] Phase 1 cron entrypoint. No-op unless
+    OPS_AUTOPICKUP_ENABLED=true. Walks Phase 1 users (default just Ali)
+    and drafts proposed-next-step comments on their top AI-tier todos
+    in allowlisted buckets (default just Ali Personal 7463955)."""
+    from . import autopickup_worker
+    try:
+        autopickup_worker.scan_all_users()
+    except Exception:
+        logger.warning("ops_autopickup: scan_all_users threw", exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -96,10 +110,19 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
+    _scheduler.add_job(
+        _scan_autopickup,
+        trigger=IntervalTrigger(minutes=AUTOPICKUP_INTERVAL_MINUTES),
+        id=AUTOPICKUP_JOB_ID,
+        name="Auto-Pickup Worker Phase 1 (draft-only on allowlisted buckets)",
+        replace_existing=True,
+        next_run_time=None,
+    )
     _scheduler.start()
     logger.info(
-        "ops schedulers started: sync every %d min, mentions every %d min",
-        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES,
+        "ops schedulers started: sync every %d min, mentions every %d min, "
+        "autopickup every %d min",
+        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES, AUTOPICKUP_INTERVAL_MINUTES,
     )
 
 
