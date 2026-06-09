@@ -85,9 +85,11 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 
 
 # Bump PROMPT_VERSION when SYSTEM_PROMPT or claude_code_prompt rules change
-# so existing cache entries do not serve stale prompts. v2 = full-inline
-# context + 'DO the work or list missing inputs' close (Phase 2 2026-06-09).
-PROMPT_VERSION = "v2"
+# so existing cache entries do not serve stale prompts. v3 = v2 + structured
+# section newlines (the LLM was emitting one wall-of-text line; v3 adds
+# explicit \n\n between TITLE / DESCRIPTION / COMMENTS / STEPS / CLOSE
+# sections so the prompt reads as a document).
+PROMPT_VERSION = "v3"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -161,14 +163,18 @@ If the ticket is genuinely too vague to be specific, the steps must be:
 
 Length: 3-6 steps. Total response ≤ 1000 tokens.
 
-The claude_code_prompt MUST:
-- Be a single plain-text string (no markdown headers like ##), ready to paste.
-- Open with one line stating WHAT to do (the goal_line), so Claude reads the directive first and the context second.
-- Then inline the full ticket context block: title, project, list, due date, BC URL, AND the full description verbatim.
-- Then inline the recent comments verbatim with the author and date, oldest first.
-- Then state the specific_steps as numbered actions.
-- Then state any stop_conditions verbatim.
-- End with this EXACT closing block (replace nothing): "DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
+The claude_code_prompt MUST be a single plain-text string (no markdown headers like ##), ready to paste. CRITICAL: the string must use REAL newline characters between sections. In the JSON output, encode each section break as a literal \\n\\n (so json.loads produces a string with actual blank lines). The structure is FIVE sections separated by blank lines:
+
+Section 1: WHAT to do (the goal_line) on a single line at the top.
+
+Section 2: A "CONTEXT:" block with TITLE, PROJECT, LIST, DUE, BC URL each on its own line, followed by a blank line, then "DESCRIPTION:" on its own line, then the full description verbatim.
+
+Section 3: A "RECENT COMMENTS:" block with each comment on its own paragraph, prefixed with "[Author Name, YYYY-MM-DD]" on its own line, then the comment body. Oldest first.
+
+Section 4: A "STEPS:" block with each specific_step on its own numbered line. Then a "STOP IF:" block listing stop_conditions, one per line.
+
+Section 5: This EXACT closing block, byte-for-byte (replace nothing):
+"DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
 
 Length: do not constrain the prompt. Inline whatever context the ticket has. A short ticket produces a short prompt. A rich ticket produces a long one. Treat the prompt as self-sufficient: if Claude Code has zero ability to fetch external resources, it must still be able to act from this prompt alone.
 

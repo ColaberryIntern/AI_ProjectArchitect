@@ -48,11 +48,60 @@ ENABLED = os.environ.get("OPS_AUTOPICKUP_ENABLED", "false").strip().lower() == "
 INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
 TOP_N = int(os.environ.get("OPS_AUTOPICKUP_TOP_N", "3"))
 DEFAULT_BUCKETS = "7463955"  # Ali Personal
-ALLOWLIST = [
-    int(b.strip())
-    for b in (os.environ.get("OPS_AUTOPICKUP_BUCKETS") or DEFAULT_BUCKETS).split(",")
-    if b.strip()
-]
+
+# [Phase 3] Per-project opt-in allowlist is now file-based at
+# config/autopickup_allowlist.json. The worker re-reads it every scan so
+# adding a project does not require a redeploy. File entries take
+# precedence over the env-var fallback below.
+ALLOWLIST_FILE = PROJECT_ROOT / "config" / "autopickup_allowlist.json"
+
+
+def _load_allowlist() -> list[dict]:
+    """Read the per-project allowlist from disk. Falls back to env when
+    the file is missing or malformed.
+
+    Returns a list of entries with shape:
+        {bucket_id, name, approved_by, approved_at, mode, rate_limit_per_15m}
+    Defaults filled in for any missing optional fields.
+    """
+    if ALLOWLIST_FILE.exists():
+        try:
+            raw = json.loads(ALLOWLIST_FILE.read_text(encoding="utf-8"))
+            out = []
+            for entry in raw.get("buckets") or []:
+                if not isinstance(entry, dict):
+                    continue
+                bid = entry.get("bucket_id")
+                try:
+                    bid = int(bid)
+                except (TypeError, ValueError):
+                    continue
+                out.append({
+                    "bucket_id": bid,
+                    "name": str(entry.get("name") or f"bucket-{bid}"),
+                    "approved_by": str(entry.get("approved_by") or ""),
+                    "approved_at": str(entry.get("approved_at") or ""),
+                    "mode": str(entry.get("mode") or "draft-only"),
+                    "rate_limit_per_15m": int(entry.get("rate_limit_per_15m") or 10),
+                })
+            if out:
+                return out
+        except Exception:
+            logger.warning("autopickup: failed to load allowlist file; falling back to env",
+                                          exc_info=True)
+    # Env-var fallback for dev or first-run before the file exists
+    return [
+        {"bucket_id": int(b.strip()),
+              "name": f"bucket-{b.strip()}",
+              "approved_by": "",
+              "approved_at": "",
+              "mode": "draft-only",
+              "rate_limit_per_15m": 10}
+        for b in (os.environ.get("OPS_AUTOPICKUP_BUCKETS") or DEFAULT_BUCKETS).split(",")
+        if b.strip()
+    ]
+
+
 # Phase 1 user pool: just Ali. Phase 2+ would walk every user with a token.
 PHASE1_USERS = [
     e.strip()
@@ -354,12 +403,24 @@ def scan_for_user(user_email: str) -> dict:
         return summary
 
     seen = _seen()
+    allowlist = _load_allowlist()
+    summary["allowlist_size"] = len(allowlist)
 
-    for bucket in ALLOWLIST:
+    for entry in allowlist:
+        bucket = entry["bucket_id"]
+        rate_limit = int(entry.get("rate_limit_per_15m") or 10)
+        # mode = entry.get("mode", "draft-only")  # Phase 2+ uses this to gate execute
         summary["buckets_checked"] += 1
         todos = _user_top_ai_todos(user_email, bucket)
         summary["candidates"] += len(todos)
+        calls_in_bucket = 0
         for t in todos:
+            if calls_in_bucket >= rate_limit:
+                summary.setdefault("rate_limited_buckets", []).append({
+                    "bucket": bucket, "name": entry.get("name", ""),
+                    "limit": rate_limit,
+                })
+                break
             apid = f"ap-{uuid.uuid4().hex[:10]}"
             started = _now_iso()
             # BC ticket fetch for updated_at + comments
@@ -390,6 +451,7 @@ def scan_for_user(user_email: str) -> dict:
                 todo_description=(bc_data or {}).get("description", ""),
                 recent_comments=comments,
             )
+            calls_in_bucket += 1  # count LLM calls toward the per-bucket cap
             if not plan:
                 summary["skipped_no_llm"] += 1
                 seen.add(key)  # don't retry until ticket updates
