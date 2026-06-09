@@ -1,0 +1,21 @@
+{
+  "_doc": "Per-project opt-in allowlist for the Auto-Pickup Worker. Each entry lists a BC bucket the worker may post draft comments on. Add a project by appending an entry; remove a project by deleting its entry. The worker re-reads this file every scan, so changes take effect within 15 minutes with no redeploy. See spec ticket #9977150294 for Phase 3 details.",
+  "_schema": {
+    "bucket_id": "integer, BC bucket id (project id)",
+    "name": "string, human-readable project name",
+    "approved_by": "string, email of the project owner who approved auto-pickup",
+    "approved_at": "string, ISO-8601 date when approval was recorded",
+    "mode": "string, 'draft-only' (default) or 'local-execute' (Phase 2+)",
+    "rate_limit_per_15m": "integer, max LLM calls this project gets per 15-min scan window. Default 10."
+  },
+  "buckets": [
+    {
+      "bucket_id": 7463955,
+      "name": "Ali Personal",
+      "approved_by": "ali@colaberry.com",
+      "approved_at": "2026-06-09",
+      "mode": "draft-only",
+      "rate_limit_per_15m": 10
+    }
+  ]
+}
