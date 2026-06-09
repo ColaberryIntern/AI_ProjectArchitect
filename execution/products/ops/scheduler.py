@@ -21,10 +21,16 @@ INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
 APPROVE_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_APPROVE_INTERVAL_MINUTES", "5"))
+# M6 (2026-06-09 audit): cron fires hourly; per-user purge.is_purge_due()
+# then gates whether the actual purge runs for that user (default 24h
+# per user). Hourly cron + 24h per-user gate means a user hitting their
+# due time at minute 30 only waits ~30 min, not until midnight.
+PURGE_CRON_MINUTES = int(os.environ.get("OPS_PURGE_CRON_MINUTES", "60"))
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
 APPROVE_JOB_ID = "ops_autopickup_approve_all_users"
+PURGE_JOB_ID = "ops_purge_all_users"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -98,6 +104,54 @@ def _scan_autopickup() -> None:
         logger.warning("ops_autopickup: scan_all_users threw", exc_info=True)
 
 
+def _purge_all_users() -> None:
+    """M6 (2026-06-09 audit) cron entrypoint.
+
+    Walks every user with a vault token; runs purge.purge_stale_active_rows
+    for each one whose last purge is due (default: once per 24h per
+    user). The cron itself fires hourly so a user who hits their due
+    time mid-day isn't waiting until the next day-boundary.
+    """
+    from execution.products.library import tenancy, vault
+    from . import purge
+
+    try:
+        users = tenancy.list_users(active_only=True)
+    except Exception:
+        logger.warning("ops_purge: failed to list users", exc_info=True)
+        return
+
+    n_ran = 0
+    n_skipped = 0
+    n_due_skipped = 0
+    n_failed = 0
+    for u in users:
+        try:
+            has_token = any(
+                c.tool_name == "basecamp_ai_clone"
+                for c in vault.list_for_user(u.user_id, caller_id="ops_purge_cron")
+            )
+        except Exception:
+            has_token = False
+        if not has_token:
+            n_skipped += 1
+            continue
+        if not purge.is_purge_due(u.email):
+            n_due_skipped += 1
+            continue
+        try:
+            purge.purge_stale_active_rows(u.email)
+            n_ran += 1
+        except Exception:
+            logger.warning("ops_purge: user %s failed", u.email, exc_info=True)
+            n_failed += 1
+
+    logger.info(
+        "ops_purge cron: ran=%d skipped=%d not-due=%d failed=%d",
+        n_ran, n_skipped, n_due_skipped, n_failed,
+    )
+
+
 def _scan_autopickup_approve() -> None:
     """[Auto-Pickup Approve] Phase 1.5 cron entrypoint. Walks the
     autopickup audit log, fetches each ticket's BC comments, classifies
@@ -151,12 +205,22 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
+    _scheduler.add_job(
+        _purge_all_users,
+        trigger=IntervalTrigger(minutes=PURGE_CRON_MINUTES),
+        id=PURGE_JOB_ID,
+        name="Stale-row purge (per user, gated by purge.is_purge_due)",
+        replace_existing=True,
+        next_run_time=None,
+    )
     _scheduler.start()
     logger.info(
         "ops schedulers started: sync every %d min, mentions every %d min, "
-        "autopickup every %d min, approve-scan every %d min",
+        "autopickup every %d min, approve-scan every %d min, "
+        "purge cron every %d min",
         INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES,
         AUTOPICKUP_INTERVAL_MINUTES, APPROVE_INTERVAL_MINUTES,
+        PURGE_CRON_MINUTES,
     )
 
 
