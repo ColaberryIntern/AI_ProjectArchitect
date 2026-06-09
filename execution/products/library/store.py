@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
+import unicodedata
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -28,6 +30,44 @@ LIB_ROOT = ROOT / "output" / "library"
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+# ── asset_id normalization ─────────────────────────────────────────
+# Single convention for asset_id across every code path that writes
+# AssetMetadata: a slug derived from the asset's human name. Pre-norm
+# the propose_asset path used "sub-<uuid8>", which produced opaque URLs
+# (/library/skills/sub-22194d23) and forced filter_for_company to keep
+# two lookup conventions in lock-step. The slug is human-readable,
+# stable, deterministic, and matches the legacy registry convention.
+
+
+def slugify(name: str) -> str:
+    """Lowercase, ASCII-fold, hyphen-collapse a human name into an
+    asset_id suitable as a filename and URL segment.
+
+    Returns "unnamed" when input collapses to empty — defensive; callers
+    that need uniqueness must still do their own collision check, since
+    two different names can legitimately slug to the same value.
+    """
+    s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
+    return s[:60] or "unnamed"
+
+
+def resolve_asset_slug(workspace: str, category: str, name: str) -> str:
+    """Return a collision-free asset_id slug for `name` in `(workspace,
+    category)`. If <slug>.meta.json already exists, append the smallest
+    integer suffix (-2, -3, ...) that yields a free slot. Caller writes
+    the file at that slot.
+    """
+    base = slugify(name)
+    d = _ws_dir(workspace, category)
+    if not (d / f"{base}.meta.json").exists():
+        return base
+    n = 2
+    while (d / f"{base}-{n}.meta.json").exists():
+        n += 1
+    return f"{base}-{n}"
 
 
 def _ws_dir(workspace: str, category: str) -> Path:
@@ -418,8 +458,16 @@ def list_submissions(workspace: str | None = None,
 
 
 def review_submission(workspace: str, submission_id: str, decision: str,
-                            reviewer: str, notes: str = "") -> Submission | None:
-    """Accept or reject a submission. On accept, create the asset metadata."""
+                            reviewer: str, notes: str = "",
+                            asset_id_override: str | None = None) -> Submission | None:
+    """Accept or reject a submission. On accept, create the asset metadata.
+
+    If `asset_id_override` is provided, use it verbatim as the asset_id;
+    otherwise fall back to the legacy "sub-<submission_id>" convention.
+    Callers (e.g. _tool_propose_asset) should pass a slug computed via
+    `resolve_asset_slug` so the AssetMetadata file lands at a human-
+    readable path.
+    """
     p = _sub_dir(workspace) / f"{submission_id}.json"
     if not p.exists():
         return None
@@ -429,7 +477,7 @@ def review_submission(workspace: str, submission_id: str, decision: str,
     s.reviewed_by = reviewer
     s.review_notes = notes
     if decision == "accepted":
-        asset_id = f"sub-{s.submission_id}"
+        asset_id = (asset_id_override or "").strip() or f"sub-{s.submission_id}"
         s.asset_id = asset_id
         # Promote category-specific extras from payload into AssetMetadata
         # for any key that maps 1:1 to a field. Anything else stays in the
