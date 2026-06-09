@@ -200,15 +200,23 @@ def filter_for_company(rows: list[dict[str, Any]], category: str,
 
     out = []
     for row in rows:
-        asset_id = row.get("name") or row.get("id") or ""
+        # Prefer the row's explicit id (propose_asset writes set this to
+        # "sub-XXXX") so tenancy + metadata lookups hit the right file.
+        # Fall back to name for legacy registry rows where asset_id == name.
+        asset_id = row.get("id") or row.get("name") or ""
         if not asset_id:
             continue
-        meta = store.get_metadata("global", category, asset_id)
-        # Treat empty/missing owning_company_id as "community" -- the
-        # default for legacy catalog rows. Otherwise empty-string rows
-        # leak into the org-wide "all" scope only, and a freshly
-        # imported skill silently belongs to nobody.
-        owning = (getattr(meta, "owning_company_id", "") or "").strip() or "community"
+        # Trust the row's own owning_company_id when the loader populated
+        # it (true for _load_submitted_assets rows). Otherwise look it up
+        # via the metadata store using the same key the asset was saved
+        # under. Treat empty/missing as "community" -- the default for
+        # legacy catalog rows -- so empty-string rows don't silently leak.
+        row_owning = (row.get("owning_company_id") or "").strip()
+        if row_owning:
+            owning = row_owning
+        else:
+            meta = store.get_metadata("global", category, asset_id)
+            owning = (getattr(meta, "owning_company_id", "") or "").strip() or "community"
         if owning == viewer_company_id:
             out.append(row)
             continue
@@ -482,9 +490,58 @@ def get_category(key: str) -> AssetCategory | None:
     return CATEGORY_BY_KEY.get(key)
 
 
+def _load_submitted_assets(key: str) -> list[dict[str, Any]]:
+    # Accepted submissions (via colaberry_propose_asset → store.review_submission)
+    # land as AssetMetadata JSON files under output/library/<workspace>/<category>/.
+    # The category-specific LOADER above only reads from the legacy registries
+    # (skill_catalog, plugin manifests, etc.), so without this merge the
+    # auto-approved propose_asset writes are invisible to /library/<category>
+    # and to colaberry_list_assets. Walk every workspace dir so single-tenant
+    # and per-workspace deploys both work.
+    lib_root = ROOT / "output" / "library"
+    if not lib_root.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for ws_dir in lib_root.iterdir():
+        if not ws_dir.is_dir() or ws_dir.name.startswith("_"):
+            continue
+        cat_dir = ws_dir / key
+        if not cat_dir.exists() or not cat_dir.is_dir():
+            continue
+        for p in cat_dir.glob("*.json"):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            row = _normalize(d)
+            # filter_for_company needs the ownership row + the asset_id for
+            # /library URL building. Preserve both verbatim.
+            row["id"] = d.get("asset_id") or row.get("name") or p.stem
+            row["owning_company_id"] = d.get("owning_company_id") or "community"
+            row["vetted"] = bool(d.get("vetted"))
+            out.append(row)
+    return out
+
+
 def load_category(key: str) -> list[dict[str, Any]]:
     fn = LOADERS.get(key)
-    return fn() if fn else []
+    base = fn() if fn else []
+    submitted = _load_submitted_assets(key)
+    if not submitted:
+        return base
+    # Dedupe submitted rows against the legacy registry by name so a row
+    # that exists in both places shows up once. Name is the only stable
+    # cross-store key — registry rows have no asset_id, submission rows do.
+    seen = {(r.get("name") or "").strip().lower() for r in base if r.get("name")}
+    merged = list(base)
+    for r in submitted:
+        n = (r.get("name") or "").strip().lower()
+        if n and n in seen:
+            continue
+        merged.append(r)
+        if n:
+            seen.add(n)
+    return merged
 
 
 def inventory_counts(viewer_company_id: str | None = None) -> dict[str, int]:

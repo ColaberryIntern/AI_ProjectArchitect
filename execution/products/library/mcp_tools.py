@@ -1718,6 +1718,11 @@ def _tool_propose_asset(user, args: dict) -> dict:
     auto_approve = (os.environ.get("LIBRARY_AUTO_APPROVE_ON_SUBMIT", "") or "").strip() in ("1", "true", "yes", "on")
     auto_approved = False
     if auto_approve:
+        # Compute the human-readable slug up front, with collision suffix
+        # if a same-slug asset already lives in the target category. The
+        # slug becomes the AssetMetadata.asset_id, the meta.json filename,
+        # the URL segment, and the tenancy approval key — all in lock-step.
+        slug = store.resolve_asset_slug("global", category, name)
         try:
             store.review_submission(
                 workspace="global",
@@ -1725,8 +1730,9 @@ def _tool_propose_asset(user, args: dict) -> dict:
                 decision="accepted",
                 reviewer=getattr(user, "email", "") or "claude-proposal",
                 notes="auto-approved per LIBRARY_AUTO_APPROVE_ON_SUBMIT rollout policy (propose_asset)",
+                asset_id_override=slug,
             )
-            asset_id = f"sub-{sub.submission_id}"
+            asset_id = slug
             auto_approved = True
             # Also flip the tenancy approval row so the asset's visibility
             # opens for the owner's company without needing an admin pass.
