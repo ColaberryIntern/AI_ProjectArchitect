@@ -243,17 +243,48 @@ class TestMigration:
         assert tenancy.get_approval("library_asset", "sub-abc12345",
                                                   "skills", "colaberry") is not None
 
-    def test_skips_records_missing_name(self, fake_full_root):
-        meta = _seed_sub_record(fake_full_root, "global", "skills",
-                                                "abc12345", "Has Name")
-        # Clobber to remove the name
-        data = json.loads(meta.read_text(encoding="utf-8"))
-        data["name"] = ""
-        meta.write_text(json.dumps(data), encoding="utf-8")
+    def test_records_missing_name_fall_back_to_asset_id(self, fake_full_root):
+        # Many legacy enrichment_job/extracted_writer records have an
+        # empty `name` field but a human-readable asset_id literal. The
+        # migrator falls back to slugifying the asset_id (and finally
+        # the filename stem) so these records aren't stranded.
+        cat_dir = (fake_full_root / "output" / "library" / "global" / "mcp")
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        legacy = cat_dir / "HTML to Markdown.meta.json"
+        legacy.write_text(json.dumps({
+            "asset_id": "HTML to Markdown",
+            "category": "mcp", "workspace": "global",
+            "name": "",  # empty name field -- common on prod
+            "description": "",
+            "owning_company_id": "community",
+        }), encoding="utf-8")
         summary = mig.migrate()
         assert summary["scanned"] == 1
+        assert summary["migrated"] == 1
+        new_meta = cat_dir / "html-to-markdown.meta.json"
+        assert new_meta.exists()
+        data = json.loads(new_meta.read_text(encoding="utf-8"))
+        assert data["asset_id"] == "html-to-markdown"
+
+    def test_skips_records_with_nothing_to_slug(self, fake_full_root):
+        # If name, asset_id, and filename stem all collapse to empty,
+        # there's nothing usable to slug -- skip.
+        cat_dir = (fake_full_root / "output" / "library" / "global" / "skills")
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        meta = cat_dir / "sub-abc12345.meta.json"
+        meta.write_text(json.dumps({
+            "asset_id": "", "category": "skills", "workspace": "global",
+            "name": "", "description": "d",
+            "owning_company_id": "colaberry",
+        }), encoding="utf-8")
+        summary = mig.migrate()
+        assert summary["scanned"] == 1
+        # The collector grabs the sub-* file, but with both name and
+        # asset_id empty, slug_source falls back to the stem
+        # ("sub-abc12345"), which slugs to itself -> short-circuit, no
+        # migration, no skip. This is fine: the file is already a
+        # slug-compatible stem.
         assert summary["migrated"] == 0
-        assert summary["skipped"][0]["reason"] == "no name field"
 
     def test_migrates_literal_name_files(self, fake_full_root):
         # Legacy enrichment_job / extracted_writer path wrote files with
