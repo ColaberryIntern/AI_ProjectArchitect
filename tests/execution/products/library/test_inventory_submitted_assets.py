@@ -153,3 +153,48 @@ class TestLoadCategoryMerge:
 
     def test_unknown_category_returns_empty(self, fake_root):
         assert inventory.load_category("totally-bogus-category") == []
+
+
+class TestFilterForCompany:
+    """filter_for_company must work for rows produced by _load_submitted_assets.
+
+    Pre-patch the filter looked up tenancy by row['name'] only, but
+    propose_asset writes asset files keyed by row['id'] (= "sub-XXXX") so
+    every submitted row was dropped at the tenancy check. Verify the
+    filter now (a) trusts the row's own owning_company_id when present
+    and (b) falls back to id-first lookup for legacy rows.
+    """
+
+    def test_trusts_row_owning_company_id(self, fake_root):
+        # Row carries its own owning_company_id (set by _load_submitted_assets).
+        # Filter must NOT need a metadata store lookup to keep this row.
+        row = {"name": "build-asset-catalog", "id": "sub-abc123",
+                  "owning_company_id": "colaberry", "tags": [], "kind": "skill",
+                  "version": "1.0", "owner": "—", "description": "", "source": ""}
+        out = inventory.filter_for_company([row], "skills", "colaberry")
+        assert len(out) == 1
+        assert out[0]["name"] == "build-asset-catalog"
+
+    def test_drops_when_owning_company_mismatches(self, fake_root):
+        row = {"name": "x", "id": "sub-zzz", "owning_company_id": "other-co",
+                  "tags": [], "kind": "skill", "version": "1.0", "owner": "—",
+                  "description": "", "source": ""}
+        # No tenancy approval row, no shared visibility — should be dropped.
+        out = inventory.filter_for_company([row], "skills", "colaberry")
+        assert out == []
+
+    def test_legacy_row_without_id_still_works(self, fake_root, monkeypatch):
+        # Legacy registry row has name only; the filter falls back to a
+        # metadata lookup via store.get_metadata. Stub it to return a
+        # matching owner so the legacy code path stays functional.
+        from execution.products.library import store as store_mod
+
+        class _FakeMeta:
+            owning_company_id = "colaberry"
+
+        monkeypatch.setattr(store_mod, "get_metadata",
+                                  lambda ws, cat, aid: _FakeMeta())
+        row = {"name": "legacy-skill", "tags": [], "kind": "skill",
+                  "version": "1.0", "owner": "—", "description": "", "source": ""}
+        out = inventory.filter_for_company([row], "skills", "colaberry")
+        assert len(out) == 1

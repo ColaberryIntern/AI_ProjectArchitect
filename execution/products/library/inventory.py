@@ -200,15 +200,23 @@ def filter_for_company(rows: list[dict[str, Any]], category: str,
 
     out = []
     for row in rows:
-        asset_id = row.get("name") or row.get("id") or ""
+        # Prefer the row's explicit id (propose_asset writes set this to
+        # "sub-XXXX") so tenancy + metadata lookups hit the right file.
+        # Fall back to name for legacy registry rows where asset_id == name.
+        asset_id = row.get("id") or row.get("name") or ""
         if not asset_id:
             continue
-        meta = store.get_metadata("global", category, asset_id)
-        # Treat empty/missing owning_company_id as "community" -- the
-        # default for legacy catalog rows. Otherwise empty-string rows
-        # leak into the org-wide "all" scope only, and a freshly
-        # imported skill silently belongs to nobody.
-        owning = (getattr(meta, "owning_company_id", "") or "").strip() or "community"
+        # Trust the row's own owning_company_id when the loader populated
+        # it (true for _load_submitted_assets rows). Otherwise look it up
+        # via the metadata store using the same key the asset was saved
+        # under. Treat empty/missing as "community" -- the default for
+        # legacy catalog rows -- so empty-string rows don't silently leak.
+        row_owning = (row.get("owning_company_id") or "").strip()
+        if row_owning:
+            owning = row_owning
+        else:
+            meta = store.get_metadata("global", category, asset_id)
+            owning = (getattr(meta, "owning_company_id", "") or "").strip() or "community"
         if owning == viewer_company_id:
             out.append(row)
             continue
