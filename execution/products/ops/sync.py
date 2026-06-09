@@ -44,6 +44,12 @@ HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
 HTTP_THROTTLE_SECONDS = float(os.environ.get("OPS_HTTP_THROTTLE_SECONDS", "0.22"))
 # Retry-after ceiling on 429 — never sleep more than this even if BC says so.
 MAX_RETRY_AFTER = int(os.environ.get("OPS_MAX_RETRY_AFTER", "30"))
+# L6 (2026-06-09 audit): hard wall-clock budget on a full sync. Without
+# this, a BC outage could keep one sync thread alive for nearly an hour
+# (HTTP_TIMEOUT=20s * ~150 calls). At budget, we stop walking, record
+# 'partial', and release the coordinator slot gracefully. Tunable via
+# env so we can lower it temporarily if BC starts misbehaving in prod.
+SYNC_BUDGET_SECONDS = float(os.environ.get("OPS_SYNC_BUDGET_SECONDS", "120"))
 
 # Ring buffer of recent errors caught silently by per-project resilience.
 # Surfaces via /my-day/_health. Audit 2026-06-04 revealed errors were
@@ -454,8 +460,30 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     fresh_todos: list[store.OpsTodo] = []
     partial = False
     project_errors: list[str] = []
+    # L6 (2026-06-09 audit): track wall clock so we can bail out
+    # gracefully when SYNC_BUDGET_SECONDS is exceeded rather than
+    # letting one runaway sync hold the coordinator slot for hours.
+    sync_start = time.time()
+    projects_walked = 0
+    budget_exceeded = False
 
     for proj in projects_raw:
+        # Budget check happens BEFORE each project walk so a slow first
+        # project doesn't get cut off mid-walk (which would leave a
+        # partial project state with no error trail).
+        if time.time() - sync_start > SYNC_BUDGET_SECONDS:
+            budget_exceeded = True
+            partial = True
+            skipped = len(projects_raw) - projects_walked
+            err = (
+                f"budget_exceeded after {int(time.time() - sync_start)}s; "
+                f"{skipped}/{len(projects_raw)} projects unwalked"
+            )
+            project_errors.append(err)
+            logger.warning("ops sync: %s", err)
+            _record_error(user_id, "budget_exceeded", err)
+            break
+
         bucket = proj.get("id")
         if not bucket:
             continue
@@ -468,6 +496,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         ))
         try:
             fresh_todos.extend(_walk_project_todos(proj, token, bc_user_id))
+            projects_walked += 1
         except Exception as e:  # noqa: BLE001 — per-project resilience
             partial = True
             err = f"bucket={bucket} {type(e).__name__}: {str(e)[:120]}"
@@ -495,11 +524,13 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         "token_source": source,
         "projects_discovered": len(discovered) if 'discovered' in locals() else 0,
         "projects_quiet_skipped": skipped_quiet,
-        "projects_walked": len(projects_raw),
+        "projects_walked": projects_walked,
         "projects_created": p_created,
         "projects_updated": p_updated,
         "todos_assigned_to_user": len(fresh_todos),
         "todos_created": t_created,
         "todos_updated": t_updated,
         "errors": project_errors[:3],
+        "budget_exceeded": budget_exceeded,
+        "wall_time_seconds": round(time.time() - sync_start, 1),
     }
