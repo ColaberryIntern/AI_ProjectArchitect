@@ -37,9 +37,15 @@ from . import bc_comments, context_collector, plan_inference, tokens
 logger = logging.getLogger(__name__)
 
 SEEN_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "seen.json"
+HEARTBEAT_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "heartbeat.json"
 MENTION_WINDOW_MINUTES = int(os.environ.get("OPS_CB_MENTION_WINDOW_MINUTES", "60"))
+MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "50"))
 # Regex matches "@CB System", "@CB", or "@CBSystem" (case-insensitive).
 TRIGGER_RE = re.compile(r"@CB[\s_-]*(System)?", re.IGNORECASE)
+# BC API requires the User-Agent to include contact info (an email or URL);
+# without it BC can return 403. Used for BOTH GET and POST so detection and
+# the auto-response use the same compliant identity.
+USER_AGENT = "Advisor CB System auto-response (ali@colaberry.com)"
 
 
 def _seen() -> set[str]:
@@ -54,6 +60,26 @@ def _seen() -> set[str]:
 def _save_seen(s: set[str]) -> None:
     SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     SEEN_PATH.write_text(json.dumps(sorted(s))[:200_000], encoding="utf-8")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_heartbeat(summary: dict) -> None:
+    """Persist the result of `scan_all_users()` so an admin endpoint can
+    answer 'is CB-mention polling alive, did it fail silently?' without
+    grepping container logs.
+
+    Heartbeat is best-effort — disk failure here must not break the cron.
+    """
+    try:
+        HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HEARTBEAT_PATH.write_text(
+            json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8",
+        )
+    except OSError:
+        logger.warning("cb_mentions: failed to write heartbeat", exc_info=True)
 
 
 def _strip_html(html: str) -> str:
@@ -156,8 +182,26 @@ def _parent_is_closed(bucket: int, todo_id: int, token: str) -> bool:
     return bool(todo.get("completed"))
 
 
-def _post_comment(bucket: int, recording_id: int, html_content: str, token: str) -> bool:
-    """POST a comment as the AI clone identity."""
+SENTINEL_HTML = (
+    "<p><em>CB System saw this @-mention but couldn't post a full reply "
+    "(token, validation, or BC rate-limit). Paging Ali — check "
+    "<code>/admin/cb-mentions.json</code> for the heartbeat.</em></p>"
+)
+
+
+def _post_comment(
+    bucket: int,
+    recording_id: int,
+    html_content: str,
+    token: str,
+) -> tuple[bool, str]:
+    """POST a comment via the user's BC OAuth token.
+
+    Returns (ok, detail). `detail` is a short tag for the heartbeat:
+        "ok"          — 200/201 from BC
+        "http_<code>" — BC returned a non-2xx
+        "error_<type>"— network/other exception
+    """
     url = (
         f"https://3.basecampapi.com/3945211/buckets/{bucket}/"
         f"recordings/{recording_id}/comments.json"
@@ -167,40 +211,61 @@ def _post_comment(bucket: int, recording_id: int, html_content: str, token: str)
         data=json.dumps({"content": html_content}).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {token}",
-            "User-Agent": "Advisor CB System (auto-response)",
+            "User-Agent": USER_AGENT,
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status in (200, 201)
+            if r.status in (200, 201):
+                return True, "ok"
+            return False, f"http_{r.status}"
     except urllib.error.HTTPError as e:
-        logger.warning("CB-mention post failed: HTTP %s", e.code)
-        return False
-    except Exception:
-        logger.warning("CB-mention post failed", exc_info=True)
-        return False
+        logger.warning("CB-mention post failed: HTTP %s on bucket=%s rec=%s",
+                       e.code, bucket, recording_id)
+        return False, f"http_{e.code}"
+    except Exception as e:
+        logger.warning("CB-mention post failed: %s", type(e).__name__, exc_info=True)
+        return False, f"error_{type(e).__name__}"
 
 
-def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
+def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
     """Scan all buckets visible to the user's token; auto-respond to new
     @CB mentions. Returns a summary dict.
     """
+    if max_buckets is None:
+        max_buckets = MAX_BUCKETS
     token, src = tokens.get_user_token(user_id)
     if not token:
-        return {"status": "no_token", "checked_buckets": 0, "mentions": 0, "responded": 0}
+        # WARNING (not INFO) so uvicorn's default config surfaces this in
+        # container logs — silent no_token was the dominant failure mode.
+        logger.warning("cb_mentions: no BC token for user=%s; skipping scan", user_id)
+        return {
+            "status": "no_token", "checked_buckets": 0, "mentions_found": 0,
+            "responded": 0, "failed": 0, "skipped_already_seen": 0,
+            "skipped_closed_parent": 0, "token_source": src, "errors": [],
+        }
 
     from .sync import discover_projects
-    projects = discover_projects(token)[:max_buckets]
+    all_projects = discover_projects(token)
+    truncated = max(0, len(all_projects) - max_buckets)
+    if truncated:
+        # Visibility into the 50-bucket cap — when this is non-zero, a
+        # mention could live in a bucket we never even look at.
+        logger.warning(
+            "cb_mentions: user=%s has %d buckets, scanning first %d (truncated=%d)",
+            user_id, len(all_projects), max_buckets, truncated,
+        )
+    projects = all_projects[:max_buckets]
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=MENTION_WINDOW_MINUTES)
     seen = _seen()
     found = 0
     responded = 0
     skipped_seen = 0
     failed = 0
-
     skipped_closed = 0
+    errors: list[dict] = []
 
     for proj in projects:
         bucket = proj.get("id")
@@ -229,9 +294,6 @@ def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
             # Crawl the parent ticket so the plan has real context
             try:
                 bundle = context_collector.collect(m["parent_url"], token)
-                # Use the comment's body as the user-facing "what I need"
-                # (caller will often have written something like:
-                # "@CB System turn this into a PowerPoint")
                 user_feedback = m["comment_body"]
                 plan = plan_inference.infer(
                     user_feedback=user_feedback,
@@ -241,37 +303,73 @@ def scan_for_user(user_id: str, max_buckets: int = 50) -> dict:
                     context_bundle=bundle,
                 )
                 html = _build_response_text(plan)
-                ok = _post_comment(bucket, m["parent_id"], html, token)
+                ok, detail = _post_comment(bucket, m["parent_id"], html, token)
                 if ok:
                     responded += 1
                 else:
                     failed += 1
-            except Exception:
-                logger.warning("CB mention handling failed for %s", m["parent_url"], exc_info=True)
+                    errors.append({
+                        "parent_url": m["parent_url"], "comment_id": m["comment_id"],
+                        "stage": "post_comment", "detail": detail,
+                    })
+                    # Sentinel footprint so the human asker sees CB tried
+                    # even if the rich response failed. Same token, same
+                    # endpoint, simpler body — covers body-validation
+                    # failures while staying inert under auth failures.
+                    sentinel_ok, sentinel_detail = _post_comment(
+                        bucket, m["parent_id"], SENTINEL_HTML, token,
+                    )
+                    if not sentinel_ok:
+                        errors.append({
+                            "parent_url": m["parent_url"],
+                            "comment_id": m["comment_id"],
+                            "stage": "sentinel_comment", "detail": sentinel_detail,
+                        })
+            except Exception as e:
+                logger.warning("CB mention handling failed for %s: %s",
+                               m["parent_url"], type(e).__name__, exc_info=True)
                 failed += 1
+                errors.append({
+                    "parent_url": m["parent_url"], "comment_id": m["comment_id"],
+                    "stage": "plan_inference_or_collect",
+                    "detail": f"error_{type(e).__name__}",
+                })
 
     _save_seen(seen)
     return {
         "status": "ok",
         "checked_buckets": len(projects),
+        "buckets_truncated": truncated,
         "mentions_found": found,
         "responded": responded,
         "skipped_already_seen": skipped_seen,
         "skipped_closed_parent": skipped_closed,
         "failed": failed,
         "token_source": src,
+        "errors": errors,
     }
 
 
-def scan_all_users() -> None:
+def scan_all_users() -> dict:
     """Top-level entry called by the scheduler. Walks every user with a
-    vault token (same set the sync scheduler hits).
+    vault token (same set the sync scheduler hits) and writes a heartbeat
+    summary so `/admin/cb-mentions.json` can answer 'is CB alive?'.
+
+    Returns the heartbeat dict (also persisted to HEARTBEAT_PATH).
     """
     from execution.products.library import tenancy, vault
+
+    started_at = _now_iso()
+    per_user: list[dict] = []
+    fatal_error: str | None = None
+
     try:
         users = tenancy.list_users(active_only=True)
-    except Exception:
-        return
+    except Exception as e:
+        fatal_error = f"list_users_failed:{type(e).__name__}"
+        users = []
+        logger.warning("cb_mentions: tenancy.list_users failed", exc_info=True)
+
     for u in users:
         try:
             has_token = any(
@@ -280,10 +378,32 @@ def scan_all_users() -> None:
             )
         except Exception:
             has_token = False
+            logger.warning("cb_mentions: vault.list_for_user failed for %s",
+                           u.email, exc_info=True)
         if not has_token:
             continue
         try:
             r = scan_for_user(u.email)
+            r_record = {"user_id": u.user_id, "email": u.email, **r}
+            per_user.append(r_record)
             logger.info("cb_mentions for %s: %s", u.email, r)
-        except Exception:
+        except Exception as e:
+            per_user.append({
+                "user_id": u.user_id, "email": u.email,
+                "status": "exception", "error": f"{type(e).__name__}",
+            })
             logger.warning("cb_mentions failed for %s", u.email, exc_info=True)
+
+    finished_at = _now_iso()
+    summary = {
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "users_with_token": len(per_user),
+        "total_mentions_found": sum(p.get("mentions_found", 0) for p in per_user),
+        "total_responded": sum(p.get("responded", 0) for p in per_user),
+        "total_failed": sum(p.get("failed", 0) for p in per_user),
+        "fatal_error": fatal_error,
+        "per_user": per_user,
+    }
+    _write_heartbeat(summary)
+    return summary

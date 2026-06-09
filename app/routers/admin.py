@@ -891,3 +891,49 @@ async def ai_clone_save(request: Request, user_id: str,
     _audit(admin.user_id, "ai_clone.set",
            target=user_id, notes=f"bc_user_id={bc_user_id} clone={u.bc_ai_clone_name}")
     return RedirectResponse(url=f"/admin/users/{user_id}?ai_clone_saved=1", status_code=303)
+
+
+@router.get("/cb-mentions.json")
+async def cb_mentions_heartbeat(request: Request):
+    """Surface the last CB-mention cron run for ops visibility.
+
+    Reads `output/ops/_cb_mentions/heartbeat.json` written by
+    `cb_mention_worker.scan_all_users()`. Returns `{ok: false, ...}` when
+    no heartbeat exists yet OR when the last run was suspiciously stale
+    (>3x the configured interval).
+    """
+    _require_admin(request)
+    import json as _json
+    from execution.products.ops import cb_mention_worker, scheduler as ops_sched
+
+    p = cb_mention_worker.HEARTBEAT_PATH
+    if not p.exists():
+        return JSONResponse({
+            "ok": False, "reason": "no_heartbeat_yet",
+            "heartbeat_path": str(p),
+            "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
+        })
+    try:
+        hb = _json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        return JSONResponse({
+            "ok": False, "reason": f"heartbeat_unreadable:{type(e).__name__}",
+            "heartbeat_path": str(p),
+        }, status_code=500)
+
+    fresh_minutes = ops_sched.MENTION_INTERVAL_MINUTES * 3
+    finished_at = hb.get("finished_at") or ""
+    try:
+        fin_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+        now = datetime.now(fin_dt.tzinfo)
+        stale = (now - fin_dt).total_seconds() > (fresh_minutes * 60)
+    except (ValueError, TypeError):
+        stale = True
+
+    return JSONResponse({
+        "ok": not stale and not hb.get("fatal_error"),
+        "stale": stale,
+        "fresh_window_minutes": fresh_minutes,
+        "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
+        "heartbeat": hb,
+    })
