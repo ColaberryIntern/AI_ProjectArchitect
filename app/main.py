@@ -17,6 +17,7 @@ from app.routers import (
     auth,
     auto_build,
     basecamp_connect,
+    basecamp_webhook,
     chapter_build,
     chat,
     demo,
@@ -198,6 +199,7 @@ app.include_router(library.router)
 app.include_router(my_day.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(basecamp_webhook.router)
 app.include_router(mcp_server.router)
 app.include_router(google_connect.router)
 app.include_router(basecamp_connect.router)
