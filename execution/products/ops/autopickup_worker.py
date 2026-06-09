@@ -322,8 +322,15 @@ def _fetch_recent_comments(bucket: int, todo_id: int, token: str) -> list[dict]:
 # ── Comment shape ──────────────────────────────────────────────────
 
 
-def _render_comment(plan: dict, autopickup_id: str) -> str:
-    """Format the autopickup comment per the W3b-style structured shape."""
+def _render_comment(plan: dict, autopickup_id: str,
+                                          claude_code_prompt: str = "") -> str:
+    """Format the autopickup comment per the W3b-style structured shape.
+
+    When claude_code_prompt is provided (from a paired llm_suggest.enhance
+    call on the same ticket), it's embedded in a <details> block so the
+    reader can copy + paste directly into Claude Code without leaving BC.
+    Wrapping in <details> keeps the default comment view short.
+    """
     confidence = int(plan.get("confidence_pct", 0))
     action = (plan.get("action") or "").strip()
     why = (plan.get("why") or "").strip()
@@ -340,14 +347,29 @@ def _render_comment(plan: dict, autopickup_id: str) -> str:
         "<ul>" + "".join(f"<li>{s}</li>" for s in side_effects) + "</ul>"
         if side_effects else "<p>none specified</p>"
     )
+    prompt_block = ""
+    if claude_code_prompt:
+        # HTML-escape the prompt so any <, >, & in code paths render as
+        # text not markup. BC's WYSIWYG editor keeps the <pre> wrapper.
+        import html as _htmllib
+        escaped = _htmllib.escape(claude_code_prompt)
+        prompt_block = (
+            "<details><summary><strong>Claude Code prompt</strong> "
+            "(click to expand and copy)</summary>"
+            f"<pre style='white-space: pre-wrap; word-break: break-word; "
+            f"background: #f6f8fa; padding: 10px; border-radius: 6px; "
+            f"font-size: 12px;'>{escaped}</pre></details>"
+        )
     return (
         f"<h4>Auto-pickup: proposed next step (confidence: {confidence}%)</h4>"
         f"<p><strong>Action:</strong> {action}</p>"
         f"<p><strong>Why:</strong> {why}</p>"
         f"<p><strong>Side effects if approved:</strong></p>{side_effects_block}"
         f"{needs_block}"
+        f"{prompt_block}"
         f"<p>Phase 1 is draft-only. To act on this, reply with approve "
-        f"(or thumbs-up) and I will execute. Reply with corrections to redo.</p>"
+        f"(or thumbs-up) and I will execute. Reply with corrections, or "
+        f"copy the prompt above into your Claude Code session to act now.</p>"
         f"<p><em>autopickup_id: {autopickup_id}. Logged at "
         f"output/ops/_autopickup/{time.strftime('%Y-%m-%d', time.gmtime())}.jsonl.</em></p>"
     )
@@ -457,7 +479,34 @@ def scan_for_user(user_email: str) -> dict:
                 seen.add(key)  # don't retry until ticket updates
                 continue
 
-            html = _render_comment(plan, apid)
+            # Pair with llm_suggest.enhance() to get the paste-ready
+            # claude_code_prompt the user copies into Claude Code. Cached
+            # by (bc_id, bc_updated_at, comments_hash, PROMPT_VERSION) so
+            # the same ticket is not re-LLM'd between scans, and the
+            # My Day surface shares the cache.
+            cc_prompt = ""
+            try:
+                from . import llm_suggest
+                from execution.products.library import tenancy as _tenancy
+                u = _tenancy.get_user(user_email)
+                uid = u.user_id if u else user_email
+                # bc_comments.fetch_recent_comments returns a single text
+                # blob; we already have the list, so flatten to the same shape
+                comments_blob = "\n\n".join(
+                    f"[{(c.get('creator') or {}).get('name', '?')}, "
+                    f"{(c.get('created_at') or '')[:10]}]\n"
+                    f"{bc_comments._strip_html(c.get('content') or '')}"
+                    for c in comments[-5:]
+                )
+                enhanced = llm_suggest.enhance(uid, t, comments_blob)
+                if enhanced:
+                    cc_prompt = enhanced.get("claude_code_prompt", "") or ""
+            except Exception:
+                logger.warning("autopickup: enhance() pairing failed for %s",
+                                            t.bc_id, exc_info=True)
+                cc_prompt = ""
+
+            html = _render_comment(plan, apid, claude_code_prompt=cc_prompt)
             ok, detail, body = _bc_post_comment(bucket, int(t.bc_id), html, token)
 
             result = AutopickupResult(
