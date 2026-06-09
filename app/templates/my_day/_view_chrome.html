@@ -22,6 +22,12 @@
         <span style="color: #cf222e;"> · stale</span>
       {% endif %}
       <span style="opacity: 0.6;"> · auto every 5 min</span>
+    {% elif state.last_targeted_sync_at and targeted_sync_relative %}
+      {# L5 (2026-06-09 audit): user has done Mark Done at least once
+         but never a full sync. Show a clear signal that targeted data
+         is fresh, not a misleading "Not synced yet". #}
+      Targeted sync {{ targeted_sync_relative }}
+      <span style="opacity: 0.6;" title="Full sync hasn't run yet — only the project you marked done is fully fresh"> · partial-by-design</span>
     {% else %}
       Not synced yet
     {% endif %}

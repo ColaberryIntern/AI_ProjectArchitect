@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
+APPROVE_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_APPROVE_INTERVAL_MINUTES", "5"))
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
+APPROVE_JOB_ID = "ops_autopickup_approve_all_users"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -96,6 +98,20 @@ def _scan_autopickup() -> None:
         logger.warning("ops_autopickup: scan_all_users threw", exc_info=True)
 
 
+def _scan_autopickup_approve() -> None:
+    """[Auto-Pickup Approve] Phase 1.5 cron entrypoint. Walks the
+    autopickup audit log, fetches each ticket's BC comments, classifies
+    the next-after-autopickup human reply as approved / rejected /
+    ambiguous, and logs the detection. No-op when OPS_AUTOPICKUP_ENABLED
+    is false (same flag as the writer worker)."""
+    from . import autopickup_approve_worker
+    try:
+        autopickup_approve_worker.scan_all_users()
+    except Exception:
+        logger.warning("ops_autopickup_approve: scan_all_users threw",
+                                  exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -127,11 +143,20 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
+    _scheduler.add_job(
+        _scan_autopickup_approve,
+        trigger=IntervalTrigger(minutes=APPROVE_INTERVAL_MINUTES),
+        id=APPROVE_JOB_ID,
+        name="Auto-Pickup Approve Worker (detect human reply on draft comments)",
+        replace_existing=True,
+        next_run_time=None,
+    )
     _scheduler.start()
     logger.info(
         "ops schedulers started: sync every %d min, mentions every %d min, "
-        "autopickup every %d min",
-        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES, AUTOPICKUP_INTERVAL_MINUTES,
+        "autopickup every %d min, approve-scan every %d min",
+        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES,
+        AUTOPICKUP_INTERVAL_MINUTES, APPROVE_INTERVAL_MINUTES,
     )
 
 

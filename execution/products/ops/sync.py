@@ -330,6 +330,14 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
             last_synced_at=_now_iso(),
         )])
         store.upsert_todos(user_id, fresh_todos)
+        # L5 (2026-06-09 audit): record the targeted touch so the UI can
+        # show "Targeted sync 30s ago" instead of "Not synced yet" for
+        # operators whose only sync activity has been Mark Done. Doesn't
+        # touch last_sync_at — a targeted sync is NOT a full sync, and
+        # the natural-flow gate must keep treating it that way.
+        state = store.load_state(user_id)
+        state.last_targeted_sync_at = _now_iso()
+        store.save_state(state)
         return {
             "status": "ok",
             "project_id": project_id,

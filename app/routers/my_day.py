@@ -567,6 +567,13 @@ async def ops_home(request: Request):
     first_name = (user.display_name or user.email).split()[0]
     greeting = _greeting()
     sync_rel = _sync_relative(state.last_sync_at) if state.last_sync_at else ""
+    # L5 (2026-06-09 audit): when no full sync has run but Mark Done has,
+    # surface the targeted-sync timestamp instead of "Not synced yet".
+    targeted_sync_rel = (
+        _sync_relative(state.last_targeted_sync_at)
+        if state.last_targeted_sync_at and not state.last_sync_at
+        else ""
+    )
 
     # Project chip data: tier-filtered (so counts match what user sees
     # after clicking) but project/list-unfiltered (so all projects can
@@ -681,6 +688,7 @@ async def ops_home(request: Request):
              # Sync context
              state=state,
              sync_relative=sync_rel,
+             targeted_sync_relative=targeted_sync_rel,
              # Project context
              project_one=project_one,
              project_count=len(projects),
