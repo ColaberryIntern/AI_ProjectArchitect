@@ -13,6 +13,7 @@ import logging
 import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
@@ -20,9 +21,12 @@ logger = logging.getLogger(__name__)
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
+SMOKE_CRON_HOUR = int(os.environ.get("OPS_CB_SMOKE_CRON_HOUR", "3"))
+SMOKE_CRON_TIMEZONE = os.environ.get("OPS_CB_SMOKE_CRON_TIMEZONE", "America/New_York")
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
+SMOKE_JOB_ID = "ops_cb_smoke_nightly"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -96,6 +100,17 @@ def _scan_autopickup() -> None:
         logger.warning("ops_autopickup: scan_all_users threw", exc_info=True)
 
 
+def _run_cb_smoke() -> None:
+    """Nightly smoke test — post a known @CB ping, wait, assert reply.
+    No-op when bucket/todo env vars are unset (so non-prod environments
+    don't run it). See execution/products/ops/cb_smoke.py."""
+    from . import cb_smoke
+    try:
+        cb_smoke.run()
+    except Exception:
+        logger.warning("ops_cb_smoke: run() threw", exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -127,11 +142,28 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
+    # Only register the smoke job when bucket/todo env vars are configured,
+    # so dev / preview environments don't pretend to run a smoke test that
+    # has no fixture todo to ping. See cb_smoke.is_configured().
+    from . import cb_smoke
+    if cb_smoke.is_configured():
+        _scheduler.add_job(
+            _run_cb_smoke,
+            trigger=CronTrigger(hour=SMOKE_CRON_HOUR, minute=0,
+                                timezone=SMOKE_CRON_TIMEZONE),
+            id=SMOKE_JOB_ID,
+            name=f"CB @-mention nightly smoke test ({SMOKE_CRON_TIMEZONE} "
+                 f"{SMOKE_CRON_HOUR:02d}:00)",
+            replace_existing=True,
+            next_run_time=None,
+        )
     _scheduler.start()
+    smoke_status = "enabled" if cb_smoke.is_configured() else "disabled (env unset)"
     logger.info(
         "ops schedulers started: sync every %d min, mentions every %d min, "
-        "autopickup every %d min",
+        "autopickup every %d min, cb_smoke %s",
         INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES, AUTOPICKUP_INTERVAL_MINUTES,
+        smoke_status,
     )
 
 
