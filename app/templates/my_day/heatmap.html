@@ -161,21 +161,49 @@
   // sizemode:'area' — sizeref maps the largest bubble to ~46px diameter.
   var sizeref = (2.0 * maxOpen) / (46 * 46);
 
+  // Label only "where convenient": rank every point by importance (more
+  // at-risk + bigger bubble = more worth naming), then greedily keep a label
+  // only if it isn't crowding one we already placed. Sparse plots end up
+  // mostly labeled; dense clusters surface just the few that matter. Hover
+  // still shows the full detail for everything. MIN_* are in axis units
+  // (both axes are 0-100), MAX_LABELS caps total on-plot text.
+  var MIN_DX = 7, MIN_DY = 7, MAX_LABELS = 12;
+  var ranked = pts.slice().sort(function (a, b) {
+    return ((100 - b.score) + (b.open || 0)) - ((100 - a.score) + (a.open || 0));
+  });
+  var placed = [];
+  var labelKeys = {};
+  for (var i = 0; i < ranked.length && placed.length < MAX_LABELS; i++) {
+    var p = ranked[i];
+    var crowded = placed.some(function (q) {
+      return Math.abs(q.score - p.score) < MIN_DX && Math.abs(q.late_pct - p.late_pct) < MIN_DY;
+    });
+    if (!crowded) { placed.push(p); labelKeys[p.cat + '|' + p.name] = true; }
+  }
+  function _label(p) {
+    if (!labelKeys[p.cat + '|' + p.name]) return '';
+    return p.name.length > 18 ? p.name.slice(0, 17) + '…' : p.name;
+  }
+
   var traces = cats.map(function (cat) {
     var sub = pts.filter(function (p) { return p.cat === cat; });
     return {
       name: cat + ' (' + sub.length + ')',
       x: sub.map(function (p) { return p.score; }),
       y: sub.map(function (p) { return p.late_pct; }),
-      text: sub.map(function (p) {
+      text: sub.map(_label),                 // on-plot label (mostly blank)
+      hovertext: sub.map(function (p) {       // full detail on hover
         return '<b>' + p.name + '</b><br>' +
           p.band + ' · score ' + p.score + '<br>' +
           'Late ' + p.late_pct + '% · AI ' + p.ai_pct + '%<br>' +
           p.open + ' open · ' + p.overdue + ' overdue<br>' +
           'H ' + p.human + ' / AI ' + p.ai;
       }),
-      mode: 'markers',
+      mode: 'markers+text',
       type: 'scatter',
+      textposition: 'top center',
+      textfont: { size: 9, color: '#33383d' },
+      cliponaxis: false,
       marker: {
         size: sub.map(function (p) { return p.open || 1; }),
         sizemode: 'area',
@@ -186,7 +214,7 @@
         line: { width: 1, color: 'rgba(0,0,0,0.35)' },
         opacity: 0.82
       },
-      hovertemplate: '%{text}<extra>' + cat + '</extra>'
+      hovertemplate: '%{hovertext}<extra>' + cat + '</extra>'
     };
   });
 
