@@ -930,12 +930,19 @@ async def cb_mentions_heartbeat(request: Request):
     except (ValueError, TypeError):
         stale = True
 
+    from execution.products.ops import cb_webhooks
+    try:
+        webhooks = cb_webhooks.recent_event_summary(window_minutes=fresh_minutes)
+    except Exception as e:
+        webhooks = {"error": f"{type(e).__name__}"}
+
     return JSONResponse({
         "ok": not stale and not hb.get("fatal_error"),
         "stale": stale,
         "fresh_window_minutes": fresh_minutes,
         "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
         "heartbeat": hb,
+        "webhooks": webhooks,
     })
 
 
