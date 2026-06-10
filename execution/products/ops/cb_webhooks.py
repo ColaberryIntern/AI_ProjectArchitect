@@ -17,14 +17,19 @@ we can flip OPS_CB_MENTION_INTERVAL_MINUTES way up (or to 0) to cut the
 polling cost.
 
 Auth: Basecamp does NOT sign webhook payloads (no HMAC). We use a
-shared-secret in the URL path (`/webhooks/basecamp/<secret>`) — only
-the BC subscription with that secret can hit our endpoint. Rotate by
-re-running subscribe_user_buckets() with a new OPS_CB_WEBHOOK_SECRET
-(which re-creates subscriptions with the new URL); old subscriptions
-become inert.
+shared-secret + per-user token in the URL path
+(`/webhooks/basecamp/<secret>/<user_token>`) — only the BC subscription
+with the matching pair can hit the endpoint AND the user_token segment
+tells the inbound side which operator's credentials to act with.
+user_token = sha256("{email}|{secret}")[:24], so rotating the secret
+invalidates every operator's token at once. Old subscriptions become
+inert after re-running subscribe_user_buckets() with a new
+OPS_CB_WEBHOOK_SECRET.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -63,10 +68,57 @@ def webhook_base_url() -> str:
 
 
 def payload_url() -> Optional[str]:
+    """DEPRECATED: returns the legacy single-segment webhook URL (no user
+    token). Kept only so the admin status page can show the configured
+    base URL + secret pattern; production subscriptions use
+    payload_url_for(user_email) so each operator gets their own endpoint."""
     s = webhook_secret()
     if not s:
         return None
     return f"{webhook_base_url()}/webhooks/basecamp/{s}"
+
+
+def _user_token_for(user_email: str, secret: str) -> str:
+    """Deterministic 24-char hex token derived from (user_email, secret).
+    Used as the URL path segment so each operator gets their own webhook
+    endpoint; rotating the secret invalidates every operator's token at
+    once."""
+    digest = hashlib.sha256(f"{user_email}|{secret}".encode("utf-8")).hexdigest()
+    return digest[:24]
+
+
+def payload_url_for(user_email: str) -> Optional[str]:
+    """The per-user webhook URL that gets handed to BC's subscription.
+    Returns None when webhook_secret() is unset."""
+    s = webhook_secret()
+    if not s:
+        return None
+    token = _user_token_for(user_email, s)
+    return f"{webhook_base_url()}/webhooks/basecamp/{s}/{token}"
+
+
+def resolve_user_email_from_token(user_token: str) -> Optional[str]:
+    """Given the URL's user_token segment, find the user whose token
+    matches. Returns the email or None if no match (= 401). Walks every
+    active user via tenancy.list_users (small set; fine to scan) using
+    hmac.compare_digest so a slow match isn't observable from outside."""
+    secret = webhook_secret()
+    if not secret:
+        return None
+    # Local import: tenancy lives under execution.products.library and we
+    # want to avoid a top-level cycle with the library package on import.
+    from execution.products.library import tenancy
+    try:
+        users = tenancy.list_users(active_only=True)
+    except Exception:
+        logger.warning("cb_webhooks: tenancy.list_users failed in resolver",
+                       exc_info=True)
+        return None
+    for u in users:
+        expected = _user_token_for(u.email, secret)
+        if hmac.compare_digest(expected, user_token):
+            return u.email
+    return None
 
 
 # ── subscription state ────────────────────────────────────────────
@@ -160,7 +212,7 @@ def subscribe_user_buckets(user_email: str,
     existing = 0
     failed = 0
     errors: list[dict] = []
-    url = payload_url()
+    url = payload_url_for(user_email)
     assert url, "webhook_secret() was non-empty above"
 
     for proj in projects:
