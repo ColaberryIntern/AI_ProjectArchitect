@@ -24,8 +24,15 @@ Tool call `colaberry_attachment_fetch(args)`:
   - `attachment_id`: Gmail attachment id from the message's `payload.parts`
 - Basecamp args (required when `source="basecamp"`):
   - `project_id`: BC bucket id (e.g. `7463955`)
-  - `recording_id`: BC recording id (the comment / todo with the attachment)
-  - `attachment_sgid`: BC blob sgid
+  - `recording_id`: BC recording id. For a comment/todo attachment this is the
+    recording hosting the blob (pair with `attachment_sgid`). For a vault/brief
+    **upload** it is the trailing id in the `.../uploads/<id>` link and is
+    sufficient on its own.
+  - `attachment_sgid`: BC blob sgid. **Optional.** When omitted, the tool
+    resolves the blob from the upload recording endpoint
+    (`GET /buckets/{project}/uploads/{recording_id}.json` → `download_url`)
+    via `basecamp.fetch_by_recording`. This is the path for "Briefs to read
+    first" / vault links, which expose only the recording id, never the sgid.
 - Drive args (required when `source="drive"`):
   - `drive_file_id`: Drive file id — passthrough mode; the tool re-resolves
     metadata + returns the same ref without re-uploading (must be a file
@@ -96,8 +103,10 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
      `(filename, mime_type, bytes, sender)`. Sender comes from the parent
      message's `From:` header.
    - `basecamp_attachment.fetch(project_id, recording_id, sgid, bc_token)` →
-     `(filename, mime_type, bytes, sender_project_name)`. BC token comes from
-     the existing `_bc_token(user)` chain.
+     `(filename, mime_type, bytes, sender_project_name)` when an sgid is given;
+     otherwise `basecamp_attachment.fetch_by_recording(project_id,
+     recording_id, bc_token)` resolves the blob from the upload recording. BC
+     token comes from the existing `_bc_token(user)` chain.
    - `drive_attachment.fetch(drive_file_id, access_token)` → `(filename,
      mime_type, metadata)` — no bytes, this is a metadata-only passthrough.
 6. For non-Drive sources: upload bytes to Drive via `drive_staging.upload(

@@ -133,3 +133,65 @@ def fetch(project_id: int, recording_id: int, sgid: str,
         sender=project_name_for_audit or f"BC bucket {project_id}",
         data=body,
     )
+
+
+def fetch_by_recording(project_id: int, recording_id: int,
+                       bc_token: str,
+                       *,
+                       account_id: str | None = None,
+                       project_name_for_audit: str | None = None) -> FetchedAttachment:
+    """Fetch a BC upload addressed by its **recording id** (not a blob sgid).
+
+    Brief / vault links in the BC web UI look like
+        https://app.basecamp.com/{account}/buckets/{bucket}/uploads/{recording_id}
+    where the trailing id is the Upload *recording* id, NOT the blob sgid that
+    `fetch()` needs. The BC3 API exposes that upload recording at
+
+        GET /{account_id}/buckets/{bucket_id}/uploads/{recording_id}.json
+
+    whose JSON carries `filename`, `content_type`, `byte_size`, and a
+    `download_url` we can follow with the same Authorization header. This lets
+    an operator paste a brief link and read its content without first having to
+    extract the sgid out of attachment HTML (the gap that left "Briefs to read
+    first" links unreadable).
+
+    Same retry/timeout/no-token-logging contract as `fetch()`.
+    """
+    if not project_id or not recording_id:
+        raise BasecampError("missing_required",
+                            "project_id and recording_id are required")
+    acc = account_id or DEFAULT_BC_ACCOUNT_ID
+
+    meta_url = (
+        f"https://3.basecampapi.com/{acc}/buckets/{int(project_id)}"
+        f"/uploads/{int(recording_id)}.json"
+    )
+    raw_meta, _ = _request(meta_url, bc_token, accept_json=True)
+    try:
+        meta = json.loads(raw_meta.decode("utf-8"))
+    except json.JSONDecodeError:
+        raise BasecampError("basecamp_malformed_metadata",
+                            "upload recording metadata was not valid JSON")
+
+    filename = meta.get("filename") or "attachment"
+    mime_type = meta.get("content_type") or "application/octet-stream"
+    # An Upload recording nests the blob fields directly; some payload shapes
+    # wrap them. Look top-level first, then a nested attachable, then parent.
+    download_url = (
+        meta.get("download_url")
+        or meta.get("url")
+        or (meta.get("attachable") or {}).get("download_url")
+    )
+    if not download_url:
+        raise BasecampError("basecamp_no_download_url",
+                            "upload recording metadata lacked download_url")
+
+    body, _ = _request(download_url, bc_token, accept_json=False)
+
+    return FetchedAttachment(
+        filename=filename,
+        mime_type=mime_type,
+        size_bytes=len(body),
+        sender=project_name_for_audit or f"BC bucket {project_id}",
+        data=body,
+    )

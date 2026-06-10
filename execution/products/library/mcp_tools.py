@@ -676,8 +676,12 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
         project_id = args.get("project_id")
         recording_id = args.get("recording_id")
         attachment_sgid = (args.get("attachment_sgid") or "").strip()
-        if not project_id or not recording_id or not attachment_sgid:
-            return {"ok": False, "error": "missing_required: basecamp needs project_id + recording_id + attachment_sgid"}
+        # sgid is optional: when the caller only has the upload's recording id
+        # (the trailing number in a `.../uploads/<id>` brief link), we resolve
+        # the blob via the Upload recording endpoint instead. We still need
+        # project_id + recording_id either way.
+        if not project_id or not recording_id:
+            return {"ok": False, "error": "missing_required: basecamp needs project_id + recording_id (attachment_sgid optional)"}
         id_echo = {"project_id": project_id, "recording_id": recording_id, "attachment_sgid": attachment_sgid}
     else:  # drive
         drive_file_id = (args.get("drive_file_id") or "").strip()
@@ -752,12 +756,20 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
             elif source == "basecamp":
                 # Reuse the existing per-user BC token resolution.
                 bc_token = _bc_token(user)
-                fetched = bc_source.fetch(
-                    int(id_echo["project_id"]),
-                    int(id_echo["recording_id"]),
-                    id_echo["attachment_sgid"],
-                    bc_token,
-                )
+                if id_echo.get("attachment_sgid"):
+                    fetched = bc_source.fetch(
+                        int(id_echo["project_id"]),
+                        int(id_echo["recording_id"]),
+                        id_echo["attachment_sgid"],
+                        bc_token,
+                    )
+                else:
+                    # No sgid -> resolve the blob from the upload recording id.
+                    fetched = bc_source.fetch_by_recording(
+                        int(id_echo["project_id"]),
+                        int(id_echo["recording_id"]),
+                        bc_token,
+                    )
             else:  # drive passthrough
                 fetched = drive_source.fetch(id_echo["drive_file_id"], access_token)
         except (gmail_source.GmailError, bc_source.BasecampError,
@@ -1011,8 +1023,8 @@ TOOLS: list[Tool] = [
                 "filename": {"type": "string", "description": "Gmail attachment filename (preferred over attachment_id -- robust against id-format drift across Gmail-API wrappers). Case-insensitive basename match."},
                 "attachment_id": {"type": "string", "description": "Canonical Gmail v1 attachment id from `users.messages.get(format=full).payload.parts[*].body.attachmentId`. Use `filename` instead if your Gmail client returns a wrapper-internal id format."},
                 "project_id": {"type": "integer", "description": "Basecamp bucket id"},
-                "recording_id": {"type": "integer", "description": "Basecamp recording id (todo / comment) hosting the attachment"},
-                "attachment_sgid": {"type": "string", "description": "Basecamp blob sgid"},
+                "recording_id": {"type": "integer", "description": "Basecamp recording id. For todo/comment attachments this hosts the blob (pair with attachment_sgid). For a vault/brief upload it is the trailing id in the `.../uploads/<id>` link and is sufficient on its own."},
+                "attachment_sgid": {"type": "string", "description": "Basecamp blob sgid. Optional: omit for `.../uploads/<id>` upload links and the blob is resolved from recording_id alone."},
                 "drive_file_id": {"type": "string", "description": "Drive file id for passthrough mode"},
                 "destination_subpath": {"type": "string", "description": "Optional override for the YYYY-MM folder segment"},
             },
