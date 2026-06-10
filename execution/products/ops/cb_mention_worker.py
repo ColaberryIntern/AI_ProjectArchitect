@@ -47,7 +47,12 @@ MENTION_WINDOW_MINUTES = int(os.environ.get("OPS_CB_MENTION_WINDOW_MINUTES", "60
 # replaying weeks of BC history if the scheduler was down for a long
 # stretch. 7 days = 10080 minutes by default.
 MAX_LOOKBACK_MINUTES = int(os.environ.get("OPS_CB_MENTION_MAX_LOOKBACK_MINUTES", "10080"))
-MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "50"))
+# Default raised from 50 → 100. Buckets are sorted by `updated_at` so the
+# most active 100 always get scanned; cold buckets rotate out and are
+# reported in the heartbeat. With per-bucket cursors, rotated-out buckets
+# retain their cursor and catch up on the next tick they're scanned — no
+# mentions permanently lost, just higher latency for cold buckets.
+MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "100"))
 # Regex matches "@CB System", "@CB", or "@CBSystem" (case-insensitive).
 TRIGGER_RE = re.compile(r"@CB[\s_-]*(System)?", re.IGNORECASE)
 # BC API requires the User-Agent to include contact info (an email or URL);
@@ -343,13 +348,35 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
 
     from .sync import discover_projects
     all_projects = discover_projects(token)
+    # Sort by `updated_at` descending so the most-active buckets always
+    # rank first. With cursors in place (see cb_mention_worker), rotated-
+    # out buckets keep their cursor and catch up next time they're scanned;
+    # they don't permanently lose mentions, just see higher latency.
+    # Missing updated_at sorts to the bottom — projects with no signal
+    # haven't seen activity in a long time.
+    all_projects = sorted(
+        all_projects,
+        key=lambda p: p.get("updated_at") or "",
+        reverse=True,
+    )
     truncated = max(0, len(all_projects) - max_buckets)
+    rotated_out_buckets: list[dict] = []
     if truncated:
-        # Visibility into the 50-bucket cap — when this is non-zero, a
-        # mention could live in a bucket we never even look at.
+        # Visibility into the cap — when this is non-zero, a mention in a
+        # rotated-out bucket has latency = (#scan ticks until it rotates
+        # back into the top max_buckets).
+        rotated = all_projects[max_buckets:]
+        rotated_out_buckets = [
+            {"id": p.get("id"), "name": p.get("name", "?"),
+             "updated_at": p.get("updated_at", "")}
+            for p in rotated[:25]  # cap log payload size
+        ]
         logger.warning(
-            "cb_mentions: user=%s has %d buckets, scanning first %d (truncated=%d)",
-            user_id, len(all_projects), max_buckets, truncated,
+            "cb_mentions: user=%s has %d buckets > cap=%d; rotated out "
+            "(oldest activity first): %s",
+            user_id, len(all_projects), max_buckets,
+            ", ".join(f"{b['id']}({b['updated_at'][:10]})"
+                      for b in rotated_out_buckets[:5]),
         )
     projects = all_projects[:max_buckets]
     # Per-bucket cursor. The scan-start time becomes the new cursor for
@@ -458,6 +485,7 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
         "status": "ok",
         "checked_buckets": len(projects),
         "buckets_truncated": truncated,
+        "buckets_rotated_out": rotated_out_buckets,
         "mentions_found": found,
         "responded": responded,
         "skipped_already_seen": skipped_seen,
