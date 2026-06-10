@@ -143,12 +143,22 @@ function _setupBlock(workspaceUrl) {
     '5. Start Claude Code:\n' +
     '   claude\n' +
     '   Claude reads CLAUDE.md from the workspace root and fires the SessionStart\n' +
-    '   hook in .claude/settings.json. The hook assembles a 5-layer context:\n' +
+    '   hook in .claude/settings.json. When the central AI_ProjectArchitect repo\n' +
+    '   is installed side-by-side, the hook assembles the full 5-layer context:\n' +
     '   org doctrine -> shared KB -> tenant policy -> your CLAUDE.md ->\n' +
-    '   your OPERATOR_MEMORY.md. It also appends the mandatory-ticket protocol\n' +
-    '   wired to your personal BC project, so the first substantive prompt creates\n' +
-    '   a ticket there before any work happens.\n' +
-    '6. Paste the task prompt below into the Claude Code session.\n'
+    '   your OPERATOR_MEMORY.md, and appends the mandatory-ticket protocol wired\n' +
+    '   to your personal BC project. If the central repo is NOT present, the hook\n' +
+    '   runs in limited mode (a short banner + the ticket protocol only) -- the\n' +
+    '   KB and tenant-policy layers will be missing. Either way it must print a\n' +
+    '   "Colaberry SessionStart hook" banner; if you see no banner, the hook did\n' +
+    '   not fire and the doctrine context is NOT loaded.\n' +
+    '6. Paste the task prompt below into the Claude Code session.\n' +
+    '\n' +
+    'PREFLIGHT (do this before step 1 of the task): confirm your terminal is\n' +
+    'inside the `' + dir + '` workspace repo and that the SessionStart banner\n' +
+    'printed when Claude started. If you are in `AI_ProjectArchitect` (the build\n' +
+    'repo) or any other directory, STOP -- the doctrine, KB, and mandatory-ticket\n' +
+    'context are not loaded there, so this prompt will not behave as written.\n'
   );
 }
 

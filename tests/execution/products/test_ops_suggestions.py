@@ -1,13 +1,14 @@
 """Unit tests for action recipe matching + Claude Code prompt generation."""
+from execution.products.ops import suggestions as S
 from execution.products.ops.store import OpsTodo
 from execution.products.ops.suggestions import build_suggestion, generate_prompt
 
 
-def _make(title, desc=""):
+def _make(title, desc="", category="unscored"):
     return OpsTodo(
         bc_id=1, bc_project_id=1, bc_project_name="Test Project",
         bc_todolist_id=1, bc_todolist_name="Main",
-        title=title, description=desc,
+        title=title, description=desc, category=category,
         bc_app_url="https://3.basecamp.com/x/y",
     )
 
@@ -78,3 +79,104 @@ def test_generate_prompt_handles_no_due_date():
     t = _make("Some task")
     prompt = generate_prompt(t)
     assert "no due date" in prompt
+
+
+# ── F1: human-owned decisions get a recommendation, not a verdict ──────────
+
+_HUMAN_DESC = (
+    '<span>HUMAN TASK</span> <strong>Owner:</strong> Ali Muwwakkil '
+    '<h3>Objective</h3><p>Confirm cohort cadence and size.</p>'
+)
+
+
+def test_human_owned_decision_reframes_step3_to_recommendation():
+    t = _make("Finalize decision on cohort cadence and size", desc=_HUMAN_DESC,
+              category="human_required")
+    s = build_suggestion(t)
+    assert s["action_kind"] == "decision"
+    step3 = s["steps"][2].lower()
+    assert "recommendation" in step3
+    assert "do not post" in step3
+    # The named owner is interpolated into the step + the ownership note.
+    assert "Ali Muwwakkil" in s["steps"][2]
+    assert "Ali Muwwakkil" in s["owner_note"]
+
+
+def test_human_owned_prompt_has_ownership_section():
+    t = _make("Approve the cohort plan", desc=_HUMAN_DESC, category="human_required")
+    prompt = generate_prompt(t)
+    assert "## Ownership" in prompt
+    assert "recommendation for them to confirm" in prompt
+
+
+def test_non_human_decision_keeps_verdict_wording():
+    # A genuinely delegated decision (no HUMAN TASK marker, not human_required)
+    # keeps the original verdict step and gets no ownership note.
+    t = _make("Approve the vendor contract", desc="Please decide by Friday.")
+    s = build_suggestion(t)
+    assert s["action_kind"] == "decision"
+    assert "verdict, reason, next action" in s["steps"][2]
+    assert s["owner_note"] == ""
+    assert "## Ownership" not in generate_prompt(t)
+
+
+def test_human_required_category_alone_triggers_reframe():
+    # No "HUMAN TASK" / Owner marker in the body, only the scorer category.
+    t = _make("Confirm the launch date", desc="We need to lock this.",
+              category="human_required")
+    s = build_suggestion(t)
+    assert "recommendation" in s["steps"][2].lower()
+    # Falls back to the generic owner label when no name is present.
+    assert "the owner" in s["steps"][2]
+
+
+def test_human_marker_without_category_triggers_reframe():
+    # PMO stamped HUMAN TASK but scorer hasn't tagged category yet.
+    t = _make("Confirm scope", desc="HUMAN TASK <strong>Owner:</strong> Ram Katamaraja")
+    s = build_suggestion(t)
+    assert "recommendation" in s["steps"][2].lower()
+    assert "Ram Katamaraja" in s["steps"][2]
+
+
+def test_human_required_non_decision_kind_unaffected():
+    # Reframe only applies to recipes that declare overrides (decision today).
+    # A human_required BUILD task keeps its normal steps + no ownership note.
+    # (Description deliberately avoids decision keywords like "confirm"/"approve"
+    # so the build recipe wins the match.)
+    build_desc = "HUMAN TASK <strong>Owner:</strong> Ali Muwwakkil. Ship the dashboard."
+    t = _make("Implement the cohort dashboard", desc=build_desc,
+              category="human_required")
+    s = build_suggestion(t)
+    assert s["action_kind"] == "build"
+    assert s["owner_note"] == ""
+
+
+# ── F2: no recipe references a non-existent skill/tool ─────────────────────
+
+# Skills that actually ship in the harness. A recipe resource of kind "skill"
+# must name one of these, or the operator is pointed at something that doesn't
+# exist (the decision-record/email-tone-check/agenda-tight class of bug).
+_REAL_SKILLS = {"deep-research", "code-review"}
+_DEAD_REFS = {"decision-record", "email-tone-check", "agenda-tight", "cb-context-walker"}
+
+
+def test_no_recipe_references_a_dead_skill():
+    for recipe in S._RECIPES + [S._DEFAULT_RECIPE]:
+        for r in recipe.get("resources", []):
+            if r["kind"] == "skill":
+                assert r["name"] in _REAL_SKILLS, (
+                    f"recipe '{recipe['kind']}' references unknown skill '{r['name']}'"
+                )
+
+
+def test_known_dead_references_are_gone_everywhere():
+    blob = repr(S._RECIPES) + repr(S._DEFAULT_RECIPE) + S._PROMPT_TEMPLATE
+    for dead in _DEAD_REFS:
+        assert dead not in blob, f"dead reference '{dead}' resurfaced"
+
+
+def test_decision_recipe_uses_real_capture_tools():
+    decision = next(r for r in S._RECIPES if r["kind"] == "decision")
+    names = {r["name"] for r in decision["resources"]}
+    assert "colaberry_remember" in names
+    assert "colaberry_save_doc_to_bc" in names

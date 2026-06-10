@@ -255,6 +255,94 @@ def test_basecamp_401_raises():
     assert exc.value.code == "basecamp_unauthorized"
 
 
+# ── Basecamp upload-by-recording-id (F6: brief/vault links have no sgid) ──
+
+
+def test_basecamp_fetch_by_recording_happy_path():
+    meta = json.dumps({
+        "filename": "19-ali-decisions.md",
+        "content_type": "text/markdown",
+        "byte_size": 4096,
+        "download_url": "https://3.basecampapi.com/download/upload/Y",
+    }).encode("utf-8")
+    binary = b"# Ali decisions\nlocked: quarterly cadence"
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_urlopen_response(meta),
+            _make_urlopen_response(binary),
+        ]
+        result = bc_source.fetch_by_recording(
+            project_id=47502609, recording_id=9946496378,
+            bc_token="bc-token-xyz",
+            project_name_for_audit="AI Systems Architect Accelerator",
+        )
+    assert result.filename == "19-ali-decisions.md"
+    assert result.mime_type == "text/markdown"
+    assert result.data == binary
+    assert "AI Systems Architect Accelerator" in result.sender
+    # Metadata call must hit the *upload recording* endpoint (recording id in
+    # the path), not the sgid blob endpoint.
+    meta_req = mock_urlopen.call_args_list[0].args[0]
+    assert "/buckets/47502609/uploads/9946496378.json" in meta_req.full_url
+
+
+def test_basecamp_fetch_by_recording_resolves_nested_attachable_url():
+    # Some upload payloads nest the blob fields under `attachable`.
+    meta = json.dumps({
+        "filename": "brief.pdf",
+        "attachable": {"download_url": "https://3.basecampapi.com/download/nested"},
+    }).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_urlopen_response(meta),
+            _make_urlopen_response(b"bytes"),
+        ]
+        result = bc_source.fetch_by_recording(47502609, 9946496378, "bc-token")
+    assert result.data == b"bytes"
+    dl_req = mock_urlopen.call_args_list[1].args[0]
+    assert dl_req.full_url == "https://3.basecampapi.com/download/nested"
+
+
+def test_basecamp_fetch_by_recording_requires_ids():
+    with pytest.raises(bc_source.BasecampError) as exc:
+        bc_source.fetch_by_recording(0, 0, "bc-token")
+    assert exc.value.code == "missing_required"
+
+
+def test_basecamp_fetch_by_recording_no_download_url_raises():
+    meta = json.dumps({"filename": "x", "content_type": "text/plain"}).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [_make_urlopen_response(meta)]
+        with pytest.raises(bc_source.BasecampError) as exc:
+            bc_source.fetch_by_recording(47502609, 9946496378, "bc-token")
+    assert exc.value.code == "basecamp_no_download_url"
+
+
+def test_mcp_basecamp_validation_allows_missing_sgid(fake_user):
+    """The MCP tool must accept a basecamp fetch with no sgid (resolves by
+    recording id) but still require project_id + recording_id."""
+    from execution.products.library import mcp_tools
+
+    # Missing both ids -> still an error, with the updated message.
+    err = mcp_tools._tool_attachment_fetch(fake_user, {"source": "basecamp"})
+    assert err["ok"] is False
+    assert "project_id + recording_id" in err["error"]
+    assert "attachment_sgid optional" in err["error"]
+
+    # sgid omitted but ids present -> validation passes, so we get PAST the
+    # missing_required gate. Mock credential resolution to fail cleanly so the
+    # call returns without real network/index side effects beyond the inflight
+    # guard, and assert the error is NOT a missing_required one.
+    with patch.object(google_oauth_token, "get_access_token_for_operator",
+                      side_effect=google_oauth_token.OAuthError("no_google_oauth_grant")):
+        res = mcp_tools._tool_attachment_fetch(
+            fake_user,
+            {"source": "basecamp", "project_id": 47502609, "recording_id": 9946496378},
+        )
+    assert res["ok"] is False
+    assert "missing_required" not in res["error"]
+
+
 # ── Drive passthrough adapter ──────────────────────────────────────────
 
 
