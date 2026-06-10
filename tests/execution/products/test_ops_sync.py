@@ -630,34 +630,28 @@ class TestPullTodosForUser:
         state = store.load_state("ali@colaberry.com")
         assert "not a member" in state.last_sync_error
 
-    def test_widespread_403_with_identity_mismatch_flags_connection_suspect(
+    def test_widespread_403_with_wrong_account_flags_connection_suspect(
         self, monkeypatch, isolated_ops_root,
     ):
-        """Self-annealing guard: when the token authenticates as one BC id
-        but the classifier expects a DIFFERENT id AND projects are 403ing,
-        the connection is bound to the wrong (duplicate) account. The sync
-        must collapse the pile of per-bucket 403s into one root-cause line
-        that names BOTH ids and points at the reconnect, and flag
-        result['connection_identity_suspect']. Models the 2026-06-10
-        incident: Ali connected as BC 16988292 (member of nothing) while
-        his tasks live under 17454835."""
-        CLASSIFIER_ID = 17454835      # the id the classifier expects
-        TOKEN_ID = 16988292           # the (wrong) id the token authenticates as
+        """Self-annealing guard: when the token's ACCOUNT-scoped person id
+        (/my/profile.json) differs from the id the classifier expects AND
+        projects are 403ing, the connection is bound to the wrong Basecamp
+        account. The sync collapses the pile of per-bucket 403s into one
+        root-cause line naming both ids + the reconnect, and flags
+        result['connection_identity_suspect']."""
+        CLASSIFIER_ID = 17454835       # the account person id tasks live under
+        TOKEN_PERSON_ID = 99999        # a genuinely different account person
         monkeypatch.setattr(sync.tokens, "get_user_token",
                             MagicMock(return_value=("tok", "vault-oauth")))
         monkeypatch.setattr(sync.tokens, "get_user_bc_id",
                             MagicMock(return_value=CLASSIFIER_ID))
-        from execution.products.library import basecamp_oauth_token, tenancy
-        monkeypatch.setattr(tenancy, "get_user", MagicMock(
-            return_value=SimpleNamespace(user_id="usr-x", email="ali@colaberry.com")))
-        monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata", MagicMock(
-            return_value={"legacy": False, "bc_user_email": "ali@colaberry.com",
-                          "bc_user_id": TOKEN_ID}))
         monkeypatch.setattr(
             sync, "discover_projects",
             MagicMock(return_value=[_project_dict(i, f"P{i}") for i in (101, 202, 303)]),
         )
         def _bc(path, token, params=None, _retry=1):
+            if path == "/my/profile.json":
+                return {"id": TOKEN_PERSON_ID, "email_address": "ali@colaberry.com"}
             for pid in (101, 202, 303):
                 if path == f"/projects/{pid}.json":
                     raise urllib.error.HTTPError(
@@ -672,45 +666,47 @@ class TestPullTodosForUser:
         assert result["connection_identity_suspect"] is True
         # The banner leads with the root-cause line naming both ids + fix.
         state = store.load_state("ali@colaberry.com")
-        assert str(TOKEN_ID) in state.last_sync_error
+        assert str(TOKEN_PERSON_ID) in state.last_sync_error
         assert str(CLASSIFIER_ID) in state.last_sync_error
         assert "/profile/connect-basecamp" in state.last_sync_error
         errs = sync.recent_errors()
         assert any(e["kind"] == "connection_identity_suspect" for e in errs)
 
-    def test_identity_mismatch_without_403_is_not_flagged(
+    def test_same_person_two_id_namespaces_not_flagged(
         self, monkeypatch, isolated_ops_root,
     ):
-        """The id-mismatch guard must NOT false-positive on the legitimate
-        AI-clone model: token id (clone) != classifier id (human) by
-        design, but a correctly-granted clone reads everything fine (zero
-        forbidden buckets). status=ok, connection_identity_suspect=False."""
-        CLASSIFIER_ID = 17454835
-        CLONE_ID = 52524505  # a real clone id — differs from classifier
+        """Regression guard for the 2026-06-10 false positive. A single
+        human has a Launchpad identity id AND a per-account person id that
+        differ (e.g. Launchpad 16988292 == account-person 17454835). The
+        guard must compare the ACCOUNT person id (/my/profile.json) to the
+        classifier — when they match it is the SAME person, so forbidden
+        buckets are genuine non-memberships, NOT a wrong-account binding.
+        suspect must stay False even with 403s present."""
+        SAME_ID = 17454835
         monkeypatch.setattr(sync.tokens, "get_user_token",
                             MagicMock(return_value=("tok", "vault-oauth")))
         monkeypatch.setattr(sync.tokens, "get_user_bc_id",
-                            MagicMock(return_value=CLASSIFIER_ID))
-        from execution.products.library import basecamp_oauth_token, tenancy
-        monkeypatch.setattr(tenancy, "get_user", MagicMock(
-            return_value=SimpleNamespace(user_id="usr-x", email="ali@colaberry.com")))
-        monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata", MagicMock(
-            return_value={"legacy": False, "bc_user_email": "ali+ai@colaberry.com",
-                          "bc_user_id": CLONE_ID}))
+                            MagicMock(return_value=SAME_ID))
         monkeypatch.setattr(
             sync, "discover_projects",
-            MagicMock(return_value=[_project_dict(101)]),
+            MagicMock(return_value=[_project_dict(101, "P101"), _project_dict(202, "P202")]),
         )
         def _bc(path, token, params=None, _retry=1):
-            if path == "/projects/101.json":
-                return _project_dict(101)
-            if path == "/buckets/101/todosets/555/todolists.json":
-                return []
+            if path == "/my/profile.json":
+                # Account-scoped id matches the classifier — same human,
+                # even though the Launchpad id (not consulted here) differs.
+                return {"id": SAME_ID, "email_address": "ali@colaberry.com"}
+            for pid in (101, 202):
+                if path == f"/projects/{pid}.json":
+                    raise urllib.error.HTTPError(
+                        "u", 403, "Forbidden", {}, io.BytesIO(b""))
             return None
         monkeypatch.setattr(sync, "_bc_get", _bc)
 
         result = sync.pull_todos_for_user("ali@colaberry.com")
-        assert result["status"] == "ok"
+        # 403s still mark partial (genuine non-memberships), but NOT suspect.
+        assert result["status"] == "partial"
+        assert len(result["forbidden_buckets"]) == 2
         assert result["connection_identity_suspect"] is False
         errs = sync.recent_errors()
         assert not any(e["kind"] == "connection_identity_suspect" for e in errs)

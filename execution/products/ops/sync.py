@@ -472,16 +472,20 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # something to silently swallow into stale data.
     forbidden_buckets: list[int] = []
 
-    # Resolve which BC identity this token authenticates as, so a 403
-    # error can name the exact account that needs granting AND so the
-    # identity-mismatch guard below can compare it to the id the
-    # classifier expects. Best-effort: on lookup failure we fall back to
-    # a generic phrase and skip the guard. The email alone is ambiguous
-    # when an operator has duplicate BC person records for one address
-    # (the exact failure mode this guard exists for), so we capture the
-    # numeric id too.
+    # Resolve which BC identity this token authenticates as, for the 403
+    # messages and the wrong-account guard below. Two ids matter and they
+    # are NOT interchangeable:
+    #   - the LAUNCHPAD identity id in the OAuth grant metadata, and
+    #   - the per-ACCOUNT person id returned by /my/profile.json.
+    # A single human has BOTH (e.g. Launchpad 16988292 == account-person
+    # 17454835), and project memberships + the classifier (get_user_bc_id)
+    # use the ACCOUNT person id. The 2026-06-10 incident burned us here:
+    # the guard compared the Launchpad id to the account id, found them
+    # unequal (they never match for the same person), and falsely cried
+    # "wrong account". So we resolve the account-scoped person id via
+    # /my/profile.json and compare THAT. Best-effort: on failure we skip
+    # the guard rather than false-positive.
     connected_identity = ""
-    connected_identity_id = 0
     try:
         from execution.products.library import (
             basecamp_oauth_token as _bc_oauth,
@@ -492,7 +496,14 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             _meta = _bc_oauth.get_grant_metadata(_u)
             if _meta:
                 connected_identity = (_meta.get("bc_user_email") or "").strip()
-                connected_identity_id = int(_meta.get("bc_user_id") or 0)
+    except Exception:
+        pass
+
+    token_person_id = 0
+    try:
+        _me = _bc_get("/my/profile.json", token)
+        if _me:
+            token_person_id = int(_me.get("id") or 0)
     except Exception:
         pass
 
@@ -585,29 +596,32 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # correctly-granted clone produces zero forbidden buckets, so this
     # branch stays silent for it.
     identity_alert = ""
+    # Compare the token's ACCOUNT-scoped person id (not the Launchpad id)
+    # against the id the classifier expects. Equal → same person; the
+    # forbidden buckets are genuine non-memberships, NOT a wrong-account
+    # binding (this is the false-positive the 2026-06-10 fix retired).
     connection_identity_suspect = bool(
-        forbidden_buckets and connected_identity_id and bc_user_id
-        and connected_identity_id != bc_user_id
+        forbidden_buckets and token_person_id and bc_user_id
+        and token_person_id != bc_user_id
     )
     if forbidden_buckets:
         who = connected_identity or "your Basecamp connection"
-        who_id = f" (BC id {connected_identity_id})" if connected_identity_id else ""
+        who_id = f" (BC person id {token_person_id})" if token_person_id else ""
         if connection_identity_suspect:
             identity_alert = (
                 f"Basecamp connection bound to the wrong account: you are "
                 f"connected as {who}{who_id}, which was forbidden on "
                 f"{len(forbidden_buckets)} project(s), but your tasks are "
-                f"tracked under BC id {bc_user_id}. This is almost certainly "
-                f"a duplicate Basecamp identity — reconnect at "
-                f"/profile/connect-basecamp as BC id {bc_user_id}."
+                f"tracked under BC person id {bc_user_id}. Reconnect at "
+                f"/profile/connect-basecamp as that account."
             )
             _record_error(user_id, "connection_identity_suspect", identity_alert)
         else:
             identity_alert = (
                 f"Basecamp connection ({who}{who_id}) was forbidden on "
-                f"{len(forbidden_buckets)} project(s). If these should be "
-                f"visible, add that identity to them (People → Add people) "
-                f"or reconnect as the account that is a member."
+                f"{len(forbidden_buckets)} project(s) it is not a member of. "
+                f"If any should be visible, add that identity to them "
+                f"(People → Add people)."
             )
             _record_error(user_id, "connection_forbidden_summary", identity_alert)
 
