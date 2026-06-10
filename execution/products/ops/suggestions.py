@@ -38,8 +38,18 @@ _RECIPES = [
             "Write a 3-line decision: verdict, reason, next action.",
             "If unsure: list the specific info needed and who would have it.",
         ],
+        # When the todo is a HUMAN TASK (category=human_required or a "HUMAN TASK"
+        # marker in the description), the AI cannot satisfy a "Ali confirms"-style
+        # Definition of Done — only the named owner can. build_suggestion() swaps
+        # in these step overrides so the AI produces a recommendation for the owner
+        # to confirm, not an authoritative verdict it isn't entitled to post.
+        # `{owner}` is substituted with the extracted owner name (or "the owner").
+        "human_required_step_overrides": {
+            2: "Draft a recommendation (verdict + reason + next action) for {owner} to confirm. Do NOT post it as the final decision; the call is theirs.",
+        },
         "resources": [
-            {"kind": "skill", "name": "decision-record", "why": "Capture the verdict + rationale so it's auditable later"},
+            {"kind": "tool", "name": "colaberry_remember", "why": "Persist the decision + rationale to operator memory so it's auditable later"},
+            {"kind": "tool", "name": "colaberry_save_doc_to_bc", "why": "Post the decision record to the BC ticket as a durable artifact once confirmed"},
         ],
         "stop_conditions": [
             "If the decision impacts >$10k or external commitments, pause and surface to Ram before posting.",
@@ -58,7 +68,6 @@ _RECIPES = [
         ],
         "resources": [
             {"kind": "tool", "name": "gmail (send)", "why": "Send the reply from your Colaberry address"},
-            {"kind": "skill", "name": "email-tone-check", "why": "Brand-compliance preflight (no em-dashes, no AI-isms)"},
         ],
         "stop_conditions": [
             "If the reply commits Colaberry to >4h of work or new deliverables, surface to Ram first.",
@@ -77,7 +86,6 @@ _RECIPES = [
         ],
         "resources": [
             {"kind": "tool", "name": "google-calendar", "why": "Schedule + send the invite"},
-            {"kind": "skill", "name": "agenda-tight", "why": "Forces explicit agenda + named decision"},
         ],
         "stop_conditions": [
             "Don't schedule a recurring meeting without a 30-day kill date.",
@@ -96,7 +104,7 @@ _RECIPES = [
         ],
         "resources": [
             {"kind": "skill", "name": "deep-research", "why": "Multi-source fact-checked report with citations"},
-            {"kind": "tool", "name": "cb-context-walker", "why": "Pulls full ticket/Vault context as LLM-readable input"},
+            {"kind": "tool", "name": "colaberry_get_asset", "why": "Pulls vetted KB assets as LLM-readable input before fresh research"},
         ],
         "stop_conditions": [
             "If you blow the time-box, escalate with what you HAVE found — don't keep digging silently.",
@@ -185,6 +193,36 @@ def _match_recipe(title: str, description: str) -> dict[str, Any]:
     return _DEFAULT_RECIPE
 
 
+# Owner marker in PMO-generated descriptions, e.g.
+#   <strong>Owner:</strong> Ali Muwwakkil
+# Tolerates optional closing tag and surrounding whitespace; stops at the next
+# tag or end of line so we capture just the name.
+_OWNER_RE = re.compile(r"Owner:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
+_HUMAN_TASK_RE = re.compile(r"\bHUMAN[ _-]?TASK\b", re.I)
+
+
+def _human_owner(todo: OpsTodo) -> str | None:
+    """Return the named owner if this todo is a human-required decision the AI
+    can only *recommend* on (not decide), else None.
+
+    A todo is human-owned when the scorer tagged it `human_required` OR the
+    PMO stamped a "HUMAN TASK" marker in the description. When so, we try to
+    pull the owner's name from the `Owner:` marker; if absent, fall back to
+    the generic "the owner" so callers always get a usable label.
+    """
+    is_human = todo.category == "human_required" or bool(
+        _HUMAN_TASK_RE.search(todo.description or "")
+    )
+    if not is_human:
+        return None
+    m = _OWNER_RE.search(todo.description or "")
+    if m:
+        name = m.group(1).strip()
+        if name:
+            return name
+    return "the owner"
+
+
 def _urgency_summary(todo: OpsTodo) -> str:
     parts: list[str] = []
     if todo.due_on:
@@ -197,15 +235,39 @@ def _urgency_summary(todo: OpsTodo) -> str:
 
 
 def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
-    """Produce the structured per-todo recipe shown above the workspace."""
+    """Produce the structured per-todo recipe shown above the workspace.
+
+    For human-owned tasks, any `human_required_step_overrides` on the matched
+    recipe are applied so the AI is steered toward a recommendation the owner
+    confirms — never an authoritative verdict it isn't entitled to post. The
+    `owner_note` (if any) is surfaced in the generated prompt's expectations.
+    """
     recipe = _match_recipe(todo.title, todo.description)
+    steps = list(recipe["steps"])
+
+    owner = _human_owner(todo)
+    owner_note = ""
+    if owner:
+        overrides = recipe.get("human_required_step_overrides") or {}
+        for idx, new_step in overrides.items():
+            if 0 <= idx < len(steps):
+                steps[idx] = new_step.format(owner=owner)
+        if overrides:
+            owner_note = (
+                f"This task is marked HUMAN TASK (owner: {owner}). Final "
+                f"confirmation rests with {owner}. Your job is to produce a "
+                f"recommendation for them to confirm, not to post the verdict "
+                f"yourself."
+            )
+
     return {
         "action_kind": recipe["kind"],
         "one_line": recipe["one_line"],
-        "steps": list(recipe["steps"]),
+        "steps": steps,
         "resources": list(recipe["resources"]),
         "stop_conditions": list(recipe["stop_conditions"]),
         "urgency_summary": _urgency_summary(todo),
+        "owner_note": owner_note,
     }
 
 
@@ -240,7 +302,7 @@ You're helping me work through this Basecamp task. Context first, then the recip
 3. After each step, ask if I want to continue or adjust before moving to the next.
 4. Use the Resources listed above; check what's already in the repo before writing new code.
 5. If a Stop condition triggers, stop and tell me what you found.
-
+{owner_note_block}
 Begin.
 """
 
@@ -258,6 +320,8 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
         if s["resources"] else "(none specific — use your default tools)"
     )
     stop_block = "\n".join(f"- {c}" for c in s["stop_conditions"]) if s["stop_conditions"] else "(none)"
+    owner_note = s.get("owner_note") or ""
+    owner_note_block = f"\n## Ownership\n{owner_note}\n" if owner_note else ""
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
@@ -272,4 +336,5 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
         steps_block=steps_block,
         resources_block=resources_block,
         stop_block=stop_block,
+        owner_note_block=owner_note_block,
     )
