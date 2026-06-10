@@ -214,3 +214,83 @@ def test_provision_returns_error_when_no_human_email(monkeypatch):
     r = bp.provision_bc_ai_account(u)
     assert r.ok is False
     assert r.error_code == "no_human_email"
+
+
+# ── grant_clone_to_buckets (close a My Day sync 403 membership gap) ────
+
+
+def test_resolve_clone_bc_user_id_prefers_oauth_grant(monkeypatch):
+    """The grantee must be the identity sync actually authenticates as —
+    the bc_user_id in the live OAuth grant — not the (possibly stale)
+    provisioned bc_ai_user_id."""
+    u = _u("ali@colaberry.com", bc_ai_user_id=111)
+    from execution.products.library import basecamp_oauth_token
+    monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata",
+                        MagicMock(return_value={"bc_user_id": 999, "legacy": False}))
+    assert bp.resolve_clone_bc_user_id(u) == 999
+
+
+def test_resolve_clone_bc_user_id_falls_back_to_provisioned(monkeypatch):
+    u = _u("ali@colaberry.com", bc_ai_user_id=111)
+    from execution.products.library import basecamp_oauth_token
+    monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata",
+                        MagicMock(return_value=None))
+    assert bp.resolve_clone_bc_user_id(u) == 111
+
+
+def test_grant_clone_to_buckets_happy_path(monkeypatch):
+    """Each bucket gets a PUT {grant:[clone_id]} to its people endpoint;
+    all succeed → all GrantResult.ok True."""
+    monkeypatch.setenv("BASECAMP_ACCESS_TOKEN", "fake-admin-token")
+    u = _u("ali@colaberry.com", bc_ai_user_id=37708014)
+    calls: list[tuple[str, dict]] = []
+    def _fake_put(url, payload, *, timeout=20.0):
+        calls.append((url, payload))
+        return {"granted": [{"id": 37708014}]}
+    monkeypatch.setattr(bp, "_bc_put", _fake_put)
+    monkeypatch.setattr(bp, "resolve_clone_bc_user_id", lambda _u: 37708014)
+
+    results = bp.grant_clone_to_buckets(u, [47502609, 47477101, 47447274])
+
+    assert [r.bucket_id for r in results] == [47502609, 47477101, 47447274]
+    assert all(r.ok for r in results)
+    assert all(r.grantee_bc_user_id == 37708014 for r in results)
+    # Correct endpoint + idempotent grant payload per bucket.
+    assert len(calls) == 3
+    assert "/projects/47502609/people/users.json" in calls[0][0]
+    assert calls[0][1] == {"grant": [37708014]}
+
+
+def test_grant_clone_to_buckets_per_bucket_resilience(monkeypatch):
+    """One bucket failing (admin token not account-admin there) must not
+    abort the others — best-effort per bucket."""
+    monkeypatch.setenv("BASECAMP_ACCESS_TOKEN", "fake-admin-token")
+    u = _u("ali@colaberry.com", bc_ai_user_id=37708014)
+    def _fake_put(url, payload, *, timeout=20.0):
+        if "47477101" in url:
+            raise bp.ProvisionError("forbidden", "Admin token can't grant here.")
+        return {}
+    monkeypatch.setattr(bp, "_bc_put", _fake_put)
+    monkeypatch.setattr(bp, "resolve_clone_bc_user_id", lambda _u: 37708014)
+
+    results = bp.grant_clone_to_buckets(u, [47502609, 47477101, 47447274])
+    by_id = {r.bucket_id: r for r in results}
+    assert by_id[47502609].ok is True
+    assert by_id[47447274].ok is True
+    assert by_id[47477101].ok is False
+    assert by_id[47477101].error_code == "forbidden"
+
+
+def test_grant_clone_to_buckets_no_grantee_resolvable(monkeypatch):
+    """No OAuth grant and no provisioned id → every bucket fails with a
+    clear code rather than issuing a PUT with an empty grantee list."""
+    monkeypatch.setenv("BASECAMP_ACCESS_TOKEN", "fake-admin-token")
+    u = _u("ali@colaberry.com", bc_ai_user_id=None)
+    monkeypatch.setattr(bp, "resolve_clone_bc_user_id", lambda _u: 0)
+    put_called = MagicMock()
+    monkeypatch.setattr(bp, "_bc_put", put_called)
+
+    results = bp.grant_clone_to_buckets(u, [47502609])
+    assert results[0].ok is False
+    assert results[0].error_code == "no_clone_bc_user_id"
+    put_called.assert_not_called()

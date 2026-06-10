@@ -460,6 +460,35 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     fresh_todos: list[store.OpsTodo] = []
     partial = False
     project_errors: list[str] = []
+    # Buckets that returned 403 Forbidden during the walk. A 403 is NOT a
+    # transient failure like a 5xx or a timeout — it means the Basecamp
+    # identity this token authenticates as (the operator's AI clone) is
+    # not a member of that project, so it can list the project in
+    # /projects.json but cannot read its todos. Tracked separately from
+    # generic walk errors so the message can name the fix (grant the
+    # clone access) instead of the useless raw "HTTP Error 403: Forbidden".
+    # We deliberately still mark the sync `partial` — a membership gap is
+    # a real, visible problem the operator must fix in Basecamp, not
+    # something to silently swallow into stale data.
+    forbidden_buckets: list[int] = []
+
+    # Resolve which BC identity this token authenticates as, so a 403
+    # error can name the exact account that needs granting. Best-effort:
+    # if the lookup fails we fall back to a generic phrase.
+    connected_identity = ""
+    try:
+        from execution.products.library import (
+            basecamp_oauth_token as _bc_oauth,
+            tenancy as _tncy,
+        )
+        _u = _tncy.get_user(user_id)
+        if _u:
+            _meta = _bc_oauth.get_grant_metadata(_u)
+            if _meta:
+                connected_identity = (_meta.get("bc_user_email") or "").strip()
+    except Exception:
+        pass
+
     # L6 (2026-06-09 audit): track wall clock so we can bail out
     # gracefully when SYNC_BUDGET_SECONDS is exceeded rather than
     # letting one runaway sync hold the coordinator slot for hours.
@@ -497,6 +526,28 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         try:
             fresh_todos.extend(_walk_project_todos(proj, token, bc_user_id))
             projects_walked += 1
+        except urllib.error.HTTPError as e:  # per-project resilience
+            partial = True
+            if e.code == 403:
+                # Membership gap, not a transient failure. Name the
+                # identity + the remediation so the partial-sync banner
+                # and /my-day/_health tell the operator exactly what to
+                # do instead of showing a bare "HTTP Error 403".
+                who = connected_identity or "your Basecamp connection"
+                err = (
+                    f"bucket={bucket} ({proj_name[:40]}) 403 Forbidden — "
+                    f"{who} is not a member of this project. Add that "
+                    f"Basecamp identity to the project (People → Add people) "
+                    f"and it will sync on the next walk."
+                )
+                forbidden_buckets.append(bucket)
+                logger.warning("ops sync: %s", err)
+                _record_error(user_id, "project_forbidden", err)
+            else:
+                err = f"bucket={bucket} HTTPError: HTTP Error {e.code}: {e.reason}"
+                logger.warning("ops sync: %s", err)
+                _record_error(user_id, "project_walk", err)
+            project_errors.append(err)
         except Exception as e:  # noqa: BLE001 — per-project resilience
             partial = True
             err = f"bucket={bucket} {type(e).__name__}: {str(e)[:120]}"
@@ -514,7 +565,12 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # 3. State
     state.last_sync_at = _now_iso()
     state.last_sync_status = "partial" if partial else "ok"
-    state.last_sync_error = "; ".join(project_errors[:3]) if project_errors else ""
+    # Lead the banner with the actionable 403 messages when present — a
+    # membership gap is fixable by the operator, whereas a transient 5xx
+    # just retries on its own. Generic errors fill any remaining slots.
+    forbidden_errs = [e for e in project_errors if "403 Forbidden" in e]
+    other_errs = [e for e in project_errors if "403 Forbidden" not in e]
+    state.last_sync_error = "; ".join((forbidden_errs + other_errs)[:3]) if project_errors else ""
     state.todos_synced = len(fresh_todos)
     state.projects_synced = len(fresh_projects)
     store.save_state(state)
@@ -531,6 +587,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         "todos_created": t_created,
         "todos_updated": t_updated,
         "errors": project_errors[:3],
+        "forbidden_buckets": forbidden_buckets,
         "budget_exceeded": budget_exceeded,
         "wall_time_seconds": round(time.time() - sync_start, 1),
     }

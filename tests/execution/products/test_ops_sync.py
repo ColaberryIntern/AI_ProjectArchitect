@@ -567,6 +567,69 @@ class TestPullTodosForUser:
         assert state.last_sync_status == "partial"
         assert state.last_sync_error  # non-empty
 
+    def test_403_forbidden_bucket_is_actionable_not_generic(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """A 403 on a project walk is a MEMBERSHIP gap (the AI-clone
+        identity the token authenticates as isn't a member of that
+        project), not a transient failure. It must:
+          - still mark the sync 'partial' (a real, visible problem — we
+            do NOT silently swallow it into stale data),
+          - be tracked in result['forbidden_buckets'] distinctly,
+          - record under the 'project_forbidden' ring-buffer kind, and
+          - surface an ACTIONABLE message (names the fix: add the BC
+            identity to the project) instead of the useless bare
+            'HTTP Error 403: Forbidden' the old generic branch produced.
+        Regression guard for the 2026-06-10 'fix my health status' triage:
+        Ali's main bucket 47502609 was 403ing and the banner gave no
+        hint that the remedy was a Basecamp People→Add grant."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[
+                _project_dict(101, "Good"),
+                _project_dict(47502609, "AI Systems Architect Acc"),
+            ]),
+        )
+        def _bc(path, token, params=None, _retry=1):
+            if path == "/projects/101.json":
+                return _project_dict(101, "Good")
+            if path == "/projects/47502609.json":
+                # The clone can list this project but not read it.
+                raise urllib.error.HTTPError(
+                    "u", 403, "Forbidden", {}, io.BytesIO(b""),
+                )
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Inbox"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+
+        # Membership gap stays visible — partial, not masked.
+        assert result["status"] == "partial"
+        # Tracked distinctly from generic walk errors.
+        assert result["forbidden_buckets"] == [47502609]
+        # Recorded under the dedicated kind, with actionable copy.
+        errs = sync.recent_errors()
+        forbidden = [e for e in errs if e["kind"] == "project_forbidden"]
+        assert len(forbidden) == 1
+        detail = forbidden[0]["detail"]
+        assert "403 Forbidden" in detail
+        assert "not a member" in detail
+        assert "People" in detail  # names the BC remediation
+        assert "47502609" in detail
+        # The good project still synced (per-project resilience intact).
+        assert result["projects_walked"] == 1
+        # The banner string leads with the actionable 403 message.
+        state = store.load_state("ali@colaberry.com")
+        assert "not a member" in state.last_sync_error
+
     def test_budget_exceeded_stops_walk_and_records_partial(
         self, monkeypatch, isolated_ops_root,
     ):
