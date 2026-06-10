@@ -29,6 +29,10 @@ APPROVE_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_APPROVE_INTERVAL_M
 PURGE_CRON_MINUTES = int(os.environ.get("OPS_PURGE_CRON_MINUTES", "60"))
 SMOKE_CRON_HOUR = int(os.environ.get("OPS_CB_SMOKE_CRON_HOUR", "3"))
 SMOKE_CRON_TIMEZONE = os.environ.get("OPS_CB_SMOKE_CRON_TIMEZONE", "America/New_York")
+# Default: polling ON. Flip to "false" (case-insensitive) once webhooks
+# have been verified via webhook_events.jsonl and /admin/cb-mentions.json
+# to retire the 10-min poll. Reversible by toggling the env back.
+POLLING_ENABLED = os.environ.get("OPS_CB_MENTION_POLLING_ENABLED", "true").strip().lower() != "false"
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
@@ -196,14 +200,23 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
-    _scheduler.add_job(
-        _scan_cb_mentions,
-        trigger=IntervalTrigger(minutes=MENTION_INTERVAL_MINUTES),
-        id=MENTION_JOB_ID,
-        name="CB System @-mention auto-response (per user with vault token)",
-        replace_existing=True,
-        next_run_time=None,
-    )
+    if POLLING_ENABLED:
+        _scheduler.add_job(
+            _scan_cb_mentions,
+            trigger=IntervalTrigger(minutes=MENTION_INTERVAL_MINUTES),
+            id=MENTION_JOB_ID,
+            name="CB System @-mention auto-response (per user with vault token)",
+            replace_existing=True,
+            next_run_time=None,
+        )
+    else:
+        # WARNING (not INFO) because a misconfigured flag here is silent-
+        # failure territory — without WARNING visibility, an operator who
+        # forgets to verify webhooks could miss every @CB mention for days.
+        logger.warning(
+            "ops_cb_mentions polling DISABLED by "
+            "OPS_CB_MENTION_POLLING_ENABLED=false; relying on BC webhooks"
+        )
     _scheduler.add_job(
         _scan_autopickup,
         trigger=IntervalTrigger(minutes=AUTOPICKUP_INTERVAL_MINUTES),
@@ -246,10 +259,11 @@ def start_scheduler() -> None:
     _scheduler.start()
     smoke_status = "enabled" if cb_smoke.is_configured() else "disabled (env unset)"
     logger.info(
-        "ops schedulers started: sync every %d min, mentions every %d min, "
+        "ops schedulers started: sync every %d min, mentions %s, "
         "autopickup every %d min, approve-scan every %d min, "
         "purge cron every %d min, cb_smoke %s",
-        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES,
+        INTERVAL_MINUTES,
+        f"every {MENTION_INTERVAL_MINUTES} min" if POLLING_ENABLED else "disabled",
         AUTOPICKUP_INTERVAL_MINUTES, APPROVE_INTERVAL_MINUTES,
         PURGE_CRON_MINUTES, smoke_status,
     )

@@ -53,6 +53,16 @@ MAX_LOOKBACK_MINUTES = int(os.environ.get("OPS_CB_MENTION_MAX_LOOKBACK_MINUTES",
 # retain their cursor and catch up on the next tick they're scanned — no
 # mentions permanently lost, just higher latency for cold buckets.
 MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "100"))
+
+
+def _polling_enabled() -> bool:
+    """Read the polling flag at call time (not module-import time) so
+    tests can flip via monkeypatch.setenv. Mirrors scheduler.POLLING_ENABLED
+    semantics: default ON; only "false" (case-insensitive) disables.
+    """
+    return os.environ.get(
+        "OPS_CB_MENTION_POLLING_ENABLED", "true",
+    ).strip().lower() != "false"
 # Regex matches "@CB System", "@CB", or "@CBSystem" (case-insensitive).
 TRIGGER_RE = re.compile(r"@CB[\s_-]*(System)?", re.IGNORECASE)
 # BC API requires the User-Agent to include contact info (an email or URL);
@@ -504,6 +514,19 @@ def scan_all_users() -> dict:
 
     Returns the heartbeat dict (also persisted to HEARTBEAT_PATH).
     """
+    if not _polling_enabled():
+        summary = {
+            "started_at": _now_iso(),
+            "finished_at": _now_iso(),
+            "skipped": True,
+            "reason": "polling_disabled",
+            "users_with_token": 0, "total_mentions_found": 0,
+            "total_responded": 0, "total_failed": 0,
+            "fatal_error": None, "per_user": [],
+        }
+        _write_heartbeat(summary)
+        return summary
+
     from execution.products.library import tenancy, vault
 
     started_at = _now_iso()
