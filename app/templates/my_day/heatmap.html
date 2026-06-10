@@ -19,37 +19,87 @@
 
 {% include "my_day/_view_chrome.html" %}
 
+{# 5-band health → CSS class. Mirrors execution/products/ops/rollup.py
+   score_band(): b1 critical (<40), b2 at-risk (40-54), b3 watch (55-69),
+   b4 steady (70-84), b5 on-track (85+). #}
 {% macro heat_class(score) -%}
-  {% if score < 40 %}heat-jeopardy
-  {% elif score < 60 %}heat-at_risk
-  {% elif score < 80 %}heat-ai_risk
-  {% else %}heat-on_track{% endif %}
+  {% if score < 40 %}heat-b1
+  {% elif score < 55 %}heat-b2
+  {% elif score < 70 %}heat-b3
+  {% elif score < 85 %}heat-b4
+  {% else %}heat-b5{% endif %}
 {%- endmacro %}
 
 {# Heatmap cards drill into Briefing (not back to Heatmap) — user wants
-   the click-through to land where the action surface lives. #}
+   the click-through to land where the action surface lives. The whole-card
+   link became per-element so the card can also hold a BC deep-link, a
+   clickable Next box, and the standard Prompt + Workspace buttons. #}
 {% set qs_carry = '&tier=' ~ tier ~ ('&person=' ~ (person_filter|urlencode) if person_filter else '') %}
+
+{# Reusable card. `name_href` → Briefing drill-in (uses background loader so
+   the briefing page shows immediately while it syncs). `bc_url` → Basecamp
+   deep-link (omitted for people, who have no single BC page). `r` is a
+   rollup with .score/.open_count/.overdue_count/.human_count/.ai_count and
+   an optional .next_blocking. Only TWO buttons: Prompt (black) + Workspace
+   (indigo) — everything else is reachable via the title or Next box. #}
+{% macro heat_card(name, name_href, bc_url, bc_label, r) %}
+  {% set open_c = r.open_count or 0 %}
+  {% set late_pct = (100 * r.overdue_count // open_c) if open_c else 0 %}
+  {% set ai_pct = (100 * r.ai_count // open_c) if open_c else 0 %}
+  {% set nb = r.next_blocking %}
+  <div class="heat-card {{ heat_class(r.score) }}">
+    <div class="name"><a href="{{ name_href }}" class="heat-link">{{ name }}</a></div>
+    {% if bc_url %}<a href="{{ bc_url }}" target="_blank" rel="noopener" class="bc-link">{{ bc_label }} ↗</a>{% endif %}
+    <div class="score-line">{{ r.score_label }} · score {{ r.score }}</div>
+    <div class="kpi-strip">
+      <span class="kpi-chip" title="Open tickets that are past due">⏰ {{ late_pct }}% late</span>
+      <span class="kpi-chip" title="Share of open work that is AI-doable">🤖 {{ ai_pct }}% AI</span>
+      <span class="kpi-chip" title="Open · overdue">{{ open_c }} open{% if r.overdue_count %} · {{ r.overdue_count }} late{% endif %}</span>
+    </div>
+    <div class="mix-line">H {{ r.human_count }} / AI {{ r.ai_count }}</div>
+    {% if nb %}
+    <a class="next-box" href="{{ nb.bc_app_url or ('/my-day/todo/' ~ nb.bc_id) }}"
+       {% if nb.bc_app_url %}target="_blank" rel="noopener"{% endif %}>
+      <strong>Next:</strong> {{ nb.title[:70] }}
+    </a>
+    <div class="heat-actions">
+      <button type="button" class="md-btn md-btn-prompt"
+              onclick="copyPrompt('hp-{{ nb.bc_id }}', this); event.stopPropagation();"
+              title="Copy the Claude Code prompt for the next task">📋 Prompt</button>
+      <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-workspace"
+         title="Open the workspace for the next task">⚙ Workspace</a>
+      <textarea id="hp-{{ nb.bc_id }}" class="ka-prompt" readonly>{{ heat_prompts.get(nb.bc_id, '') }}</textarea>
+    </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{# ── Scatter: Projects + Lists + People in one view ─────────── #}
+{% if scatter_points %}
+<div class="scatter-panel">
+  <h2>📊 Risk scatter — projects, lists &amp; people in one view</h2>
+  <p class="sub">
+    X = At-Risk score (0 critical → 100 on track) · Y = Ticket-Late % ·
+    bubble size = number of open tickets · color = 5-band health ·
+    shape = ⬤ project / ◼ list / ◆ person. Click a legend item to toggle a group.
+  </p>
+  <div id="md-scatter"></div>
+</div>
+{% endif %}
 
 {# ── Project-level heat map ─────────────────────────────── #}
 {% if project_rollups and project_rollups|length > 1 %}
 <div class="heatmap-section">
   <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Projects — most at risk first</h2>
   <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
-    Each card colored by health: 🔴 jeopardy (&lt;40) · 🟠 at risk (40-59) · 🟡 AI risk (60-79) · 🟢 on track (80+).
-    Click any to drill into the Briefing view filtered to that project.
+    Health bands: 🔴 critical (&lt;40) · 🟠 at risk (40-54) · 🟡 watch (55-69) · 🟢 steady (70-84) · 💚 on track (85+).
+    Click the title to drill into Briefing; click <strong>BC</strong> to open Basecamp.
   </p>
   <div class="heatmap-grid">
     {% for p in project_rollups %}
-    <a href="?view=briefing&project={{ p.project_id }}{{ qs_carry }}" class="heat-card {{ heat_class(p.score) }}">
-      <div class="name">{{ p.project_name }}</div>
-      <div class="score-line">
-        {{ p.score_label }} · score {{ p.score }}
-      </div>
-      <div class="mix-line">
-        {{ p.open_count }} open · {{ p.overdue_count }} overdue · {{ p.list_count }} list{% if p.list_count != 1 %}s{% endif %}<br>
-        H {{ p.human_count }} / AI {{ p.ai_count }}
-      </div>
-    </a>
+      {{ heat_card(p.project_name,
+                   '?view=briefing&project=' ~ p.project_id ~ qs_carry,
+                   p.bc_project_url, 'BC project', p) }}
     {% endfor %}
   </div>
 </div>
@@ -60,28 +110,31 @@
 <div class="heatmap-section">
   <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">Lists — most at risk first</h2>
   <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
-    Cards sized by attention urgency. Click any to drill into the Briefing view filtered to that specific list.
+    Click the title to drill into the Briefing view for that list; click <strong>BC list</strong> to open it in Basecamp.
   </p>
   <div class="heatmap-grid">
     {% for r in list_rollups %}
-    <a href="?view=briefing&project={{ r.project_id }}&list={{ r.list_id }}{{ qs_carry }}" class="heat-card {{ heat_class(r.score) }}">
-      <div class="name">{{ r.list_name }}</div>
-      <div class="score-line">
-        {{ r.score_label }} · score {{ r.score }}
-        {% if r.project_name and (not project_filter or list_rollups|length > 1) %}
-        <br><span style="opacity: 0.75; font-size: 10px;">{{ r.project_name }}</span>
-        {% endif %}
-      </div>
-      <div class="mix-line">
-        {{ r.open_count }} open{% if r.overdue_count %} · {{ r.overdue_count }} overdue{% endif %}<br>
-        H {{ r.human_count }} / AI {{ r.ai_count }}
-        {% if r.next_blocking %}
-        <div style="margin-top: 8px; font-size: 11px; padding: 6px 8px; background: rgba(0,0,0,0.1); border-radius: 4px;">
-          <strong>Next:</strong> {{ r.next_blocking.title[:70] }}
-        </div>
-        {% endif %}
-      </div>
-    </a>
+      {{ heat_card(r.list_name,
+                   '?view=briefing&project=' ~ r.project_id ~ '&list=' ~ r.list_id ~ qs_carry,
+                   r.bc_list_url, 'BC list', r) }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── People-level heat map (third group) ────────────────── #}
+{% if person_rollups %}
+<div class="heatmap-section">
+  <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 6px;">People — most at risk first</h2>
+  <p style="font-size: 12px; color: #57606a; margin: 0 0 14px;">
+    Each person colored by how their open work is tracking (same 5-band scale).
+    Click a name to drill into the Briefing view filtered to their tasks.
+  </p>
+  <div class="heatmap-grid">
+    {% for pr in person_rollups %}
+      {{ heat_card(pr.name,
+                   '?view=briefing&tier=all&person=' ~ (pr.name|urlencode),
+                   '', '', pr) }}
     {% endfor %}
   </div>
 </div>
@@ -92,6 +145,68 @@
   <h2>No active tasks.</h2>
   <p>Either you're caught up or sync hasn't run yet. <strong>↻ Sync</strong> above.</p>
 </div>
+{% endif %}
+
+{% if scatter_points %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script>
+(function () {
+  var el = document.getElementById('md-scatter');
+  if (!el || typeof Plotly === 'undefined') return;
+  var pts = {{ scatter_points|tojson }};
+  if (!pts.length) return;
+  var cats = ['Project', 'List', 'Person'];
+  var symbols = { Project: 'circle', List: 'square', Person: 'diamond' };
+  var maxOpen = Math.max.apply(null, pts.map(function (p) { return p.open || 1; }));
+  // sizemode:'area' — sizeref maps the largest bubble to ~46px diameter.
+  var sizeref = (2.0 * maxOpen) / (46 * 46);
+
+  var traces = cats.map(function (cat) {
+    var sub = pts.filter(function (p) { return p.cat === cat; });
+    return {
+      name: cat + ' (' + sub.length + ')',
+      x: sub.map(function (p) { return p.score; }),
+      y: sub.map(function (p) { return p.late_pct; }),
+      text: sub.map(function (p) {
+        return '<b>' + p.name + '</b><br>' +
+          p.band + ' · score ' + p.score + '<br>' +
+          'Late ' + p.late_pct + '% · AI ' + p.ai_pct + '%<br>' +
+          p.open + ' open · ' + p.overdue + ' overdue<br>' +
+          'H ' + p.human + ' / AI ' + p.ai;
+      }),
+      mode: 'markers',
+      type: 'scatter',
+      marker: {
+        size: sub.map(function (p) { return p.open || 1; }),
+        sizemode: 'area',
+        sizeref: sizeref,
+        sizemin: 6,
+        color: sub.map(function (p) { return p.color; }),
+        symbol: symbols[cat],
+        line: { width: 1, color: 'rgba(0,0,0,0.35)' },
+        opacity: 0.82
+      },
+      hovertemplate: '%{text}<extra>' + cat + '</extra>'
+    };
+  });
+
+  var layout = {
+    margin: { l: 56, r: 16, t: 10, b: 48 },
+    xaxis: {
+      title: { text: 'At-Risk score  (0 = critical → 100 = on track)', font: { size: 12 } },
+      range: [-2, 102], zeroline: false, gridcolor: '#eef1f4'
+    },
+    yaxis: {
+      title: { text: 'Ticket Late %', font: { size: 12 } },
+      range: [-3, 103], zeroline: false, gridcolor: '#eef1f4'
+    },
+    legend: { orientation: 'h', y: 1.12, x: 0 },
+    hoverlabel: { align: 'left' },
+    plot_bgcolor: '#fff', paper_bgcolor: '#fff'
+  };
+  Plotly.newPlot(el, traces, layout, { displayModeBar: false, responsive: true });
+})();
+</script>
 {% endif %}
 
 {% endblock %}

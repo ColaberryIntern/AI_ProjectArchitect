@@ -517,6 +517,58 @@ async def ops_home(request: Request):
                     kanban_prompts[t.bc_id] = suggestions.generate_prompt(t, s)
                 except Exception:
                     kanban_prompts[t.bc_id] = ""
+    # ── Heat map extras: People group, scatter-plot points, next-task prompts ──
+    # People is the third Heat map group (alongside Projects + Lists). The
+    # scatter plot plots all three groups in one view; each point carries the
+    # KPIs the user asked for (At-Risk score, Ticket-Late %, AI/Human %).
+    person_rollups: list = []
+    scatter_points: list[dict] = []
+    heat_prompts: dict[int, str] = {}
+
+    def _scatter_point(cat: str, name: str, r) -> dict:
+        open_c = getattr(r, "open_count", 0) or 0
+        late_pct = round(100 * r.overdue_count / open_c) if open_c else 0
+        ai_pct = round(100 * r.ai_count / open_c) if open_c else 0
+        band = rollup.score_band(r.score)
+        return {
+            "cat": cat, "name": name, "score": r.score,
+            "late_pct": late_pct, "ai_pct": ai_pct,
+            "open": open_c, "overdue": r.overdue_count,
+            "human": r.human_count, "ai": r.ai_count,
+            "color": band["color"], "band": band["label"],
+        }
+
+    def _prompt_for(t) -> str:
+        try:
+            s = suggestions.build_suggestion(t)
+            return suggestions.generate_prompt(t, s)
+        except Exception:
+            return ""
+
+    if view == "heatmap":
+        person_rollups = rollup.per_person(scoped_todos)
+        for p in project_rollups:
+            scatter_points.append(_scatter_point("Project", p.project_name, p))
+        for r in list_rollups:
+            scatter_points.append(_scatter_point("List", r.list_name, r))
+        for pr in person_rollups:
+            scatter_points.append(_scatter_point("Person", pr.name, pr))
+        # Deterministic prompts for the "next task" on each card (Prompt button).
+        for grp in (project_rollups, list_rollups, person_rollups):
+            for r in grp:
+                nb = getattr(r, "next_blocking", None)
+                if nb and nb.bc_id not in heat_prompts:
+                    heat_prompts[nb.bc_id] = _prompt_for(nb)
+
+    # Briefing feasibility table: precompute prompts for each list's next
+    # blocking task so the black 📋 Prompt button can copy without a round trip.
+    row_prompts: dict[int, str] = {}
+    if view == "briefing":
+        for r in list_rollups:
+            nb = r.next_blocking
+            if nb and nb.bc_id not in row_prompts:
+                row_prompts[nb.bc_id] = _prompt_for(nb)
+
     # Pull ALL completed — drill-down filters per-list for the unified PROJECT TIMELINE
     completer_stats, recent_completed_all = rollup.completions_summary(scoped_todos, limit=1000)
     active_todos = [t for t in scoped_todos if t.status == "active" and not t.is_dismissed]
@@ -701,6 +753,11 @@ async def ops_home(request: Request):
              # Lists + tasks
              list_rollups=list_rollups,
              project_rollups=project_rollups,
+             # Heat map: third (people) group + scatter + per-card prompts
+             person_rollups=person_rollups,
+             scatter_points=scatter_points,
+             heat_prompts=heat_prompts,
+             row_prompts=row_prompts,
              # Extract tab (view=extract)
              extract_lists=extract_lists,
              output_type_meta=(

@@ -252,12 +252,15 @@
   if (cancelBtn) {
     cancelBtn.addEventListener('click', function() { hide(); });
   }
-  // Filter chips + view tabs → page reload
+  // Filter chips + view tabs + heat-card drill-ins → page reload.
+  // The .heat-link (heat card title) lands on the Briefing view, which
+  // renders immediately from the local store and kicks a background sync —
+  // so the overlay gives instant feedback while the heavy data streams in.
   document.addEventListener('click', function(e) {
-    var el = e.target.closest('.proj-chip, .view-tab');
+    var el = e.target.closest('.proj-chip, .view-tab, .heat-link');
     if (!el || el.tagName !== 'A') return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
-    show('Loading…', 'filtering tasks + syncing with Basecamp');
+    show('Loading…', 'opening Briefing — syncing the heavy data in the background');
   }, true);
   // Form submits for /my-day/ actions (Mark done, Skip, Sync, etc.)
   document.addEventListener('submit', function(e) {
@@ -294,7 +297,7 @@
     sessionStorage.removeItem('md-loader-last-click');
   } catch (e) {}
   document.addEventListener('click', function(e) {
-    var el = e.target.closest('.proj-chip, .view-tab');
+    var el = e.target.closest('.proj-chip, .view-tab, .heat-link');
     if (!el || el.tagName !== 'A') return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
     try { sessionStorage.setItem('md-loader-last-click', String(Date.now())); } catch (e) {}

@@ -24,8 +24,51 @@ code can never disagree silently.
 |---|---|
 | Action-recipe table + recommendation reframing + prompt template | `execution/products/ops/suggestions.py` |
 | "How to run this prompt" runbook + preflight + the Copy button | `app/templates/my_day/workspace.html` (`_setupBlock`, `copyPrompt`) |
+| Shared button classes + 5-band heat colors + scatter panel CSS | `app/templates/my_day/_my_day_styles.html` |
+| Health bands + per-person rollup + BC deep-link derivation | `execution/products/ops/rollup.py` (`score_band`, `per_person`, `_bc_list_url`) |
 | SessionStart hook that assembles doctrine context (full vs limited mode) | `execution/products/library/session_start_hook.py` |
-| Tests | `tests/execution/products/test_ops_suggestions.py` |
+| Tests | `tests/execution/products/test_ops_suggestions.py`, `tests/execution/products/test_ops_rollup.py` |
+
+## Button standard (consistent across EVERY My Day surface)
+
+There are exactly two action buttons on a task and they always look the same so
+the operator learns them once:
+
+- **📋 Prompt** — class `md-btn-prompt` (on Kanban: `ka-btn-prompt`). **Always
+  black.** Copies the Claude Code prompt to the clipboard inline (via the shared
+  `copyPrompt(promptId, btnEl)` in `_my_day_styles.html`, which prepends the
+  setup runbook). On dense briefing-table rows and Heat map cards the prompt
+  text is precomputed deterministically in the router (`row_prompts`,
+  `heat_prompts`) so the copy is a no-round-trip clipboard write.
+- **⚙ Workspace** — class `md-btn-workspace`. **Always indigo (`#6639ba`).**
+  Links to `/my-day/todo/{bc_id}` (or, for a Library suggestion card, the
+  asset's library page). The workspace page is where the operator adds context
+  before copying.
+
+Any new surface that copies a prompt MUST use this pair and these colors. Other
+buttons (Mark done = green, Skip = quiet) are unaffected.
+
+## Workspace page is notes-first
+
+`workspace.html` leads with the operator's **context box + Copy prompt** button
+(the primary reason to open the page): drop a decision already made, work
+already done, a constraint, or a steer, and it is prepended to the copied
+prompt. The heavy reading — Suggested approach, Basecamp description, and the
+full prompt preview — sits in collapsed `<details>` below. The JS hook IDs
+(`#userNotes`, `#promptBuilder`, `#promptText`, `#copyPromptBtn`,
+`rebuildFullPrompt`, `copyPrompt`) are unchanged; only the visual order moved.
+
+## Heat map: 5 health bands, three groups, scatter
+
+`rollup.score_band(score)` is the single source of truth for Heat map color: a
+5-bucket red→green scale (b1 critical `<40`, b2 at-risk `40-54`, b3 watch
+`55-69`, b4 steady `70-84`, b5 on-track `85+`). The `heat_class()` macro in
+`heatmap.html` mirrors these exact thresholds — change one, change both. The
+Heat map renders three groups (Projects, Lists, **People** via `per_person`)
+plus a Plotly scatter (X = score, Y = ticket-late %, bubble size = open count,
+color = band, shape = group). Each card carries only the Prompt/Workspace pair
+for its next blocking task; the title drills into Briefing (using the
+background-load overlay) and the BC deep-link opens Basecamp.
 
 ## Action recipes
 
