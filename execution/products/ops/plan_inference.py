@@ -42,7 +42,7 @@ and produce a SHORT Claude Code prompt.
 Respond with strict JSON matching this exact schema:
 
 {
-  "anticipated_goal": "Single sentence: what 'done' concretely looks like — a deliverable.",
+  "anticipated_goal": "Single sentence: what 'done' concretely looks like. A deliverable.",
   "summary_paragraph": "ONE flowing paragraph (3-5 sentences) explaining what to do and how. Mention specifics from the bundle (file paths, names, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. This is what Ali reads at a glance to decide whether to proceed.",
   "inferred_output_type": "pptx | docx | pdf | email | code | text | other",
   "inferred_success_criteria": [
@@ -56,7 +56,7 @@ Respond with strict JSON matching this exact schema:
     "Things needed to be 100% confident but couldn't find in the bundle"
   ],
   "confidence_pct": <integer 0-100>,
-  "claude_code_prompt": "A SHORT (6-12 line) prompt for Claude Code. Plain text. No markdown headers. Line 1: 'Read this Basecamp ticket: <URL>'. Line 2: 'Goal: <one line>'. A few lines on key context Claude Code might miss. Final line: the deliverable + 'Begin.' Trust Claude Code to fetch the BC URL for full context — do NOT inline the description + comments."
+  "claude_code_prompt": "A FULL-CONTEXT, ACTION-ORIENTED prompt the user pastes into a fresh Claude Code session. NOT short. Inline EVERYTHING from the CONTEXT BUNDLE (root ticket + linked items + external URLs). The session may not have BC fetch capability so do NOT rely on the BC URL alone. Use REAL newline characters between sections (encode as literal \\n\\n in the JSON). See the MUST list (rule 6 below) for the exact structure."
 }
 
 CRITICAL RULES:
@@ -74,7 +74,7 @@ the user_feedback + context. Common patterns:
    - 'code' / 'implement' / 'build' → code
    - 'investigate' / 'research' → text (a report)
 
-3. inferred_success_criteria — if user provided them, use them as the floor and add up \
+3. inferred_success_criteria. If user provided them, use them as the floor and add up \
 to 2 more inferred from context. If user didn't provide, infer 3-5 specific ones from \
 the user_feedback + output_type.
 
@@ -88,16 +88,24 @@ the user_feedback + output_type.
 5. missing_information must enumerate the gaps that prevented confidence_pct from \
 being higher.
 
-6. claude_code_prompt rules:
-   - Plain text, no markdown headers (##) — single string, paste-ready.
-   - Start with: 'You are completing a Basecamp ticket for Ali. Take action, do not \
-just narrate. Show me each step output before continuing to the next.'
-   - Include the FULL context bundle (root ticket + linked items + external URLs).
-   - State the anticipated_goal explicitly.
-   - State the success_criteria explicitly.
-   - List execution_plan as numbered steps.
-   - End with: 'If a step requires info not in the bundle, STOP and ask. Otherwise \
-produce the {output_type} deliverable in your response. Begin.'
+6. claude_code_prompt rules. The string must use REAL newline characters between sections (encode each section break as a literal \\n\\n in the JSON, so json.loads produces a string with actual blank lines). The structure is FIVE sections separated by blank lines.
+
+Section 1: WHAT to do (the anticipated_goal) on a single line at the top.
+
+Section 2: A "CONTEXT:" block with all known ticket metadata (title, project, list, due date, BC URL) each on its own line, followed by a blank line, then "BUNDLE:" on its own line, then the full context bundle verbatim (root ticket description, linked items, external URLs that the rabbit-hole walker collected).
+
+Section 3: A "SUCCESS CRITERIA:" block listing inferred_success_criteria, one per line, prefixed with "- ".
+
+Section 4: A "STEPS:" block listing execution_plan as numbered actions.
+
+Section 5: This EXACT closing block, byte-for-byte (replace nothing): "DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
+
+Length: do not constrain. A thin bundle produces a short prompt; a rich bundle produces a long one. Treat the prompt as self-sufficient: if Claude Code has zero ability to fetch external resources, it must still be able to act from this prompt alone.
+
+Forbidden in the claude_code_prompt:
+- em-dashes (use a colon or hyphen)
+- "as needed" / "where applicable" / "and so on"
+- "Review the situation" / "Understand what they need" without a named target
 """
 
 
@@ -110,7 +118,7 @@ def _user_message(user_feedback: str, basecamp_url: str,
         f"  Basecamp URL: {basecamp_url}\n"
         f"  Output type (user-specified, 'infer' = derive): {output_type or 'infer'}\n"
         f"  Success criteria (user-specified):\n"
-        f"{(success_criteria or '(none — infer from context)').strip()}\n"
+        f"{(success_criteria or '(none: infer from context)').strip()}\n"
         f"\n"
         f"CONTEXT BUNDLE (rabbit-hole crawl result):\n"
         f"{context_render}\n"
