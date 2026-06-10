@@ -46,6 +46,19 @@ def _save_json(p: Path, data: dict[str, Any]) -> None:
 
 
 def _collect_sub_files() -> list[Path]:
+    """Collect every `*.meta.json` whose filename stem doesn't already
+    match `slugify(<name field>)`. That covers:
+
+      - the original `sub-<uuid8>.meta.json` legacy (`_tool_propose_asset`
+        path -> `review_submission` default), and
+      - literal-name files written by `enrichment_job.enrich_batch` /
+        `extracted_writer` paths that used `item["name"]` verbatim as
+        the asset_id (e.g. `HTML to Markdown.meta.json`).
+
+    The check is read-only: anything whose stem already equals the slug
+    of its `name` field is skipped here so idempotence holds across
+    repeated runs.
+    """
     if not store.LIB_ROOT.exists():
         return []
     out: list[Path] = []
@@ -55,7 +68,30 @@ def _collect_sub_files() -> list[Path]:
         for cat_dir in ws_dir.iterdir():
             if not cat_dir.is_dir() or cat_dir.name.startswith("_"):
                 continue
-            out.extend(cat_dir.glob("sub-*.meta.json"))
+            for p in cat_dir.glob("*.meta.json"):
+                stem = p.name[: -len(".meta.json")]
+                # Always pick up sub-<uuid8>.meta.json (legacy convention).
+                if stem.startswith("sub-"):
+                    out.append(p)
+                    continue
+                # For everything else, peek at the `name` field; if
+                # slugify(name) != stem, this file is a legacy literal-
+                # name write that needs renaming. Many prod legacy
+                # records have an empty `name` field but a literal
+                # asset_id (e.g. asset_id="HTML to Markdown"); fall
+                # back to the asset_id field, then the stem itself.
+                data = _load_json(p)
+                if not data:
+                    continue
+                name_src = (
+                    (data.get("name") or "").strip()
+                    or (data.get("asset_id") or "").strip()
+                    or stem
+                )
+                if not name_src:
+                    continue
+                if store.slugify(name_src) != stem:
+                    out.append(p)
     return out
 
 
@@ -107,13 +143,25 @@ def migrate(dry_run: bool = False) -> dict[str, Any]:
             continue
         name = (data.get("name") or "").strip()
         old_asset_id = (data.get("asset_id") or old_meta.stem.replace(".meta", ""))
-        if not name:
+        # If `name` is missing, fall back to the asset_id field and
+        # finally the file stem. Many legacy enrichment_job/
+        # extracted_writer records have empty `name` but a literal
+        # human-readable asset_id (e.g. "HTML to Markdown"), which is
+        # plenty to slug. Only skip if we have nothing at all.
+        slug_source = name or old_asset_id or old_meta.stem.replace(".meta", "")
+        slug_source = slug_source.strip()
+        if not slug_source:
             summary["skipped"].append({"file": str(old_meta),
                                                 "reason": "no name field"})
             continue
-        new_asset_id = _resolve_slug_for_migration(ws, category, name, old_meta)
-        if new_asset_id == old_asset_id:
-            # Already in the right shape (e.g. a manual previous rename).
+        new_asset_id = _resolve_slug_for_migration(ws, category, slug_source, old_meta)
+        old_stem = old_meta.name[: -len(".meta.json")]
+        if new_asset_id == old_asset_id and new_asset_id == old_stem:
+            # Already in the right shape (e.g. a manual previous rename):
+            # both the on-disk filename and the in-JSON asset_id field
+            # match the slug. Note: when only the asset_id field matches
+            # but the filename is still legacy (literal name), we still
+            # need to rename the file -- so don't short-circuit then.
             continue
         new_meta = old_meta.parent / f"{new_asset_id}.meta.json"
 

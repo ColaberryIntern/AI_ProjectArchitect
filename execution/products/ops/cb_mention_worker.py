@@ -133,14 +133,21 @@ def _scan_bucket_for_mentions(bucket: int, token: str, cutoff: datetime) -> list
 
 
 def _build_response_text(plan: dict) -> str:
-    """Format a rubric-conformant BC comment from a plan_inference result."""
+    """Format a rubric-conformant BC comment from a plan_inference result.
+
+    Same prompt-embed pattern as autopickup_worker._render_comment: when
+    plan carries a claude_code_prompt, embed it in a <details> block at
+    the bottom so the reader can copy + paste into Claude Code without
+    leaving BC. Wrapping in <details> keeps the default comment view
+    short.
+    """
     if not plan:
         return (
             "<p>@CB System couldn't build a plan for this mention "
-            "(LLM unavailable). Posting nothing — try again later.</p>"
+            "(LLM unavailable). Posting nothing. Try again later.</p>"
         )
     parts = [
-        "<p><strong>CB System · automated response</strong></p>",
+        "<p><strong>CB System: automated response</strong></p>",
         f"<p><strong>Anticipated goal:</strong> {plan.get('anticipated_goal', '?')}</p>",
     ]
     if plan.get("summary_paragraph"):
@@ -148,7 +155,7 @@ def _build_response_text(plan: dict) -> str:
     if plan.get("execution_plan"):
         parts.append("<p><strong>Proposed plan:</strong></p><ol>")
         for s in plan["execution_plan"]:
-            est = f" · ~{s.get('estimated_minutes')}m" if s.get("estimated_minutes") else ""
+            est = f" : ~{s.get('estimated_minutes')}m" if s.get("estimated_minutes") else ""
             parts.append(f"<li>{s.get('action','?')}{est}</li>")
         parts.append("</ol>")
     if plan.get("missing_information"):
@@ -156,10 +163,27 @@ def _build_response_text(plan: dict) -> str:
         for m in plan["missing_information"]:
             parts.append(f"<li>{m}</li>")
         parts.append("</ul>")
+
+    # Embed the paste-ready Claude Code prompt, if plan_inference produced
+    # one. <details> keeps the comment short by default; reader expands
+    # when they want the prompt.
+    cc_prompt = (plan.get("claude_code_prompt") or "").strip()
+    if cc_prompt:
+        import html as _htmllib
+        escaped = _htmllib.escape(cc_prompt)
+        parts.append(
+            "<details><summary><strong>Claude Code prompt</strong> "
+            "(click to expand and copy)</summary>"
+            f"<pre style='white-space: pre-wrap; word-break: break-word; "
+            f"background: #f6f8fa; padding: 10px; border-radius: 6px; "
+            f"font-size: 12px;'>{escaped}</pre></details>"
+        )
+
     parts.append(
         f"<p>Confidence: <strong>{plan.get('confidence_pct', 0)}%</strong>. "
         f"Output type: <code>{plan.get('inferred_output_type', '?')}</code>. "
-        f"Approve to execute, or reply with corrections.</p>"
+        f"Approve to execute, reply with corrections, "
+        f"or copy the prompt above into Claude Code to act now.</p>"
     )
     return "".join(parts)
 

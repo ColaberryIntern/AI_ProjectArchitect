@@ -515,7 +515,13 @@ def enrich_batch(workspace: str, items: list[dict[str, Any]],
     out = {"enriched": 0, "skipped": 0, "failed": 0}
     for item in items:
         category = item.get("category") or "skills"
-        asset_id = item.get("asset_id") or item.get("name") or ""
+        # Slugify the name-fallback so new enrichment writes land at
+        # slug-based paths. Pre-fix, raw item["name"] (e.g. "HTML to
+        # Markdown") leaked through and produced literal-name .meta.json
+        # files on disk -- the same bug the migration script now cleans
+        # up. If asset_id is set explicitly, trust it verbatim.
+        name = (item.get("name") or "").strip()
+        asset_id = item.get("asset_id") or (store.slugify(name) if name else "")
         source_url = item.get("source_url") or item.get("source") or ""
         if not asset_id or not source_url:
             out["skipped"] += 1
