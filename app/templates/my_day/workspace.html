@@ -25,13 +25,6 @@
   </div>
 </div>
 
-{% if todo.description %}
-<div class="ws-section">
-  <h3>Description (from Basecamp)</h3>
-  {# BC stores description as HTML (p/ul/li/strong etc.). Render it as such
-     instead of escaping or pre-wrapping the raw markup as plain text. #}
-  <div class="bc-description" style="font-size: 14px; color: #1f2328; line-height: 1.6;">{{ todo.description|safe }}</div>
-</div>
 <style>
   .bc-description p { margin: 0 0 10px; }
   .bc-description ul, .bc-description ol { padding-left: 22px; margin: 6px 0 12px; }
@@ -39,67 +32,93 @@
   .bc-description strong { font-weight: 700; }
   .bc-description code { background: #f6f8fa; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
   .bc-description a { color: #0969da; }
+  .ws-collapse { margin-bottom: 14px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
+  .ws-collapse > summary {
+    cursor: pointer; padding: 12px 16px; font-size: 13px; font-weight: 600;
+    color: #1f2328; list-style: none; display: flex; align-items: center; gap: 8px;
+  }
+  .ws-collapse > summary::-webkit-details-marker { display: none; }
+  .ws-collapse > summary::before { content: '▸'; color: #57606a; }
+  .ws-collapse[open] > summary::before { content: '▾'; }
+  .ws-collapse .ws-collapse-body { padding: 0 16px 16px; }
 </style>
-{% endif %}
 
-<div class="ws-section">
-  <h3>Suggested approach</h3>
-  <div style="margin-bottom: 12px;">
-    <span class="action-kind-badge">{{ suggestion.action_kind }}</span>
-    &nbsp; <span style="font-weight: 600;">{{ suggestion.one_line }}</span>
-  </div>
-  <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
-    {% for step in suggestion.steps %}<li style="margin-bottom: 6px;">{{ step }}</li>{% endfor %}
-  </ol>
-  {% if suggestion.resources %}
-  <div style="margin-top: 14px;">
-    <strong style="font-size: 13px;">Lean on:</strong>
-    {% for r in suggestion.resources %}
-      <span class="resource-chip"><span class="kind">{{ r.kind }}</span> <code>{{ r.name }}</code> — {{ r.why }}</span>
-    {% endfor %}
-  </div>
-  {% endif %}
-  {% if suggestion.stop_conditions %}
-  <div style="margin-top: 16px;">
-    <strong style="font-size: 13px; color: #8a5a00;">Stop and escalate if:</strong>
-    <ul class="stop-list" style="margin-top: 6px;">
-      {% for c in suggestion.stop_conditions %}<li>{{ c }}</li>{% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-</div>
-
-<div class="ws-section">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-    <h3 style="margin: 0;">Claude Code prompt</h3>
-    <button id="copyPromptBtn" class="ws-copy-btn" onclick="copyPrompt()">📋 Copy prompt</button>
+{# ── PRIMARY: your notes + Copy Prompt. This is the main reason to be on
+     this page — drop any context/insight you already have, then copy. The
+     heavy reading (description, suggested steps, full prompt) is collapsed
+     below so it never gets in the way but is one click away. #}
+<div class="ws-section" style="border: 2px solid #6639ba; background: #faf8ff;">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+    <h3 style="margin: 0;">Your context + Copy prompt</h3>
+    <button id="copyPromptBtn" class="md-btn md-btn-prompt" onclick="copyPrompt()">📋 Copy prompt</button>
   </div>
   <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
-    What gets copied: <strong>your notes</strong> (if any) → <strong>setup steps</strong> (so a fresh Claude Code session can self-orient) → the <strong>task prompt</strong>. Paste the whole thing into <code style="background: #f6f8fa; padding: 1px 5px; border-radius: 3px;">claude</code> on your personal computer.
+    Add anything you already know — a decision you've made, work you've done, a constraint, or how you want this handled. It's prepended to the prompt so Claude has your steer up front. Leave it blank to copy as-is.
   </div>
 
-  {# Editable user notes -- prepended to the copied prompt. Default empty;
-     placeholder explains its purpose. Auto-saves to localStorage per BC
-     id so refresh / nav-away doesn't lose work. #}
-  <label style="display: block; font-size: 12px; font-weight: 600; color: #1f2328; margin-bottom: 4px;">
-    Your notes (added to the top of the prompt; optional)
-  </label>
-  <textarea id="userNotes" rows="3"
-            placeholder="Add any constraints, hand-offs, follow-up questions, or context you want Claude to know about this task before it starts..."
-            style="width: 100%; padding: 10px 12px; font-size: 13px; border: 1px solid #d0d7de; border-radius: 6px; font-family: inherit; resize: vertical; margin-bottom: 12px; box-sizing: border-box;"
+  {# Editable user notes -- prepended to the copied prompt. Auto-saves to
+     localStorage per BC id so refresh / nav-away doesn't lose work. #}
+  <textarea id="userNotes" rows="4"
+            placeholder="e.g. 'I already drafted the memo — just need Claude to tighten the budget section' · or constraints, hand-offs, follow-up questions, links..."
+            style="width: 100%; padding: 10px 12px; font-size: 13px; border: 1px solid #d0d7de; border-radius: 6px; font-family: inherit; resize: vertical; box-sizing: border-box;"
             oninput="rebuildFullPrompt()"></textarea>
 
-  {# Hidden raw bits that the JS assembles into the visible preview + copy.
-     Keeping them as data-* attrs lets the template stay clean. #}
+  {# Hidden raw bits that the JS assembles into the visible preview + copy. #}
   <div id="promptBuilder"
        data-task-prompt="{{ prompt }}"
        data-workspace-url="{{ current_session_user.workspace_repo or '' }}"
        data-bc-id="{{ todo.bc_id }}"
        style="display: none;"></div>
-
-  <div style="font-size: 11px; color: #57606a; margin: 4px 0;">Preview of what will be copied:</div>
-  <div id="promptText" class="ws-prompt"></div>
 </div>
+
+<details class="ws-collapse">
+  <summary>Suggested approach — {{ suggestion.action_kind }}</summary>
+  <div class="ws-collapse-body">
+    <div style="margin-bottom: 12px;">
+      <span class="action-kind-badge">{{ suggestion.action_kind }}</span>
+      &nbsp; <span style="font-weight: 600;">{{ suggestion.one_line }}</span>
+    </div>
+    <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
+      {% for step in suggestion.steps %}<li style="margin-bottom: 6px;">{{ step }}</li>{% endfor %}
+    </ol>
+    {% if suggestion.resources %}
+    <div style="margin-top: 14px;">
+      <strong style="font-size: 13px;">Lean on:</strong>
+      {% for r in suggestion.resources %}
+        <span class="resource-chip"><span class="kind">{{ r.kind }}</span> <code>{{ r.name }}</code> — {{ r.why }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if suggestion.stop_conditions %}
+    <div style="margin-top: 16px;">
+      <strong style="font-size: 13px; color: #8a5a00;">Stop and escalate if:</strong>
+      <ul class="stop-list" style="margin-top: 6px;">
+        {% for c in suggestion.stop_conditions %}<li>{{ c }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</details>
+
+{% if todo.description %}
+<details class="ws-collapse">
+  <summary>Description (from Basecamp)</summary>
+  <div class="ws-collapse-body">
+    {# BC stores description as HTML (p/ul/li/strong etc.). Render as such. #}
+    <div class="bc-description" style="font-size: 14px; color: #1f2328; line-height: 1.6;">{{ todo.description|safe }}</div>
+  </div>
+</details>
+{% endif %}
+
+<details class="ws-collapse">
+  <summary>Full prompt preview (exactly what gets copied)</summary>
+  <div class="ws-collapse-body">
+    <div style="font-size: 12px; color: #57606a; margin-bottom: 8px;">
+      <strong>your notes</strong> → <strong>setup steps</strong> (so a fresh Claude Code session self-orients) → the <strong>task prompt</strong>. Paste into <code style="background: #f6f8fa; padding: 1px 5px; border-radius: 3px;">claude</code> on your personal computer.
+    </div>
+    <div id="promptText" class="ws-prompt"></div>
+  </div>
+</details>
 
 <div style="margin-top: 16px;">
   <form method="post" action="/my-day/todo/{{ todo.bc_id }}/dismiss" style="display: inline; margin-right: 8px;">

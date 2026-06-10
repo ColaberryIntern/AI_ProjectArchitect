@@ -12,6 +12,15 @@
   .md-btn-primary { background: #1f1f1f; color: white; }
   .md-btn-primary:hover { background: #000; color: white; }
   .md-btn-primary.copied { background: #0969da; }
+  /* ── Standardized action pair (consistent across EVERY My Day surface) ──
+     Prompt is ALWAYS black; Workspace is ALWAYS indigo. Briefing, Kanban,
+     Heat map, Library suggestions, tables — same two colors everywhere so
+     the user learns "black = copy prompt, indigo = open workspace" once. */
+  .md-btn-prompt { background: #1f1f1f; color: #fff; border-color: #1f1f1f; }
+  .md-btn-prompt:hover { background: #000; color: #fff; }
+  .md-btn-prompt.copied { background: #0969da; color: #fff; border-color: #0969da; }
+  .md-btn-workspace { background: #6639ba; color: #fff; border-color: #6639ba; }
+  .md-btn-workspace:hover { background: #512da8; color: #fff; }
   .md-btn-success { background: #1a7f37; color: white; }
   .md-btn-success:hover { background: #15803d; color: white; }
   .md-btn-outline { background: #fff; color: #1f2328; border-color: #d0d7de; }
@@ -290,15 +299,54 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 10px;
   }
-  .heat-card { border-radius: 8px; padding: 14px 16px; border: 1px solid; text-decoration: none; display: block; }
-  .heat-card:hover { transform: scale(1.02); transition: transform 0.1s; }
-  .heat-card .name { font-weight: 700; font-size: 14px; margin-bottom: 6px; line-height: 1.25; }
-  .heat-card .score-line { font-size: 12px; opacity: 0.9; margin-bottom: 8px; }
-  .heat-card .mix-line { font-size: 11px; opacity: 0.85; font-family: ui-monospace, monospace; }
+  /* Heat card is now a <div> (not one big <a>) so it can hold its own
+     title link, a BC deep-link, a clickable Next box, and the standard
+     Prompt + Workspace button pair. */
+  .heat-card { border-radius: 8px; padding: 14px 16px; border: 1px solid; display: block; }
+  .heat-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.14); }
+  .heat-card .name { font-weight: 700; font-size: 14px; margin-bottom: 2px; line-height: 1.25; }
+  .heat-card .name a { color: inherit; text-decoration: none; }
+  .heat-card .name a:hover { text-decoration: underline; }
+  .heat-card .bc-link { font-size: 10px; font-weight: 600; opacity: 0.85; color: inherit; text-decoration: none; }
+  .heat-card .bc-link:hover { text-decoration: underline; opacity: 1; }
+  .heat-card .score-line { font-size: 12px; opacity: 0.95; margin: 6px 0; font-weight: 600; }
+  /* KPI chip strip — Late% · AI% · open/overdue. Translucent so it reads on
+     any band color. */
+  .heat-card .kpi-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .heat-card .kpi-chip {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+    padding: 2px 7px; border-radius: 999px;
+    background: rgba(255,255,255,0.30); font-family: ui-monospace, monospace;
+  }
+  .heat-card .mix-line { font-size: 11px; opacity: 0.9; font-family: ui-monospace, monospace; }
+  .heat-card .next-box {
+    display: block; margin: 8px 0; font-size: 11px; padding: 6px 8px;
+    background: rgba(0,0,0,0.12); border-radius: 4px; color: inherit; text-decoration: none;
+  }
+  .heat-card .next-box:hover { background: rgba(0,0,0,0.20); }
+  .heat-card .heat-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .heat-card .heat-actions .md-btn { padding: 5px 10px; font-size: 11px; }
+  .heat-card .ka-prompt { display: none; }
+
+  /* 5-band health scale: red -> orange -> gold -> lime -> green.
+     Keys match rollup.score_band(): b1 (critical) ... b5 (on track). */
+  .heat-card.heat-b1 { background: #cf222e; border-color: #b3261e; color: #fff; }
+  .heat-card.heat-b2 { background: #e8590c; border-color: #c44708; color: #fff; }
+  .heat-card.heat-b3 { background: #f0c000; border-color: #d4a72c; color: #4a3500; }
+  .heat-card.heat-b4 { background: #74b816; border-color: #5c9210; color: #fff; }
+  .heat-card.heat-b5 { background: #1a7f37; border-color: #15803d; color: #fff; }
+  /* Legacy 4-class names kept as aliases in case any other surface still
+     references them. */
   .heat-card.heat-jeopardy { background: #cf222e; border-color: #b3261e; color: white; }
-  .heat-card.heat-at_risk { background: #ffabba; border-color: #ff8095; color: #82071e; }
-  .heat-card.heat-ai_risk { background: #f0d678; border-color: #d4a72c; color: #4a3500; }
-  .heat-card.heat-on_track { background: #aceebb; border-color: #54aeff80; color: #15803d; }
+  .heat-card.heat-at_risk { background: #e8590c; border-color: #c44708; color: #fff; }
+  .heat-card.heat-ai_risk { background: #f0c000; border-color: #d4a72c; color: #4a3500; }
+  .heat-card.heat-on_track { background: #1a7f37; border-color: #15803d; color: #fff; }
+
+  /* Scatter plot panel */
+  .scatter-panel { border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px; margin-bottom: 28px; background: #fff; }
+  .scatter-panel h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  .scatter-panel .sub { font-size: 12px; color: #57606a; margin: 0 0 12px; }
+  #md-scatter { width: 100%; height: 460px; }
 
   /* Section + tables */
   .section-head {

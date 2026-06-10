@@ -277,15 +277,20 @@
       <div style="color: #57606a; font-size: 11px; line-height: 1.4; margin-bottom: 8px;">
         {{ s.description or '(no description)' }}
       </div>
-      {% if s.claude_prompt %}
-      <button type="button" data-prompt="{{ s.claude_prompt | e }}"
-              class="lib-suggest-copy-btn"
-              style="background: #1a1a1a; color: #fff; border: 0;
-                     padding: 5px 10px; border-radius: 5px; font-size: 11px;
-                     font-weight: 600; cursor: pointer;">
-        📋 Copy Claude prompt
-      </button>
-      {% endif %}
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        {% if s.claude_prompt %}
+        <button type="button" data-prompt="{{ s.claude_prompt | e }}"
+                class="lib-suggest-copy-btn md-btn md-btn-prompt"
+                style="padding: 5px 10px; font-size: 11px;">
+          📋 Copy Claude prompt
+        </button>
+        {% endif %}
+        <a href="/library/{{ s.category }}/{{ s.asset_id }}"
+           class="md-btn md-btn-workspace" style="padding: 5px 10px; font-size: 11px;"
+           title="Open this asset's workspace page">
+          ⚙ Workspace
+        </a>
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -445,17 +450,18 @@
   </div>
   {% endif %}
   <div class="actions">
-    <button type="button" class="md-btn md-btn-primary"
+    <button type="button" class="md-btn md-btn-prompt"
             onclick="copyPrompt('focus-prompt', this)">
       📋 Copy Claude Code prompt →
     </button>
+    <a href="/my-day/todo/{{ focus.bc_id }}" class="md-btn md-btn-workspace">⚙ Workspace</a>
     <form method="post" action="/my-day/todo/{{ focus.bc_id }}/complete" style="display: inline; margin: 0;">
       <button type="submit" class="md-btn md-btn-success">✓ Mark done</button>
     </form>
     <form method="post" action="/my-day/todo/{{ focus.bc_id }}/dismiss" style="display: inline; margin: 0;">
       <button type="submit" class="md-btn md-btn-quiet">Skip for now</button>
     </form>
-    <span class="hint">opens the prompt — select all + copy + paste into Claude Code</span>
+    <span class="hint">prompt copies to clipboard · Workspace adds your notes first</span>
   </div>
   <textarea id="focus-prompt" class="hidden-prompt" readonly>{{ focus_prompt }}</textarea>
 </div>
@@ -542,10 +548,14 @@
       </td>
       <td style="text-align: center; white-space: nowrap;">
         {% if nb %}
-        <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-primary"
-           style="background: #1f1f1f; color: white; padding: 5px 10px; font-size: 11px; text-decoration: none;">
-          🪄 Get prompt
-        </a>
+        <div style="display: inline-flex; flex-direction: column; gap: 4px;">
+          <button type="button" class="md-btn md-btn-prompt"
+                  style="padding: 5px 10px; font-size: 11px;"
+                  onclick="copyPrompt('rp-{{ nb.bc_id }}', this)">📋 Prompt</button>
+          <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-workspace"
+             style="padding: 5px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+          <textarea id="rp-{{ nb.bc_id }}" class="hidden-prompt" readonly>{{ row_prompts.get(nb.bc_id, '') }}</textarea>
+        </div>
         {% endif %}
       </td>
     </tr>
@@ -716,9 +726,9 @@
                   {% else %}<span class="dim">unassigned</span>{% endif %}
                 </td>
                 <td style="text-align: center;">
-                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
-                     style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                    🪄 prompt
+                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                     style="padding: 4px 10px; font-size: 11px; text-decoration: none;">
+                    ⚙ Workspace
                   </a>
                 </td>
               </tr>
@@ -762,9 +772,9 @@
                   {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% else %}<span class="dim">unassigned</span>{% endif %}
                 </td>
                 <td style="text-align: center;">
-                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-primary"
-                     style="background: #1f1f1f; color: white; padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                    🪄 prompt
+                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                     style="padding: 4px 10px; font-size: 11px; text-decoration: none;">
+                    ⚙ Workspace
                   </a>
                 </td>
               </tr>
