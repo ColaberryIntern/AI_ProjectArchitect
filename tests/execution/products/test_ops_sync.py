@@ -567,6 +567,73 @@ class TestPullTodosForUser:
         assert state.last_sync_status == "partial"
         assert state.last_sync_error  # non-empty
 
+    def test_budget_exceeded_stops_walk_and_records_partial(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """L6 (2026-06-09 audit): when total wall time exceeds the budget,
+        the walker stops gracefully, records 'budget_exceeded' in the
+        ring buffer, returns partial status with the unwalked count.
+        Without this, a BC outage could keep the sync thread alive for
+        nearly an hour (HTTP_TIMEOUT × pages × projects)."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        # Force a tiny budget so we exceed it inside the test.
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 0.05)
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(i) for i in (101, 202, 303)]),
+        )
+        # Make the first project's walk take >0.05s so the second
+        # project's pre-walk check trips the budget.
+        import time as _time
+        def _bc(path, *a, **kw):
+            if path == "/projects/101.json":
+                _time.sleep(0.1)
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+
+        assert result["status"] == "partial"
+        assert result["budget_exceeded"] is True
+        assert result["projects_walked"] == 1  # only project 101 got in
+        # The ring buffer captured it
+        errs = sync.recent_errors()
+        assert any(e["kind"] == "budget_exceeded" for e in errs)
+        any_match = next(e for e in errs if e["kind"] == "budget_exceeded")
+        assert "2/3 projects unwalked" in any_match["detail"]
+
+    def test_budget_under_limit_is_ok(self, monkeypatch, isolated_ops_root):
+        """Inverse of the budget test: when the sync finishes within
+        budget, status is 'ok' and budget_exceeded is False. Verifies the
+        budget check doesn't fire spuriously on fast syncs."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 60.0)
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(101)]),
+        )
+        def _bc(path, *a, **kw):
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+        assert result["status"] == "ok"
+        assert result["budget_exceeded"] is False
+        assert result["projects_walked"] == 1
+
     def test_partial_still_updates_last_sync_at(self, monkeypatch, isolated_ops_root):
         """Locks in a behavior the 2026-06-09 audit flagged as H4 — a
         partial sync still bumps last_sync_at. If/when Phase 2 changes
@@ -778,6 +845,54 @@ class TestPullTodosForProject:
         result = sync.pull_todos_for_project("ali@colaberry.com", 101)
         assert result["status"] == "already_running"
         assert bc_calls == []
+
+    def test_sets_last_targeted_sync_at(self, monkeypatch, isolated_ops_root):
+        """L5 (2026-06-09 audit): targeted sync writes a distinct
+        timestamp so UI can distinguish 'Mark Done has run' from
+        'no full sync ever ran'. Locks in the contract that
+        last_sync_at stays empty but last_targeted_sync_at advances."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        def _bc(path, token, params=None, _retry=1):
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Inbox"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_project("ali@colaberry.com", 101)
+        assert result["status"] == "ok"
+        state = store.load_state("ali@colaberry.com")
+        # last_sync_at intentionally still empty -- targeted sync is NOT
+        # a full sync, and the natural-flow gate must keep treating it
+        # that way.
+        assert state.last_sync_at == ""
+        # But last_targeted_sync_at is set so the UI can show feedback.
+        assert state.last_targeted_sync_at != ""
+        assert "T" in state.last_targeted_sync_at  # ISO-shaped
+
+    def test_pull_todos_for_user_does_not_set_last_targeted_sync_at(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """Symmetry test for L5: pull_todos_for_user updates last_sync_at
+        but NOT last_targeted_sync_at. The two fields are independent
+        signals -- full sync is the canonical 'data is fresh' marker."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(sync, "discover_projects", MagicMock(return_value=[]))
+        monkeypatch.setattr(sync, "_bc_get", MagicMock(return_value=None))
+
+        sync.pull_todos_for_user("ali@colaberry.com")
+        state = store.load_state("ali@colaberry.com")
+        assert state.last_sync_at != ""             # full sync did happen
+        assert state.last_targeted_sync_at == ""    # but no targeted touch
 
 
 # ════════════════════════════════════════════════════════════════════

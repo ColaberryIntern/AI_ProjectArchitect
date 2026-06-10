@@ -21,13 +21,28 @@ logger = logging.getLogger(__name__)
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
+APPROVE_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_APPROVE_INTERVAL_MINUTES", "5"))
+# M6 (2026-06-09 audit): cron fires hourly; per-user purge.is_purge_due()
+# then gates whether the actual purge runs for that user (default 24h
+# per user). Hourly cron + 24h per-user gate means a user hitting their
+# due time at minute 30 only waits ~30 min, not until midnight.
+PURGE_CRON_MINUTES = int(os.environ.get("OPS_PURGE_CRON_MINUTES", "60"))
+SMOKE_CRON_HOUR = int(os.environ.get("OPS_CB_SMOKE_CRON_HOUR", "3"))
+SMOKE_CRON_TIMEZONE = os.environ.get("OPS_CB_SMOKE_CRON_TIMEZONE", "America/New_York")
 RESUBSCRIBE_CRON_HOUR = int(os.environ.get("OPS_CB_WEBHOOK_RESUBSCRIBE_HOUR", "4"))
 RESUBSCRIBE_CRON_TIMEZONE = os.environ.get(
     "OPS_CB_WEBHOOK_RESUBSCRIBE_TZ", "America/New_York",
 )
+# Default: polling ON. Flip to "false" (case-insensitive) once webhooks
+# have been verified via webhook_events.jsonl and /admin/cb-mentions.json
+# to retire the 10-min poll. Reversible by toggling the env back.
+POLLING_ENABLED = os.environ.get("OPS_CB_MENTION_POLLING_ENABLED", "true").strip().lower() != "false"
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
+APPROVE_JOB_ID = "ops_autopickup_approve_all_users"
+PURGE_JOB_ID = "ops_purge_all_users"
+SMOKE_JOB_ID = "ops_cb_smoke_nightly"
 RESUBSCRIBE_JOB_ID = "ops_cb_webhook_resubscribe_daily"
 
 _scheduler: BackgroundScheduler | None = None
@@ -111,6 +126,79 @@ def _run_cb_webhook_resubscribe() -> None:
                        exc_info=True)
 
 
+def _purge_all_users() -> None:
+    """M6 (2026-06-09 audit) cron entrypoint.
+
+    Walks every user with a vault token; runs purge.purge_stale_active_rows
+    for each one whose last purge is due (default: once per 24h per
+    user). The cron itself fires hourly so a user who hits their due
+    time mid-day isn't waiting until the next day-boundary.
+    """
+    from execution.products.library import tenancy, vault
+    from . import purge
+
+    try:
+        users = tenancy.list_users(active_only=True)
+    except Exception:
+        logger.warning("ops_purge: failed to list users", exc_info=True)
+        return
+
+    n_ran = 0
+    n_skipped = 0
+    n_due_skipped = 0
+    n_failed = 0
+    for u in users:
+        try:
+            has_token = any(
+                c.tool_name == "basecamp_ai_clone"
+                for c in vault.list_for_user(u.user_id, caller_id="ops_purge_cron")
+            )
+        except Exception:
+            has_token = False
+        if not has_token:
+            n_skipped += 1
+            continue
+        if not purge.is_purge_due(u.email):
+            n_due_skipped += 1
+            continue
+        try:
+            purge.purge_stale_active_rows(u.email)
+            n_ran += 1
+        except Exception:
+            logger.warning("ops_purge: user %s failed", u.email, exc_info=True)
+            n_failed += 1
+
+    logger.info(
+        "ops_purge cron: ran=%d skipped=%d not-due=%d failed=%d",
+        n_ran, n_skipped, n_due_skipped, n_failed,
+    )
+
+
+def _scan_autopickup_approve() -> None:
+    """[Auto-Pickup Approve] Phase 1.5 cron entrypoint. Walks the
+    autopickup audit log, fetches each ticket's BC comments, classifies
+    the next-after-autopickup human reply as approved / rejected /
+    ambiguous, and logs the detection. No-op when OPS_AUTOPICKUP_ENABLED
+    is false (same flag as the writer worker)."""
+    from . import autopickup_approve_worker
+    try:
+        autopickup_approve_worker.scan_all_users()
+    except Exception:
+        logger.warning("ops_autopickup_approve: scan_all_users threw",
+                                  exc_info=True)
+
+
+def _run_cb_smoke() -> None:
+    """Nightly smoke test — post a known @CB ping, wait, assert reply.
+    No-op when bucket/todo env vars are unset (so non-prod environments
+    don't run it). See execution/products/ops/cb_smoke.py."""
+    from . import cb_smoke
+    try:
+        cb_smoke.run()
+    except Exception:
+        logger.warning("ops_cb_smoke: run() threw", exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -126,14 +214,23 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
-    _scheduler.add_job(
-        _scan_cb_mentions,
-        trigger=IntervalTrigger(minutes=MENTION_INTERVAL_MINUTES),
-        id=MENTION_JOB_ID,
-        name="CB System @-mention auto-response (per user with vault token)",
-        replace_existing=True,
-        next_run_time=None,
-    )
+    if POLLING_ENABLED:
+        _scheduler.add_job(
+            _scan_cb_mentions,
+            trigger=IntervalTrigger(minutes=MENTION_INTERVAL_MINUTES),
+            id=MENTION_JOB_ID,
+            name="CB System @-mention auto-response (per user with vault token)",
+            replace_existing=True,
+            next_run_time=None,
+        )
+    else:
+        # WARNING (not INFO) because a misconfigured flag here is silent-
+        # failure territory — without WARNING visibility, an operator who
+        # forgets to verify webhooks could miss every @CB mention for days.
+        logger.warning(
+            "ops_cb_mentions polling DISABLED by "
+            "OPS_CB_MENTION_POLLING_ENABLED=false; relying on BC webhooks"
+        )
     _scheduler.add_job(
         _scan_autopickup,
         trigger=IntervalTrigger(minutes=AUTOPICKUP_INTERVAL_MINUTES),
@@ -142,12 +239,41 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
-
+    _scheduler.add_job(
+        _scan_autopickup_approve,
+        trigger=IntervalTrigger(minutes=APPROVE_INTERVAL_MINUTES),
+        id=APPROVE_JOB_ID,
+        name="Auto-Pickup Approve Worker (detect human reply on draft comments)",
+        replace_existing=True,
+        next_run_time=None,
+    )
+    _scheduler.add_job(
+        _purge_all_users,
+        trigger=IntervalTrigger(minutes=PURGE_CRON_MINUTES),
+        id=PURGE_JOB_ID,
+        name="Stale-row purge (per user, gated by purge.is_purge_due)",
+        replace_existing=True,
+        next_run_time=None,
+    )
+    # Only register the smoke job when bucket/todo env vars are configured,
+    # so dev / preview environments don't pretend to run a smoke test that
+    # has no fixture todo to ping. See cb_smoke.is_configured().
+    from . import cb_smoke
+    if cb_smoke.is_configured():
+        _scheduler.add_job(
+            _run_cb_smoke,
+            trigger=CronTrigger(hour=SMOKE_CRON_HOUR, minute=0,
+                                timezone=SMOKE_CRON_TIMEZONE),
+            id=SMOKE_JOB_ID,
+            name=f"CB @-mention nightly smoke test ({SMOKE_CRON_TIMEZONE} "
+                 f"{SMOKE_CRON_HOUR:02d}:00)",
+            replace_existing=True,
+            next_run_time=None,
+        )
     # The resubscribe cron creates BC webhook subscriptions; without a
     # secret the payload URL is unauthenticated, so the job is a no-op
     # anyway. Skip registration entirely so /admin doesn't claim it's live.
     from . import cb_webhooks
-    resubscribe_status: str
     if cb_webhooks.webhook_secret():
         _scheduler.add_job(
             _run_cb_webhook_resubscribe,
@@ -165,13 +291,16 @@ def start_scheduler() -> None:
         )
     else:
         resubscribe_status = "disabled (OPS_CB_WEBHOOK_SECRET unset)"
-
     _scheduler.start()
+    smoke_status = "enabled" if cb_smoke.is_configured() else "disabled (env unset)"
     logger.info(
-        "ops schedulers started: sync every %d min, mentions every %d min, "
-        "autopickup every %d min, cb_webhook_resubscribe %s",
-        INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES, AUTOPICKUP_INTERVAL_MINUTES,
-        resubscribe_status,
+        "ops schedulers started: sync every %d min, mentions %s, "
+        "autopickup every %d min, approve-scan every %d min, "
+        "purge cron every %d min, cb_smoke %s, cb_webhook_resubscribe %s",
+        INTERVAL_MINUTES,
+        f"every {MENTION_INTERVAL_MINUTES} min" if POLLING_ENABLED else "disabled",
+        AUTOPICKUP_INTERVAL_MINUTES, APPROVE_INTERVAL_MINUTES,
+        PURGE_CRON_MINUTES, smoke_status, resubscribe_status,
     )
 
 

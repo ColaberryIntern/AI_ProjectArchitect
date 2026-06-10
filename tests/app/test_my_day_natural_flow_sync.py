@@ -100,6 +100,39 @@ class TestNaturalFlowSync:
             assert my_day_router._natural_flow_sync("u@x.com", state, None) is False
 
 
+class TestLogBgException:
+    """Phase 3 C6 / audit M5 fix: every BG sync site now routes its
+    top-level exception through _log_bg_exception → sync._record_error,
+    so /my-day/_health can show them. Previously these went to bare
+    'except Exception: pass' and vanished without trace."""
+
+    def test_records_into_ring_buffer(self):
+        from execution.products.ops import sync as _sync
+        _sync.clear_recent_errors()
+        try:
+            raise RuntimeError("BC down")
+        except RuntimeError as e:
+            my_day_router._log_bg_exception("u@x.com", "bg_full_sync", e)
+        errs = _sync.recent_errors()
+        assert len(errs) == 1
+        assert errs[0]["user_id"] == "u@x.com"
+        assert errs[0]["kind"] == "bg_full_sync"
+        assert "RuntimeError" in errs[0]["detail"]
+        assert "BC down" in errs[0]["detail"]
+        _sync.clear_recent_errors()
+
+    def test_recorder_failure_does_not_propagate(self, monkeypatch):
+        """Defensive: even if _record_error itself raises, the BG thread
+        must not crash. The whole point of routing exceptions through
+        this helper is that NOTHING in this path can take down a thread."""
+        def _broken(*a, **kw):
+            raise RuntimeError("ring buffer broken")
+        from execution.products.ops import sync as _sync
+        monkeypatch.setattr(_sync, "_record_error", _broken)
+        # Must not raise:
+        my_day_router._log_bg_exception("u@x.com", "x", RuntimeError("boom"))
+
+
 class TestKickBgFullSync:
     """The bg-sync kicker is a thin wrapper around pull_todos_for_user.
     Mutual exclusion now lives in the SyncCoordinator inside that

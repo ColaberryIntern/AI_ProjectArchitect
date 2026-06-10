@@ -922,20 +922,40 @@ async def cb_mentions_heartbeat(request: Request):
         }, status_code=500)
 
     fresh_minutes = ops_sched.MENTION_INTERVAL_MINUTES * 3
-    finished_at = hb.get("finished_at") or ""
+
+    # When the operator has intentionally retired polling via
+    # OPS_CB_MENTION_POLLING_ENABLED=false, the heartbeat carries
+    # skipped/polling_disabled flags. Don't report stale=True in that
+    # case — staleness implies "broken", but the operator chose this.
+    polling_disabled = bool(
+        hb.get("skipped") and hb.get("reason") == "polling_disabled"
+    )
+
+    if polling_disabled:
+        stale = False
+    else:
+        finished_at = hb.get("finished_at") or ""
+        try:
+            fin_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+            now = datetime.now(fin_dt.tzinfo)
+            stale = (now - fin_dt).total_seconds() > (fresh_minutes * 60)
+        except (ValueError, TypeError):
+            stale = True
+
+    from execution.products.ops import cb_webhooks
     try:
-        fin_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
-        now = datetime.now(fin_dt.tzinfo)
-        stale = (now - fin_dt).total_seconds() > (fresh_minutes * 60)
-    except (ValueError, TypeError):
-        stale = True
+        webhooks = cb_webhooks.recent_event_summary(window_minutes=fresh_minutes)
+    except Exception as e:
+        webhooks = {"error": f"{type(e).__name__}"}
 
     return JSONResponse({
-        "ok": not stale and not hb.get("fatal_error"),
+        "ok": polling_disabled or (not stale and not hb.get("fatal_error")),
+        "polling_disabled": polling_disabled,
         "stale": stale,
         "fresh_window_minutes": fresh_minutes,
         "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
         "heartbeat": hb,
+        "webhooks": webhooks,
     })
 
 
@@ -995,3 +1015,118 @@ async def cb_webhooks_subscribe(request: Request,
                  f"existing={result.get('buckets_existing')} "
                  f"failed={result.get('failed')}")
     return JSONResponse(result)
+
+
+@router.get("/autopickup.json")
+async def autopickup_observability(request: Request):
+    """Surface state of the auto-pickup writer + approve workers.
+
+    Returns:
+      - writer.heartbeat: last scan summary from the writer cron
+      - writer.recent_audit: last 20 drafted rows from today's audit
+      - approve.heartbeat: last scan summary from the approve cron
+      - approve.recent_audit: last 20 approval detections from today
+      - allowlist: current per-project opt-in entries
+      - counts_today: {drafted, approved, rejected, ambiguous, pending}
+      - enabled: whether OPS_AUTOPICKUP_ENABLED is true on this process
+
+    Returns the file paths it read from so a curl from outside the box
+    points at the right artifact when debugging.
+    """
+    _require_admin(request)
+    import json as _json
+    import time as _time
+    from execution.products.ops import (
+        autopickup_worker as ap,
+        autopickup_approve_worker as aaw,
+        scheduler as ops_sched,
+    )
+
+    today = _time.strftime("%Y-%m-%d", _time.gmtime())
+
+    def _load_heartbeat(path):
+        if not path.exists():
+            return {"reason": "no_heartbeat_yet", "path": str(path)}
+        try:
+            return _json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            return {"reason": f"unreadable:{type(e).__name__}",
+                          "error": str(e)[:120],
+                          "path": str(path)}
+
+    def _tail_jsonl(path, n=20):
+        if not path.exists():
+            return []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        out = []
+        for line in lines[-n:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(_json.loads(line))
+            except _json.JSONDecodeError:
+                continue
+        return out
+
+    writer_hb_path = ap.HEARTBEAT_PATH
+    writer_audit_path = ap.AUDIT_DIR / f"{today}.jsonl"
+    approve_hb_path = aaw.HEARTBEAT_PATH
+    approve_audit_path = aaw.APPROVAL_DIR / f"{today}.jsonl"
+
+    writer_audit = _tail_jsonl(writer_audit_path)
+    approve_audit = _tail_jsonl(approve_audit_path)
+
+    # Count by status across today's full audit (not just the tail)
+    def _count_full(path, statuses):
+        out = {s: 0 for s in statuses}
+        if not path.exists():
+            return out
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                s = r.get("status", "")
+                if s in out:
+                    out[s] += 1
+        except OSError:
+            pass
+        return out
+
+    drafted_counts = _count_full(writer_audit_path,
+                                                      ["drafted", "failed", "refused", "dry_run"])
+    approve_counts = _count_full(approve_audit_path,
+                                                       ["approved", "rejected", "ambiguous", "pending"])
+
+    return JSONResponse({
+        "enabled": ap.ENABLED,
+        "intervals": {
+            "writer_minutes": ops_sched.AUTOPICKUP_INTERVAL_MINUTES,
+            "approve_minutes": ops_sched.APPROVE_INTERVAL_MINUTES,
+        },
+        "allowlist": ap._load_allowlist(),
+        "counts_today": {
+            "writer": drafted_counts,
+            "approve": approve_counts,
+        },
+        "writer": {
+            "heartbeat": _load_heartbeat(writer_hb_path),
+            "heartbeat_path": str(writer_hb_path),
+            "recent_audit": writer_audit,
+            "audit_path": str(writer_audit_path),
+        },
+        "approve": {
+            "heartbeat": _load_heartbeat(approve_hb_path),
+            "heartbeat_path": str(approve_hb_path),
+            "recent_audit": approve_audit,
+            "audit_path": str(approve_audit_path),
+        },
+    })

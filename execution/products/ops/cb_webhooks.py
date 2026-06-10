@@ -25,13 +25,14 @@ become inert.
 """
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from config.settings import PROJECT_ROOT
@@ -413,4 +414,85 @@ def resubscribe_all_users() -> dict:
         "per_user": per_user,
     }
     _append_resubscribe_history(summary)
+    return summary
+
+
+# ── inbound: aggregate event log for ops visibility ───────────────
+
+
+_SKIP_BUCKETS = {
+    "no_trigger": "skipped_no_trigger",
+    "already_seen": "skipped_already_seen",
+    "parent_closed": "skipped_parent_closed",
+}
+
+
+def recent_event_summary(window_minutes: int = 60) -> dict:
+    """Aggregate counts from EVENT_LOG_PATH for events newer than
+    `now - window_minutes`. Bounded to the last 5000 lines so a huge
+    log doesn't slow the admin endpoint. Tolerates a missing file and
+    malformed lines."""
+    summary = {
+        "window_minutes": window_minutes,
+        "events_total": 0,
+        "responded": 0,
+        "skipped_no_trigger": 0,
+        "skipped_already_seen": 0,
+        "skipped_parent_closed": 0,
+        "skipped_no_token": 0,
+        "skipped_other": 0,
+        "failures": 0,
+        "last_event_at": None,
+    }
+    if not EVENT_LOG_PATH.exists():
+        return summary
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    newest: Optional[datetime] = None
+
+    try:
+        with EVENT_LOG_PATH.open("r", encoding="utf-8") as f:
+            lines = collections.deque(f, maxlen=5000)
+    except OSError:
+        return summary
+
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        received_at = rec.get("received_at") or ""
+        try:
+            dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if dt < cutoff:
+            continue
+
+        summary["events_total"] += 1
+        if newest is None or dt > newest:
+            newest = dt
+
+        skipped = rec.get("skipped")
+        if skipped:
+            # "no_token:<src>" → skipped_no_token; named tags → their bucket;
+            # everything else → skipped_other.
+            if isinstance(skipped, str) and skipped.startswith("no_token"):
+                summary["skipped_no_token"] += 1
+            elif skipped in _SKIP_BUCKETS:
+                summary[_SKIP_BUCKETS[skipped]] += 1
+            else:
+                summary["skipped_other"] += 1
+            continue
+
+        if rec.get("responded") is True:
+            summary["responded"] += 1
+        elif rec.get("responded") is False:
+            summary["failures"] += 1
+
+    if newest is not None:
+        summary["last_event_at"] = newest.strftime("%Y-%m-%dT%H:%M:%SZ")
     return summary

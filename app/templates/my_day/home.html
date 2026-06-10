@@ -134,38 +134,93 @@
 </div>
 {% endif %}
 
-{# ── Sync-started banner with auto-refresh ──────────────── #}
+{# ── Sync-started banner with status-aware auto-refresh ─────
+   Audit M3 (2026-06-09): the previous fixed 25s countdown could
+   reload before the sync completed (giving the illusion of a no-op)
+   or long after it finished (annoying delay). This version polls
+   /my-day/sync-status.json every ~2.5s and reloads when the server
+   says the sync truly finished. The visible countdown is a
+   best-effort hint; the polling is the source of truth. #}
 {% if request.query_params.get('sync_started') %}
 <div id="md-sync-banner"
+     data-baseline-sync-at="{{ state.last_sync_at or '' }}"
      style="background: #ddf4ff; border: 1px solid #c6e2ff; border-radius: 8px;
             padding: 10px 16px; margin-bottom: 14px; font-size: 13px; color: #0550ae;
             display: flex; align-items: center; gap: 10px;">
   <div class="md-spinner" style="width: 16px; height: 16px; border-width: 2px; margin: 0;"></div>
-  <span><strong>Sync started.</strong> Pulling latest from Basecamp in the background.
-    This page will refresh automatically in <span id="md-sync-countdown">25</span>s.</span>
+  <span>
+    <strong>Sync started.</strong>
+    <span id="md-sync-message">Pulling latest from Basecamp in the background.
+      This page will refresh automatically in <span id="md-sync-countdown">25</span>s.</span>
+  </span>
   <a href="/my-day/" id="md-sync-stop" style="margin-left: auto; color: #0550ae; text-decoration: underline; font-size: 12px;">Stop waiting</a>
 </div>
 <script>
 (function() {
-  // Auto-refresh URL preserves the user's active filters (view/tier/project/
-  // list/person) and strips only the now-stale sync_started flag. Previously
-  // this hardcoded '/my-day/' which silently reset filters after 25s, even
-  // though the post-Sync redirect itself preserved them.
   var url = new URL(window.location.href);
   url.searchParams.delete('sync_started');
   var refreshUrl = url.pathname + (url.search || '');
   var stopLink = document.getElementById('md-sync-stop');
   if (stopLink) stopLink.href = refreshUrl;
-  var sec = 25;
+
+  var banner = document.getElementById('md-sync-banner');
+  var baselineSyncAt = (banner && banner.dataset.baselineSyncAt) || '';
   var cd = document.getElementById('md-sync-countdown');
-  var tick = setInterval(function() {
-    sec -= 1;
-    if (cd) cd.textContent = String(sec);
-    if (sec <= 0) {
-      clearInterval(tick);
+  var msg = document.getElementById('md-sync-message');
+  var startedAt = Date.now();
+  var SOFT_DEADLINE_MS = 25000;   // countdown UX target
+  var HARD_DEADLINE_MS = 60000;   // give up + reload after this
+  var POLL_MS = 2500;
+  var sawInFlight = false;
+
+  function setCountdown(s) { if (cd) cd.textContent = String(s); }
+  function setMessage(text) { if (msg) msg.innerHTML = text; }
+
+  function pollOnce() {
+    var elapsed = Date.now() - startedAt;
+    var remaining = Math.max(0, Math.floor((SOFT_DEADLINE_MS - elapsed) / 1000));
+    setCountdown(remaining);
+
+    if (elapsed >= HARD_DEADLINE_MS) {
       window.location.href = refreshUrl;
+      return;
     }
-  }, 1000);
+
+    fetch('/my-day/sync-status.json', {credentials: 'same-origin', cache: 'no-store'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        if (data.in_flight) {
+          sawInFlight = true;
+          if (elapsed > SOFT_DEADLINE_MS) {
+            // Past the countdown — switch to a 'still running' message
+            // so the user knows we're still actively waiting, not stuck.
+            var age = Math.floor(data.in_flight_age_seconds || 0);
+            setMessage('Sync still running… (' + age + 's elapsed; will reload when complete)');
+          }
+        } else {
+          // in_flight = false. Two cases:
+          //   (a) We saw it in flight, now it's gone -> sync finished, reload.
+          //   (b) We never saw it in flight (already_running short-circuit,
+          //       or sync was so fast it finished before our first poll).
+          //       In that case: if last_sync_at moved past baseline, reload;
+          //       otherwise wait a bit more (sync may still be queued).
+          if (sawInFlight) {
+            window.location.href = refreshUrl;
+          } else if (data.last_sync_at && data.last_sync_at !== baselineSyncAt) {
+            window.location.href = refreshUrl;
+          } else if (elapsed > 8000) {
+            // 8s of consistent not-in-flight + no state advance: nothing's
+            // happening (likely already_running). Just reload current state.
+            window.location.href = refreshUrl;
+          }
+        }
+      })
+      .catch(function() { /* network blip; keep polling */ });
+  }
+
+  pollOnce();
+  setInterval(pollOnce, POLL_MS);
 })();
 </script>
 {% endif %}
