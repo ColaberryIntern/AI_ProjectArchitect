@@ -347,6 +347,94 @@ def provision_bc_ai_account(human_user,
     )
 
 
+# ── Grant an existing clone to projects it isn't a member of ──────────
+
+
+@dataclass(frozen=True)
+class GrantResult:
+    """Outcome of granting one clone identity access to one project."""
+    bucket_id: int
+    ok: bool
+    grantee_bc_user_id: int = 0
+    error_code: str = ""
+    error_detail: str = ""
+
+
+def resolve_clone_bc_user_id(human_user) -> int:
+    """Return the BC numeric id of the identity the operator's My Day sync
+    authenticates as — i.e. the account that must be a project member for
+    the walk to read todos. This is the correct grantee for closing a
+    sync 403 'membership gap'.
+
+    Resolution order:
+      1. The bc_user_id stored in the operator's live BC OAuth grant
+         (exactly the identity `tokens.get_user_token` hands the sync).
+      2. The operator's provisioned AI-clone id (user.bc_ai_user_id).
+    Returns 0 when neither is resolvable.
+    """
+    try:
+        from . import basecamp_oauth_token
+        meta = basecamp_oauth_token.get_grant_metadata(human_user)
+        if meta and meta.get("bc_user_id"):
+            return int(meta["bc_user_id"])
+    except Exception:
+        pass
+    return int(getattr(human_user, "bc_ai_user_id", 0) or 0)
+
+
+def grant_clone_to_buckets(human_user, bucket_ids, *,
+                           clone_bc_user_id: int = 0) -> list[GrantResult]:
+    """Grant the operator's AI-clone BC identity access to a set of
+    EXISTING projects, using the CB System admin token.
+
+    This is the standalone, grant-only counterpart to
+    `provision_bc_ai_account`'s `grant_extra_buckets` loop: it does NOT
+    invite or create a BC user (no seat consumed), it only adds an
+    already-provisioned clone to projects it isn't a member of yet. That
+    membership gap is the root cause of the My Day sync 403 documented in
+    `directives/my-day-bc-sync.md` — the clone can list the project in
+    /projects.json but gets 403 reading its todos.
+
+    `clone_bc_user_id` — the grantee. When 0 (the default), resolved via
+    `resolve_clone_bc_user_id` so callers don't have to thread it.
+
+    Returns one `GrantResult` per bucket. Best-effort: a failing bucket
+    (e.g. the admin token isn't account-admin there) does not abort the
+    rest. BC's grant PUT is idempotent — re-granting an existing member
+    is a no-op, so this is safe to re-run.
+    """
+    grantee = int(clone_bc_user_id or 0) or resolve_clone_bc_user_id(human_user)
+    if not grantee:
+        return [
+            GrantResult(
+                bucket_id=int(b), ok=False,
+                error_code="no_clone_bc_user_id",
+                error_detail=(
+                    "Could not resolve the AI-clone BC user id to grant. "
+                    "Operator needs a BC OAuth grant (/profile/connect-basecamp-ai) "
+                    "or a provisioned bc_ai_user_id."
+                ),
+            )
+            for b in bucket_ids
+        ]
+
+    account = _bc_account_id()
+    results: list[GrantResult] = []
+    for raw in bucket_ids:
+        bid = int(raw)
+        url = f"https://3.basecampapi.com/{account}/projects/{bid}/people/users.json"
+        try:
+            _bc_put(url, {"grant": [grantee]})
+            results.append(GrantResult(bucket_id=bid, ok=True,
+                                       grantee_bc_user_id=grantee))
+        except ProvisionError as e:
+            results.append(GrantResult(
+                bucket_id=bid, ok=False, grantee_bc_user_id=grantee,
+                error_code=e.code, error_detail=e.detail,
+            ))
+    return results
+
+
 # ── Status check ──────────────────────────────────────────────────────
 
 
