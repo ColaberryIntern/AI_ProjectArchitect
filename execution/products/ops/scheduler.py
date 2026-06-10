@@ -13,6 +13,7 @@ import logging
 import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
@@ -20,9 +21,14 @@ logger = logging.getLogger(__name__)
 INTERVAL_MINUTES = int(os.environ.get("OPS_SYNC_INTERVAL_MINUTES", "5"))
 MENTION_INTERVAL_MINUTES = int(os.environ.get("OPS_MENTION_INTERVAL_MINUTES", "10"))
 AUTOPICKUP_INTERVAL_MINUTES = int(os.environ.get("OPS_AUTOPICKUP_INTERVAL_MINUTES", "15"))
+RESUBSCRIBE_CRON_HOUR = int(os.environ.get("OPS_CB_WEBHOOK_RESUBSCRIBE_HOUR", "4"))
+RESUBSCRIBE_CRON_TIMEZONE = os.environ.get(
+    "OPS_CB_WEBHOOK_RESUBSCRIBE_TZ", "America/New_York",
+)
 JOB_ID = "ops_sync_all_users"
 MENTION_JOB_ID = "ops_cb_mentions_all_users"
 AUTOPICKUP_JOB_ID = "ops_autopickup_all_users"
+RESUBSCRIBE_JOB_ID = "ops_cb_webhook_resubscribe_daily"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -96,6 +102,15 @@ def _scan_autopickup() -> None:
         logger.warning("ops_autopickup: scan_all_users threw", exc_info=True)
 
 
+def _run_cb_webhook_resubscribe() -> None:
+    from . import cb_webhooks
+    try:
+        cb_webhooks.resubscribe_all_users()
+    except Exception:
+        logger.warning("ops_cb_webhook_resubscribe: resubscribe_all_users threw",
+                       exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -127,11 +142,36 @@ def start_scheduler() -> None:
         replace_existing=True,
         next_run_time=None,
     )
+
+    # The resubscribe cron creates BC webhook subscriptions; without a
+    # secret the payload URL is unauthenticated, so the job is a no-op
+    # anyway. Skip registration entirely so /admin doesn't claim it's live.
+    from . import cb_webhooks
+    resubscribe_status: str
+    if cb_webhooks.webhook_secret():
+        _scheduler.add_job(
+            _run_cb_webhook_resubscribe,
+            trigger=CronTrigger(
+                hour=RESUBSCRIBE_CRON_HOUR, minute=0,
+                timezone=RESUBSCRIBE_CRON_TIMEZONE,
+            ),
+            id=RESUBSCRIBE_JOB_ID,
+            name="CB webhook resubscribe (daily, all users with vault token)",
+            replace_existing=True,
+            next_run_time=None,
+        )
+        resubscribe_status = (
+            f"daily at {RESUBSCRIBE_CRON_HOUR:02d}:00 {RESUBSCRIBE_CRON_TIMEZONE}"
+        )
+    else:
+        resubscribe_status = "disabled (OPS_CB_WEBHOOK_SECRET unset)"
+
     _scheduler.start()
     logger.info(
         "ops schedulers started: sync every %d min, mentions every %d min, "
-        "autopickup every %d min",
+        "autopickup every %d min, cb_webhook_resubscribe %s",
         INTERVAL_MINUTES, MENTION_INTERVAL_MINUTES, AUTOPICKUP_INTERVAL_MINUTES,
+        resubscribe_status,
     )
 
 
