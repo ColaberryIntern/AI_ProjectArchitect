@@ -421,6 +421,58 @@ async def basecamp_callback(request: Request,
         logger.warning("BC authorization.json failed for user=%s: %s",
                        user.user_id, type(e).__name__)
 
+    # ── Defense: refuse grant if BC handed us the user's AI persona token ──
+    # Symptom this prevents: the per-user OAuth flow grants the token to
+    # whoever is signed in to BC at click time. If the user happens to be
+    # signed in as their +ai persona (the BC AI sub-account created by
+    # basecamp_provisioning), the grant points at the wrong identity.
+    # The AI persona is NOT a member of customer projects (ShipCES,
+    # gov-bid-builds/*) so every sync request returns 404 and titles drift.
+    # We saw this happen for Ali on 2026-06-10 (ShipCES Pricing Layer
+    # ticket renamed in BC, never propagated to /my-day/).
+    #
+    # Detect the symptom: granted email is <local>+ai@<domain> where the
+    # user's own email is <local>@<domain>. Refuse and tell the user to
+    # sign out of BC's AI account and reconnect as their human account.
+    user_email_lower = (user.email or "").strip().lower()
+    is_plus_alias = False
+    if "@" in user_email_lower and "@" in granted_email:
+        u_local, u_domain = user_email_lower.split("@", 1)
+        g_local, g_domain = granted_email.split("@", 1)
+        if u_domain == g_domain and g_local in (f"{u_local}+ai", f"{u_local}-ai"):
+            is_plus_alias = True
+    if is_plus_alias:
+        logger.warning(
+            "basecamp_connect: refused +ai-persona grant for user=%s "
+            "(granted=%s)", user.user_id, granted_email,
+        )
+        response = HTMLResponse("""
+        <html><body style='font-family: -apple-system, Arial, sans-serif;
+          max-width: 640px; margin: 60px auto; padding: 20px; line-height: 1.5;'>
+          <h2 style='color: #cf222e;'>🛑 Connection refused: wrong Basecamp account</h2>
+          <p>You authorized Basecamp as <code>""" + granted_email + """</code>,
+          which is your <strong>AI persona</strong> account, not your human
+          account.</p>
+          <p>The AI persona account is not a member of customer projects
+          (e.g. ShipCES, gov-bid builds), so syncing it would hide every
+          customer ticket from your <code>/my-day/</code> view. We refuse the
+          grant rather than silently break sync.</p>
+          <h3>Fix it in 30 seconds</h3>
+          <ol>
+            <li>Open <a href='https://launchpad.37signals.com/signout' target='_blank'>https://launchpad.37signals.com/signout</a>
+              and sign out of Basecamp completely.</li>
+            <li>Open <a href='https://launchpad.37signals.com/signin' target='_blank'>https://launchpad.37signals.com/signin</a>
+              and sign in as <code>""" + (user.email or "your-human-account@colaberry.com") + """</code>
+              (NOT the +ai address).</li>
+            <li>Come back to
+              <a href='/profile/connect-basecamp'>/profile/connect-basecamp</a>
+              and click Connect again.</li>
+          </ol>
+          <p><a href='/profile/connect-basecamp'>← Back to Connect Basecamp</a></p>
+        </body></html>
+        """, status_code=400)
+        return response
+
     basecamp_oauth_token.store_oauth_grant(
         user,
         access_token=access_token,
