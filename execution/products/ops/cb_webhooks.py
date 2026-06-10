@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 SUBS_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "webhook_subs.json"
 EVENT_LOG_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "webhook_events.jsonl"
+RESUBSCRIBE_HISTORY_PATH = (
+    PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "resubscribe_history.jsonl"
+)
 BC_API_BASE = "https://3.basecampapi.com/3945211"
 
 
@@ -328,6 +331,90 @@ def handle_event(payload: dict, *, user_email: str) -> dict:
                   "comment_id": comment_id}
         _log_event(result)
         return result
+
+
+# ── daily resubscribe cron ────────────────────────────────────────
+
+
+def _append_resubscribe_history(summary: dict) -> None:
+    """Best-effort append of a run summary to the history log. Disk errors
+    must not break the cron — mirrors the _log_event pattern above."""
+    try:
+        RESUBSCRIBE_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(summary)[:8000]
+        with RESUBSCRIBE_HISTORY_PATH.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        logger.warning("cb_webhooks: failed to append resubscribe history",
+                       exc_info=True)
+
+
+def resubscribe_all_users() -> dict:
+    """Iterate every user with a basecamp_ai_clone vault token; idempotently
+    subscribe webhooks for any bucket they can see that doesn't yet have a
+    subscription. Returns a summary {users_processed, total_added,
+    total_existing, total_failed, per_user, started_at, finished_at,
+    fatal_error}.
+
+    No-op when webhook_secret() is unset.
+    """
+    if not webhook_secret():
+        logger.warning("cb_webhooks: OPS_CB_WEBHOOK_SECRET unset — "
+                       "skipping daily resubscribe cron")
+        return {"status": "no_secret"}
+
+    from execution.products.library import tenancy, vault
+
+    started_at = _now_iso()
+    per_user: list[dict] = []
+    fatal_error: str | None = None
+
+    try:
+        users = tenancy.list_users(active_only=True)
+    except Exception as e:
+        fatal_error = f"list_users_failed:{type(e).__name__}"
+        users = []
+        logger.warning("cb_webhooks: tenancy.list_users failed", exc_info=True)
+
+    for u in users:
+        try:
+            has_token = any(
+                c.tool_name == "basecamp_ai_clone"
+                for c in vault.list_for_user(
+                    u.user_id, caller_id="cb_webhooks_resubscribe_cron",
+                )
+            )
+        except Exception:
+            has_token = False
+            logger.warning("cb_webhooks: vault.list_for_user failed for %s",
+                           u.email, exc_info=True)
+        if not has_token:
+            continue
+        try:
+            r = subscribe_user_buckets(u.email)
+            per_user.append({"user_id": u.user_id, "email": u.email, **r})
+            logger.info("cb_webhooks resubscribe for %s: %s", u.email, r)
+        except Exception as e:
+            per_user.append({
+                "user_id": u.user_id, "email": u.email,
+                "status": "exception", "error": f"{type(e).__name__}",
+            })
+            logger.warning("cb_webhooks resubscribe failed for %s",
+                           u.email, exc_info=True)
+
+    finished_at = _now_iso()
+    summary = {
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "users_processed": len(per_user),
+        "total_added": sum(p.get("buckets_added", 0) for p in per_user),
+        "total_existing": sum(p.get("buckets_existing", 0) for p in per_user),
+        "total_failed": sum(p.get("failed", 0) for p in per_user),
+        "fatal_error": fatal_error,
+        "per_user": per_user,
+    }
+    _append_resubscribe_history(summary)
+    return summary
 
 
 # ── inbound: aggregate event log for ops visibility ───────────────
