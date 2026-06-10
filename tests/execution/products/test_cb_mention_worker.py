@@ -207,7 +207,9 @@ def test_scan_for_user_logs_bucket_truncation(monkeypatch, caplog):
         r = cb.scan_for_user("ali@colaberry.com", max_buckets=50)
 
     assert r["buckets_truncated"] == 25
-    assert any("buckets_truncated" not in rec.message and "truncated=25" in rec.message
+    # WARNING message format updated when bucket-cap PR added rotated-out
+    # surfacing — match the rotation-aware phrasing.
+    assert any("75 buckets > cap=50" in rec.message
                for rec in caplog.records)
 
 
