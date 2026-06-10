@@ -473,9 +473,15 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     forbidden_buckets: list[int] = []
 
     # Resolve which BC identity this token authenticates as, so a 403
-    # error can name the exact account that needs granting. Best-effort:
-    # if the lookup fails we fall back to a generic phrase.
+    # error can name the exact account that needs granting AND so the
+    # identity-mismatch guard below can compare it to the id the
+    # classifier expects. Best-effort: on lookup failure we fall back to
+    # a generic phrase and skip the guard. The email alone is ambiguous
+    # when an operator has duplicate BC person records for one address
+    # (the exact failure mode this guard exists for), so we capture the
+    # numeric id too.
     connected_identity = ""
+    connected_identity_id = 0
     try:
         from execution.products.library import (
             basecamp_oauth_token as _bc_oauth,
@@ -486,6 +492,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             _meta = _bc_oauth.get_grant_metadata(_u)
             if _meta:
                 connected_identity = (_meta.get("bc_user_email") or "").strip()
+                connected_identity_id = int(_meta.get("bc_user_id") or 0)
     except Exception:
         pass
 
@@ -562,15 +569,59 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     p_created, p_updated = store.upsert_projects(user_id, fresh_projects)
     t_created, t_updated = store.upsert_todos(user_id, fresh_todos)
 
+    # Self-annealing guard (2026-06-10): collapse a pile of per-bucket
+    # 403s into ONE root-cause line, and — when the identity the token
+    # authenticates as also differs from the id the classifier expects —
+    # name the precise fix (reconnect as the right account). This is the
+    # 'fail loud instead of a wall of 403s' improvement from the
+    # identity-mismatch incident: Ali's OAuth was bound to a dead
+    # duplicate BC person record (16988292) while his tasks live under
+    # 17454835, so every walk 403'd with no hint of why.
+    #
+    # The id-mismatch branch is gated on `forbidden_buckets` being
+    # non-empty ON PURPOSE so it can NEVER false-positive on the
+    # legitimate AI-clone model, where the token (clone id) differs from
+    # the classifier id (human) BY DESIGN but reads everything fine — a
+    # correctly-granted clone produces zero forbidden buckets, so this
+    # branch stays silent for it.
+    identity_alert = ""
+    connection_identity_suspect = bool(
+        forbidden_buckets and connected_identity_id and bc_user_id
+        and connected_identity_id != bc_user_id
+    )
+    if forbidden_buckets:
+        who = connected_identity or "your Basecamp connection"
+        who_id = f" (BC id {connected_identity_id})" if connected_identity_id else ""
+        if connection_identity_suspect:
+            identity_alert = (
+                f"Basecamp connection bound to the wrong account: you are "
+                f"connected as {who}{who_id}, which was forbidden on "
+                f"{len(forbidden_buckets)} project(s), but your tasks are "
+                f"tracked under BC id {bc_user_id}. This is almost certainly "
+                f"a duplicate Basecamp identity — reconnect at "
+                f"/profile/connect-basecamp-ai as BC id {bc_user_id}."
+            )
+            _record_error(user_id, "connection_identity_suspect", identity_alert)
+        else:
+            identity_alert = (
+                f"Basecamp connection ({who}{who_id}) was forbidden on "
+                f"{len(forbidden_buckets)} project(s). If these should be "
+                f"visible, add that identity to them (People → Add people) "
+                f"or reconnect as the account that is a member."
+            )
+            _record_error(user_id, "connection_forbidden_summary", identity_alert)
+
     # 3. State
     state.last_sync_at = _now_iso()
     state.last_sync_status = "partial" if partial else "ok"
-    # Lead the banner with the actionable 403 messages when present — a
-    # membership gap is fixable by the operator, whereas a transient 5xx
-    # just retries on its own. Generic errors fill any remaining slots.
+    # Lead the banner with the single root-cause identity line when
+    # present, then the actionable per-bucket 403 messages (a membership
+    # gap is fixable by the operator, whereas a transient 5xx just retries
+    # on its own), then generic errors fill any remaining slots.
     forbidden_errs = [e for e in project_errors if "403 Forbidden" in e]
     other_errs = [e for e in project_errors if "403 Forbidden" not in e]
-    state.last_sync_error = "; ".join((forbidden_errs + other_errs)[:3]) if project_errors else ""
+    ordered = ([identity_alert] if identity_alert else []) + forbidden_errs + other_errs
+    state.last_sync_error = "; ".join(ordered[:3]) if ordered else ""
     state.todos_synced = len(fresh_todos)
     state.projects_synced = len(fresh_projects)
     store.save_state(state)
@@ -588,6 +639,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         "todos_updated": t_updated,
         "errors": project_errors[:3],
         "forbidden_buckets": forbidden_buckets,
+        "connection_identity_suspect": connection_identity_suspect,
         "budget_exceeded": budget_exceeded,
         "wall_time_seconds": round(time.time() - sync_start, 1),
     }
