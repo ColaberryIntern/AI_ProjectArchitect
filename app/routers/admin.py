@@ -922,16 +922,29 @@ async def cb_mentions_heartbeat(request: Request):
         }, status_code=500)
 
     fresh_minutes = ops_sched.MENTION_INTERVAL_MINUTES * 3
-    finished_at = hb.get("finished_at") or ""
-    try:
-        fin_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
-        now = datetime.now(fin_dt.tzinfo)
-        stale = (now - fin_dt).total_seconds() > (fresh_minutes * 60)
-    except (ValueError, TypeError):
-        stale = True
+
+    # When the operator has intentionally retired polling via
+    # OPS_CB_MENTION_POLLING_ENABLED=false, the heartbeat carries
+    # skipped/polling_disabled flags. Don't report stale=True in that
+    # case — staleness implies "broken", but the operator chose this.
+    polling_disabled = bool(
+        hb.get("skipped") and hb.get("reason") == "polling_disabled"
+    )
+
+    if polling_disabled:
+        stale = False
+    else:
+        finished_at = hb.get("finished_at") or ""
+        try:
+            fin_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+            now = datetime.now(fin_dt.tzinfo)
+            stale = (now - fin_dt).total_seconds() > (fresh_minutes * 60)
+        except (ValueError, TypeError):
+            stale = True
 
     return JSONResponse({
-        "ok": not stale and not hb.get("fatal_error"),
+        "ok": polling_disabled or (not stale and not hb.get("fatal_error")),
+        "polling_disabled": polling_disabled,
         "stale": stale,
         "fresh_window_minutes": fresh_minutes,
         "interval_minutes": ops_sched.MENTION_INTERVAL_MINUTES,
