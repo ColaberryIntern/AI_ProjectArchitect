@@ -70,7 +70,7 @@ Invariants the sync engine relies on:
 
 3. **Operator project overrides survive re-sync.** `upsert_projects` preserves `is_managed` and `weight` across re-walks so an operator's "un-manage this project" choice doesn't get reverted every 5 minutes.
 
-4. **No auto-purge.** Items present locally but absent in the fresh BC walk are kept. They are filtered out at read time by status. This means a task moved to a different project may briefly appear in both; eventual consistency takes care of it on subsequent walks.
+4. **The walk never deletes; the purge sweep reconciles.** `upsert_todos` is upsert-only — items present locally but absent in a fresh BC walk are kept (a task moved between projects may briefly appear in both; subsequent walks converge). Removal is the job of `purge.purge_stale_active_rows` (see "Reconciliation purge" below), which runs out-of-band and re-checks each active row against BC directly. Without it, a deleted Basecamp todolist (e.g. the old "approval queue") would leave its rows rendering as `active` forever, because the walk simply stops returning them.
 
 5. **Atomic file writes.** Every write uses `tempfile.mkstemp` + `Path.replace` so a process crash mid-write can never produce a partially-written JSON file. The reader's `corrupt JSON → return empty` fallback is a defense-in-depth, not the primary protection.
 
@@ -97,7 +97,25 @@ Two environment-tunable knobs:
 | `OPS_FRESHNESS_DAYS` | 30 | A todo whose `updated_at` is older than this AND has no future due date is dropped at sync time |
 | `OPS_PROJECT_FRESHNESS_DAYS` | 30 | Vestigial — `pull_todos_for_user` no longer skips projects by their own `updated_at`. Kept in code for backward compat. |
 
-The freshness window deliberately excludes quietly-completed tasks (>30 days, no future due) from sync. This is audit M6 (stale active rows for tasks completed outside the window); a periodic purge sweep is the planned remedy. Until then, an operator who notices a zombie `active` row whose BC counterpart has been completed for 31+ days can Mark Done locally to clear it.
+The freshness window deliberately excludes quietly-completed tasks (>30 days, no future due) from sync. That created audit M6 — zombie `active` rows for tasks completed outside the window — which the reconciliation purge below now retires.
+
+## Reconciliation purge
+
+`execution/products/ops/purge.py` runs out-of-band of the walk and is the only thing that *removes* rows. The scheduler fires `_purge_all_users` hourly (`OPS_PURGE_CRON_MINUTES=60`); each user is then gated by `is_purge_due` to run at most once per `OPS_PURGE_INTERVAL_HOURS` (24).
+
+`purge_stale_active_rows` re-checks **every** active, non-dismissed local row (not just stale ones — see below) by re-fetching it one-at-a-time from BC, and mirrors BC's truth:
+
+| BC response | Action |
+|---|---|
+| `completed: true` | Local row → `completed` with completion metadata (retires the M6 zombie) |
+| `400`/`404` (None) | Task or its whole todolist was deleted → local row → `archived`, so the report stops surfacing it |
+| `completed: false` | Left alone; re-checked next sweep |
+
+Dismissed rows are never touched (a deliberate operator signal). Rows are checked oldest-`bc_updated_at`-first and bounded by `OPS_PURGE_CAP_PER_USER` (50) per run; the unswept tail rolls over to the next sweep.
+
+**Why it re-checks all active rows, not just the stale tail (Option 2, 2026-06-10):** the original M6 sweep only looked at rows already past the 30-day freshness cutoff. A todolist deleted in BC *while its rows were still fresh* fell into a blind spot — the walk stopped returning it, and the cutoff-gated purge wouldn't look at it until it aged past 30 days. Dropping the cutoff gate closes that gap, at the cost of one BC GET per active row per 24h (bounded by the cap). Regression guard: `test_ops_purge.py::test_fresh_deleted_list_row_archived`.
+
+An operator who wants a row gone immediately (rather than waiting for the next sweep) can still Mark Done or Skip it locally.
 
 ## Freshness gate: when does the page-load sync fire?
 

@@ -1,23 +1,38 @@
-"""Periodic stale-row purge for /my-day/ local mirror.
+"""Periodic active-row reconciliation for /my-day/ local mirror.
 
-Retires audit M6 (2026-06-09): the walker's freshness gate
-(`_todo_is_relevant`) drops todos whose `updated_at` is older than
-`OPS_FRESHNESS_DAYS` AND that have no future due date. A task that was
-active at last sync, then completed in Basecamp AFTER it aged out of
-the freshness window, never re-enters the walker's scope — its local
-row stays `status='active'` forever.
+Closes two gaps, both rooted in the same fact: the sync walker is
+upsert-only. It walks Basecamp top-down and writes whatever it finds;
+it never removes a local row just because BC stopped returning it.
+`store.upsert_todos` is explicit: rows present locally but absent in a
+fresh walk are kept (no auto-purge). So two classes of row go stale:
 
-This sweep finds those rows directly (status='active' AND
-bc_updated_at past the cutoff) and re-fetches them one at a time from
-BC. If BC says they're completed, we mirror that locally. If BC says
-they're still active, we leave them alone (and they'll be picked up
-again on the next sweep). If BC returns 404 (task deleted), we mark
-the row archived so it stops cluttering the queue without losing the
-audit row.
+  (a) Audit M6 (2026-06-09) — the walker's freshness gate
+      (`_todo_is_relevant`) drops todos whose `updated_at` is older
+      than `OPS_FRESHNESS_DAYS` with no future due date. A task active
+      at last sync, then completed in BC AFTER it aged out, never
+      re-enters the walker's scope — its row stays `active` forever.
 
-Bounded by `OPS_PURGE_CAP_PER_USER` (default 50) per run so a user
-with a long-tail of stale-active rows can't dominate the per-cron
-budget. The unswept tail rolls over to the next sweep.
+  (b) Deleted-while-fresh lists — when an operator deletes a todolist
+      in BC (e.g. the old "approval queue" list), the walker simply
+      stops returning those todos. Nothing reconciles their absence,
+      so the rows keep rendering as `active` in the report. The
+      original M6 sweep could NOT catch these: it only looked at rows
+      already past the freshness cutoff, and a just-deleted list's rows
+      are typically still fresh. They sat in a blind spot until they
+      eventually aged past 30 days.
+
+The fix (Option 2, 2026-06-10): this sweep now re-checks EVERY active,
+non-dismissed local row — not just the stale tail — and re-fetches each
+one-at-a-time from BC. If BC says completed, we mirror that. If BC says
+still-active, we leave it (next sweep retries). If BC returns 400/404
+(task or its list was deleted), we mark the row `archived` so it stops
+cluttering the queue without losing the audit row.
+
+Bounded by `OPS_PURGE_CAP_PER_USER` (default 50) per run so a user with
+many active rows can't dominate the per-cron budget. Rows are checked
+oldest-`bc_updated_at`-first (preserving M6's zombie-clearing priority);
+the unswept tail rolls over to the next sweep and converges over
+successive runs.
 
 Scheduler integration: invoked once per `OPS_PURGE_INTERVAL_HOURS`
 (default 24) per user with a vault token. State.last_purge_at gates
@@ -33,7 +48,6 @@ from . import store, sync, tokens
 
 logger = logging.getLogger(__name__)
 
-FRESHNESS_DAYS = int(os.environ.get("OPS_FRESHNESS_DAYS", "30"))
 CAP_PER_USER = int(os.environ.get("OPS_PURGE_CAP_PER_USER", "50"))
 PURGE_INTERVAL_HOURS = int(os.environ.get("OPS_PURGE_INTERVAL_HOURS", "24"))
 
@@ -63,7 +77,14 @@ def is_purge_due(user_id: str) -> bool:
 
 
 def purge_stale_active_rows(user_id: str) -> dict:
-    """Re-check local active rows that aged out of the sync window.
+    """Reconcile every local active row against BC.
+
+    Re-fetches each active, non-dismissed row one-at-a-time and mirrors
+    BC's truth: completed -> completed, deleted (400/404) -> archived,
+    still-active -> left alone. Catches both M6 zombies (completed after
+    aging out) and orphans from a deleted list (kept name for the
+    scheduler/job-id contract; scope is broader than "stale" now — see
+    module docstring).
 
     Returns a result dict the scheduler logs and `/my-day/_health`
     surfaces. `state.last_purge_at` is updated regardless of whether
@@ -82,29 +103,29 @@ def purge_stale_active_rows(user_id: str) -> dict:
         return {"status": "token_missing"}
 
     state = store.load_state(user_id)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=FRESHNESS_DAYS)
     todos = store.load_todos(user_id)
 
-    # Find all rows that the sync walker would no longer touch but
-    # that the local store still believes are open work for the user.
-    stale_active: list[store.OpsTodo] = []
-    for t in todos:
-        if t.status != "active" or t.is_dismissed:
-            continue
-        dt = _parse_iso(t.bc_updated_at)
-        if dt is None or dt >= cutoff:
-            continue
-        stale_active.append(t)
+    # Every active, non-dismissed local row is a reconciliation
+    # candidate. We no longer gate on a freshness cutoff: a list deleted
+    # in BC while its rows are still "fresh" would otherwise sit in a
+    # blind spot (walker stops returning it, old cutoff-gated purge never
+    # looked at it) until it aged past 30 days. Dismissed rows are a
+    # deliberate operator signal and stay untouched.
+    active_rows: list[store.OpsTodo] = [
+        t for t in todos if t.status == "active" and not t.is_dismissed
+    ]
 
-    # Oldest first so the most-stale rows clear first if we hit the cap.
-    stale_active.sort(key=lambda t: t.bc_updated_at)
+    # Oldest bc_updated_at first: preserves M6's priority of clearing the
+    # most-stale zombies first when we hit the per-user cap. Fresher
+    # orphans roll over to the next sweep and converge.
+    active_rows.sort(key=lambda t: t.bc_updated_at)
 
     checked = 0
     updated_completed = 0
     archived_missing = 0
     errors = 0
 
-    for t in stale_active[:CAP_PER_USER]:
+    for t in active_rows[:CAP_PER_USER]:
         try:
             bc_todo = sync._bc_get(
                 f"/buckets/{t.bc_project_id}/todos/{t.bc_id}.json",
@@ -121,10 +142,11 @@ def purge_stale_active_rows(user_id: str) -> dict:
             continue
 
         if bc_todo is None:
-            # BC returned 400/404 — task was deleted. Archive locally
-            # so it stops cluttering the queue without losing the row.
-            # The user could still re-open via dismiss/undismiss flows
-            # if they want, but the queue stops surfacing it.
+            # BC returned 400/404 — the task (or the whole todolist it
+            # lived in, e.g. a deleted "approval queue") is gone. Archive
+            # locally so it stops cluttering the queue without losing the
+            # row. The user could still re-open via dismiss/undismiss
+            # flows if they want, but the queue stops surfacing it.
             store.update_todo(user_id, t.bc_id, status="archived")
             archived_missing += 1
             continue
@@ -150,12 +172,12 @@ def purge_stale_active_rows(user_id: str) -> dict:
 
     result = {
         "status": overall_status,
-        "stale_active_found": len(stale_active),
+        "active_found": len(active_rows),
         "checked": checked,
         "updated_completed": updated_completed,
         "archived_missing": archived_missing,
         "errors": errors,
-        "capped": len(stale_active) > CAP_PER_USER,
+        "capped": len(active_rows) > CAP_PER_USER,
     }
     logger.info("ops purge: user=%s %s", user_id, result)
     return result

@@ -94,13 +94,13 @@ class TestPurgeStaleActiveRows:
         assert state.last_purge_status == "failed"
         assert state.last_purge_at != ""
 
-    def test_no_stale_rows_returns_ok_no_bc_calls(self, monkeypatch):
-        """All rows fresh -> nothing to check. Must not fire BC calls."""
+    def test_no_active_rows_returns_ok_no_bc_calls(self, monkeypatch):
+        """No active rows (only completed/dismissed) -> nothing to
+        reconcile. Must not fire BC calls."""
         monkeypatch.setattr(purge.tokens, "get_user_token",
                             MagicMock(return_value=("tok", "vault-oauth")))
         store.upsert_todos("u@x.com", [
-            _todo(1, bc_updated_at=_days_ago(1)),
-            _todo(2, bc_updated_at=_days_ago(5)),
+            _todo(1, bc_updated_at=_days_ago(1), status="completed"),
         ])
         bc_calls = []
         monkeypatch.setattr(sync, "_bc_get",
@@ -108,9 +108,47 @@ class TestPurgeStaleActiveRows:
 
         result = purge.purge_stale_active_rows("u@x.com")
         assert result["status"] == "ok"
-        assert result["stale_active_found"] == 0
+        assert result["active_found"] == 0
         assert result["checked"] == 0
         assert bc_calls == []
+
+    def test_fresh_active_rows_are_rechecked(self, monkeypatch):
+        """Option 2 (2026-06-10): the sweep no longer gates on the 30-day
+        freshness cutoff. Recently-updated active rows ARE re-fetched now,
+        so a list deleted while its rows are still fresh gets caught."""
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [
+            _todo(1, bc_updated_at=_days_ago(1)),
+            _todo(2, bc_updated_at=_days_ago(5)),
+        ])
+        bc_calls: list[str] = []
+        monkeypatch.setattr(sync, "_bc_get",
+                            lambda p, *a, **kw: (bc_calls.append(p),
+                                                 {"id": 1, "completed": False})[1])
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["active_found"] == 2
+        assert result["checked"] == 2
+        assert len(bc_calls) == 2
+
+    def test_fresh_deleted_list_row_archived(self, monkeypatch):
+        """The headline Option-2 case: an operator deletes a todolist in
+        BC (the old 'approval queue') while its rows are still fresh. The
+        walker stops returning them; this sweep re-fetches, gets 400/404
+        (BC returns None), and archives the orphan so the report stops
+        showing it. The old cutoff-gated purge would have skipped this
+        row for 30 days."""
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [
+            _todo(4040, bc_updated_at=_days_ago(2)),  # fresh, < cutoff
+        ])
+        monkeypatch.setattr(sync, "_bc_get", MagicMock(return_value=None))
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["archived_missing"] == 1
+        assert store.get_todo("u@x.com", 4040).status == "archived"
 
     def test_stale_row_completed_in_bc_is_mirrored_locally(self, monkeypatch):
         """The actual M6 fix: stale-active row whose BC counterpart is
@@ -187,7 +225,7 @@ class TestPurgeStaleActiveRows:
                             lambda p, *a, **kw: (bc_calls.append(p), None)[1])
 
         result = purge.purge_stale_active_rows("u@x.com")
-        assert result["stale_active_found"] == 0
+        assert result["active_found"] == 0
         assert bc_calls == []
 
     def test_already_completed_rows_skipped(self, monkeypatch):
@@ -202,7 +240,7 @@ class TestPurgeStaleActiveRows:
                             lambda p, *a, **kw: (bc_calls.append(p), None)[1])
 
         result = purge.purge_stale_active_rows("u@x.com")
-        assert result["stale_active_found"] == 0
+        assert result["active_found"] == 0
         assert bc_calls == []
 
     def test_cap_per_user_respected(self, monkeypatch):
@@ -222,7 +260,7 @@ class TestPurgeStaleActiveRows:
         monkeypatch.setattr(sync, "_bc_get", _bc)
 
         result = purge.purge_stale_active_rows("u@x.com")
-        assert result["stale_active_found"] == 10
+        assert result["active_found"] == 10
         assert result["checked"] == 3
         assert result["capped"] is True
         assert len(bc_calls) == 3
