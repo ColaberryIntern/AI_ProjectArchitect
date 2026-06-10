@@ -599,7 +599,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
                 f"{len(forbidden_buckets)} project(s), but your tasks are "
                 f"tracked under BC id {bc_user_id}. This is almost certainly "
                 f"a duplicate Basecamp identity — reconnect at "
-                f"/profile/connect-basecamp-ai as BC id {bc_user_id}."
+                f"/profile/connect-basecamp as BC id {bc_user_id}."
             )
             _record_error(user_id, "connection_identity_suspect", identity_alert)
         else:
