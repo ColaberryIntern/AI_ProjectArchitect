@@ -4,6 +4,10 @@
 `POST /admin/cb-webhooks/subscribe` idempotently subscribes BC webhooks
 for a user — the operator action that turns PR #10 from "shipped but
 SSH-required" into "subscribable from the admin console".
+
+This file also covers /admin/cb-mentions.json's polling-disabled surface
+(test_cb_mentions_polling_disabled_*), since the auth-bypass fixture
+above is reusable.
 """
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from execution.products.ops import cb_webhooks
+from execution.products.ops import cb_mention_worker, cb_webhooks
 
 
 @pytest.fixture
@@ -134,3 +138,61 @@ def test_subscribe_returns_helper_status_when_secret_missing(client, monkeypatch
                     data={"user_email": "ali@colaberry.com"})
     assert r.status_code == 200
     assert r.json()["status"] == "no_secret"
+
+
+# ── /admin/cb-mentions.json: polling-disabled surface ───────────────
+
+
+def test_cb_mentions_polling_disabled_reports_intentional_not_stale(
+        client, tmp_path, monkeypatch):
+    """When the heartbeat carries skipped+reason=polling_disabled, the
+    admin response must NOT report stale=True (the operator chose this).
+    """
+    hb_path = tmp_path / "heartbeat.json"
+    hb_path.write_text(json.dumps({
+        "started_at": "2020-01-01T00:00:00Z",
+        "finished_at": "2020-01-01T00:00:00Z",
+        "skipped": True,
+        "reason": "polling_disabled",
+        "users_with_token": 0,
+        "total_mentions_found": 0,
+        "total_responded": 0,
+        "total_failed": 0,
+        "fatal_error": None,
+        "per_user": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(cb_mention_worker, "HEARTBEAT_PATH", hb_path)
+
+    r = client.get("/admin/cb-mentions.json")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["polling_disabled"] is True
+    assert body["ok"] is True
+    assert body["stale"] is False
+    assert body["heartbeat"]["reason"] == "polling_disabled"
+
+
+def test_cb_mentions_normal_heartbeat_still_unaffected(
+        client, tmp_path, monkeypatch):
+    """A normal (non-skipped) heartbeat should keep its existing behavior:
+    polling_disabled=False; staleness computed from finished_at."""
+    hb_path = tmp_path / "heartbeat.json"
+    # finished_at far in the past => stale=True under normal rules
+    hb_path.write_text(json.dumps({
+        "started_at": "2020-01-01T00:00:00Z",
+        "finished_at": "2020-01-01T00:00:00Z",
+        "users_with_token": 1,
+        "total_mentions_found": 0,
+        "total_responded": 0,
+        "total_failed": 0,
+        "fatal_error": None,
+        "per_user": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(cb_mention_worker, "HEARTBEAT_PATH", hb_path)
+
+    r = client.get("/admin/cb-mentions.json")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["polling_disabled"] is False
+    assert body["stale"] is True
+    assert body["ok"] is False

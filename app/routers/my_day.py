@@ -287,6 +287,27 @@ def _store_age_seconds(state) -> float:
         return 99999.0
 
 
+def _log_bg_exception(user_email: str, kind: str, exc: BaseException) -> None:
+    """Record a background-thread exception in the shared silent-error
+    ring buffer so /my-day/_health surfaces it. Replaces the prior
+    'except Exception: pass' pattern in every BG sync site, which the
+    2026-06-09 audit (M5) flagged as a swallowed-failure class:
+    top-level exceptions in router-spawned threads vanished without
+    trace, so the only way to diagnose a stuck sync was to add print
+    statements and redeploy."""
+    detail = f"{type(exc).__name__}: {exc}"
+    try:
+        sync._record_error(user_email, kind, detail)
+    except Exception:
+        # Defensive: even the recorder shouldn't crash a daemon thread.
+        # Module-level logger gets it as a last resort.
+        import logging
+        logging.getLogger(__name__).warning(
+            "bg-sync exception (recorder also failed): user=%s kind=%s detail=%s",
+            user_email, kind, detail,
+        )
+
+
 def _kick_bg_full_sync(user_email: str) -> None:
     """Spawn a background full sync. Mutual exclusion is enforced INSIDE
     pull_todos_for_user via SyncCoordinator (2026-06-09 audit H1/H2 fix)
@@ -305,8 +326,8 @@ def _kick_bg_full_sync(user_email: str) -> None:
             r = sync.pull_todos_for_user(user_email)
             if r.get("status") in ("ok", "partial"):
                 scorer.score_all_todos(user_email)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_bg_exception(user_email, "bg_full_sync", e)
 
     threading.Thread(target=_run, daemon=True, name=f"bg-sync-{user_email}").start()
 
@@ -546,6 +567,13 @@ async def ops_home(request: Request):
     first_name = (user.display_name or user.email).split()[0]
     greeting = _greeting()
     sync_rel = _sync_relative(state.last_sync_at) if state.last_sync_at else ""
+    # L5 (2026-06-09 audit): when no full sync has run but Mark Done has,
+    # surface the targeted-sync timestamp instead of "Not synced yet".
+    targeted_sync_rel = (
+        _sync_relative(state.last_targeted_sync_at)
+        if state.last_targeted_sync_at and not state.last_sync_at
+        else ""
+    )
 
     # Project chip data: tier-filtered (so counts match what user sees
     # after clicking) but project/list-unfiltered (so all projects can
@@ -660,6 +688,7 @@ async def ops_home(request: Request):
              # Sync context
              state=state,
              sync_relative=sync_rel,
+             targeted_sync_relative=targeted_sync_rel,
              # Project context
              project_one=project_one,
              project_count=len(projects),
@@ -755,8 +784,8 @@ async def ops_sync(
             result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
             if result.get("status") in ("ok", "partial"):
                 scorer.score_all_todos(user.email)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_bg_exception(user.email, "manual_sync", e)
 
     _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
 
@@ -781,6 +810,34 @@ async def ops_sync(
     if person: params.append(("person", person))
     params.append(("sync_started", "1"))
     return RedirectResponse(f"/my-day/?{urlencode(params)}", status_code=303)
+
+
+@router.get("/sync-status.json")
+async def ops_sync_status(request: Request):
+    """Polling endpoint for the in-progress sync banner.
+
+    Returns SyncCoordinator's view of in-flight syncs for the
+    requesting user plus the most recent state.json snapshot. The
+    /my-day/ home page polls this every ~2.5s when ?sync_started=1
+    is in the URL, replacing the prior fixed 25s countdown that
+    could fire long before (or long after) the real sync completed.
+
+    Audit M3 fix (2026-06-09). Per-user, lightweight, no admin gate
+    (every user can poll their own sync status).
+    """
+    user = _require_user(request)
+    state = store.load_state(user.email)
+    coord = sync_coordinator.get_coordinator()
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        {
+            "in_flight": coord.is_sync_in_flight(user.email),
+            "in_flight_age_seconds": coord.in_flight_age_seconds(user.email),
+            "last_sync_at": state.last_sync_at or "",
+            "last_sync_status": state.last_sync_status or "",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/todo/{bc_id}/dismiss")
@@ -881,8 +938,8 @@ def _sync_with_budget(user_email: str, budget_seconds: float = 6.0) -> bool:
             r = sync.pull_todos_for_user(user_email)
             if r.get("status") in ("ok", "partial"):
                 scorer.score_all_todos(user_email)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_bg_exception(user_email, "mark_done_sync", e)
         finally:
             done.set()
 
@@ -958,8 +1015,8 @@ async def ops_complete(bc_id: int, request: Request):
         try:
             sync.pull_todos_for_user(user.email)
             scorer.score_all_todos(user.email)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_bg_exception(user.email, "mark_done_bg_full", e)
     _th.Thread(target=_bg_full, daemon=True, name=f"bg-full-sync-{user.email}").start()
     # Build redirect URL: preserve filter state via Referer + append
     # ?done=<title> so the next render shows a green flash confirming

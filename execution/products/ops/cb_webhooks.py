@@ -28,6 +28,7 @@ OPS_CB_WEBHOOK_SECRET.
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import hmac
 import json
@@ -36,7 +37,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from config.settings import PROJECT_ROOT
@@ -47,6 +48,9 @@ logger = logging.getLogger(__name__)
 
 SUBS_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "webhook_subs.json"
 EVENT_LOG_PATH = PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "webhook_events.jsonl"
+RESUBSCRIBE_HISTORY_PATH = (
+    PROJECT_ROOT / "output" / "ops" / "_cb_mentions" / "resubscribe_history.jsonl"
+)
 BC_API_BASE = "https://3.basecampapi.com/3945211"
 
 
@@ -379,3 +383,168 @@ def handle_event(payload: dict, *, user_email: str) -> dict:
                   "comment_id": comment_id}
         _log_event(result)
         return result
+
+
+# ── daily resubscribe cron ────────────────────────────────────────
+
+
+def _append_resubscribe_history(summary: dict) -> None:
+    """Best-effort append of a run summary to the history log. Disk errors
+    must not break the cron — mirrors the _log_event pattern above."""
+    try:
+        RESUBSCRIBE_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(summary)[:8000]
+        with RESUBSCRIBE_HISTORY_PATH.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        logger.warning("cb_webhooks: failed to append resubscribe history",
+                       exc_info=True)
+
+
+def resubscribe_all_users() -> dict:
+    """Iterate every user with a basecamp_ai_clone vault token; idempotently
+    subscribe webhooks for any bucket they can see that doesn't yet have a
+    subscription. Returns a summary {users_processed, total_added,
+    total_existing, total_failed, per_user, started_at, finished_at,
+    fatal_error}.
+
+    No-op when webhook_secret() is unset.
+    """
+    if not webhook_secret():
+        logger.warning("cb_webhooks: OPS_CB_WEBHOOK_SECRET unset — "
+                       "skipping daily resubscribe cron")
+        return {"status": "no_secret"}
+
+    from execution.products.library import tenancy, vault
+
+    started_at = _now_iso()
+    per_user: list[dict] = []
+    fatal_error: str | None = None
+
+    try:
+        users = tenancy.list_users(active_only=True)
+    except Exception as e:
+        fatal_error = f"list_users_failed:{type(e).__name__}"
+        users = []
+        logger.warning("cb_webhooks: tenancy.list_users failed", exc_info=True)
+
+    for u in users:
+        try:
+            has_token = any(
+                c.tool_name == "basecamp_ai_clone"
+                for c in vault.list_for_user(
+                    u.user_id, caller_id="cb_webhooks_resubscribe_cron",
+                )
+            )
+        except Exception:
+            has_token = False
+            logger.warning("cb_webhooks: vault.list_for_user failed for %s",
+                           u.email, exc_info=True)
+        if not has_token:
+            continue
+        try:
+            r = subscribe_user_buckets(u.email)
+            per_user.append({"user_id": u.user_id, "email": u.email, **r})
+            logger.info("cb_webhooks resubscribe for %s: %s", u.email, r)
+        except Exception as e:
+            per_user.append({
+                "user_id": u.user_id, "email": u.email,
+                "status": "exception", "error": f"{type(e).__name__}",
+            })
+            logger.warning("cb_webhooks resubscribe failed for %s",
+                           u.email, exc_info=True)
+
+    finished_at = _now_iso()
+    summary = {
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "users_processed": len(per_user),
+        "total_added": sum(p.get("buckets_added", 0) for p in per_user),
+        "total_existing": sum(p.get("buckets_existing", 0) for p in per_user),
+        "total_failed": sum(p.get("failed", 0) for p in per_user),
+        "fatal_error": fatal_error,
+        "per_user": per_user,
+    }
+    _append_resubscribe_history(summary)
+    return summary
+
+
+# ── inbound: aggregate event log for ops visibility ───────────────
+
+
+_SKIP_BUCKETS = {
+    "no_trigger": "skipped_no_trigger",
+    "already_seen": "skipped_already_seen",
+    "parent_closed": "skipped_parent_closed",
+}
+
+
+def recent_event_summary(window_minutes: int = 60) -> dict:
+    """Aggregate counts from EVENT_LOG_PATH for events newer than
+    `now - window_minutes`. Bounded to the last 5000 lines so a huge
+    log doesn't slow the admin endpoint. Tolerates a missing file and
+    malformed lines."""
+    summary = {
+        "window_minutes": window_minutes,
+        "events_total": 0,
+        "responded": 0,
+        "skipped_no_trigger": 0,
+        "skipped_already_seen": 0,
+        "skipped_parent_closed": 0,
+        "skipped_no_token": 0,
+        "skipped_other": 0,
+        "failures": 0,
+        "last_event_at": None,
+    }
+    if not EVENT_LOG_PATH.exists():
+        return summary
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    newest: Optional[datetime] = None
+
+    try:
+        with EVENT_LOG_PATH.open("r", encoding="utf-8") as f:
+            lines = collections.deque(f, maxlen=5000)
+    except OSError:
+        return summary
+
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        received_at = rec.get("received_at") or ""
+        try:
+            dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if dt < cutoff:
+            continue
+
+        summary["events_total"] += 1
+        if newest is None or dt > newest:
+            newest = dt
+
+        skipped = rec.get("skipped")
+        if skipped:
+            # "no_token:<src>" → skipped_no_token; named tags → their bucket;
+            # everything else → skipped_other.
+            if isinstance(skipped, str) and skipped.startswith("no_token"):
+                summary["skipped_no_token"] += 1
+            elif skipped in _SKIP_BUCKETS:
+                summary[_SKIP_BUCKETS[skipped]] += 1
+            else:
+                summary["skipped_other"] += 1
+            continue
+
+        if rec.get("responded") is True:
+            summary["responded"] += 1
+        elif rec.get("responded") is False:
+            summary["failures"] += 1
+
+    if newest is not None:
+        summary["last_event_at"] = newest.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return summary

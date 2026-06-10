@@ -109,6 +109,17 @@ class OpsState:
     last_scored_at: str = ""
     todos_synced: int = 0
     projects_synced: int = 0
+    # Per-project targeted sync timestamp (Mark Done path). Set by
+    # pull_todos_for_project independently of last_sync_at so the UI
+    # can distinguish "no full sync ever" from "targeted touch within
+    # the last few minutes". Audit L5 (2026-06-09).
+    last_targeted_sync_at: str = ""
+    # M6 (2026-06-09 audit): timestamp of the most recent stale-row
+    # purge sweep. Used by the scheduler to decide when to run the next
+    # sweep (default: once per OPS_PURGE_INTERVAL_HOURS=24).
+    last_purge_at: str = ""
+    last_purge_status: str = ""         # ok | partial | failed
+    last_purge_archived: int = 0
 
 
 def _user_dir(user_id: str) -> Path:
