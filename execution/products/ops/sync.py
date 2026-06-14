@@ -456,6 +456,19 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             seen_buckets.add(bid)
             projects_raw.append(single)
 
+    # Round-robin resume cursor (budget_exceeded fix): rotate projects_raw so
+    # this run continues right after the project the previous run last reached.
+    # Without it, every run re-walks from the head and budgets out at the same
+    # spot, so a user with more projects than fit in SYNC_BUDGET_SECONDS never
+    # syncs the tail. With it, successive runs cover the whole list. Keyed by
+    # bc_id (robust to projects being added/removed between runs); if the
+    # cursor project is gone we just start from the head.
+    if state.last_walked_bc_id and len(projects_raw) > 1:
+        _ids = [p.get("id") for p in projects_raw]
+        if state.last_walked_bc_id in _ids:
+            _start = _ids.index(state.last_walked_bc_id) + 1
+            projects_raw = projects_raw[_start:] + projects_raw[:_start]
+
     fresh_projects: list[store.OpsProject] = []
     fresh_todos: list[store.OpsTodo] = []
     partial = False
@@ -524,7 +537,8 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             skipped = len(projects_raw) - projects_walked
             err = (
                 f"budget_exceeded after {int(time.time() - sync_start)}s; "
-                f"{skipped}/{len(projects_raw)} projects unwalked"
+                f"{skipped}/{len(projects_raw)} projects deferred to the next "
+                f"run (round-robin cursor advances each run)"
             )
             project_errors.append(err)
             logger.warning("ops sync: %s", err)
@@ -638,6 +652,11 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     state.last_sync_error = "; ".join(ordered[:3]) if ordered else ""
     state.todos_synced = len(fresh_todos)
     state.projects_synced = len(fresh_projects)
+    # Advance the round-robin cursor to the last project this run reached so
+    # the next run continues past it. On a full-coverage run (no budget break)
+    # this is the tail project, and the next run wraps harmlessly to the head.
+    if fresh_projects:
+        state.last_walked_bc_id = fresh_projects[-1].bc_id
     store.save_state(state)
 
     return {

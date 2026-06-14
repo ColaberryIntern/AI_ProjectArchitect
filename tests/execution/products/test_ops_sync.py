@@ -750,7 +750,10 @@ class TestPullTodosForUser:
         errs = sync.recent_errors()
         assert any(e["kind"] == "budget_exceeded" for e in errs)
         any_match = next(e for e in errs if e["kind"] == "budget_exceeded")
-        assert "2/3 projects unwalked" in any_match["detail"]
+        assert "2/3 projects deferred" in any_match["detail"]
+        # Cursor advanced to the one project we did walk, so the next run
+        # resumes past it instead of re-walking the head.
+        assert store.load_state("ali@colaberry.com").last_walked_bc_id == 101
 
     def test_budget_under_limit_is_ok(self, monkeypatch, isolated_ops_root):
         """Inverse of the budget test: when the sync finishes within
@@ -777,6 +780,94 @@ class TestPullTodosForUser:
         assert result["status"] == "ok"
         assert result["budget_exceeded"] is False
         assert result["projects_walked"] == 1
+
+    def test_resume_cursor_advances_to_tail_on_full_walk(self, monkeypatch, isolated_ops_root):
+        """Round-robin cursor records the last project walked. On a full
+        walk (no budget break) that's the tail project."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 60.0)
+        monkeypatch.setattr(sync, "discover_projects", MagicMock(
+            return_value=[_project_dict(101), _project_dict(202), _project_dict(303)]))
+
+        def _bc(path, token=None, params=None, _retry=1):
+            for pid in (101, 202, 303):
+                if path == f"/projects/{pid}.json":
+                    return _project_dict(pid)
+                if path == f"/buckets/{pid}/todosets/555/todolists.json":
+                    return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        sync.pull_todos_for_user("ali@colaberry.com")
+        assert store.load_state("ali@colaberry.com").last_walked_bc_id == 303
+
+    def test_resume_cursor_rotates_walk_order(self, monkeypatch, isolated_ops_root):
+        """With a saved cursor, the next run walks starting right AFTER it
+        (round-robin) rather than from the head."""
+        BC_USER = 17454835
+        st = store.load_state("ali@colaberry.com")
+        st.last_walked_bc_id = 101
+        store.save_state(st)
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 60.0)
+        monkeypatch.setattr(sync, "discover_projects", MagicMock(
+            return_value=[_project_dict(101), _project_dict(202), _project_dict(303)]))
+
+        walked: list[int] = []
+        def _bc(path, token=None, params=None, _retry=1):
+            for pid in (101, 202, 303):
+                if path == f"/projects/{pid}.json":
+                    walked.append(pid)
+                    return _project_dict(pid)
+                if path == f"/buckets/{pid}/todosets/555/todolists.json":
+                    return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        sync.pull_todos_for_user("ali@colaberry.com")
+        assert walked == [202, 303, 101]
+        assert store.load_state("ali@colaberry.com").last_walked_bc_id == 101
+
+    def test_round_robin_covers_all_projects_across_budget_limited_runs(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """Headline budget_exceeded fix: when each run only has budget for
+        one project, three runs cover ALL three projects (instead of forever
+        re-walking the head and starving the tail)."""
+        import time as _time
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 0.05)
+        monkeypatch.setattr(sync, "discover_projects", MagicMock(
+            return_value=[_project_dict(101), _project_dict(202), _project_dict(303)]))
+
+        def _bc(path, token=None, params=None, _retry=1):
+            for pid in (101, 202, 303):
+                if path == f"/projects/{pid}.json":
+                    _time.sleep(0.1)  # burn the per-project budget so 1/run walks
+                    return _project_dict(pid)
+                if path == f"/buckets/{pid}/todosets/555/todolists.json":
+                    return [{"id": pid * 10, "name": "L"}]
+                if path == f"/buckets/{pid}/todolists/{pid * 10}/todos.json":
+                    if params and (params.get("page", 1) > 1
+                                   or params.get("completed") == "true"):
+                        return []
+                    return [_todo_dict(pid * 100, assignees=(BC_USER,), title=f"T{pid}")]
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        for _ in range(3):
+            sync.pull_todos_for_user("ali@colaberry.com")
+
+        todo_ids = {t.bc_id for t in store.load_todos("ali@colaberry.com")}
+        assert todo_ids == {10100, 20200, 30300}
 
     def test_partial_still_updates_last_sync_at(self, monkeypatch, isolated_ops_root):
         """Locks in a behavior the 2026-06-09 audit flagged as H4 — a
