@@ -211,6 +211,54 @@ class TestPurgeStaleActiveRows:
         assert result["archived_missing"] == 1
         assert store.get_todo("u@x.com", 404).status == "archived"
 
+    def test_trashed_in_bc_gets_archived(self, monkeypatch):
+        """BC soft-delete ('trash') does NOT 404 -- the todo endpoint still
+        returns a JSON object, just with status='trashed', completed=False.
+        The 404/completed checks miss it, so the old sweep left it 'active'
+        and it kept ranking #1 on the human queue. It must now be archived.
+        Regression for the 'deleted project still shows' report (2026-06-14).
+        """
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [
+            _todo(9946498251, bc_updated_at=_days_ago(14)),
+        ])
+        monkeypatch.setattr(sync, "_bc_get", MagicMock(
+            return_value={"id": 9946498251, "status": "trashed", "completed": False}))
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["archived_trashed"] == 1
+        assert result["archived_missing"] == 0
+        assert store.get_todo("u@x.com", 9946498251).status == "archived"
+        assert store.load_state("u@x.com").last_purge_archived == 1
+
+    def test_archived_in_bc_gets_archived(self, monkeypatch):
+        """BC archive (status='archived', not a 404) is also gone-from-queue
+        and must be mirrored as archived locally."""
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [_todo(50, bc_updated_at=_days_ago(3))])
+        monkeypatch.setattr(sync, "_bc_get", MagicMock(
+            return_value={"id": 50, "status": "archived", "completed": False}))
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["archived_trashed"] == 1
+        assert store.get_todo("u@x.com", 50).status == "archived"
+
+    def test_active_status_in_bc_left_alone(self, monkeypatch):
+        """A genuinely-active BC todo (status='active', as BC really sends)
+        must NOT be archived by the new non-active branch."""
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [_todo(8, bc_updated_at=_days_ago(2))])
+        monkeypatch.setattr(sync, "_bc_get", MagicMock(
+            return_value={"id": 8, "status": "active", "completed": False}))
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["archived_trashed"] == 0
+        assert result["archived_missing"] == 0
+        assert store.get_todo("u@x.com", 8).status == "active"
+
     def test_dismissed_rows_skipped_even_if_stale(self, monkeypatch):
         """An operator-dismissed row is a deliberate signal; the purge
         must NOT touch it. Otherwise we'd un-dismiss the task on the

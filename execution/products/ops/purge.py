@@ -123,6 +123,7 @@ def purge_stale_active_rows(user_id: str) -> dict:
     checked = 0
     updated_completed = 0
     archived_missing = 0
+    archived_trashed = 0
     errors = 0
 
     for t in active_rows[:CAP_PER_USER]:
@@ -151,6 +152,19 @@ def purge_stale_active_rows(user_id: str) -> dict:
             archived_missing += 1
             continue
 
+        # Basecamp soft-deletes ("trash") and archives DON'T 404 — the todo
+        # endpoint still returns a JSON object, just with status != "active"
+        # (e.g. "trashed", "archived"). The None check above only catches
+        # hard 404s, so without this branch a trashed todo (the operator
+        # "deleted" it in BC) survives the sweep and keeps ranking on the
+        # human queue. Mirror BC: any non-active status means gone-from-queue
+        # -> archive the local row.
+        bc_status = bc_todo.get("status")
+        if bc_status and bc_status != "active":
+            store.update_todo(user_id, t.bc_id, status="archived")
+            archived_trashed += 1
+            continue
+
         if bc_todo.get("completed"):
             completion = bc_todo.get("completion") or {}
             creator = completion.get("creator") or {}
@@ -167,7 +181,7 @@ def purge_stale_active_rows(user_id: str) -> dict:
     overall_status = "ok" if errors == 0 else "partial"
     state.last_purge_at = sync._now_iso()
     state.last_purge_status = overall_status
-    state.last_purge_archived = updated_completed + archived_missing
+    state.last_purge_archived = updated_completed + archived_missing + archived_trashed
     store.save_state(state)
 
     result = {
@@ -176,6 +190,7 @@ def purge_stale_active_rows(user_id: str) -> dict:
         "checked": checked,
         "updated_completed": updated_completed,
         "archived_missing": archived_missing,
+        "archived_trashed": archived_trashed,
         "errors": errors,
         "capped": len(active_rows) > CAP_PER_USER,
     }
