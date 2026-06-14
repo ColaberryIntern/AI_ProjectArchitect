@@ -120,6 +120,12 @@ class OpsState:
     last_purge_at: str = ""
     last_purge_status: str = ""         # ok | partial | failed
     last_purge_archived: int = 0
+    # Round-robin resume cursor for the budget-limited walk: the bc_id of
+    # the last project the previous sync reached. The next run rotates the
+    # project list to continue right after it, so a user with more projects
+    # than fit in SYNC_BUDGET_SECONDS still gets every project covered across
+    # successive runs instead of forever re-walking the head. 0 = start fresh.
+    last_walked_bc_id: int = 0
 
 
 def _user_dir(user_id: str) -> Path:
