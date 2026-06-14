@@ -206,13 +206,19 @@ def start_scheduler() -> None:
         logger.info("ops sync scheduler already running")
         return
     _scheduler = BackgroundScheduler()
+    # NEVER pass next_run_time=None to add_job. In APScheduler that adds the
+    # job in a PAUSED state (it never fires), NOT "run immediately" as one
+    # might assume. A prior version set next_run_time=None on every job here,
+    # which silently disabled the ENTIRE background layer (sync, purge,
+    # mentions, autopickup) since launch — no cron ever ran. Omit the arg so
+    # each trigger schedules its own first fire. Regression test:
+    # tests/execution/products/test_ops_scheduler.py.
     _scheduler.add_job(
         _sync_all_users,
         trigger=IntervalTrigger(minutes=INTERVAL_MINUTES),
         id=JOB_ID,
         name="My Day BC sync (per user with vault token)",
         replace_existing=True,
-        next_run_time=None,
     )
     if POLLING_ENABLED:
         _scheduler.add_job(
@@ -221,7 +227,6 @@ def start_scheduler() -> None:
             id=MENTION_JOB_ID,
             name="CB System @-mention auto-response (per user with vault token)",
             replace_existing=True,
-            next_run_time=None,
         )
     else:
         # WARNING (not INFO) because a misconfigured flag here is silent-
@@ -237,7 +242,6 @@ def start_scheduler() -> None:
         id=AUTOPICKUP_JOB_ID,
         name="Auto-Pickup Worker Phase 1 (draft-only on allowlisted buckets)",
         replace_existing=True,
-        next_run_time=None,
     )
     _scheduler.add_job(
         _scan_autopickup_approve,
@@ -245,7 +249,6 @@ def start_scheduler() -> None:
         id=APPROVE_JOB_ID,
         name="Auto-Pickup Approve Worker (detect human reply on draft comments)",
         replace_existing=True,
-        next_run_time=None,
     )
     _scheduler.add_job(
         _purge_all_users,
@@ -253,7 +256,6 @@ def start_scheduler() -> None:
         id=PURGE_JOB_ID,
         name="Stale-row purge (per user, gated by purge.is_purge_due)",
         replace_existing=True,
-        next_run_time=None,
     )
     # Only register the smoke job when bucket/todo env vars are configured,
     # so dev / preview environments don't pretend to run a smoke test that
@@ -268,7 +270,6 @@ def start_scheduler() -> None:
             name=f"CB @-mention nightly smoke test ({SMOKE_CRON_TIMEZONE} "
                  f"{SMOKE_CRON_HOUR:02d}:00)",
             replace_existing=True,
-            next_run_time=None,
         )
     # The resubscribe cron creates BC webhook subscriptions; without a
     # secret the payload URL is unauthenticated, so the job is a no-op
@@ -284,7 +285,6 @@ def start_scheduler() -> None:
             id=RESUBSCRIBE_JOB_ID,
             name="CB webhook resubscribe (daily, all users with vault token)",
             replace_existing=True,
-            next_run_time=None,
         )
         resubscribe_status = (
             f"daily at {RESUBSCRIBE_CRON_HOUR:02d}:00 {RESUBSCRIBE_CRON_TIMEZONE}"
