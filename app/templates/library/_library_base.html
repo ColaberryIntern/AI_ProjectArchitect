@@ -21,14 +21,34 @@
   /* ── Layout shell ─────────────────────────────────────────── */
   body { background: var(--bg-sunken); color: var(--fg-default); margin: 0; }
   .lib-shell { display: grid; grid-template-columns: 240px 1fr;
-                  grid-template-rows: 56px 1fr; min-height: 100vh; }
+                  grid-template-rows: 56px 1fr; min-height: 100vh;
+                  transition: grid-template-columns 0.18s ease; }
   .lib-topbar { grid-column: 1 / -1; grid-row: 1;
                     background: var(--bg-canvas); border-bottom: 1px solid var(--border-default);
                     display: flex; align-items: center; padding: 0 var(--space-5);
                     gap: var(--space-4); z-index: 10; }
   .lib-sidebar { grid-column: 1; grid-row: 2;
                      background: var(--bg-canvas); border-right: 1px solid var(--border-default);
-                     padding: var(--space-4) var(--space-3); overflow-y: auto; }
+                     padding: var(--space-4) var(--space-3); overflow-y: auto;
+                     min-width: 0; }
+
+  /* Collapsed sidebar: the track shrinks to 0 and the sidebar is clipped. */
+  .lib-shell.sidebar-collapsed { grid-template-columns: 0 1fr; }
+  .lib-shell.sidebar-collapsed .lib-sidebar {
+    padding-left: 0; padding-right: 0; border-right: 0;
+    overflow: hidden; visibility: hidden;
+  }
+
+  /* Sidebar collapse toggle (topbar hamburger). */
+  .lib-sidebar-toggle {
+    flex: 0 0 auto; background: transparent; border: 0;
+    color: var(--fg-muted); cursor: pointer; font-size: 18px;
+    line-height: 1; padding: 6px 9px; border-radius: var(--radius-sm);
+  }
+  .lib-sidebar-toggle:hover { background: var(--bg-sunken); color: var(--fg-default); }
+  .lib-sidebar-toggle:focus-visible {
+    outline: 2px solid var(--accent-blue, #0969da); outline-offset: 2px;
+  }
   .lib-main { grid-column: 2; grid-row: 2;
                 background: var(--bg-sunken); padding: var(--space-5) var(--space-6);
                 overflow-y: auto; }
@@ -310,6 +330,11 @@
 
   <!-- Top bar -->
   <div class="lib-topbar">
+    <button type="button" id="sidebarToggle" class="lib-sidebar-toggle"
+            aria-label="Collapse sidebar" aria-expanded="true"
+            title="Toggle sidebar (Ctrl+B)">
+      <span aria-hidden="true">☰</span>
+    </button>
     <a class="lib-brand" href="/library/?ws={{ workspace|default('global') }}">
       Colaberry<span class="brand-sep">·</span><span class="brand-product">Library</span>
     </a>
@@ -546,6 +571,40 @@ document.addEventListener('keydown', (e) => {
     document.querySelector('.lib-search input')?.focus();
   }
 });
+
+// ── Sidebar collapse/expand (whole panel) ──────────────────────────
+// Toggles a thin->zero-width sidebar. State persists in localStorage so
+// it survives navigation across My Day / Library pages (shared shell).
+(function () {
+  var KEY = 'lib-sidebar-collapsed';
+  var shell = document.querySelector('.lib-shell');
+  var btn = document.getElementById('sidebarToggle');
+  if (!shell || !btn) return;
+
+  function apply(collapsed) {
+    shell.classList.toggle('sidebar-collapsed', collapsed);
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  }
+
+  var stored = null;
+  try { stored = localStorage.getItem(KEY); } catch (e) {}
+  apply(stored === 'collapsed');
+
+  btn.addEventListener('click', function () {
+    var collapsed = !shell.classList.contains('sidebar-collapsed');
+    apply(collapsed);
+    try { localStorage.setItem(KEY, collapsed ? 'collapsed' : 'open'); } catch (e) {}
+  });
+
+  // Ctrl+B / Cmd+B toggles the sidebar.
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      btn.click();
+    }
+  });
+})();
 
 // ── Sidebar group collapse/expand ──────────────────────────────────
 // Default: Reusable assets open, Operations/Governance/Admin closed.

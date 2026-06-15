@@ -38,12 +38,25 @@ the operator learns them once:
   black.** Copies the Claude Code prompt to the clipboard inline (via the shared
   `copyPrompt(promptId, btnEl)` in `_my_day_styles.html`, which prepends the
   setup runbook). On dense briefing-table rows and Heat map cards the prompt
-  text is precomputed deterministically in the router (`row_prompts`,
-  `heat_prompts`) so the copy is a no-round-trip clipboard write.
+  text is precomputed deterministically in the router (`row_prompts` for each
+  list's next-blocking step, `seq_prompts` for every PROJECT TIMELINE row,
+  `heat_prompts` for Heat map cards, `kanban_prompts` for Kanban cards) so the
+  copy is a no-round-trip clipboard write.
 - **⚙ Workspace** — class `md-btn-workspace`. **Always indigo (`#6639ba`).**
   Links to `/my-day/todo/{bc_id}` (or, for a Library suggestion card, the
   asset's library page). The workspace page is where the operator adds context
   before copying.
+
+**Pairing invariant — every ⚙ Workspace ships with a 📋 Prompt.** A lone
+Workspace button is a bug: the operator should never have to open the workspace
+page just to get a prompt. This applies to *every* surface — the focus card,
+the feasibility row's next-blocking step, **each PROJECT TIMELINE row** (these
+were prompt-less before 2026-06-11; now bound to `seq_prompts`), Heat map cards,
+Kanban cards, and the Library-suggestion card. The Library suggestion guarantees
+a non-empty `claude_prompt` (router falls back to a minimal "use this asset"
+prompt if `build_claude_prompt` yields nothing) so its Workspace is never lone.
+`tests/app/test_my_day_timeline_prompt_pairing.py` renders the briefing page and
+asserts `count(md-btn-workspace) == count(md-btn-prompt)`.
 
 Any new surface that copies a prompt MUST use this pair and these colors. Other
 buttons (Mark done = green, Skip = quiet) are unaffected.

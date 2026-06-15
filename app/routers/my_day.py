@@ -240,6 +240,16 @@ def _suggest_library_assets_for_focus(user, focus) -> list:
             )
         except Exception:
             claude_prompt = ""
+        # Rule: every Workspace action must ship with a Prompt. If the library
+        # builder couldn't produce one, fall back to a minimal copyable prompt
+        # so the suggested-asset card never renders a lone Workspace button.
+        if not claude_prompt:
+            _asset_name = row.get("name") or asset_id
+            claude_prompt = (
+                f"Help me use the library asset '{_asset_name}' ({category}) for "
+                f"my current task. Open /library/{category}/{asset_id}, summarize "
+                f"what it provides, and walk me through applying it step by step."
+            )
         out.append({
             "category": category,
             "asset_id": asset_id,
@@ -562,12 +572,22 @@ async def ops_home(request: Request):
 
     # Briefing feasibility table: precompute prompts for each list's next
     # blocking task so the black 📋 Prompt button can copy without a round trip.
+    #
+    # seq_prompts covers EVERY task rendered in the PROJECT TIMELINE rows, not
+    # just the next-blocking step. Rule: every Workspace action must ship with a
+    # matching Prompt button, so each timeline row needs its own ready-to-paste
+    # prompt. The deterministic builder is cheap (no LLM round trip), same as
+    # the kanban precompute above. Keyed by bc_id and deduped across lists.
     row_prompts: dict[int, str] = {}
+    seq_prompts: dict[int, str] = {}
     if view == "briefing":
         for r in list_rollups:
             nb = r.next_blocking
             if nb and nb.bc_id not in row_prompts:
                 row_prompts[nb.bc_id] = _prompt_for(nb)
+            for t in r.open_todos:
+                if t.bc_id not in seq_prompts:
+                    seq_prompts[t.bc_id] = _prompt_for(t)
 
     # Pull ALL completed — drill-down filters per-list for the unified PROJECT TIMELINE
     completer_stats, recent_completed_all = rollup.completions_summary(scoped_todos, limit=1000)
@@ -758,6 +778,7 @@ async def ops_home(request: Request):
              scatter_points=scatter_points,
              heat_prompts=heat_prompts,
              row_prompts=row_prompts,
+             seq_prompts=seq_prompts,
              # Extract tab (view=extract)
              extract_lists=extract_lists,
              output_type_meta=(
