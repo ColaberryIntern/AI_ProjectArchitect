@@ -139,25 +139,28 @@ original verdict wording and get no ownership note. To extend this rule to
 another recipe kind (e.g. `review`), add a `human_required_step_overrides` map
 to that recipe — no other code change is needed.
 
-## Rule 2 — Environment preflight in the copied prompt
+## Rule 2 — No clone: the prompt runs against the Colaberry MCP
 
-The runbook (`_setupBlock`) targets the operator's **provisioned workspace
-repo** (the GitHub URL on their tenancy record), NOT the central
-`AI_ProjectArchitect` build repo. The doctrine layers, shared KB, tenant
-policy, and the mandatory-ticket protocol are assembled by the SessionStart
-hook **only inside the workspace repo**, and only in *full mode* when the
-central repo is installed side-by-side; otherwise the hook runs in *limited
-mode* (short banner + ticket protocol only — KB and tenant-policy layers
-missing). See `session_start_hook.py` `main()`.
+The per-operator workspace repo (`{name}-workspace`) is a **behind-the-scenes
+sync artifact** — operators never clone or touch it directly. The doctrine
+layers, the mandatory-ticket protocol, and the Basecamp + memory tools all
+reach the operator's Claude Code session through the **Colaberry MCP**
+(`colaberry://doctrine/*` resources, served by `mcp_doctrine.py` and read at
+session start), NOT through a cloned repo's SessionStart hook.
 
-Because nothing enforces *where* the operator runs `claude`, the copied prompt
-carries a **PREFLIGHT** instruction: confirm the terminal is inside the
-workspace repo and that the "Colaberry SessionStart hook" banner printed, and
-STOP if running in `AI_ProjectArchitect` or any other directory. This is the
-agreed fix for the environment-mismatch class of bug (operator pastes a
-workspace prompt into a session running in the build repo, so none of the
-promised context is loaded). The runbook also no longer overstates the 5-layer
-assembly as guaranteed; it describes both full and limited hook modes.
+So the copied prompt's runbook (`_setupBlock`) carries **no clone / cd / git
+pull / PREFLIGHT** steps. The only setup it states: open Claude Code (any
+folder) with the Colaberry MCP connected, then paste the prompt. The MCP
+connection is the single source of context — if it's connected the doctrine is
+loaded; if not, the Basecamp tools are simply absent and the operator
+reconnects at `/profile/welcome`.
+
+History: an earlier design delivered context via a SessionStart hook that only
+fired inside the cloned workspace repo, guarded by a PREFLIGHT "STOP if not in
+the repo" instruction. That required operators to clone a private repo and hold
+a personal GitHub account as a collaborator — which was never the intended
+model (the repo is server-side only). The MCP-resources path supersedes it;
+`session_start_hook.py` remains for the server-side scaffold, not the operator.
 
 ## Inputs and outputs
 
