@@ -494,6 +494,13 @@
   {% set dd = (nb.due_on | days_from_today) if nb else none %}
   {% set is_overdue = (dd is not none and dd < 0) %}
   {% set is_today = (dd == 0) %}
+  {# Drill-down default state. User ask: collapsed when the user lands here,
+     expanded ONLY when the view is scoped to a single list — either an
+     explicit list filter, or any scope that naturally yields one list.
+     A project filter spanning many lists stays collapsed. Driven purely
+     server-side (no localStorage), so clearing the filter / reloading the
+     page resets every group back to collapsed. #}
+  {% set _auto_open = list_filter or (list_rollups|length == 1) %}
   {# Find the chain of tasks AFTER the next_blocking #}
   {% set after_ns = namespace(found=False, chain=[]) %}
   {% if nb %}
@@ -516,7 +523,7 @@
         <button type="button" class="md-btn md-btn-quiet see-all-btn"
                 onclick="document.querySelectorAll('[data-group-id=\'g-{{ r.list_id }}\'] .blocking-chain').forEach(el => el.hidden = !el.hidden); this.querySelector('.arrow').textContent = (this.querySelector('.arrow').textContent === '▼') ? '▶' : '▼';"
                 style="margin-top: 6px; padding: 4px 10px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; color: #1f2328;">
-          <span class="arrow">▶</span> See all {{ r.open_todos|length }}
+          <span class="arrow">{% if _auto_open %}▼{% else %}▶{% endif %}</span> See all {{ r.open_todos|length }}
         </button>
         {% endif %}
       </td>
@@ -560,10 +567,8 @@
       </td>
     </tr>
     {% if r.open_todos|length > 1 %}
-    {# Auto-open whenever the scope is narrow (list or project filter
-       active). User ask: 'When filtered by one list or one project,
-       by default it should show all tasks.' #}
-    {% set _auto_open = list_filter or project_filter %}
+    {# Auto-open only when scoped to a single list (see _auto_open at the top
+       of this macro). Collapsed by default otherwise. #}
     <tr class="blocking-chain" {% if not _auto_open %}hidden{% endif %}>
       <td colspan="6" style="background: #f6f8fa; padding: 0;">
         <div style="padding: 18px 22px;">
@@ -625,11 +630,11 @@
           {% set _wd = _with_due|sort(attribute='urgency_score', reverse=True)|sort(attribute='due_on') %}
           {% set _nd = _no_due|sort(attribute='urgency_score', reverse=True) %}
           {% set seq = _wd + _nd %}
-          {# Lift the 15-task cap when scope is narrow (list or project
-             filter active) — user is intentionally focused so show all
-             open tasks. Outside that scope, 15 stays as the default
+          {# Lift the 15-task cap when scoped to a single list (the same
+             condition that auto-opens this group) — the user is intentionally
+             focused so show all open tasks. Otherwise 15 stays as the default
              cap with a 'Show remaining N' expander. #}
-          {% set seq_cap = seq|length if (list_filter or project_filter) else 15 %}
+          {% set seq_cap = seq|length if _auto_open else 15 %}
 
           <div class="task-seq-header">
             PROJECT TIMELINE
@@ -725,11 +730,15 @@
                   {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% if t.assignee_names|length > 1 %} <span class="dim">+{{ t.assignee_names|length - 1 }}</span>{% endif %}
                   {% else %}<span class="dim">unassigned</span>{% endif %}
                 </td>
-                <td style="text-align: center;">
-                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
-                     style="padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                    ⚙ Workspace
-                  </a>
+                <td style="text-align: center; white-space: nowrap;">
+                  <div style="display: inline-flex; flex-direction: column; gap: 4px;">
+                    <button type="button" class="md-btn md-btn-prompt"
+                            style="padding: 4px 10px; font-size: 11px;"
+                            onclick="copyPrompt('sp-{{ t.bc_id }}', this)">📋 Prompt</button>
+                    <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                       style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+                    <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -771,11 +780,15 @@
                 <td class="seq-owner">
                   {% if t.assignee_names %}{{ t.assignee_names[0][:18] }}{% else %}<span class="dim">unassigned</span>{% endif %}
                 </td>
-                <td style="text-align: center;">
-                  <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
-                     style="padding: 4px 10px; font-size: 11px; text-decoration: none;">
-                    ⚙ Workspace
-                  </a>
+                <td style="text-align: center; white-space: nowrap;">
+                  <div style="display: inline-flex; flex-direction: column; gap: 4px;">
+                    <button type="button" class="md-btn md-btn-prompt"
+                            style="padding: 4px 10px; font-size: 11px;"
+                            onclick="copyPrompt('sp-{{ t.bc_id }}', this)">📋 Prompt</button>
+                    <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                       style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+                    <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
