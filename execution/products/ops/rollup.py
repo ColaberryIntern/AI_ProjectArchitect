@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
 
+from . import bc_urls
 from .store import OpsTodo
 
 
@@ -104,34 +105,16 @@ def score_band(score: int) -> dict:
     return {"key": "b5", "label": "ON TRACK", "color": "#1a7f37"}
 
 
+# URL derivation lives in the shared `bc_urls` module so the per-todo prompt
+# renderers (suggestions.py, llm_suggest.py via OpsTodo.list_url) and this
+# rollup derive identical links. These thin wrappers preserve the existing
+# call sites + test names.
 def _bc_list_url(sample_app_url: str, list_id: int) -> str:
-    """Derive a Basecamp todolist URL from any todo's app URL in that list.
-
-    BC todo URLs look like
-        https://3.basecamp.com/<acct>/buckets/<proj>/todos/<id>
-    and the parent list lives at
-        https://3.basecamp.com/<acct>/buckets/<proj>/todolists/<list_id>
-    so we swap the trailing `/todos/<id>` segment. Returns "" if the sample
-    URL doesn't match the expected shape (defensive — BC could change it).
-    """
-    if not sample_app_url:
-        return ""
-    marker = "/todos/"
-    idx = sample_app_url.find(marker)
-    if idx == -1:
-        return ""
-    return f"{sample_app_url[:idx]}/todolists/{list_id}"
+    return bc_urls.list_url(sample_app_url, list_id)
 
 
 def _bc_project_url(sample_app_url: str) -> str:
-    """Derive the Basecamp project (bucket) URL from any todo's app URL."""
-    if not sample_app_url:
-        return ""
-    marker = "/todos/"
-    idx = sample_app_url.find(marker)
-    if idx == -1:
-        return ""
-    return sample_app_url[:idx]
+    return bc_urls.project_url(sample_app_url)
 
 
 def per_list(todos: Iterable[OpsTodo]) -> list[ListRollup]:

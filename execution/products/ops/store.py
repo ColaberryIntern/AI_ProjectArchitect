@@ -35,6 +35,8 @@ from typing import Any
 
 from config.settings import PROJECT_ROOT
 
+from . import bc_urls
+
 OPS_ROOT = PROJECT_ROOT / "output" / "ops"
 
 # Per-user write lock for serializing read-modify-write sequences.
@@ -88,6 +90,18 @@ class OpsTodo:
     dismissed_at: str = ""
     dismissed_by: str = ""
     dismissed_reason: str = ""
+
+    @property
+    def list_url(self) -> str:
+        """BC todolist URL derived from this todo's own app URL + list id.
+        "" when the app URL is missing/unparseable. Used by the prompt CONTEXT
+        block so a reader can open the list and see sibling tasks."""
+        return bc_urls.list_url(self.bc_app_url, self.bc_todolist_id)
+
+    @property
+    def project_url(self) -> str:
+        """BC project (bucket) URL derived from this todo's own app URL."""
+        return bc_urls.project_url(self.bc_app_url)
 
 
 @dataclass

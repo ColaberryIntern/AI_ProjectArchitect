@@ -44,6 +44,42 @@ def test_no_due_no_keyword_unassigned_is_low():
     assert s["category"] == "unscored"
 
 
+# ── Generation gate: pending-artifact approval tasks reroute to the drafter ──
+# approval-task-dependency-linking.md — an approval/review task whose artifact
+# is not yet attached is blocked on the drafter, never an approver delay. It
+# must not land in the human_required / CRITICAL escalation band.
+
+def test_pending_artifact_approval_task_is_waiting_dependency_not_human():
+    # Overdue + assigned would normally score human_required (the exact shape
+    # that caused the 8-day false CRITICAL escalation). The PENDING marker must
+    # reclassify it as blocked-on-drafter.
+    desc = (
+        "<strong>Depends-on:</strong> https://3.basecamp.com/x/buckets/1/todos/9 "
+        "<strong>Artifact:</strong> PENDING"
+    )
+    t = _make(title="Approve the sales call script", desc=desc,
+              due_on=_date_offset(-3),
+              updated_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat())
+    s = score_todo(t)
+    assert s["category"] == "waiting_dependency"
+    assert s["breakdown"]["artifact_gated"] is True
+
+
+def test_attached_artifact_approval_task_keeps_normal_category():
+    # Same task once the artifact is attached (a real URL, not PENDING) is a
+    # genuine approver action and keeps its normal human_required scoring.
+    desc = (
+        "<strong>Depends-on:</strong> https://3.basecamp.com/x/buckets/1/todos/9 "
+        "<strong>Artifact:</strong> https://3.basecamp.com/x/buckets/1/uploads/55"
+    )
+    t = _make(title="Approve the sales call script", desc=desc,
+              due_on=_date_offset(-3),
+              updated_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat())
+    s = score_todo(t)
+    assert s["category"] == "human_required"
+    assert s["breakdown"]["artifact_gated"] is False
+
+
 def test_urgent_keyword_bumps_score():
     t = _make(title="URGENT: fix the deploy",
               updated_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat())

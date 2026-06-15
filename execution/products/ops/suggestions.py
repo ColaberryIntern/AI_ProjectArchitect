@@ -200,6 +200,39 @@ def _match_recipe(title: str, description: str) -> dict[str, Any]:
 _OWNER_RE = re.compile(r"Owner:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
 _HUMAN_TASK_RE = re.compile(r"\bHUMAN[ _-]?TASK\b", re.I)
 
+# Dependency markers stamped by the task generator on approval/review tasks.
+# Contract: directives/approval-task-dependency-linking.md. We surface them in
+# the prompt's CONTEXT block so a fresh session can reach the artifact without
+# asking the operator for a link. Tolerant of an optional </strong> and stop at
+# the next tag/newline, mirroring _OWNER_RE.
+_DEPENDS_ON_RE = re.compile(r"Depends-on:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
+_ARTIFACT_RE = re.compile(r"Artifact:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
+
+
+def _dependency_block(todo: OpsTodo) -> str:
+    """Render the Depends-on / Artifact links (if the generator stamped them)
+    as an explicit prompt section. Empty string when neither marker is present
+    so non-approval tasks get no orphan heading."""
+    desc = todo.description or ""
+    dep = _DEPENDS_ON_RE.search(desc)
+    art = _ARTIFACT_RE.search(desc)
+    if not dep and not art:
+        return ""
+    lines = ["", "## Dependency (review this before acting)"]
+    if dep:
+        lines.append(f"**Drafting task:** {dep.group(1).strip()}")
+    if art:
+        artifact = art.group(1).strip()
+        if artifact.upper() == "PENDING":
+            lines.append(
+                "**Artifact:** not attached yet (PENDING). The thing to approve "
+                "does not exist. Do NOT treat this as an approver delay: the next "
+                "step belongs to the drafting task's owner, not this gate."
+            )
+        else:
+            lines.append(f"**Artifact:** {artifact}")
+    return "\n".join(lines) + "\n"
+
 
 def _human_owner(todo: OpsTodo) -> str | None:
     """Return the named owner if this todo is a human-required decision the AI
@@ -276,12 +309,12 @@ You're helping me work through this Basecamp task. Context first, then the recip
 
 ## Task
 **Title:** {title}
-**Project:** {project_name}
-**List:** {todolist_name}
+**Project:** {project_name} — {project_url}
+**List:** {todolist_name} — {list_url}
 **Due:** {due_on}
 **Urgency:** {urgency_summary}
-**BC URL:** {bc_app_url}
-
+**BC URL (this task):** {bc_app_url}
+{dependency_block}
 {description_block}
 
 ## Action kind
@@ -326,10 +359,13 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
         project_name=todo.bc_project_name,
+        project_url=todo.project_url or "(no URL)",
         todolist_name=todo.bc_todolist_name,
+        list_url=todo.list_url or "(no URL)",
         due_on=todo.due_on or "no due date",
         urgency_summary=s["urgency_summary"],
         bc_app_url=todo.bc_app_url or "(no URL)",
+        dependency_block=_dependency_block(todo),
         description_block=description_block,
         action_kind=s["action_kind"],
         one_line=s["one_line"],

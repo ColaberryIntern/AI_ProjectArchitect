@@ -79,6 +79,19 @@ background-load overlay) and the BC deep-link opens Basecamp.
 assembles the structured suggestion; `generate_prompt` wraps it in the
 ready-to-paste Claude Code prompt.
 
+**The CONTEXT block links the list and project, not just names them.** Both
+prompt paths — `generate_prompt` (deterministic) and the `claude_code_prompt`
+spec in `llm_suggest.py` — emit the **task URL, the list URL, and the project
+URL** in the CONTEXT block, derived from the todo's own app URL via
+`execution/products/ops/bc_urls.py` (`OpsTodo.list_url` / `OpsTodo.project_url`;
+the rollup reuses the same module). A title is not a pointer: a fresh session
+must be able to open the list to see sibling tasks and judge project scale. When
+the description carries `Depends-on:` / `Artifact:` markers (an approval/review
+task), `generate_prompt` lifts them into a **## Dependency** block, and an
+`Artifact: PENDING` is stated plainly as "not an approver delay." The full
+contract for those markers, the generation gate, and the runtime scorer reroute
+lives in [approval-task-dependency-linking.md](approval-task-dependency-linking.md).
+
 **Resources must reference things that actually exist.** A `resources` entry of
 `kind == "skill"` must name a skill that ships in the harness (currently
 `deep-research` and `code-review`). Pointing an operator at a skill that does

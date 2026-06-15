@@ -81,6 +81,53 @@ def test_generate_prompt_handles_no_due_date():
     assert "no due date" in prompt
 
 
+# ── List/project links in the CONTEXT block ────────────────────────────────
+# approval-task-dependency-linking.md (Fix A): a title is not a pointer. The
+# prompt must link the list (to see siblings + project scale) and project.
+
+def _make_linked(title, desc=""):
+    # A realistic BC todo app URL (has the /todos/<id> segment the URL helpers
+    # swap) so list_url / project_url derive non-empty.
+    return OpsTodo(
+        bc_id=7, bc_project_id=123, bc_project_name="Launch PMO",
+        bc_todolist_id=42, bc_todolist_name="Outreach",
+        title=title, description=desc,
+        bc_app_url="https://3.basecamp.com/4567/buckets/123/todos/7",
+    )
+
+
+def test_generate_prompt_includes_list_and_project_urls():
+    prompt = generate_prompt(_make_linked("Approve the script"))
+    assert "https://3.basecamp.com/4567/buckets/123/todolists/42" in prompt
+    assert "https://3.basecamp.com/4567/buckets/123" in prompt
+
+
+def test_generate_prompt_surfaces_dependency_and_artifact_links():
+    desc = (
+        "<strong>Depends-on:</strong> https://3.basecamp.com/4567/buckets/123/todos/9 "
+        "<strong>Artifact:</strong> https://3.basecamp.com/4567/buckets/123/uploads/55"
+    )
+    prompt = generate_prompt(_make_linked("Approve the sales call script", desc=desc))
+    assert "## Dependency" in prompt
+    assert "https://3.basecamp.com/4567/buckets/123/todos/9" in prompt
+    assert "https://3.basecamp.com/4567/buckets/123/uploads/55" in prompt
+
+
+def test_generate_prompt_flags_pending_artifact_as_not_an_approver_delay():
+    desc = (
+        "<strong>Depends-on:</strong> https://3.basecamp.com/4567/buckets/123/todos/9 "
+        "<strong>Artifact:</strong> PENDING"
+    )
+    prompt = generate_prompt(_make_linked("Approve the sales call script", desc=desc))
+    assert "PENDING" in prompt
+    assert "approver delay" in prompt.lower()
+
+
+def test_generate_prompt_no_dependency_block_for_plain_task():
+    prompt = generate_prompt(_make_linked("Reply to Karun"))
+    assert "## Dependency" not in prompt
+
+
 # ── F1: human-owned decisions get a recommendation, not a verdict ──────────
 
 _HUMAN_DESC = (
