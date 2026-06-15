@@ -123,6 +123,20 @@ def test_generate_prompt_flags_pending_artifact_as_not_an_approver_delay():
     assert "approver delay" in prompt.lower()
 
 
+def test_generate_prompt_reads_basecamp_autolinked_markers():
+    # Basecamp autolinks bare URLs on save, so a SYNCED description carries the
+    # value as an <a href> anchor, not bare text. The consumer must read the
+    # href (a plain [^<]+? capture reads empty here). Regression for 2026-06-15.
+    base = "https://3.basecamp.com/4567/buckets/123/todos/9"
+    anchor = f'<a rel="noreferrer" class="autolinked" href="{base}">{base}</a>'
+    desc = f"<strong>Depends-on:</strong> {anchor}<br><strong>Artifact:</strong> {anchor}"
+    prompt = generate_prompt(_make_linked("Approve the sales call script", desc=desc))
+    assert "## Dependency" in prompt
+    # The URL must surface in the rendered block, not an empty "Drafting task:".
+    assert f"**Drafting task:** {base}" in prompt
+    assert f"**Artifact:** {base}" in prompt
+
+
 def test_generate_prompt_no_dependency_block_for_plain_task():
     prompt = generate_prompt(_make_linked("Reply to Karun"))
     assert "## Dependency" not in prompt

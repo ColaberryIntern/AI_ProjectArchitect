@@ -203,10 +203,27 @@ _HUMAN_TASK_RE = re.compile(r"\bHUMAN[ _-]?TASK\b", re.I)
 # Dependency markers stamped by the task generator on approval/review tasks.
 # Contract: directives/approval-task-dependency-linking.md. We surface them in
 # the prompt's CONTEXT block so a fresh session can reach the artifact without
-# asking the operator for a link. Tolerant of an optional </strong> and stop at
-# the next tag/newline, mirroring _OWNER_RE.
-_DEPENDS_ON_RE = re.compile(r"Depends-on:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
-_ARTIFACT_RE = re.compile(r"Artifact:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
+# asking the operator for a link.
+#
+# The value may be a BARE URL as the generator wrote it, OR — once the
+# description round-trips through Basecamp, which autolinks bare URLs on save —
+# an anchor: `Depends-on: <a ... href="URL">URL</a>`. A plain `[^<]+?` capture
+# dies at the anchor's leading "<" and reads empty, so we read the href when the
+# value is an anchor and fall back to the bare text otherwise (PENDING stays
+# bare). The anchor alternative is tried first so the bare branch never swallows
+# the "<". Mirrors the generator's extractMarkers (Accelerator repo,
+# lib/dependencyLinks.js).
+_MARKER_VALUE_TMPL = (
+    r'{label}:\s*(?:</strong>)?\s*'
+    r'(?:<a[^>]*href="([^"]+)"[^>]*>[^<]*</a>|([^<\n]+?))\s*(?:<|$)'
+)
+
+
+def _marker_value(label: str, desc: str) -> str | None:
+    m = re.search(_MARKER_VALUE_TMPL.format(label=label), desc, re.I)
+    if not m:
+        return None
+    return (m.group(1) or m.group(2) or "").strip() or None
 
 
 def _dependency_block(todo: OpsTodo) -> str:
@@ -214,23 +231,22 @@ def _dependency_block(todo: OpsTodo) -> str:
     as an explicit prompt section. Empty string when neither marker is present
     so non-approval tasks get no orphan heading."""
     desc = todo.description or ""
-    dep = _DEPENDS_ON_RE.search(desc)
-    art = _ARTIFACT_RE.search(desc)
+    dep = _marker_value("Depends-on", desc)
+    art = _marker_value("Artifact", desc)
     if not dep and not art:
         return ""
     lines = ["", "## Dependency (review this before acting)"]
     if dep:
-        lines.append(f"**Drafting task:** {dep.group(1).strip()}")
+        lines.append(f"**Drafting task:** {dep}")
     if art:
-        artifact = art.group(1).strip()
-        if artifact.upper() == "PENDING":
+        if art.upper() == "PENDING":
             lines.append(
                 "**Artifact:** not attached yet (PENDING). The thing to approve "
                 "does not exist. Do NOT treat this as an approver delay: the next "
                 "step belongs to the drafting task's owner, not this gate."
             )
         else:
-            lines.append(f"**Artifact:** {artifact}")
+            lines.append(f"**Artifact:** {art}")
     return "\n".join(lines) + "\n"
 
 
