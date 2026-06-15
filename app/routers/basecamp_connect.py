@@ -211,14 +211,19 @@ async def connect_basecamp_page(request: Request, status: str | None = None,
             )
         else:
             ai_badge = ""
+            # This IS the correct setup: connect as your human BC account so
+            # My Day sync + the MCP write tools act as the identity that's a
+            # member of your projects. We deliberately do NOT tell the user to
+            # switch to a `-ai`/`+ai` persona here -- that persona is not a
+            # member of customer projects, so connecting as it 404s sync and
+            # is refused by the callback guard. (2026-06-15: that old "switch
+            # to your AI identity" hint sent several operators down exactly
+            # that broken path.)
             posting_as = (
-                "Posts from your Claude Code will show as your HUMAN BC "
-                "name. If you want them to show as a separate "
-                f"<strong>{_friendly_ai_name(bc_email, fallback_suffix=' AI')}</strong> "
-                "identity, open this page in an Incognito window after "
-                "signing into BC as your "
-                "<code>&lt;you&gt;-ai@colaberry.com</code> account, then "
-                "click Reconnect."
+                "Posts from your Claude Code will show under your real "
+                "Basecamp name, with a <em>via {Your Name}'s Claude Code</em> "
+                "line in the body so readers can tell it came through Claude. "
+                "This is the correct setup."
             )
         grant_state = (
             '<div style="background:#dafbe1;border:1px solid #aceebb;'
