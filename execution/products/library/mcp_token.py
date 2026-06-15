@@ -168,6 +168,27 @@ def revoke_unidentified_for_user(user_id_or_email: str) -> tuple[tenancy.User | 
 # ── Validate ──────────────────────────────────────────────────────────
 
 
+def _clean_hostname(h: str | None) -> str | None:
+    """Reject an unexpanded shell template as a hostname.
+
+    If the operator pastes a setup command meant for a different shell
+    (the cmd.exe `%COMPUTERNAME%` snippet into PowerShell, the PowerShell
+    `$env:COMPUTERNAME` into cmd, or the `$(hostname)` Unix form into
+    either), the X-MCP-Hostname header arrives as the literal template
+    instead of the resolved machine name. Storing that makes the device
+    list unreadable (real bug: a device registered as "%COMPUTERNAME%").
+    Real hostnames are alphanumerics, hyphens, dots, underscores — never
+    %, $, (), or backticks — so any of those means "wrong-shell paste,"
+    and we treat it as no hostname reported.
+    """
+    if not h:
+        return None
+    h = h.strip()
+    if not h or any(c in h for c in ("%", "$", "(", ")", "`")):
+        return None
+    return h[:120]
+
+
 def validate_token(token: str,
                                 user_agent: str | None = None,
                                 hostname: str | None = None,
@@ -190,8 +211,9 @@ def validate_token(token: str,
                 t["last_used_at"] = _now()
                 if user_agent:
                     t["last_user_agent"] = user_agent[:200]
-                if hostname:
-                    t["hostname"] = hostname[:120]
+                hn = _clean_hostname(hostname)
+                if hn:
+                    t["hostname"] = hn
                 if client_ip:
                     t["last_client_ip"] = client_ip[:64]
                 u.mcp_token_last_used_at = t["last_used_at"]
