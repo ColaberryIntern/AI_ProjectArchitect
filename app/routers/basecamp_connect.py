@@ -196,29 +196,32 @@ async def connect_basecamp_page(request: Request, status: str | None = None,
         from execution.products.library import basecamp_provisioning as _bp
         is_ai = _bp.is_ai_account_for_user(bc_email, user)
         if is_ai:
-            # Connected as the dedicated AI account -- BC posts will show
-            # under that identity (e.g. "Karun AI"), exactly what Ali wants
-            # for the team rollout.
+            # 2026-06-15 team decision (human accounts only): connecting as
+            # the +ai persona is the WRONG state. One human grant drives both
+            # My Day reads and MCP posting, and the persona isn't a member of
+            # every project (it 404s on gov buckets). This used to be shown as
+            # the good state, and its "switch to a separate identity" help
+            # text trapped operators (Obi, Ram) into mis-connecting. Flip it
+            # to a warning that steers them back to their human account.
             ai_badge = (
-                '<span style="display:inline-block;background:#137333;'
+                '<span style="display:inline-block;background:#b3261e;'
                 'color:#fff;padding:3px 9px;border-radius:4px;font-size:11px;'
                 'font-weight:700;margin-left:8px;vertical-align:middle;">'
-                "AI ACCOUNT</span>"
+                "WRONG ACCOUNT</span>"
             )
             posting_as = (
-                f"Posts from your Claude Code will show as <strong>"
-                f"{_friendly_ai_name(bc_email)}</strong> in Basecamp."
+                "⚠ You are connected as your <strong>AI persona</strong> "
+                "account, not your own Basecamp login. That account is not a "
+                "member of every project, so some of your tasks will not "
+                "sync. Sign out of Basecamp, sign back in as your own "
+                "colaberry.com account, then click Reconnect below."
             )
         else:
             ai_badge = ""
             posting_as = (
-                "Posts from your Claude Code will show as your HUMAN BC "
-                "name. If you want them to show as a separate "
-                f"<strong>{_friendly_ai_name(bc_email, fallback_suffix=' AI')}</strong> "
-                "identity, open this page in an Incognito window after "
-                "signing into BC as your "
-                "<code>&lt;you&gt;-ai@colaberry.com</code> account, then "
-                "click Reconnect."
+                "Posts from your Claude Code show under your own Basecamp "
+                "name with a <code>via {Your Name}'s Claude Code</code> "
+                "attribution. This is the correct setup — you are all set."
             )
         grant_state = (
             '<div style="background:#dafbe1;border:1px solid #aceebb;'
