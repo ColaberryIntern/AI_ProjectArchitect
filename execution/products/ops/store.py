@@ -112,6 +112,11 @@ class OpsProject:
     is_managed: bool = True             # included in queue by default
     weight: float = 1.0                 # priority multiplier (0.0-2.0)
     last_synced_at: str = ""
+    # Incremental-sync watermark: the project's BC `updated_at` value at the
+    # time we last deep-walked its todos. The next sync compares the project's
+    # current `updated_at` against this; if unchanged, the expensive todo walk
+    # is skipped entirely. Empty = never walked → always walk.
+    last_seen_updated_at: str = ""
 
 
 @dataclass
@@ -140,6 +145,11 @@ class OpsState:
     # than fit in SYNC_BUDGET_SECONDS still gets every project covered across
     # successive runs instead of forever re-walking the head. 0 = start fresh.
     last_walked_bc_id: int = 0
+    # Incremental sync: timestamp of the last watermark-IGNORING full walk.
+    # A full pass is forced at least every OPS_FULL_RESYNC_MINUTES as a safety
+    # net against any Basecamp change that doesn't bump a project's own
+    # `updated_at`. Empty = never → the next run does a full walk.
+    last_full_walk_at: str = ""
 
 
 def _user_dir(user_id: str) -> Path:

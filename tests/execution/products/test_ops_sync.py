@@ -993,6 +993,129 @@ class TestPullTodosForUser:
 
 
 # ════════════════════════════════════════════════════════════════════
+# Incremental sync — skip the per-project walk when updated_at is unchanged
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestIncrementalSync:
+    """The watermark optimization: a full sync re-walks only projects whose
+    BC `updated_at` changed since the last deep walk, so a user with many
+    projects stops blowing the wall-clock budget every run."""
+
+    USER = "ali@colaberry.com"
+    BC_USER = 17454835
+
+    def _setup(self, monkeypatch, *, incremental=True, full_minutes=60):
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id",
+                            MagicMock(return_value=self.BC_USER))
+        monkeypatch.setattr(sync, "SYNC_BUDGET_SECONDS", 60.0)
+        monkeypatch.setattr(sync, "OPS_INCREMENTAL_SYNC", incremental)
+        monkeypatch.setattr(sync, "OPS_FULL_RESYNC_MINUTES", full_minutes)
+
+    def _proj(self, updated_at):
+        return {"id": 101, "name": "P", "description": "",
+                "updated_at": updated_at,
+                "dock": [{"name": "todoset", "id": 555}]}
+
+    def _make_bc(self, calls, *, updated_at, todo_ids):
+        proj = self._proj(updated_at)
+
+        def _bc(path, token=None, params=None, _retry=1):
+            calls.append(path)
+            if path == "/projects/101.json":
+                return proj
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 1010, "name": "L"}]
+            if path == "/buckets/101/todolists/1010/todos.json":
+                if params and (params.get("page", 1) > 1
+                               or params.get("completed") == "true"):
+                    return []
+                return [_todo_dict(t, assignees=(self.BC_USER,)) for t in todo_ids]
+            return None
+        return _bc
+
+    def test_unchanged_project_is_skipped_on_second_run(self, monkeypatch, isolated_ops_root):
+        self._setup(monkeypatch)
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[self._proj("2026-06-15T10:00:00Z")]))
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc([], updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        # Run 1: first sync is a full walk; the todo lands.
+        r1 = sync.pull_todos_for_user(self.USER)
+        assert r1["projects_walked"] == 1
+        assert 10100 in {t.bc_id for t in store.load_todos(self.USER)}
+
+        # Run 2: same updated_at → the deep-walk endpoints must NOT be hit.
+        calls: list[str] = []
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc(calls, updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        r2 = sync.pull_todos_for_user(self.USER)
+        deep = [c for c in calls if c.startswith("/projects/101") or "/buckets/101/" in c]
+        assert deep == [], f"unchanged project was re-walked: {deep}"
+        assert r2["projects_walked"] == 0
+        assert r2["projects_skipped_unchanged"] == 1
+        # The skip must not drop the project's already-synced todos.
+        assert 10100 in {t.bc_id for t in store.load_todos(self.USER)}
+
+    def test_changed_updated_at_triggers_rewalk(self, monkeypatch, isolated_ops_root):
+        self._setup(monkeypatch)
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[self._proj("2026-06-15T10:00:00Z")]))
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc([], updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        sync.pull_todos_for_user(self.USER)
+
+        # Run 2: bumped updated_at + a new todo → must re-walk and pick it up.
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[self._proj("2026-06-15T11:00:00Z")]))
+        calls: list[str] = []
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc(calls, updated_at="2026-06-15T11:00:00Z", todo_ids=[10100, 20200]))
+        r2 = sync.pull_todos_for_user(self.USER)
+        assert "/projects/101.json" in calls
+        assert r2["projects_walked"] == 1
+        assert {10100, 20200} <= {t.bc_id for t in store.load_todos(self.USER)}
+
+    def test_periodic_full_walk_rewalks_unchanged_project(self, monkeypatch, isolated_ops_root):
+        self._setup(monkeypatch)
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[self._proj("2026-06-15T10:00:00Z")]))
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc([], updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        sync.pull_todos_for_user(self.USER)
+
+        # Age the last full walk past the threshold so the safety net trips.
+        st = store.load_state(self.USER)
+        st.last_full_walk_at = _days_ago(1)
+        store.save_state(st)
+        calls: list[str] = []
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc(calls, updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        r2 = sync.pull_todos_for_user(self.USER)
+        assert "/projects/101.json" in calls, "periodic full walk did not re-walk unchanged project"
+        assert r2["projects_walked"] == 1
+
+    def test_kill_switch_walks_every_run(self, monkeypatch, isolated_ops_root):
+        self._setup(monkeypatch, incremental=False)
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[self._proj("2026-06-15T10:00:00Z")]))
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc([], updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        sync.pull_todos_for_user(self.USER)
+
+        # Same updated_at, but the kill-switch is off → it still re-walks.
+        calls: list[str] = []
+        monkeypatch.setattr(sync, "_bc_get",
+                            self._make_bc(calls, updated_at="2026-06-15T10:00:00Z", todo_ids=[10100]))
+        r2 = sync.pull_todos_for_user(self.USER)
+        assert "/projects/101.json" in calls
+        assert r2["projects_walked"] == 1
+        assert r2["projects_skipped_unchanged"] == 0
+
+
+# ════════════════════════════════════════════════════════════════════
 # pull_todos_for_project — targeted single-project sync (Mark Done path)
 # ════════════════════════════════════════════════════════════════════
 
