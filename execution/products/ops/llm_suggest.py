@@ -89,7 +89,9 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # section newlines (the LLM was emitting one wall-of-text line; v3 adds
 # explicit \n\n between TITLE / DESCRIPTION / COMMENTS / STEPS / CLOSE
 # sections so the prompt reads as a document).
-PROMPT_VERSION = "v3"
+# v4 = v3 + PROJECT URL / LIST URL in the CONTEXT block and Depends-on/Artifact
+# lift (approval-task-dependency-linking.md).
+PROMPT_VERSION = "v4"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -167,7 +169,7 @@ The claude_code_prompt MUST be a single plain-text string (no markdown headers l
 
 Section 1: WHAT to do (the goal_line) on a single line at the top.
 
-Section 2: A "CONTEXT:" block with TITLE, PROJECT, LIST, DUE, BC URL each on its own line, followed by a blank line, then "DESCRIPTION:" on its own line, then the full description verbatim.
+Section 2: A "CONTEXT:" block with TITLE, PROJECT, PROJECT URL, LIST, LIST URL, DUE, BC URL each on its own line (copy the PROJECT URL and LIST URL through verbatim so the reader can open the list and see sibling tasks at project scale), followed by a blank line, then "DESCRIPTION:" on its own line, then the full description verbatim. If the description contains "Depends-on:" or "Artifact:" lines, lift them to the TOP of the CONTEXT block as "DRAFTING TASK:" and "ARTIFACT:" so the reader can reach the thing being approved without scrolling. If "Artifact:" is "PENDING", state plainly that the artifact does not exist yet and the next step belongs to the drafting task's owner, not this approval gate.
 
 Section 3: A "RECENT COMMENTS:" block with each comment on its own paragraph, prefixed with "[Author Name, YYYY-MM-DD]" on its own line, then the comment body. Oldest first.
 
@@ -189,7 +191,9 @@ def _build_user_message(todo: OpsTodo, comments_text: str) -> str:
     return (
         f"TICKET TITLE: {todo.title}\n"
         f"PROJECT: {todo.bc_project_name}\n"
+        f"PROJECT URL: {todo.project_url or '(no url)'}\n"
         f"LIST: {todo.bc_todolist_name}\n"
+        f"LIST URL: {todo.list_url or '(no url)'}\n"
         f"DUE: {todo.due_on or 'no due date'}\n"
         f"URGENCY SCORE (0-100): {todo.urgency_score}\n"
         f"CATEGORY: {todo.category}\n"

@@ -27,6 +27,12 @@ from .store import OpsTodo
 URGENT_RE = re.compile(r"\b(URGENT|ASAP|CRITICAL|EMERGENCY)\b", re.IGNORECASE)
 HOT_RE = re.compile(r"\b(HOT|PRIORITY|P0|P1|ESCALATE|BLOCK(?:ER|ING|ED)?)\b", re.IGNORECASE)
 DECIDE_RE = re.compile(r"\b(REVIEW|APPROVE|DECIDE|SIGN[- ]?OFF|CONFIRM)\b", re.IGNORECASE)
+# Generation gate (directives/approval-task-dependency-linking.md): an
+# approval/review task whose artifact is not yet attached carries an explicit
+# "Artifact: PENDING" marker. Such a task is blocked on the *drafter*, not an
+# approver delay, so it must never be scored into the human_required/CRITICAL
+# escalation band. This is the runtime backstop for the 8-day false escalation.
+ARTIFACT_PENDING_RE = re.compile(r"Artifact:\s*(?:</strong>)?\s*PENDING\b", re.IGNORECASE)
 
 
 def _days_until(due_on: str | None) -> int | None:
@@ -117,6 +123,15 @@ def score_todo(todo: OpsTodo, project_weight: float = 1.0) -> dict[str, Any]:
     else:
         category = "unscored"
 
+    # Generation gate: an approval/review task whose artifact is still PENDING
+    # is blocked on the drafter, not the approver. Force it to
+    # waiting_dependency so it never reads as a human_required approver delay
+    # and never enters the CRITICAL escalation band — the urgency belongs to
+    # the drafting task + owner. See approval-task-dependency-linking.md.
+    artifact_gated = bool(ARTIFACT_PENDING_RE.search(todo.description or ""))
+    if artifact_gated:
+        category = "waiting_dependency"
+
     return {
         "urgency": weighted,
         "category": category,
@@ -124,6 +139,7 @@ def score_todo(todo: OpsTodo, project_weight: float = 1.0) -> dict[str, Any]:
             "due_days": due_days,
             "stale_days": stale_days,
             "keyword_tier": kw_tier,
+            "artifact_gated": artifact_gated,
             "components": {
                 "due": due_pts,
                 "staleness": stale_pts,
