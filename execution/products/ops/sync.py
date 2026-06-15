@@ -38,6 +38,15 @@ FRESHNESS_DAYS = int(os.environ.get("OPS_FRESHNESS_DAYS", "30"))
 # Skip projects whose own updated_at is older than this — saves a lot of
 # API calls walking dead projects.
 PROJECT_FRESHNESS_DAYS = int(os.environ.get("OPS_PROJECT_FRESHNESS_DAYS", "30"))
+# Incremental sync: skip the expensive per-project todo walk when the
+# project's BC `updated_at` hasn't changed since we last walked it. The cost
+# of a full sync is the per-project deep walk (todolists + todos, throttled);
+# gating it on the cheap project-list `updated_at` turns an N-project re-walk
+# into "walk only what changed". Kill-switch via env (set to "0" to disable).
+OPS_INCREMENTAL_SYNC = (os.environ.get("OPS_INCREMENTAL_SYNC", "1").strip() == "1")
+# Force a watermark-ignoring full walk at least this often, so any BC mutation
+# that doesn't bump project.updated_at can't stay hidden longer than this.
+OPS_FULL_RESYNC_MINUTES = int(os.environ.get("OPS_FULL_RESYNC_MINUTES", "60"))
 HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
 # Throttle: BC allows ~50 req/10s = ~5 req/s sustained. Sleep between
 # every call to stay well under the limit (200ms = 5 req/s).
@@ -334,6 +343,9 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
             bc_id=project_id, name=proj_name,
             description=(proj.get("description") or "")[:500],
             last_synced_at=_now_iso(),
+            # Keep the incremental watermark current so the next full sync
+            # can skip this project if nothing changed after this targeted walk.
+            last_seen_updated_at=proj.get("updated_at") or "",
         )])
         store.upsert_todos(user_id, fresh_todos)
         # L5 (2026-06-09 audit): record the targeted touch so the UI can
@@ -371,7 +383,27 @@ def _project_is_recently_active(proj: dict, cutoff: datetime) -> bool:
         return True
 
 
-def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -> dict:
+def _full_walk_due(state) -> bool:
+    """True when it's time for a watermark-ignoring full walk.
+
+    Incremental sync skips projects whose `updated_at` is unchanged since the
+    last deep walk. As a safety net against any BC change that doesn't bump
+    that field, force a full pass on first sync (no timestamp yet) and at
+    least every OPS_FULL_RESYNC_MINUTES thereafter."""
+    last = getattr(state, "last_full_walk_at", "") or ""
+    if not last:
+        return True
+    try:
+        dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return True
+    return (datetime.now(timezone.utc) - dt).total_seconds() > OPS_FULL_RESYNC_MINUTES * 60
+
+
+def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None,
+                        force_full: bool = False) -> dict:
     """Run a full sync for one user.
 
     `ali_legacy_bucket` — Phase A escape hatch. When supplied, skips
@@ -389,12 +421,13 @@ def pull_todos_for_user(user_id: str, *, ali_legacy_bucket: int | None = None) -
     if not coord.try_start_sync(user_id):
         return {"status": "already_running", "todos": 0, "projects": 0}
     try:
-        return _pull_todos_for_user_inner(user_id, ali_legacy_bucket)
+        return _pull_todos_for_user_inner(user_id, ali_legacy_bucket, force_full)
     finally:
         coord.finish_sync(user_id)
 
 
-def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> dict:
+def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None,
+                               force_full: bool = False) -> dict:
     """The actual walk, extracted so the coordinator wrapping stays a
     cheap pre-check. Exists because the prior body had early returns
     on token/bc_user_id missing — keeping them in a separate function
@@ -527,6 +560,15 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     projects_walked = 0
     budget_exceeded = False
 
+    # Incremental walk gating: skip the per-project todo walk when the
+    # project's BC `updated_at` is unchanged since our last deep walk (the
+    # watermark stored on the project row). do_full forces a full pass:
+    # explicit force_full, the kill-switch being off, first sync, or the
+    # periodic-full safety net coming due.
+    prev_marks = {p.bc_id: p for p in store.load_projects(user_id)}
+    do_full = force_full or (not OPS_INCREMENTAL_SYNC) or _full_walk_due(state)
+    projects_skipped_unchanged = 0
+
     for proj in projects_raw:
         # Budget check happens BEFORE each project walk so a slow first
         # project doesn't get cut off mid-walk (which would leave a
@@ -534,7 +576,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         if time.time() - sync_start > SYNC_BUDGET_SECONDS:
             budget_exceeded = True
             partial = True
-            skipped = len(projects_raw) - projects_walked
+            skipped = len(projects_raw) - (projects_walked + projects_skipped_unchanged)
             err = (
                 f"budget_exceeded after {int(time.time() - sync_start)}s; "
                 f"{skipped}/{len(projects_raw)} projects deferred to the next "
@@ -549,11 +591,34 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         if not bucket:
             continue
         proj_name = proj.get("name") or f"Project {bucket}"
+        cur_updated = proj.get("updated_at") or ""
+        prev = prev_marks.get(bucket)
+        walk_it = (
+            do_full
+            or prev is None
+            or not cur_updated
+            or cur_updated != (prev.last_seen_updated_at or "")
+        )
+        if not walk_it:
+            # Unchanged since our last deep walk — skip the expensive todo
+            # fetch and carry the project row + watermark forward. The
+            # project's todos already in the store survive (upsert_todos
+            # keeps rows that are absent from `fresh`).
+            fresh_projects.append(store.OpsProject(
+                bc_id=bucket,
+                name=proj_name,
+                description=(proj.get("description") or "")[:500],
+                last_synced_at=prev.last_synced_at,
+                last_seen_updated_at=prev.last_seen_updated_at or cur_updated,
+            ))
+            projects_skipped_unchanged += 1
+            continue
         fresh_projects.append(store.OpsProject(
             bc_id=bucket,
             name=proj_name,
             description=(proj.get("description") or "")[:500],
             last_synced_at=_now_iso(),
+            last_seen_updated_at=cur_updated,
         ))
         try:
             fresh_todos.extend(_walk_project_todos(proj, token, bc_user_id))
@@ -657,6 +722,11 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # this is the tail project, and the next run wraps harmlessly to the head.
     if fresh_projects:
         state.last_walked_bc_id = fresh_projects[-1].bc_id
+    # Reset the periodic-full clock only when this run actually completed a
+    # full (watermark-ignoring) pass — a budget break leaves it stale so the
+    # next run retries the full coverage.
+    if do_full and not budget_exceeded:
+        state.last_full_walk_at = _now_iso()
     store.save_state(state)
 
     return {
@@ -665,6 +735,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         "projects_discovered": len(discovered) if 'discovered' in locals() else 0,
         "projects_quiet_skipped": skipped_quiet,
         "projects_walked": projects_walked,
+        "projects_skipped_unchanged": projects_skipped_unchanged,
         "projects_created": p_created,
         "projects_updated": p_updated,
         "todos_assigned_to_user": len(fresh_todos),
