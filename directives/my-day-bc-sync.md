@@ -88,6 +88,16 @@ Invariants the sync engine relies on:
 
 The CB System clone id (37708014) is hardcoded in `_classify_for_user`. Removing or changing this literal will silently drop every task assigned to the CB System clone — verify against `tests/execution/products/test_ops_sync.py::test_cb_system_clone_returns_assigned` before touching.
 
+### Which `bc_user_id` the classifier uses (self-heal, 2026-06-16)
+
+The classifier does **not** blindly trust the cached `User.bc_user_id`. The id that todos assigned to an operator actually carry is their **account-scoped person id** (from `/my/profile.json`) — that is ground truth. `bc_user_id` is only a cache of it. So `_pull_todos_for_user_inner` resolves the live account-person id (`token_person_id`) once per run and classifies against **that**, falling back to the cached `bc_user_id` only if the profile call fails. When the cache has drifted from the live id, it is **healed** (written back via `tenancy.upsert_user`) so subsequent offline reads are correct.
+
+**Why this exists:** the self-serve connect flow used to cache the wrong value — the **Launchpad identity id** from `/authorization.json` instead of the account-person id (see the id-namespace gotcha below). The two never match, so a correctly-connected human matched **zero** assignees and saw none of their own tasks ("assigned" → 0; everything fell to the `due`/`watching` noise tiers). This was the **2026-06-16 Swati incident** (466 todos in queue, 0 assigned). Two fixes landed together:
+- **Source:** `basecamp_connect.py` now stores the account-person id via `_resolve_account_person_id` (`/my/profile.json`), not `granted_id`.
+- **Net:** sync classifies against / heals to the live account-person id, so even already-broken records self-correct on the next run.
+
+**Clone exception:** the heal is **skipped** for AI-clone connections (Ali's CB System, anyone's `+ai` persona — detected via `basecamp_provisioning.is_ai_account_for_user`). The clone-by-design model deliberately authenticates as the clone while classifying against the **human's** id; overwriting the human id with the clone's id would break it. A genuine `+ai` mis-connect is surfaced by `connection_identity_suspect` (reconnect as human), not silently cached. Regression guards: `test_ops_sync.py::TestBcUserIdSelfHeal` (3 cases) and `test_basecamp_ai_detection.py::test_resolve_account_person_id_*`.
+
 ## Freshness window
 
 Two environment-tunable knobs:

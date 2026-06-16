@@ -520,6 +520,54 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     except Exception:
         pass
 
+    # ── Classify against the LIVE account-person id; self-heal the cache ──
+    # token_person_id (from /my/profile.json) IS the id that todos assigned
+    # to this operator carry — it's ground truth. The stored bc_user_id is
+    # only a cache of it, and the self-serve connect flow historically cached
+    # the WRONG value: the Launchpad identity id from /authorization.json,
+    # which lives in a different namespace and never matches the account-person
+    # id (the 2026-06-16 Swati incident — every one of her todos fell through
+    # to the 'due'/'watching' noise tiers because her cached id matched zero
+    # assignees). So prefer the live id for classification and refresh the
+    # cache when it has drifted. This makes the whole bug class structurally
+    # impossible: we classify against the id the token actually authenticates
+    # as, not a cache that can rot.
+    #
+    # EXCEPTION — AI-clone connections (Ali's CB System, anyone's +ai persona):
+    # the clone-by-design model deliberately authenticates as the clone
+    # (token_person_id = clone id) while classifying against the HUMAN's
+    # bc_user_id. Never overwrite the human id with the clone's id; a +ai
+    # mis-connect is surfaced by the suspect/forbidden flagging below (which
+    # tells the operator to reconnect as their human account), not silently
+    # cached.
+    classify_id = bc_user_id
+    if token_person_id:
+        try:
+            from execution.products.library import (
+                basecamp_provisioning as _prov,
+                tenancy as _heal_tncy,
+            )
+            _heal_user = _heal_tncy.get_user(user_id)
+            _is_clone_conn = _prov.is_ai_account_for_user(
+                connected_identity, _heal_user)
+        except Exception:
+            _heal_user, _is_clone_conn = None, False
+        if not _is_clone_conn:
+            classify_id = token_person_id
+            if token_person_id != bc_user_id and _heal_user is not None:
+                logger.warning(
+                    "ops sync: healing bc_user_id for %s: %s -> %s "
+                    "(cached id disagreed with /my/profile.json account id)",
+                    user_id, bc_user_id, token_person_id,
+                )
+                try:
+                    _heal_user.bc_user_id = token_person_id
+                    _heal_tncy.upsert_user(_heal_user)
+                except Exception as e:  # noqa: BLE001 — heal is best-effort
+                    logger.warning(
+                        "ops sync: bc_user_id heal write failed for %s: %s",
+                        user_id, type(e).__name__)
+
     # L6 (2026-06-09 audit): track wall clock so we can bail out
     # gracefully when SYNC_BUDGET_SECONDS is exceeded rather than
     # letting one runaway sync hold the coordinator slot for hours.
@@ -556,7 +604,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             last_synced_at=_now_iso(),
         ))
         try:
-            fresh_todos.extend(_walk_project_todos(proj, token, bc_user_id))
+            fresh_todos.extend(_walk_project_todos(proj, token, classify_id))
             projects_walked += 1
         except urllib.error.HTTPError as e:  # per-project resilience
             partial = True
