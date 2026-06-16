@@ -75,9 +75,12 @@ def test_creates_repo_from_template_when_absent(isolated, monkeypatch):
     res = workspaces.provision_user_workspace(ali, admin_actor_id="sys")
     assert res["ok"] is True
     assert res["repo_already_existed"] is False
-    assert res["invited_user"] is True
     # We DID call generate
     assert any(c[0] == "POST" and "/generate" in c[1] for c in calls)
+    # The repo is a behind-the-scenes sync artifact — operators never clone
+    # it, so provisioning must NOT invite anyone as a GitHub collaborator.
+    assert not any("/collaborators/" in c[1] for c in calls)
+    assert "invited_user" not in res
 
 
 def test_falls_back_to_bare_repo_when_template_missing(isolated, monkeypatch):

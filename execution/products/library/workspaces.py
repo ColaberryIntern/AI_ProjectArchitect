@@ -134,7 +134,6 @@ class ProvisionResult:
     ok: bool
     repo_url: str = ""
     repo_already_existed: bool = False
-    invited_user: bool = False
     seeded_files: int = 0
     seed_errors: int = 0
     error: str = ""
@@ -377,20 +376,12 @@ def provision_user_workspace(user: tenancy.User,
                 else:
                     raise
 
-        # 3. Invite the user as collaborator (best-effort — needs gh username)
-        gh_handle = username_slug(user.email)
-        try:
-            _gh_api("PUT", f"/repos/{repo}/collaborators/{gh_handle}",
-                          payload={"permission": "write"})
-            result.invited_user = True
-            _audit(admin_actor_id, user.user_id, "invite_collaborator",
-                      repo=repo,
-                      details={"gh_handle": gh_handle, "permission": "write"})
-        except Exception as e:
-            _audit(admin_actor_id, user.user_id, "invite_failed",
-                      repo=repo,
-                      details={"gh_handle": gh_handle},
-                      error=str(e)[:200])
+        # 3. No collaborator invite. The workspace repo is a behind-the-scenes
+        # sync artifact — operators never clone or touch it; all context
+        # reaches them through the Colaberry MCP (colaberry://doctrine/*).
+        # The old invite guessed a GitHub username from the email and always
+        # 422'd (operators don't have matching GitHub accounts), so it only
+        # produced noise. Do NOT re-add it: operators need no GitHub account.
 
         # 4. Seed Op 1 + Op 5 scaffolding into the new repo
         # Wait for the template-generate to settle (GitHub creates the repo
@@ -434,7 +425,6 @@ def _result_dict(r: ProvisionResult) -> dict:
     return {
         "ok": r.ok, "repo_url": r.repo_url,
         "repo_already_existed": r.repo_already_existed,
-        "invited_user": r.invited_user,
         "seeded_files": r.seeded_files,
         "seed_errors": r.seed_errors,
         "error": r.error,
