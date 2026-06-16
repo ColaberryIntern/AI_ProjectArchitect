@@ -117,21 +117,14 @@ You'll mostly **use** the library, **rate + comment** on what helps, and occasio
 
 ### 4b. Technical contributor (engineers, data scientists)
 
-In addition to the above, you'll be auto-provisioned a **personal GitHub workspace** at `github.com/ColaberryIntern/{yourname}-workspace` containing:
-
-- `USER_PROFILE.md` — scaffolded with your identity
-- `.mcp.json` — references to credential placeholders (`${{vault.gmail}}`, `${{vault.basecamp}}`, etc.); admin grants you per-tool via [Admin 2]
-- A `.claude/skills/` directory ready to receive your own skills
+In addition to the above, you can build and contribute your own assets (skills, agents, prompts, MCP servers). **You do NOT need to clone any repo or have a GitHub account.** Your Colaberry context — the operating doctrine, your Basecamp tools, and your memory — reaches Claude Code through the MCP you connect once at [/profile/welcome](https://advisor.colaberry.ai/profile/welcome). (A per-person `{yourname}-workspace` repo exists, but it's a behind-the-scenes sync artifact the system manages; you never touch it.)
 
 Workflow:
-1. Clone your workspace repo locally
-2. Run `claude code` (Claude Code CLI) from inside that directory
-3. Write a skill (a Markdown file under `.claude/skills/{name}/SKILL.md`) — see existing skills in the library for the format
-4. Test locally
-5. Push to your workspace repo
-6. Submit to the library via the Ingest URL flow (paste your workspace repo URL)
+1. Open Claude Code in any folder on your machine, with the Colaberry MCP connected.
+2. Write a skill (a Markdown `SKILL.md`), agent, or prompt — see existing library items for the format — and test it.
+3. Add it to the company library by just telling Claude **"add this to our library."** Claude files it via `colaberry_propose_asset` (it picks a category, names it, and tags it to you), and it shows up at `/library/<category>/<id>`. For an asset that already lives in a public repo, use the library's **Ingest URL** flow and paste that repo's URL instead.
 
-When admin approves your skill, [Infra 2] syncs it to the canonical `ColaberryIntern/AI_ProjectArchitect` repo at `library/skills/{name}.md`. From that moment it's available to every colleague's `/library/skills/{name}` and (if `shared-public`) to other tenants.
+When admin approves your asset, [Infra 2] syncs it to the canonical `ColaberryIntern/AI_ProjectArchitect` repo at `library/skills/{name}.md`. From that moment it's available to every colleague's `/library/skills/{name}` and (if `shared-public`) to other tenants.
 
 ### 4c. Admin / reviewer (Ali for Colaberry; per-tenant admins for others)
 
