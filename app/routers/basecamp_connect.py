@@ -46,6 +46,10 @@ TOKEN_ENDPOINT = "https://launchpad.37signals.com/authorization/token"
 PROFILE_ENDPOINT = "https://launchpad.37signals.com/authorization.json"
 CALLBACK_PATH = "/auth/basecamp-callback"
 
+# The Basecamp account whose project memberships + My Day classifier we care
+# about. Same default as execution/products/ops/sync.py:BC_ACCOUNT_ID.
+BC_ACCOUNT_ID = os.environ.get("BC_ACCOUNT_ID", "3945211")
+
 STATE_COOKIE_NAME = "colaberry_basecamp_state"
 RETURN_COOKIE_NAME = "colaberry_basecamp_return"
 STATE_TTL_SEC = 600
@@ -142,6 +146,51 @@ def _fetch_authorization_info(access_token: str) -> dict:
     )
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def _resolve_account_person_id(access_token: str, info: dict) -> int:
+    """Return the operator's ACCOUNT-scoped person id for the Colaberry
+    Basecamp account — the id project memberships and the My Day classifier
+    (tokens.get_user_bc_id) match todo assignees against.
+
+    This is deliberately NOT info['identity']['id'] from /authorization.json:
+    that is the global *Launchpad identity id*, which lives in a separate
+    namespace and NEVER equals the account-person id for the same human.
+    Caching the Launchpad id here was the bug that hid Swati's tasks on
+    2026-06-16 — her stored id matched zero assignees, so every todo fell to
+    the 'due'/'watching' noise tiers. Resolve via {account_href}/my/profile.json.
+
+    Returns 0 on any failure so the caller can fall back to the Launchpad id
+    rather than leaving the connection with no id at all.
+    """
+    accounts = (info or {}).get("accounts") or []
+    href = ""
+    for ac in accounts:
+        if str(ac.get("id")) == str(BC_ACCOUNT_ID):
+            href = (ac.get("href") or "").rstrip("/")
+            break
+    if not href and len(accounts) == 1:
+        # Single-account grant: the only account we got back is the one.
+        href = (accounts[0].get("href") or "").rstrip("/")
+    if not href:
+        return 0
+    req = urllib.request.Request(
+        href + "/my/profile.json",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+            "User-Agent": "Colaberry MCP per-user BC (ali@colaberry.com)",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            prof = json.loads(r.read().decode("utf-8"))
+        return int((prof or {}).get("id") or 0)
+    except Exception as e:  # noqa: BLE001 — best-effort; caller falls back
+        logger.warning("BC /my/profile.json resolution failed: %s",
+                       type(e).__name__)
+        return 0
 
 
 @router.get("/profile/connect-basecamp")
@@ -415,6 +464,7 @@ async def basecamp_callback(request: Request,
 
     granted_email = ""
     granted_id = 0
+    info: dict = {}
     try:
         info = _fetch_authorization_info(access_token)
         identity = (info or {}).get("identity") or {}
@@ -486,9 +536,34 @@ async def basecamp_callback(request: Request,
         actor_id="basecamp_connect_web_flow",
     )
 
-    if granted_id and not user.bc_user_id:
-        user.bc_user_id = granted_id
-        tenancy.upsert_user(user)
+    # Persist the ACCOUNT-scoped person id (what the My Day classifier matches
+    # todo assignees against), NOT the Launchpad identity id in granted_id —
+    # they never match for the same human, and caching granted_id is the bug
+    # that hid Swati's tasks on 2026-06-16. Fall back to granted_id only if the
+    # profile lookup failed, so a connection is never left with no id at all.
+    #
+    # Guard: never clobber a human bc_user_id with an AI clone's account id.
+    # The +ai/-ai defense above already refused suffix-style persona grants;
+    # is_ai_account_for_user also honors the hardcoded-override map (Ali →
+    # CB System), which the suffix check would miss.
+    account_person_id = _resolve_account_person_id(access_token, info)
+    try:
+        from execution.products.library import basecamp_provisioning as _prov
+        connected_is_clone = _prov.is_ai_account_for_user(granted_email, user)
+    except Exception:
+        connected_is_clone = False
+
+    if connected_is_clone:
+        # Off-model clone grant. Keep any existing human id; only seed the
+        # Launchpad id if we have nothing at all (better than empty).
+        if granted_id and not user.bc_user_id:
+            user.bc_user_id = granted_id
+            tenancy.upsert_user(user)
+    else:
+        resolved_bc_id = account_person_id or granted_id
+        if resolved_bc_id and user.bc_user_id != resolved_bc_id:
+            user.bc_user_id = resolved_bc_id
+            tenancy.upsert_user(user)
 
     return_dest = (request.cookies.get(RETURN_COOKIE_NAME) or "").strip()
     if return_dest == "welcome":

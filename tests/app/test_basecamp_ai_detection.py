@@ -84,3 +84,61 @@ def test_friendly_ai_name_handles_compound_local_parts():
 def test_friendly_ai_name_empty_safe():
     assert _friendly_ai_name("") == ""
     assert _friendly_ai_name("not-an-email") == ""
+
+
+# ── _resolve_account_person_id — store the right id at connect time ──
+# Regression guard for the 2026-06-16 Swati incident: the callback must
+# persist the ACCOUNT-scoped person id (from {account}/my/profile.json),
+# NOT the Launchpad identity id from /authorization.json. The two live in
+# different namespaces and never match, so caching the Launchpad id left
+# the My Day classifier matching zero todo assignees.
+
+
+class _FakeResp:
+    def __init__(self, body: bytes):
+        self._body = body
+    def read(self):
+        return self._body
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+def test_resolve_account_person_id_picks_colaberry_account(monkeypatch):
+    import json as _json
+    from app.routers import basecamp_connect as bc
+    info = {
+        "identity": {"id": 27309320, "email_address": "swati@colaberry.com"},
+        "accounts": [
+            {"id": 3945211, "href": "https://3.basecampapi.com/3945211"},
+            {"id": 9999999, "href": "https://3.basecampapi.com/9999999"},
+        ],
+    }
+    captured = {}
+    def _fake_urlopen(req, timeout=15):
+        captured["url"] = req.full_url
+        return _FakeResp(_json.dumps({"id": 48041031,
+                                      "email_address": "swati@colaberry.com"}).encode())
+    monkeypatch.setattr(bc.urllib.request, "urlopen", _fake_urlopen)
+
+    pid = bc._resolve_account_person_id("tok", info)
+
+    assert pid == 48041031                       # account id, NOT 27309320
+    assert "3945211/my/profile.json" in captured["url"]
+
+
+def test_resolve_account_person_id_returns_zero_on_failure(monkeypatch):
+    from app.routers import basecamp_connect as bc
+    info = {"accounts": [{"id": 3945211, "href": "https://3.basecampapi.com/3945211"}]}
+    def _boom(req, timeout=15):
+        raise OSError("network down")
+    monkeypatch.setattr(bc.urllib.request, "urlopen", _boom)
+    # 0 lets the caller fall back to the Launchpad id rather than crash.
+    assert bc._resolve_account_person_id("tok", info) == 0
+
+
+def test_resolve_account_person_id_no_accounts_returns_zero():
+    from app.routers import basecamp_connect as bc
+    assert bc._resolve_account_person_id("tok", {"accounts": []}) == 0
+    assert bc._resolve_account_person_id("tok", {}) == 0

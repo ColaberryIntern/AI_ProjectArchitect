@@ -1153,3 +1153,109 @@ class TestRecentErrors:
         sync._record_error("u@x.com", "kind", "detail")
         sync.clear_recent_errors()
         assert sync.recent_errors() == []
+
+
+class TestBcUserIdSelfHeal:
+    """The cache (User.bc_user_id) can rot. The self-serve connect flow used to
+    store the *Launchpad identity id* instead of the *account-person id*, so a
+    correctly-connected human matched ZERO todo assignees and saw none of their
+    own tasks — the 2026-06-16 Swati incident (466 todos in queue, all noise,
+    0 'assigned'). Sync resolves the live account-person id from
+    /my/profile.json, classifies against THAT, and heals the stored cache —
+    EXCEPT for AI-clone connections, where the human id must never be
+    overwritten with the clone's id (the clone-by-design model)."""
+
+    def _wire(self, monkeypatch, *, stale_id, profile_id, assignee_id, is_clone):
+        from execution.products.library import (
+            basecamp_oauth_token, basecamp_provisioning, tenancy,
+        )
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id",
+                            MagicMock(return_value=stale_id))
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[_project_dict(101)]))
+        user_obj = SimpleNamespace(email="swati@colaberry.com",
+                                   user_id="swati@colaberry.com",
+                                   bc_user_id=stale_id)
+        captured: dict = {}
+        monkeypatch.setattr(tenancy, "get_user",
+                            MagicMock(return_value=user_obj))
+        monkeypatch.setattr(tenancy, "upsert_user",
+                            lambda u: captured.__setitem__("bc_user_id", u.bc_user_id) or u)
+        monkeypatch.setattr(basecamp_oauth_token, "get_grant_metadata",
+                            MagicMock(return_value={"bc_user_email": "swati@colaberry.com"}))
+        monkeypatch.setattr(basecamp_provisioning, "is_ai_account_for_user",
+                            MagicMock(return_value=is_clone))
+
+        def _bc(path, token, params=None, _retry=1):
+            if path == "/my/profile.json":
+                return {"id": profile_id, "email_address": "swati@colaberry.com"}
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Inbox"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                if params and params.get("page", 1) > 1:
+                    return []
+                if params and params.get("completed") == "true":
+                    return []
+                return [_todo_dict(9001, assignees=(assignee_id,),
+                                   title="Submit TWC registration")]
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+        return captured
+
+    def test_human_stale_cache_heals_and_classifies_against_account_id(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        STALE_LAUNCHPAD = 27309320   # what the broken connect flow cached
+        ACCOUNT_PERSON = 48041031    # ground truth from /my/profile.json
+        captured = self._wire(
+            monkeypatch, stale_id=STALE_LAUNCHPAD, profile_id=ACCOUNT_PERSON,
+            assignee_id=ACCOUNT_PERSON, is_clone=False,
+        )
+
+        result = sync.pull_todos_for_user("swati@colaberry.com")
+
+        # The task assigned to the ACCOUNT id is now recognized as the user's,
+        # even though the cached id (Launchpad) matched nothing.
+        assert result["todos_assigned_to_user"] == 1
+        todos = store.load_todos("swati@colaberry.com")
+        assert len(todos) == 1
+        assert todos[0].inclusion_reason == "assigned"
+        # Cache healed to the account-person id so next run is correct offline.
+        assert captured.get("bc_user_id") == ACCOUNT_PERSON
+
+    def test_clone_connection_does_not_clobber_human_id(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        HUMAN = 17454835        # classifier id (human)
+        CLONE_ACCOUNT = 37708014  # what the clone token authenticates as
+        captured = self._wire(
+            monkeypatch, stale_id=HUMAN, profile_id=CLONE_ACCOUNT,
+            assignee_id=HUMAN, is_clone=True,
+        )
+
+        result = sync.pull_todos_for_user("swati@colaberry.com")
+
+        # Classified against the HUMAN id (the clone reads the human's tasks
+        # by design); the clone's account id was NOT written back.
+        assert result["todos_assigned_to_user"] == 1
+        assert "bc_user_id" not in captured  # no heal → upsert never called
+
+    def test_human_matching_cache_is_not_rewritten(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """When the cache already equals the account-person id, no needless
+        tenancy write happens (heal only fires on drift)."""
+        SAME = 48041031
+        captured = self._wire(
+            monkeypatch, stale_id=SAME, profile_id=SAME,
+            assignee_id=SAME, is_clone=False,
+        )
+
+        result = sync.pull_todos_for_user("swati@colaberry.com")
+
+        assert result["todos_assigned_to_user"] == 1
+        assert "bc_user_id" not in captured
