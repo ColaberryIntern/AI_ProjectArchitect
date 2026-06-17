@@ -28,7 +28,7 @@ from pathlib import Path
 
 from config.settings import PROJECT_ROOT
 
-from .aggregate import LAUNCH_DATE, _completed_dt
+from .aggregate import AI_ACTORS, LAUNCH_DATE, _completed_by, _completed_dt, _dedupe
 
 BASELINE_DIR = PROJECT_ROOT / "output" / "ops" / "_productivity"
 BASELINE_PATH = BASELINE_DIR / "baseline.json"
@@ -102,16 +102,30 @@ def save_baseline(by_user: dict) -> Path:
     return BASELINE_PATH
 
 
-def build_and_save(user_ids: list[str]) -> dict:
-    """Compute + persist a baseline for each operator from the local ops mirror.
+def build_and_save(user_ids: list[str], *, ai_actors: set | None = None) -> dict:
+    """Compute + persist a per-PERSON baseline from the local ops mirrors.
 
-    Reads completed todos via the existing store; no BC calls. Returns the
-    {user_id: baseline_entry} map (also persisted)."""
+    Unions every operator's todos, dedupes by task id, then groups pre-launch
+    completions by who actually closed them (completed_by_name). Keyed by person
+    display name so it lines up with the scorecard. AI actors are excluded — the
+    baseline is human throughput. No BC calls. Returns {person: baseline_entry}.
+    """
     from execution.products.ops import store
 
-    by_user: dict[str, dict] = {}
+    ai_actors = ai_actors if ai_actors is not None else set(AI_ACTORS)
+    all_todos: list = []
     for uid in user_ids:
-        completed = store.list_completed_for_user(uid, days=MAX_BASELINE_WEEKS * 7 + 14)
-        by_user[uid] = compute_baseline(completed)
-    save_baseline(by_user)
-    return by_user
+        all_todos.extend(store.load_todos(uid))
+
+    by_person: dict[str, list] = {}
+    for t in _dedupe(all_todos):
+        person = _completed_by(t)
+        if not person or person in ai_actors:
+            continue
+        if _completed_dt(t) is None:
+            continue
+        by_person.setdefault(person, []).append(t)
+
+    baseline = {person: compute_baseline(rows) for person, rows in by_person.items()}
+    save_baseline(baseline)
+    return baseline
