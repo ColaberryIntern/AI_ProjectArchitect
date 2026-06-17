@@ -31,24 +31,30 @@ Output: `output/ops/_productivity/{YYYY-MM-DD}.html` (+ `.json` sidecar).
 Baseline: `output/ops/_productivity/baseline.json`.
 Recipients/branding: `config/report_recipients.json`.
 
-## Inputs (all already on disk; no new instrumentation required for Phase 1)
+## Inputs + attribution (all already on disk; no extra instrumentation needed)
 
-Per operator under `output/ops/<email>/`:
-- `todos.json` - completions (`completed_at`, `cycle_seconds`), open/overdue/stale,
-  `category` (human_required vs delegatable), `bc_created_at` for net flow.
-- `state.json` - `todos_synced` (adoption).
+Per operator under `output/ops/<email>/todos.json`: completions (`completed_at`,
+`completed_by_name`, `cycle_seconds`), open/overdue/stale, `category`, `assignee_names`,
+`bc_created_at`.
 
-AI-touched signal (estimated, never silent): union of bc_ids from
-`output/ops/_autopickup/seen.json` and `output/ops/_cb_mentions/seen.json`, intersected
-with each operator's todos. Optional per-operator override `output/ops/<email>/ai_signals.json`
-supplies activity counts (`ai_action_count`, `human_action_count`) once instrumented.
+Attribution model (the key correctness rule):
+- Todos are **deduped by `bc_id`** first - the same Basecamp task appears in every
+  operator's mirror for a shared project, so per-mirror counting multi-counts.
+- A completion is attributed to **whoever actually closed it** (`completed_by_name`),
+  not to everyone who mirrors the project.
+- **AI signal = `completed_by_name == "CB System"`** (the bot account; override via
+  `PRODUCTIVITY_AI_ACTORS`). This is the real, already-stored "AI did this" marker - no
+  log-harvesting or new instrumentation. Per person: throughput = tasks they personally
+  closed; AI leverage = of their assigned tasks completed this week, the share the AI closed.
+  Team headline AI leverage = AI completions / all completions.
 
 ## The KPI catalog (5 pillars)
 
 1. **Adoption** - syncs, active days.
 2. **Throughput** - completed today / 7d / prior 7d, open, overdue, stale, net flow.
-3. **AI leverage (two views)** - AI-touched task share (outcome) and AI action share
-   (activity); plus delegatable vs human-required mix; estimated $ saved.
+3. **AI leverage** - team: AI share of all completions (`CB System` completions / total);
+   per person: AI share of their assigned tasks completed this week; delegatable vs
+   human-required mix; estimated $ saved from AI-completed tasks.
 4. **Speed** - median cycle time, AI cohort vs human cohort, cycle vs pre-launch baseline.
 5. **Quality** - overdue rate, stale rate (the productivity-paradox guard).
 

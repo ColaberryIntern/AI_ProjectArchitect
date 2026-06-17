@@ -19,7 +19,6 @@ from pathlib import Path
 from config.settings import PROJECT_ROOT
 
 from . import aggregate, baseline
-from .aggregate import OperatorInput
 
 logger = logging.getLogger(__name__)
 
@@ -49,87 +48,16 @@ def _discover_operators() -> list[str]:
     return out
 
 
-def _display_name(user_id: str) -> str:
-    local = user_id.split("@", 1)[0]
-    return " ".join(p.capitalize() for p in local.replace(".", " ").replace("_", " ").split())
-
-
-def _global_ai_touched_ids() -> set:
-    """Best-available set of bc_ids AI demonstrably touched, unioned across the
-    auto-pickup audit and the @CB-mention seen-set. Parsed leniently so an
-    unexpected schema degrades to 'no signal' rather than crashing. Per the plan,
-    AI attribution is explicitly labelled 'estimated' in the report.
-    """
-    ids: set = set()
-    candidates = [
-        OPS_ROOT / "_autopickup" / "seen.json",
-        OPS_ROOT / "_cb_mentions" / "seen.json",
-    ]
-    for path in candidates:
-        if not path.exists():
-            continue
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        ids |= _harvest_ids(raw)
-    return ids
-
-
-def _harvest_ids(obj) -> set:
-    """Pull anything that looks like a todo/bc id out of a loosely-typed blob."""
-    found: set = set()
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k in ("todo_id", "bc_id", "ticket_id", "id") and isinstance(v, (int, str)):
-                try:
-                    found.add(int(v))
-                except (ValueError, TypeError):
-                    pass
-            else:
-                found |= _harvest_ids(v)
-    elif isinstance(obj, list):
-        for item in obj:
-            found |= _harvest_ids(item)
-    return found
-
-
-def _operator_signals(user_id: str) -> dict:
-    """Optional per-operator override for AI activity counts (instrumentation
-    drops these in later). Shape: {ai_action_count, human_action_count,
-    ai_touched_ids}. Absent -> activity ratio stays n/a, never fabricated."""
-    p = OPS_ROOT / user_id / "ai_signals.json"
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _build_inputs(user_ids: list[str]) -> list[OperatorInput]:
+def _gather_todos(user_ids: list[str]) -> list:
+    """Union every operator's mirror into one list. aggregate dedupes by task id
+    and attributes completions by completed_by, so cross-mirror duplicates of a
+    shared-project task collapse to one row."""
     from execution.products.ops import store
 
-    global_ai_ids = _global_ai_touched_ids()
-    inputs = []
+    todos: list = []
     for uid in user_ids:
-        todos = store.load_todos(uid)
-        state = store.load_state(uid)
-        sig = _operator_signals(uid)
-
-        their_ids = {getattr(t, "bc_id", None) for t in todos}
-        ai_touched = (global_ai_ids & their_ids) | set(sig.get("ai_touched_ids", []))
-
-        inputs.append(OperatorInput(
-            user_id=uid,
-            display_name=_display_name(uid),
-            todos=todos,
-            ai_touched_ids=ai_touched,
-            ai_action_count=int(sig.get("ai_action_count", 0)),
-            human_action_count=int(sig.get("human_action_count", 0)),
-            syncs=int(getattr(state, "todos_synced", 0) or 0),
-        ))
-    return inputs
+        todos.extend(store.load_todos(uid))
+    return todos
 
 
 def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> ReportResult:
@@ -144,8 +72,8 @@ def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> Repor
             baseline.build_and_save(user_ids)
         base = baseline.load_baseline()
 
-        inputs = _build_inputs(user_ids)
-        scorecard = aggregate.build_scorecard(inputs, baseline=base, now=now)
+        todos = _gather_todos(user_ids)
+        scorecard = aggregate.build_scorecard(todos, baseline=base, now=now)
 
         from . import render
         html = render.render_html(scorecard)
@@ -157,11 +85,19 @@ def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> Repor
             "launch_date": scorecard.launch_date,
             "low_confidence": scorecard.low_confidence,
             "team_verdict": scorecard.team.verdict,
+            "team": {
+                "verdict": scorecard.team.verdict,
+                "completed_7d": scorecard.team.completed_7d,
+                "ai_completions_7d": scorecard.team.ai_completions_7d,
+                "human_completions_7d": scorecard.team.human_completions_7d,
+                "ai_touched_share": scorecard.team.ai_touched_share,
+            },
             "operators": [
                 {
-                    "user_id": c.user_id, "completed_7d": c.completed_7d,
-                    "open_count": c.open_count, "ai_touched_share": c.ai_touched_share,
-                    "ai_action_share": c.ai_action_share, "median_cycle_days": c.median_cycle_days,
+                    "name": c.display_name, "completed_7d": c.completed_7d,
+                    "open_count": c.open_count, "assigned_completed_7d": c.assigned_completed_7d,
+                    "ai_assisted_count": c.ai_assisted_count, "ai_touched_share": c.ai_touched_share,
+                    "median_cycle_days": c.median_cycle_days,
                     "cycle_vs_baseline_pct": c.cycle_vs_baseline_pct, "verdict": c.verdict,
                 }
                 for c in scorecard.operators
