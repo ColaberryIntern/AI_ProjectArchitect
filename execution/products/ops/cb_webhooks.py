@@ -301,6 +301,11 @@ def handle_event(payload: dict, *, user_email: str) -> dict:
                   "comment_id": comment_id}
         _log_event(result)
         return result
+    if cb_mention_worker._is_automated_card(body):
+        result = {"received_at": received_at, "skipped": "automated_card",
+                  "comment_id": comment_id}
+        _log_event(result)
+        return result
 
     parent = rec.get("parent") or {}
     parent_id = parent.get("id")

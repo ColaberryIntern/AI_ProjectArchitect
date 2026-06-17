@@ -65,6 +65,30 @@ def _polling_enabled() -> bool:
     ).strip().lower() != "false"
 # Regex matches "@CB System", "@CB", or "@CBSystem" (case-insensitive).
 TRIGGER_RE = re.compile(r"@CB[\s_-]*(System)?", re.IGNORECASE)
+# Loop guard: a "CB System: automated response" card (this worker's own output
+# or a peer agent's) always opens with that header and embeds an "Anticipated
+# goal / Proposed plan / Claude Code prompt" block. Those cards contain
+# "@CB System", so the scanner re-detects them as fresh mentions and the worker
+# answers its own output -> a runaway loop (the 2026-06-17 launch
+# daily-snapshots flood). Never respond to such a card. Mirror of
+# colaberry-accelerator inbound-dispatcher.isAutomatedAgentCard.
+_AUTOMATED_CARD_HEADER_RE = re.compile(
+    r"^\s*CB System\s*:\s*automated response", re.IGNORECASE
+)
+
+
+def _is_automated_card(body: str) -> bool:
+    if not body:
+        return False
+    text = re.sub(r"\s+", " ", body).strip()
+    if _AUTOMATED_CARD_HEADER_RE.search(text):
+        return True
+    has_goal = re.search(r"Anticipated goal\s*:", text, re.IGNORECASE)
+    has_plan = re.search(r"Proposed plan\s*:", text, re.IGNORECASE)
+    has_prompt = re.search(r"Claude Code prompt", text, re.IGNORECASE)
+    return bool(has_goal and has_plan and has_prompt)
+
+
 # BC API requires the User-Agent to include contact info (an email or URL);
 # without it BC can return 403. Used for BOTH GET and POST so detection and
 # the auto-response use the same compliant identity.
@@ -199,6 +223,8 @@ def _scan_bucket_for_mentions(bucket: int, token: str, cutoff: datetime) -> list
         body = _strip_html(r.get("content") or "")
         if not TRIGGER_RE.search(body):
             continue
+        if _is_automated_card(body):
+            continue  # loop guard: never answer an automated-response card
         # Find parent (the ticket/todo the comment is on)
         parent = r.get("parent") or {}
         parent_url = parent.get("app_url") or ""
