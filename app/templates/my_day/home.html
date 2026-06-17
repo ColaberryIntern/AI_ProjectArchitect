@@ -562,6 +562,18 @@
           <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-workspace"
              target="_blank" rel="noopener"
              style="padding: 5px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+          {# Inline act-on-the-list-tip: complete or skip this list's next
+             blocking step without leaving the briefing. Both POST to the
+             existing endpoints, which redirect back to this filtered view so
+             the task drops off and the next one surfaces in place. #}
+          <form method="post" action="/my-day/todo/{{ nb.bc_id }}/complete" style="display: block; margin: 0;">
+            <button type="submit" class="md-btn md-btn-success"
+                    style="padding: 5px 10px; font-size: 11px; width: 100%;">✓ Done</button>
+          </form>
+          <form method="post" action="/my-day/todo/{{ nb.bc_id }}/dismiss" style="display: block; margin: 0;">
+            <button type="submit" class="md-btn md-btn-quiet"
+                    style="padding: 5px 10px; font-size: 11px; width: 100%;">Skip</button>
+          </form>
           <textarea id="rp-{{ nb.bc_id }}" class="hidden-prompt" readonly>{{ row_prompts.get(nb.bc_id, '') }}</textarea>
         </div>
         {% endif %}
@@ -735,6 +747,18 @@
                     <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
                        target="_blank" rel="noopener"
                        style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+                    {# Inline Mark Done + Skip at the list level — act on any task
+                       in the timeline (including non-tip ones) without opening it.
+                       Both POST to the existing endpoints and redirect back to this
+                       filtered view, so the row drops off and the next surfaces. #}
+                    <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="display: block; margin: 0;">
+                      <button type="submit" class="md-btn md-btn-success"
+                              style="padding: 4px 10px; font-size: 11px; width: 100%;">✓ Done</button>
+                    </form>
+                    <form method="post" action="/my-day/todo/{{ t.bc_id }}/dismiss" style="display: block; margin: 0;">
+                      <button type="submit" class="md-btn md-btn-quiet"
+                              style="padding: 4px 10px; font-size: 11px; width: 100%;">Skip</button>
+                    </form>
                     <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
                   </div>
                 </td>
@@ -786,6 +810,18 @@
                     <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
                        target="_blank" rel="noopener"
                        style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
+                    {# Inline Mark Done + Skip at the list level — act on any task
+                       in the timeline (including non-tip ones) without opening it.
+                       Both POST to the existing endpoints and redirect back to this
+                       filtered view, so the row drops off and the next surfaces. #}
+                    <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="display: block; margin: 0;">
+                      <button type="submit" class="md-btn md-btn-success"
+                              style="padding: 4px 10px; font-size: 11px; width: 100%;">✓ Done</button>
+                    </form>
+                    <form method="post" action="/my-day/todo/{{ t.bc_id }}/dismiss" style="display: block; margin: 0;">
+                      <button type="submit" class="md-btn md-btn-quiet"
+                              style="padding: 4px 10px; font-size: 11px; width: 100%;">Skip</button>
+                    </form>
                     <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
                   </div>
                 </td>

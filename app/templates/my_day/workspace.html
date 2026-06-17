@@ -121,6 +121,15 @@
 </details>
 
 <div style="margin-top: 16px;">
+  {# Primary action: complete the task (writes back to Basecamp + local).
+     No "skip for now" here — this is a single-task view, so there's nothing
+     to skip to. The local-only Dismiss below is a distinct function (remove
+     from your queue without touching Basecamp). #}
+  <form method="post" action="/my-day/todo/{{ todo.bc_id }}/complete" style="display: inline; margin-right: 8px;">
+    <button type="submit" style="background: #1a7f37; border: 1px solid #1a7f37; padding: 10px 16px; border-radius: 6px; cursor: pointer; color: #fff; font-weight: 600;">
+      ✓ Mark done
+    </button>
+  </form>
   <form method="post" action="/my-day/todo/{{ todo.bc_id }}/dismiss" style="display: inline; margin-right: 8px;">
     <button type="submit" style="background: #fff; border: 1px solid #d0d7de; padding: 10px 16px; border-radius: 6px; cursor: pointer; color: #57606a;">
       Dismiss (local only — doesn't touch Basecamp)
