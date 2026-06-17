@@ -19,7 +19,7 @@ For one operator, one sync run:
 1. Resolve the operator's Basecamp OAuth token via `tokens.get_user_token` (vault-OAuth preferred, vault-legacy bare-string fallback, CCPP shared token as last resort).
 2. Discover the projects the token can see via `/projects.json` (BC API v3).
 3. Add any extra buckets configured on the operator's tenancy record (`bc_extra_buckets`) plus `ali_legacy_bucket=7463955` when Ali is the operator (Phase A escape hatch).
-4. For each project: walk the dock → todoset → todolists → active + completed todos.
+4. For each project: walk the dock → todoset → todolists → active + completed todos. **For each todolist, also descend into its todo *groups*** (`/todolists/{id}/groups.json`) and walk each group's todos — a grouped todo is NOT returned by the parent list's `/todos.json`. Grouped todos are attributed to a `"<list>: <group>"` name. (Without this, every task filed under a "Week 01" style group is invisible — the 2026-06-17 Swati incident, where a Curriculum list with an empty top level hid 48 assigned tasks across 12 week-groups.)
 5. For each todo, classify whether it belongs in this operator's queue (see *Classification* below). Drop anything not relevant.
 6. Apply the freshness filter (see *Freshness window* below). Drop anything stale with no future due date.
 7. Upsert the survivors into the local store (preserving operator-local fields — see *Store invariants*).
