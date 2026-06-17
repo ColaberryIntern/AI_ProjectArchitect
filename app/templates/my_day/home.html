@@ -702,11 +702,7 @@
               <tr class="task-seq-row {% if is_next_human %}is-next-human{% elif t_overdue %}is-overdue{% endif %}">
                 <td class="seq-num">{{ loop.index }}</td>
                 <td class="seq-task">
-                  {% if is_next_human %}
                   <a href="{{ t.bc_app_url or ('/my-day/todo/' ~ t.bc_id) }}" target="_blank">{{ t.title[:120] }} ↗</a>
-                  {% else %}
-                  <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
-                  {% endif %}
                   <div class="seq-task-sub">
                     {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
                     {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING
@@ -762,7 +758,7 @@
               <tr class="task-seq-row future-hidden {% if t_overdue %}is-overdue{% endif %}" hidden>
                 <td class="seq-num">{{ loop.index + seq_cap }}</td>
                 <td class="seq-task">
-                  <a href="/my-day/todo/{{ t.bc_id }}">{{ t.title[:120] }}</a>
+                  <a href="{{ t.bc_app_url or ('/my-day/todo/' ~ t.bc_id) }}" target="_blank">{{ t.title[:120] }} ↗</a>
                   <div class="seq-task-sub">
                     {% if t.inclusion_reason == 'assigned' %}ASSIGNED TO YOU
                     {% elif t.inclusion_reason == 'due' %}YOU'RE WATCHING

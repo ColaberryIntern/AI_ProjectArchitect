@@ -127,3 +127,22 @@ def test_timeline_rows_carry_a_seq_prompt_textarea(client):
     for t in _TODOS:
         assert f'id="sp-{t.bc_id}"' in html, f"missing seq-prompt textarea for todo {t.bc_id}"
         assert f"copyPrompt('sp-{t.bc_id}', this)" in html
+
+
+def test_blue_title_links_go_to_basecamp_not_workspace(client):
+    """Regression (2026-06-17): the blue PROJECT TIMELINE task-title link must
+    open the Basecamp ticket (bc_app_url), not the in-app Workspace page. The
+    Workspace already has its own dedicated ``⚙ Workspace`` button — the title
+    link duplicating it sent operators to the workspace twice and never to BC."""
+    r = client.get("/my-day/?view=briefing&tier=all")
+    assert r.status_code == 200, r.text
+    html = r.text
+    for t in _TODOS:
+        # Title link points at the Basecamp ticket and opens in a new tab.
+        assert f'href="{t.bc_app_url}" target="_blank">{t.title[:120]} ↗' in html, (
+            f"blue title link for todo {t.bc_id} should open Basecamp ({t.bc_app_url})"
+        )
+        # And it must NOT route the title text to the in-app workspace.
+        assert f'href="/my-day/todo/{t.bc_id}">{t.title[:120]}' not in html, (
+            f"title link for todo {t.bc_id} still points at the Workspace page"
+        )
