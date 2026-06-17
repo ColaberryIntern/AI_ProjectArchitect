@@ -50,7 +50,7 @@
 <div class="ws-section" style="border: 2px solid #6639ba; background: #faf8ff;">
   <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
     <h3 style="margin: 0;">Your context + Copy prompt</h3>
-    <button id="copyPromptBtn" class="md-btn md-btn-prompt" onclick="copyPrompt()">📋 Copy prompt</button>
+    <button id="copyPromptBtn" class="md-btn md-btn-prompt" onclick="copyWorkspacePrompt()">📋 Copy prompt</button>
   </div>
   <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
     Add anything you already know — a decision you've made, work you've done, a constraint, or how you want this handled. It's prepended to the prompt so Claude has your steer up front. Leave it blank to copy as-is.
@@ -110,7 +110,7 @@
 </details>
 {% endif %}
 
-<details class="ws-collapse">
+<details class="ws-collapse" id="promptPreviewDetails">
   <summary>Full prompt preview (exactly what gets copied)</summary>
   <div class="ws-collapse-body">
     <div style="font-size: 12px; color: #57606a; margin-bottom: 8px;">
@@ -160,6 +160,13 @@ function _setupBlock(workspaceUrl) {
   );
 }
 
+// Cache of the assembled prompt. The COPY reads this string directly --
+// never `#promptText.innerText` -- because #promptText lives inside a
+// collapsed <details>, and `.innerText` of a non-rendered element returns
+// '' in Chromium. That empty read is what made Copy prompt silently copy
+// nothing. The preview node is for display only.
+let _fullPrompt = '';
+
 function rebuildFullPrompt() {
   const builder = document.getElementById('promptBuilder');
   const taskPrompt = builder.dataset.taskPrompt || '';
@@ -174,26 +181,65 @@ function rebuildFullPrompt() {
   parts.push(_setupBlock(wsUrl));
   parts.push('## Task\n\n' + taskPrompt);
 
-  document.getElementById('promptText').innerText = parts.join('\n');
+  _fullPrompt = parts.join('\n');
+  // innerText setter turns \n into <br>, so the preview renders line breaks
+  // even though .ws-prompt has no white-space CSS. Display only.
+  document.getElementById('promptText').innerText = _fullPrompt;
 
   // Persist notes per-task so refresh/nav-away doesn't lose them.
   try {
     localStorage.setItem('my-day-notes-' + bcId, notes);
   } catch (e) {}
+
+  return _fullPrompt;
 }
 
-function copyPrompt() {
+function copyWorkspacePrompt() {
   // Reuse the MCP gate from the shared script (loaded via _my_day_styles.html)
   if (typeof _mcpGateOK === 'function' && !_mcpGateOK()) return;
-  rebuildFullPrompt();
-  const text = document.getElementById('promptText').innerText;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('copyPromptBtn');
-    const orig = btn.innerText;
-    btn.innerText = '✓ Copied — paste into Claude Code';
-    btn.classList.add('copied');
+
+  const text = rebuildFullPrompt();      // assembled string, not a DOM read
+  const btn = document.getElementById('copyPromptBtn');
+  const orig = btn.innerText;
+
+  function flash(msg, ok) {
+    btn.innerText = msg;
+    if (ok) btn.classList.add('copied');
     setTimeout(() => { btn.innerText = orig; btn.classList.remove('copied'); }, 2400);
-  });
+  }
+
+  // execCommand fallback for contexts where the async Clipboard API is
+  // unavailable or blocked (insecure context, permission denied, no focus).
+  function legacyCopy() {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-10000px';
+      ta.setAttribute('readonly', '');
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  function fail() {
+    // Open the preview so the user can select + copy by hand.
+    const det = document.getElementById('promptPreviewDetails');
+    if (det) det.open = true;
+    flash('⚠ Copy failed — preview opened below', false);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => flash('✓ Copied — paste into Claude Code', true),
+      () => { legacyCopy() ? flash('✓ Copied — paste into Claude Code', true) : fail(); }
+    );
+  } else {
+    legacyCopy() ? flash('✓ Copied — paste into Claude Code', true) : fail();
+  }
 }
 
 // On page load: restore saved notes for this task, then render the preview.
