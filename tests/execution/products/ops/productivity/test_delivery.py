@@ -30,28 +30,47 @@ def test_disabled_by_default(monkeypatch, html_file):
 
 def test_enabled_without_creds_is_skipped(monkeypatch, html_file):
     monkeypatch.setenv("PRODUCTIVITY_REPORT_DELIVERY", "1")
-    monkeypatch.delenv("GMAIL_SMTP_USERNAME", raising=False)
-    monkeypatch.delenv("GMAIL_SMTP_APP_PASSWORD", raising=False)
+    for k in ("GMAIL_SMTP_USERNAME", "GMAIL_SMTP_APP_PASSWORD", "MANDRILL_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
     assert delivery.send_report(html_file).status == "skipped_no_creds"
 
 
-def test_successful_send_includes_bcc_in_envelope(monkeypatch, html_file):
+class _FakeSMTP:
+    def __init__(self, sink): self.sink = sink
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def ehlo(self): pass
+    def starttls(self): pass
+    def login(self, u, p): self.sink["login"] = (u, p)
+    def sendmail(self, frm, to, msg):
+        self.sink["from"] = frm
+        self.sink["envelope"] = to
+        self.sink["msg"] = msg
+
+
+def test_gmail_send_includes_bcc_and_sends_from_ali(monkeypatch, html_file):
     monkeypatch.setenv("PRODUCTIVITY_REPORT_DELIVERY", "1")
     monkeypatch.setenv("GMAIL_SMTP_USERNAME", "bot@colaberry.com")
     monkeypatch.setenv("GMAIL_SMTP_APP_PASSWORD", "secret")
-
     sent = {}
-
-    class _FakeSMTP:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def login(self, u, p): sent["login"] = (u, p)
-        def sendmail(self, frm, to, msg): sent["envelope"] = to
-
     res = delivery.send_report(html_file, "2026-06-17T07:30:00Z",
-                               _smtp_factory=lambda: _FakeSMTP())
-    assert res.status == "ok"
-    # to + bcc both land in the SMTP envelope
-    assert "ali@colaberry.com" in sent["envelope"]
-    assert "ops@colaberry.com" in sent["envelope"]
+                               _smtp_factory=lambda: _FakeSMTP(sent))
+    assert res.status == "ok" and res.transport == "gmail"
     assert sent["login"] == ("bot@colaberry.com", "secret")
+    assert sent["from"] == "ali@colaberry.com"            # MAIL FROM is ali
+    assert "ali@colaberry.com" in sent["envelope"]
+    assert "ops@colaberry.com" in sent["envelope"]        # bcc in envelope
+
+
+def test_mandrill_path_used_when_only_mandrill_creds_present(monkeypatch, html_file):
+    monkeypatch.setenv("PRODUCTIVITY_REPORT_DELIVERY", "1")
+    for k in ("GMAIL_SMTP_USERNAME", "GMAIL_SMTP_APP_PASSWORD"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("MANDRILL_API_KEY", "md-key")
+    monkeypatch.setenv("MANDRILL_USERNAME", "ali@colaberry.com")
+    sent = {}
+    res = delivery.send_report(html_file, "2026-06-17T07:30:00Z",
+                               _smtp_factory=lambda: _FakeSMTP(sent))
+    assert res.status == "ok" and res.transport == "mandrill"
+    assert sent["login"] == ("ali@colaberry.com", "md-key")
+    assert "X-MC-Track" in sent["msg"]                    # tracking-off header present
