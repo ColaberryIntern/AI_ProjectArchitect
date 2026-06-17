@@ -68,11 +68,11 @@ def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> Repor
 
     try:
         user_ids = _discover_operators()
+        todos = aggregate.filter_scope(_gather_todos(user_ids))  # employees + Gov Contracts only
         if rebuild_baseline or not baseline.BASELINE_PATH.exists():
-            baseline.build_and_save(user_ids)
+            baseline.build_and_save(todos)
         base = baseline.load_baseline()
 
-        todos = _gather_todos(user_ids)
         scorecard = aggregate.build_scorecard(todos, baseline=base, now=now)
 
         from . import render

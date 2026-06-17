@@ -102,23 +102,18 @@ def save_baseline(by_user: dict) -> Path:
     return BASELINE_PATH
 
 
-def build_and_save(user_ids: list[str], *, ai_actors: set | None = None) -> dict:
-    """Compute + persist a per-PERSON baseline from the local ops mirrors.
+def build_and_save(todos: list, *, ai_actors: set | None = None) -> dict:
+    """Compute + persist a per-PERSON baseline from an (already scope-filtered) todo list.
 
-    Unions every operator's todos, dedupes by task id, then groups pre-launch
-    completions by who actually closed them (completed_by_name). Keyed by person
-    display name so it lines up with the scorecard. AI actors are excluded — the
-    baseline is human throughput. No BC calls. Returns {person: baseline_entry}.
+    Dedupes by task id, then groups pre-launch completions by who actually closed
+    them (completed_by_name). Keyed by person display name so it lines up with the
+    scorecard. AI actors are excluded — the baseline is human throughput.
+    Returns {person: baseline_entry}.
     """
-    from execution.products.ops import store
-
     ai_actors = ai_actors if ai_actors is not None else set(AI_ACTORS)
-    all_todos: list = []
-    for uid in user_ids:
-        all_todos.extend(store.load_todos(uid))
 
     by_person: dict[str, list] = {}
-    for t in _dedupe(all_todos):
+    for t in _dedupe(todos):
         person = _completed_by(t)
         if not person or person in ai_actors:
             continue
