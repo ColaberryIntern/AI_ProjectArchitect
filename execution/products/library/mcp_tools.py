@@ -124,6 +124,33 @@ def _bc_account() -> str:
     return os.environ.get("BASECAMP_ACCOUNT_ID", "3945211")
 
 
+def _account_id_as_bucket_error(bc_project_id) -> dict | None:
+    """Catch the common id confusion where a caller passes the Basecamp
+    ACCOUNT id where a project/bucket id belongs. Both are bare numbers in a
+    BC URL (`.../<account>/buckets/<bucket>/todos/<id>`), so Claude routinely
+    mixes them up -- which BC answers with an opaque 404 on a non-existent
+    bucket. Return a clear, actionable error instead. Returns None when the
+    id doesn't look like the account id.
+    """
+    try:
+        pid = int(bc_project_id or 0)
+    except (TypeError, ValueError):
+        return None
+    if pid and str(pid) == str(_bc_account()):
+        return {
+            "ok": False,
+            "error": "bc_project_id_is_account_id",
+            "remediation": (
+                f"bc_project_id={pid} is the Basecamp ACCOUNT id, not a "
+                "project/bucket id -- they're different numbers. A BC URL is "
+                "https://3.basecamp.com/<account>/buckets/<bc_project_id>/todos/<ticket_id>; "
+                "use the number after /buckets/, or resolve it by name with "
+                "colaberry_find_project."
+            ),
+        }
+    return None
+
+
 def _bc_request(method: str, url: str, payload: dict | None = None, user=None,
                        *, _retries_left: int = 3) -> Any:
     """BC API caller for MCP tools. Auto-retries 429 / 503 using
@@ -383,6 +410,9 @@ def _tool_create_ticket(user, args: dict) -> dict:
     todolist_id = args.get("todolist_id") or args.get("list_id")
     if not title:
         return {"ok": False, "error": "title required"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
     if not bc_project_id or not todolist_id:
         anchor = _resolve_default_anchor(user)
         bc_project_id = bc_project_id or anchor["bc_project_id"]
@@ -546,6 +576,9 @@ def _tool_post_progress(user, args: dict) -> dict:
     html_body = args.get("html_body") or args.get("content")
     if not bc_project_id or not ticket_id or not html_body:
         return {"ok": False, "error": "bc_project_id + ticket_id + html_body required"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
     try:
         body = _bc_request(
             "POST",
@@ -568,6 +601,9 @@ def _tool_close_ticket(user, args: dict) -> dict:
     confidence = float(args.get("confidence", 0.0))
     if not bc_project_id or not ticket_id:
         return {"ok": False, "error": "bc_project_id + ticket_id required"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
     if confidence < 0.85:
         return {
             "ok": False,
@@ -1869,6 +1905,195 @@ TOOLS.append(Tool(
         "required": ["category", "asset_id"],
     },
     handler=_tool_get_asset,
+))
+
+
+def _html_to_text(html: str) -> str:
+    """Best-effort HTML -> readable plain text for BC rich-text bodies.
+
+    Not a full parser: it turns the common block boundaries into newlines,
+    list items into bullets, strips remaining tags, and unescapes entities.
+    Good enough for a human (or a downstream Claude) to read a ticket body
+    or comment without wading through Trix markup. The raw HTML is always
+    returned alongside this, so nothing is lost.
+    """
+    if not html:
+        return ""
+    import re
+    from html import unescape
+    text = re.sub(r"(?i)<\s*br\s*/?>", "\n", html)
+    text = re.sub(r"(?i)<\s*li[^>]*>", "\n - ", text)
+    text = re.sub(r"(?i)</\s*(p|div|li|h[1-6]|tr|blockquote|ul|ol)\s*>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _tool_read_ticket(user, args: dict) -> dict:
+    """Read a Basecamp todo's full content + (optionally) its comment thread.
+
+    This is the READ counterpart to the post/create/close write tools: it
+    lets a Claude session pull a ticket's description and the discussion on
+    it directly, instead of asking the operator to copy-paste ticket bodies
+    and comments into chat.
+
+    Returns the title, body (raw HTML + a stripped-text version), status,
+    assignees, due date, parent todolist, and each comment's author +
+    timestamp + content. Comments are walked page-by-page until the thread
+    is exhausted or `max_comments` is reached (so long threads don't blow
+    up the response).
+    """
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+        ticket_id = int(args.get("ticket_id") or args.get("todo_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id + ticket_id must be integers"}
+    if not bc_project_id or not ticket_id:
+        return {"ok": False, "error": "bc_project_id + ticket_id required"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
+
+    include_comments = args.get("include_comments")
+    include_comments = True if include_comments is None else bool(include_comments)
+    try:
+        max_comments = max(1, min(int(args.get("max_comments", 100)), 500))
+    except (TypeError, ValueError):
+        max_comments = 100
+
+    # 1. Fetch the todo itself.
+    try:
+        todo = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        msg = str(e)
+        if "404" in msg:
+            return {
+                "ok": False,
+                "error": "ticket_not_found",
+                "detail": msg[:200],
+                "remediation": (
+                    "No todo with that id exists in this project (HTTP 404). "
+                    "Check that bc_project_id (the bucket id) and ticket_id are "
+                    "both correct -- the ticket_id is the trailing number in a "
+                    "Basecamp todo URL (.../buckets/<bid>/todos/<ticket_id>)."
+                ),
+            }
+        if "401" in msg or "403" in msg:
+            return {
+                "ok": False,
+                "error": "ticket_forbidden",
+                "detail": msg[:200],
+                "remediation": (
+                    "Basecamp denied access to this ticket (HTTP 401/403). The "
+                    "operator's BC grant may not cover this project. Connect or "
+                    "re-auth Basecamp via /profile/connect-basecamp, or ask an "
+                    "admin to grant access to the project."
+                ),
+            }
+        return {"ok": False, "error": "ticket_unreachable", "detail": msg[:200]}
+
+    assignees = [a.get("name", "") for a in (todo.get("assignees") or []) if a.get("name")]
+    parent = todo.get("parent") or {}
+    creator = todo.get("creator") or {}
+    description_html = todo.get("description") or ""
+
+    ticket = {
+        "ticket_id": todo.get("id"),
+        "title": todo.get("title") or todo.get("content") or "",
+        "description_html": description_html,
+        "description_text": _html_to_text(description_html),
+        "completed": bool(todo.get("completed")),
+        "status": todo.get("status", ""),
+        "assignees": assignees,
+        "due_on": todo.get("due_on"),
+        "creator": creator.get("name", ""),
+        "created_at": todo.get("created_at"),
+        "updated_at": todo.get("updated_at"),
+        "todolist": parent.get("title", ""),
+        "todolist_id": parent.get("id"),
+        "comments_count": todo.get("comments_count", 0),
+        "url": todo.get("app_url", ""),
+    }
+
+    # 2. Optionally walk the comment thread (paginated).
+    comments_out: list[dict] = []
+    truncated = False
+    if include_comments and todo.get("comments_count"):
+        comments_url = todo.get("comments_url") or (
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/"
+            f"{bc_project_id}/recordings/{ticket_id}/comments.json"
+        )
+        page = 1
+        while len(comments_out) < max_comments and page <= 20:
+            sep = "&" if "?" in comments_url else "?"
+            try:
+                batch = _bc_request("GET", f"{comments_url}{sep}page={page}", user=user)
+            except RuntimeError as e:
+                ticket["comments_error"] = str(e)[:200]
+                break
+            if not isinstance(batch, list) or not batch:
+                break
+            for c in batch:
+                cc = c.get("creator") or {}
+                body_html = c.get("content") or ""
+                comments_out.append({
+                    "comment_id": c.get("id"),
+                    "author": cc.get("name", ""),
+                    "created_at": c.get("created_at"),
+                    "content_html": body_html,
+                    "content_text": _html_to_text(body_html),
+                    "url": c.get("app_url", ""),
+                })
+                if len(comments_out) >= max_comments:
+                    truncated = True
+                    break
+            page += 1
+
+    return {
+        "ok": True,
+        "bc_project_id": bc_project_id,
+        "ticket": ticket,
+        "comments": comments_out,
+        "comments_returned": len(comments_out),
+        "comments_truncated": truncated,
+    }
+
+
+TOOLS.append(Tool(
+    name="colaberry_read_ticket",
+    description=(
+        "Read a Basecamp ticket (todo): its title, full description body, "
+        "status, assignees, due date, parent list, AND its comment thread "
+        "(each comment's author, timestamp, and text). This is the READ "
+        "counterpart to the post/create/close tools -- use it whenever the "
+        "user references an existing BC ticket (by URL or BC#<id>) and you "
+        "need its contents or the discussion on it. Do NOT ask the user to "
+        "copy-paste ticket bodies or comments; call this instead. The "
+        "ticket_id is the trailing number in a Basecamp todo URL "
+        "(.../buckets/<bc_project_id>/todos/<ticket_id>). Set "
+        "include_comments=false to skip the thread when you only need the body."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "bc_project_id": {"type": "integer",
+                              "description": "Basecamp project (bucket) id -- the number after /buckets/ in the URL."},
+            "ticket_id": {"type": "integer",
+                          "description": "The BC todo id -- the trailing number after /todos/ in the URL."},
+            "include_comments": {"type": "boolean",
+                                 "description": "Include the comment thread (default true). Set false for body-only."},
+            "max_comments": {"type": "integer",
+                             "description": "Cap on comments returned (1-500, default 100). Older comments beyond the cap are omitted and comments_truncated is set true."},
+        },
+        "required": ["bc_project_id", "ticket_id"],
+    },
+    handler=_tool_read_ticket,
 ))
 
 
