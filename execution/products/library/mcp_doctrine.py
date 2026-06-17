@@ -271,6 +271,25 @@ local copies of these docs -- BC is the source of truth.
 operator-memory facts ("Ali prefers X", "we use the Y convention").
 BC Docs is for longer artifacts that other people / projects need
 to see, not for personal-memory snippets.
+
+## 10. Reading existing tickets + comment threads
+
+When the user references an existing Basecamp ticket -- by URL
+(`.../buckets/<bid>/todos/<id>`) or as `BC#<id>` -- and you need its
+contents or the discussion on it, call
+`colaberry_read_ticket(bc_project_id=<bid>, ticket_id=<id>)`. It returns
+the title, the full description body (raw HTML plus a stripped-text
+version), status, assignees, due date, the parent list, and every
+comment with its author and timestamp.
+
+Do NOT ask the user to copy-paste a ticket body or its comments into
+chat -- that's exactly what this tool is for. WebFetch can't read
+authenticated Basecamp URLs, so it is not a substitute.
+
+Pass `include_comments=false` when you only need the body, and
+`max_comments` to bound very long threads (default 100). When you're
+about to edit or reply to a comment on a ticket, read the ticket first
+so you have the exact existing language and context.
 """
 
 
