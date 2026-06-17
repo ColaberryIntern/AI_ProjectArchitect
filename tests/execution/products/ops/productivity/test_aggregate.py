@@ -95,8 +95,20 @@ def test_savings_from_ai_completed_tasks():
     assert a.est_dollars_saved_7d == a.est_hours_saved_7d * aggregate.DOLLARS_PER_HOUR
 
 
-def test_overdue_forces_red_verdict():
-    assert _alice(_build()).verdict == "RED"
+def test_verdict_coloured_by_ai_share_not_overdue():
+    # Alice has 50% AI share -> GREEN (heavy AI use), even though half her backlog
+    # is overdue. Colour tracks adoption, not ticket hygiene.
+    a = _alice(_build())
+    assert a.overdue_rate == 0.5
+    assert a.verdict == "GREEN"
+    assert "ai system" in a.verdict_reason.lower()
+
+
+def test_spark_series_has_one_bucket_per_day():
+    from execution.products.ops.productivity.aggregate import SPARK_DAYS
+    a = _alice(_build())
+    assert len(a.spark_completed) == SPARK_DAYS
+    assert sum(a.spark_completed) == a.completed_7d + a.completed_prior_7d  # 3 + 1, all within 14d
 
 
 def test_ai_actor_excluded_from_operator_list():
@@ -127,3 +139,28 @@ def test_empty_is_low_confidence():
     assert sc.operators == []
     assert sc.low_confidence is True
     assert sc.team.people == 0
+
+
+def test_filter_scope_drops_excluded_projects():
+    from execution.products.ops.productivity.aggregate import filter_scope
+
+    def _p(bc_id, project):
+        return SimpleNamespace(bc_id=bc_id, bc_project_name=project, status="active",
+                               completed_at="", completed_by_name="", assignee_names=["X"],
+                               cycle_seconds=0, bc_created_at="", bc_updated_at="", due_on=None,
+                               is_dismissed=False, category="unscored")
+    todos = [_p(1, "Gov Contracts"), _p(2, "Power BI - Center of Excellence"),
+             _p(3, "RMG Mortgage Project"), _p(4, "Ali Personal")]
+    kept = {t.bc_id for t in filter_scope(todos)}
+    assert kept == {1, 4}                  # Gov Contracts + employee work kept
+
+
+def test_build_scorecard_applies_exclude_projects():
+    p = lambda i, proj: SimpleNamespace(
+        bc_id=i, bc_project_name=proj, status="completed", completed_at="2026-06-18T10:00:00Z",
+        completed_by_name="Pat", assignee_names=["Pat"], cycle_seconds=DAY,
+        bc_created_at="2026-05-01T00:00:00Z", bc_updated_at="2026-06-18T10:00:00Z",
+        due_on=None, is_dismissed=False, category="unscored")
+    sc = build_scorecard([p(1, "Power BI - Center of Excellence"), p(2, "Gov Contracts")],
+                         now=NOW, exclude_projects=["power bi", "center of excellence", "rmg"])
+    assert sc.team.completed_7d == 1       # only the Gov Contracts completion survives

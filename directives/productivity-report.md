@@ -12,7 +12,11 @@ operating system (live since **2026-06-14**):
 5. **Effectiveness** - are people genuinely *more productive*, or just *faster*?
 
 The report ends with an **assessment** (a per-operator and team verdict), not just
-numbers. It directly answers "are they slowing down because they can work faster?"
+numbers. The framing (per Ali 2026-06-17): it is about WHO is using the AI-paired system
+and whether that usage produces more than they did BEFORE the change - not ticket hygiene.
+Colour is driven by AI Share. **Scope: employees + Gov Contracts only** - `EXCLUDE_PROJECTS`
+drops Power BI / Center of Excellence / RMG. The email is visual: per-person completion
+sparklines, AI-share conditional formatting, overdue badges, vs-before trend arrows.
 
 ## Where it lives
 
@@ -58,17 +62,19 @@ Attribution model (the key correctness rule):
 4. **Speed** - median cycle time, AI cohort vs human cohort, cycle vs pre-launch baseline.
 5. **Quality** - overdue rate, stale rate (the productivity-paradox guard).
 
-## Verdict rubric (`aggregate._verdict`)
+## Verdict rubric (`aggregate._verdict`) - coloured by AI adoption
 
-Precedence, per operator and team:
-- **BASELINE** - fewer than `PRODUCTIVITY_MIN_SAMPLE` (default 3) completions, or no
-  pre-launch baseline. Says so; does not over-claim.
-- **RED** - overdue share above `PRODUCTIVITY_OVERDUE_RED` (default 30%), or slower per
-  task AND completing less than baseline. Speed is costing quality.
-- **GREEN** - completing more than baseline without slowing down. Genuinely more productive.
-- **AMBER** - faster per task but NOT completing more (the paradox), or any mixed signal.
+The report's question is WHO is using the AI-paired system and whether it produces more
+than before. So the colour is driven by **AI Share** (how much of a person's completed
+work the AI closed), and the reason reads it against their pre-launch baseline:
+- **GREEN "Heavy AI use"** - AI Share >= `PRODUCTIVITY_AI_HIGH` (default 50%).
+- **AMBER "Partial AI use"** - AI Share >= `PRODUCTIVITY_AI_LOW` (default 20%).
+- **RED "Low AI use"** - below that; they are not really using the new system.
+- **NODATA** - no completed work in scope this week.
 
-A move must clear +/-10% (`TREND_BAND`) to count as up/down/faster/slower.
+The reason line appends the productivity read vs before: "producing more / about the same /
+less than before" (throughput vs baseline, or faster cycle; +/-10% `TREND_BAND` to count).
+Overdue/quality is shown (red badges, conditional formatting) but does NOT set the colour.
 
 ## How to run
 

@@ -1,5 +1,4 @@
-"""The assessment logic — GREEN / AMBER / RED / BASELINE, including the
-productivity-paradox case (faster per task but NOT completing more)."""
+"""Verdict colour is driven by AI adoption (share), with a read on output vs before."""
 from __future__ import annotations
 
 import pytest
@@ -8,29 +7,29 @@ from execution.products.ops.productivity.aggregate import _verdict
 
 
 @pytest.mark.parametrize("kwargs, expected, reason_contains", [
-    # too little post-launch data -> baseline building
-    (dict(completed_7d=1, completed_prior_7d=1, base_weekly=2.0,
-          cycle_vs_baseline_pct=-20, overdue_rate=0.0), "BASELINE", "baseline"),
-    # no pre-launch baseline to compare against
-    (dict(completed_7d=5, completed_prior_7d=5, base_weekly=None,
-          cycle_vs_baseline_pct=-20, overdue_rate=0.0), "BASELINE", "baseline"),
-    # quality gate: high overdue share -> speed costing quality
-    (dict(completed_7d=5, completed_prior_7d=5, base_weekly=2.0,
-          cycle_vs_baseline_pct=-20, overdue_rate=0.5), "RED", "overdue"),
-    # genuinely more productive: more output, not slower
-    (dict(completed_7d=5, completed_prior_7d=4, base_weekly=2.0,
-          cycle_vs_baseline_pct=-20, overdue_rate=0.1), "GREEN", "more productive"),
-    # THE paradox: faster per task but not completing more
-    (dict(completed_7d=2, completed_prior_7d=3, base_weekly=2.0,
-          cycle_vs_baseline_pct=-30, overdue_rate=0.1), "AMBER", "faster per task"),
-    # slower AND completing less -> red
-    (dict(completed_7d=1, completed_prior_7d=2, base_weekly=2.0,
-          cycle_vs_baseline_pct=30, overdue_rate=0.1), "RED", "slower"),
-    # flat throughput, flat cycle -> mixed amber
-    (dict(completed_7d=2, completed_prior_7d=2, base_weekly=2.0,
-          cycle_vs_baseline_pct=0, overdue_rate=0.1), "AMBER", "mixed"),
+    # no completed work in scope
+    (dict(ai_share=None, throughput_vs_base=None, cycle_vs_base=None, has_activity=False),
+     "NODATA", "no completed work"),
+    (dict(ai_share=0.5, throughput_vs_base=10, cycle_vs_base=None, has_activity=False),
+     "NODATA", "no completed work"),
+    # heavy AI use -> green, and producing more than before
+    (dict(ai_share=0.7, throughput_vs_base=50, cycle_vs_base=None, has_activity=True),
+     "GREEN", "more than before"),
+    # heavy AI use but producing less than before -> still green colour (high adoption),
+    # reason flags the drop
+    (dict(ai_share=0.6, throughput_vs_base=-40, cycle_vs_base=None, has_activity=True),
+     "GREEN", "less than before"),
+    # faster cycle counts as producing more
+    (dict(ai_share=0.6, throughput_vs_base=None, cycle_vs_base=-30, has_activity=True),
+     "GREEN", "more than before"),
+    # partial adoption -> amber
+    (dict(ai_share=0.3, throughput_vs_base=0, cycle_vs_base=None, has_activity=True),
+     "AMBER", "partial use"),
+    # low adoption -> red (they are not using the new system)
+    (dict(ai_share=0.05, throughput_vs_base=20, cycle_vs_base=None, has_activity=True),
+     "RED", "low use"),
 ])
-def test_verdict_cases(kwargs, expected, reason_contains):
+def test_verdict_is_coloured_by_ai_share(kwargs, expected, reason_contains):
     verdict, reason = _verdict(**kwargs)
     assert verdict == expected
     assert reason_contains in reason.lower()
