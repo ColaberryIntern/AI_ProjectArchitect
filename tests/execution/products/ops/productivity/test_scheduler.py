@@ -37,3 +37,12 @@ def test_stop_clears_scheduler():
     scheduler.start_scheduler()
     scheduler.stop_scheduler()
     assert scheduler._scheduler is None
+
+
+def test_default_schedule_is_530am_central_weekdays():
+    job = scheduler.start_scheduler().get_job(scheduler.JOB_ID)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["hour"] == "5"
+    assert fields["minute"] == "30"
+    assert fields["day_of_week"] == "mon-fri"
+    assert "Chicago" in str(job.trigger.timezone)   # Central (CST/CDT)
