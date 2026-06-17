@@ -50,6 +50,15 @@ MAX_RETRY_AFTER = int(os.environ.get("OPS_MAX_RETRY_AFTER", "30"))
 # 'partial', and release the coordinator slot gracefully. Tunable via
 # env so we can lower it temporarily if BC starts misbehaving in prod.
 SYNC_BUDGET_SECONDS = float(os.environ.get("OPS_SYNC_BUDGET_SECONDS", "120"))
+# Per-sync disappeared-row reconciliation (2026-06-17). After fully walking a
+# project, mark any locally-active row BC no longer returns in that project's
+# active set as completed/archived — confirmed by a direct per-row GET. Closes
+# the gap where the walk's best-effort completed-fetch misses a completion
+# (BC's completed-list ordering / page cap / group nesting) and the row would
+# otherwise linger 'active' until the next 24h purge sweep. Kill-switch +
+# per-sync cap so a pathological bucket can't blow the wall-clock budget.
+WALK_RECONCILE = os.environ.get("OPS_WALK_RECONCILE", "1") == "1"
+WALK_RECONCILE_CAP = int(os.environ.get("OPS_WALK_RECONCILE_CAP", "60"))
 
 # Ring buffer of recent errors caught silently by per-project resilience.
 # Surfaces via /my-day/_health. Audit 2026-06-04 revealed errors were
@@ -214,9 +223,20 @@ def discover_projects(token: str) -> list[dict]:
     return out
 
 
-def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.OpsTodo]:
+def _walk_project_todos(
+    proj: dict, token: str, bc_user_id: int,
+) -> tuple[list[store.OpsTodo], set[int]]:
     """Pull every active + completed todo in one BC project that's relevant
-    to the user. Returns the list of OpsTodo rows ready for upsert.
+    to the user.
+
+    Returns ``(rows, seen_active_ids)``:
+      - ``rows`` — the OpsTodo rows ready for upsert (relevance-filtered).
+      - ``seen_active_ids`` — every todo id BC returned in this project's
+        ACTIVE fetch (across the list AND its groups), BEFORE any relevance /
+        assignee filtering. This is the authoritative "still open in BC" set
+        for the project. The caller uses it to reconcile locally-active rows
+        BC has dropped (completed/trashed/moved) but the best-effort
+        completed-fetch missed — see _reconcile_walked_buckets.
 
     Extracted so both pull_todos_for_user (loops all 50 projects) and
     pull_todos_for_project (targeted single-project sync on Mark Done) can
@@ -225,6 +245,7 @@ def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.O
     bucket = proj.get("id")
     proj_name = proj.get("name") or f"Project {bucket}"
     out: list[store.OpsTodo] = []
+    seen_active_ids: set[int] = set()
 
     # BC API v3: the todoset id lives in the project's `dock` array,
     # not under a /buckets/{id}/todosets.json collection endpoint.
@@ -235,7 +256,7 @@ def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.O
     )
     ts_id = todoset_dock.get("id") if todoset_dock else None
     if not ts_id:
-        return out
+        return out, seen_active_ids
 
     def _emit(t: dict, src_id: int, src_name: str) -> None:
         is_completed = bool(t.get("completed"))
@@ -293,6 +314,12 @@ def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.O
             f"/buckets/{bucket}/todolists/{src_id}/todos.json",
             token, max_pages=5, params={"completed": "true"},
         ))
+        # Record EVERY id BC returned as active in this source, pre-filter, so
+        # the caller can tell "BC still lists this as open" from "BC dropped
+        # it". Must be the raw active set (not the emitted/relevant rows): a
+        # task assigned to someone else is still open and must not be
+        # reconciled away.
+        seen_active_ids.update(t["id"] for t in active_todos if t.get("id"))
         for t in active_todos + completed_todos:
             _emit(t, src_id, src_name)
 
@@ -319,7 +346,61 @@ def _walk_project_todos(proj: dict, token: str, bc_user_id: int) -> list[store.O
                 continue
             gname = g.get("name") or g.get("title") or "?"
             _collect(gid, f"{lst_name}: {gname}")
-    return out
+    return out, seen_active_ids
+
+
+def _reconcile_walked_buckets(
+    user_id: str,
+    token: str,
+    walked_active_by_bucket: dict[int, set[int]],
+    sync_start: float,
+) -> int:
+    """Mark locally-active rows BC has dropped from a fully-walked bucket's
+    active set as completed/archived — confirmed one row at a time.
+
+    `walked_active_by_bucket` maps each bucket we walked WITHOUT error this run
+    to the set of todo ids BC returned in its active fetch. Any local row still
+    `active` in one of those buckets whose id is NOT in that set has left BC's
+    open set (completed in BC, trashed, moved, or its list deleted) — but the
+    walk's best-effort completed-fetch didn't catch it, so the row would
+    otherwise linger until the next 24h purge. We confirm each suspect with a
+    direct GET via purge.reconcile_active_row (same logic the purge sweep uses):
+      - BC completed  -> local row completed
+      - BC gone/trashed -> local row archived
+      - BC still active -> left alone (a row beyond the active-fetch page cap is
+        NOT falsely retired — the confirm GET is the safety net).
+
+    Only buckets we fully walked are eligible: a bucket that errored mid-walk or
+    was deferred by the budget / round-robin cursor is absent from the map, so
+    its rows are never reconciled on incomplete data.
+
+    Bounded by WALK_RECONCILE_CAP and the overall sync wall-clock budget so a
+    pathological bucket can't strand the sync; the unswept tail is caught by the
+    next sync or the 24h purge. Returns the count of rows reconciled away.
+    """
+    if not WALK_RECONCILE or not walked_active_by_bucket:
+        return 0
+    # Lazy import: purge imports sync at module load, so a top-level import here
+    # would be circular. sync never imports purge at module scope.
+    from . import purge
+
+    reconciled = 0
+    checked = 0
+    for t in store.load_todos(user_id):
+        if t.status != "active" or t.is_dismissed:
+            continue
+        seen = walked_active_by_bucket.get(t.bc_project_id)
+        if seen is None:
+            continue  # bucket not fully walked this run — never reconcile blind
+        if t.bc_id in seen:
+            continue  # BC still lists it as open — keep
+        if checked >= WALK_RECONCILE_CAP or time.time() - sync_start > SYNC_BUDGET_SECONDS:
+            break
+        outcome = purge.reconcile_active_row(user_id, t, token)
+        checked += 1
+        if outcome in ("completed", "archived_missing", "archived_trashed"):
+            reconciled += 1
+    return reconciled
 
 
 def pull_todos_for_project(user_id: str, project_id: int) -> dict:
@@ -349,7 +430,7 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
         if not proj:
             return {"status": "project_not_found", "project_id": project_id}
         try:
-            fresh_todos = _walk_project_todos(proj, token, bc_user_id)
+            fresh_todos, seen_active_ids = _walk_project_todos(proj, token, bc_user_id)
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
             _record_error(user_id, f"project_walk:{project_id}", err)
@@ -361,6 +442,11 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
             last_synced_at=_now_iso(),
         )])
         store.upsert_todos(user_id, fresh_todos)
+        # Reconcile rows BC dropped from this project's active set (sibling
+        # completions the operator made in BC, not just the one Mark Done
+        # touched). The walk succeeded, so this bucket is safe to reconcile.
+        reconciled = _reconcile_walked_buckets(
+            user_id, token, {project_id: seen_active_ids}, time.time())
         # L5 (2026-06-09 audit): record the targeted touch so the UI can
         # show "Targeted sync 30s ago" instead of "Not synced yet" for
         # operators whose only sync activity has been Mark Done. Doesn't
@@ -374,6 +460,7 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
             "project_id": project_id,
             "project_name": proj_name,
             "todos": len(fresh_todos),
+            "rows_reconciled": reconciled,
         }
     finally:
         coord.finish_sync(user_id)
@@ -599,6 +686,11 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     sync_start = time.time()
     projects_walked = 0
     budget_exceeded = False
+    # bucket -> set of todo ids BC returned as active, for buckets we walked
+    # WITHOUT error. Feeds the post-upsert disappeared-row reconciliation. A
+    # bucket that errors or is budget-deferred is deliberately absent so its
+    # rows are never reconciled on incomplete data.
+    walked_active_by_bucket: dict[int, set[int]] = {}
 
     for proj in projects_raw:
         # Budget check happens BEFORE each project walk so a slow first
@@ -629,7 +721,9 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             last_synced_at=_now_iso(),
         ))
         try:
-            fresh_todos.extend(_walk_project_todos(proj, token, classify_id))
+            walked_todos, seen_active_ids = _walk_project_todos(proj, token, classify_id)
+            fresh_todos.extend(walked_todos)
+            walked_active_by_bucket[bucket] = seen_active_ids
             projects_walked += 1
         except urllib.error.HTTPError as e:  # per-project resilience
             partial = True
@@ -666,6 +760,15 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # 2. Upsert into store
     p_created, p_updated = store.upsert_projects(user_id, fresh_projects)
     t_created, t_updated = store.upsert_todos(user_id, fresh_todos)
+
+    # 2b. Reconcile rows BC dropped from a fully-walked bucket's active set.
+    # Runs AFTER the upsert so completions the walk's completed-fetch DID catch
+    # are already marked completed (and thus skipped here). Closes the gap where
+    # the completed-fetch misses a completion and the row would otherwise linger
+    # 'active' until the 24h purge — the 2026-06-17 incident. Bounded + only for
+    # buckets walked without error.
+    rows_reconciled = _reconcile_walked_buckets(
+        user_id, token, walked_active_by_bucket, sync_start)
 
     # Self-annealing guard (2026-06-10): collapse a pile of per-bucket
     # 403s into ONE root-cause line, and — when the identity the token
@@ -743,6 +846,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
         "todos_assigned_to_user": len(fresh_todos),
         "todos_created": t_created,
         "todos_updated": t_updated,
+        "rows_reconciled": rows_reconciled,
         "errors": project_errors[:3],
         "forbidden_buckets": forbidden_buckets,
         "connection_identity_suspect": connection_identity_suspect,

@@ -1076,6 +1076,255 @@ class TestPullTodosForUser:
 
 
 # ════════════════════════════════════════════════════════════════════
+# Disappeared-row reconciliation — the 2026-06-17 incident
+#
+# A todo completed directly in Basecamp lingered as the #1 "active" human
+# task after a sync, because the walk's best-effort completed-fetch missed
+# the completion (BC's completed-list ordering / page cap / group nesting)
+# and the authoritative per-row reconcile only ran in the 24h purge. The
+# walk now reconciles any row BC dropped from a FULLY-walked bucket's active
+# set, confirmed by a direct per-row GET — promptly, every sync, with no
+# false positives. Also closes the still-open question from the 2026-06-04
+# Press-Mike audit (why a completion didn't propagate despite a sync).
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestWalkDisappearedReconciliation:
+    BC_USER = 17454835
+
+    def _seed_active_row(self, user_id, bc_id, *, bucket=101, list_id=7001):
+        """Plant a locally-active row as if a prior sync had pulled it."""
+        store.upsert_todos(user_id, [store.OpsTodo(
+            bc_id=bc_id, bc_project_id=bucket, bc_project_name="Test Project",
+            bc_todolist_id=list_id, bc_todolist_name="Launch Readiness",
+            title="Integrate website (training) % tracking", status="active",
+            assignee_ids=[self.BC_USER], assignee_names=["Ali M."],
+            inclusion_reason="assigned",
+            bc_app_url=f"https://3.basecamp.com/3945211/todos/{bc_id}",
+            bc_updated_at=_days_ago(2),
+        )])
+
+    def _wire_walk(self, monkeypatch, todo_endpoint):
+        """One project (101), one list (7001) whose active AND completed
+        fetches are BOTH empty — i.e. the completion slipped past the walk's
+        completed-fetch. The direct per-row confirm GET
+        (/buckets/101/todos/{id}.json) is served by
+        `todo_endpoint(bc_id) -> dict | None`. Returns the captured path list."""
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id",
+                            MagicMock(return_value=self.BC_USER))
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[_project_dict(101)]))
+        seen_paths: list[str] = []
+
+        def _bc(path, token, params=None, _retry=1):
+            seen_paths.append(path)
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Launch Readiness"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                return []  # nothing active, nothing completed surfaced by walk
+            if path == "/buckets/101/todolists/7001/groups.json":
+                return None
+            if path.startswith("/buckets/101/todos/"):
+                bc_id = int(path.rsplit("/", 1)[1].split(".")[0])
+                return todo_endpoint(bc_id)
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+        return seen_paths
+
+    def test_completed_in_bc_missed_by_walk_is_reconciled(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """Headline regression guard: a row BC dropped from the active set,
+        completed in BC but missed by the walk's completed-fetch, is confirmed
+        via a direct GET and flipped to 'completed' on the SAME sync."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 9946498016)
+
+        def endpoint(bc_id):
+            # BC: a completed todo keeps status 'active' (status = trash/archive
+            # state); completion is the `completed` flag.
+            return {
+                "id": bc_id, "completed": True, "status": "active",
+                "completion": {"created_at": _days_ago(0),
+                               "creator": {"id": 999, "name": "Ali M."}},
+            }
+        self._wire_walk(monkeypatch, endpoint)
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["status"] == "ok"
+        assert result["rows_reconciled"] == 1
+        row = store.get_todo(u, 9946498016)
+        assert row.status == "completed"
+        assert row.completed_by_name == "Ali M."
+
+    def test_still_active_in_bc_is_left_alone_no_false_positive(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """A row absent from the active fetch but STILL active in BC (e.g. it
+        sat beyond the active-fetch page cap) must NOT be retired — the confirm
+        GET is the safety net against false positives."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 5001)
+        self._wire_walk(monkeypatch,
+                        lambda bc_id: {"id": bc_id, "completed": False,
+                                       "status": "active"})
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 0
+        assert store.get_todo(u, 5001).status == "active"
+
+    def test_deleted_in_bc_404_is_archived(self, monkeypatch, isolated_ops_root):
+        """BC returns 400/404 (task or its whole list deleted) → row archived."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 6001)
+        self._wire_walk(monkeypatch, lambda bc_id: None)
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 1
+        assert store.get_todo(u, 6001).status == "archived"
+
+    def test_trashed_in_bc_is_archived(self, monkeypatch, isolated_ops_root):
+        """BC returns a non-active status (operator 'deleted'/trashed it in BC,
+        which doesn't 404) → row archived."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 6002)
+        self._wire_walk(monkeypatch,
+                        lambda bc_id: {"id": bc_id, "completed": False,
+                                       "status": "trashed"})
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 1
+        assert store.get_todo(u, 6002).status == "archived"
+
+    def test_row_still_in_active_set_is_not_confirmed(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """When BC still returns the todo in the active fetch, it is kept and
+        NOT confirmed via a direct GET — no wasted call, no risk."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 7777)
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id",
+                            MagicMock(return_value=self.BC_USER))
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[_project_dict(101)]))
+        seen_paths: list[str] = []
+
+        def _bc(path, token, params=None, _retry=1):
+            seen_paths.append(path)
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Launch Readiness"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                if params and (params.get("completed") == "true"
+                               or params.get("page", 1) > 1):
+                    return []
+                return [_todo_dict(7777, assignees=(self.BC_USER,),
+                                   title="Integrate website (training) % tracking")]
+            if path == "/buckets/101/todolists/7001/groups.json":
+                return None
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 0
+        assert store.get_todo(u, 7777).status == "active"
+        assert "/buckets/101/todos/7777.json" not in seen_paths
+
+    def test_errored_bucket_rows_are_not_reconciled(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """A bucket whose walk RAISES must never have its rows reconciled — we
+        do not confirm-and-archive on incomplete data. Guards against archiving
+        an operator's live tasks during a BC outage."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 8001, bucket=202)
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id",
+                            MagicMock(return_value=self.BC_USER))
+        monkeypatch.setattr(sync, "discover_projects",
+                            MagicMock(return_value=[_project_dict(202, "Bad")]))
+        seen_paths: list[str] = []
+
+        def _bc(path, token, params=None, _retry=1):
+            seen_paths.append(path)
+            if path == "/projects/202.json":
+                raise urllib.error.HTTPError("u", 503, "down", {}, io.BytesIO(b""))
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["status"] == "partial"
+        assert result["rows_reconciled"] == 0
+        assert store.get_todo(u, 8001).status == "active"  # untouched
+        assert "/buckets/202/todos/8001.json" not in seen_paths
+
+    def test_dismissed_row_is_never_reconciled(self, monkeypatch, isolated_ops_root):
+        """A dismissed row is a deliberate operator signal — the reconciliation
+        skips it exactly like the purge sweep does."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 5555)
+        store.update_todo(u, 5555, is_dismissed=True)
+        seen_paths = self._wire_walk(monkeypatch, lambda bc_id: None)
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 0
+        assert "/buckets/101/todos/5555.json" not in seen_paths
+
+    def test_kill_switch_disables_reconciliation(self, monkeypatch, isolated_ops_root):
+        """OPS_WALK_RECONCILE=0 turns the whole pass off (rollback lever)."""
+        monkeypatch.setattr(sync, "WALK_RECONCILE", False)
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 4001)
+        seen_paths = self._wire_walk(
+            monkeypatch,
+            lambda bc_id: {"id": bc_id, "completed": True, "status": "active",
+                           "completion": {"created_at": _days_ago(0),
+                                          "creator": {"id": 999, "name": "Ali M."}}},
+        )
+
+        result = sync.pull_todos_for_user(u)
+
+        assert result["rows_reconciled"] == 0
+        assert store.get_todo(u, 4001).status == "active"  # left as-is
+        assert "/buckets/101/todos/4001.json" not in seen_paths
+
+    def test_targeted_sync_also_reconciles_disappeared_rows(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """pull_todos_for_project (Mark Done path) reconciles sibling
+        completions the operator made directly in BC, not just the touched row."""
+        u = "ali@colaberry.com"
+        self._seed_active_row(u, 9001)
+        self._wire_walk(
+            monkeypatch,
+            lambda bc_id: {"id": bc_id, "completed": True, "status": "active",
+                           "completion": {"created_at": _days_ago(0),
+                                          "creator": {"id": 999, "name": "Ali M."}}},
+        )
+
+        result = sync.pull_todos_for_project(u, 101)
+
+        assert result["status"] == "ok"
+        assert result["rows_reconciled"] == 1
+        assert store.get_todo(u, 9001).status == "completed"
+
+
+# ════════════════════════════════════════════════════════════════════
 # pull_todos_for_project — targeted single-project sync (Mark Done path)
 # ════════════════════════════════════════════════════════════════════
 

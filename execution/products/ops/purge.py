@@ -76,6 +76,71 @@ def is_purge_due(user_id: str) -> bool:
     return age >= timedelta(hours=PURGE_INTERVAL_HOURS)
 
 
+def reconcile_active_row(user_id: str, todo: store.OpsTodo, token: str) -> str:
+    """Re-fetch ONE active local row from BC and mirror BC's truth into the
+    local store. Returns the outcome as a string:
+
+        "completed"         BC says completed -> local row -> completed
+        "archived_missing"  BC returned 400/404 (task or its list deleted)
+                            -> local row -> archived
+        "archived_trashed"  BC returned a non-active status (trashed/archived)
+                            -> local row -> archived
+        "active"            BC still says active -> left untouched
+        "error"             the BC fetch raised -> recorded, left untouched
+
+    Extracted from purge_stale_active_rows so the two callers reconcile a row
+    identically:
+      - the 24h purge sweep (every active row, oldest-first, capped), and
+      - the per-sync disappeared-row reconciliation
+        (sync._reconcile_walked_buckets), which confirms only the rows BC
+        dropped from a fully-walked list's active set.
+    Both MUST agree, byte-for-byte, on what "gone from the queue" means."""
+    try:
+        bc_todo = sync._bc_get(
+            f"/buckets/{todo.bc_project_id}/todos/{todo.bc_id}.json",
+            token,
+        )
+    except Exception as e:  # noqa: BLE001 — per-row resilience
+        sync._record_error(
+            user_id,
+            f"purge_fetch:{todo.bc_id}",
+            f"{type(e).__name__}: {str(e)[:200]}",
+        )
+        return "error"
+
+    if bc_todo is None:
+        # BC returned 400/404 — the task (or the whole todolist it lived in,
+        # e.g. a deleted "approval queue") is gone. Archive locally so it
+        # stops cluttering the queue without losing the row.
+        store.update_todo(user_id, todo.bc_id, status="archived")
+        return "archived_missing"
+
+    # Basecamp soft-deletes ("trash") and archives DON'T 404 — the todo
+    # endpoint still returns a JSON object, just with status != "active"
+    # (e.g. "trashed", "archived"). The None check above only catches hard
+    # 404s, so without this branch a trashed todo survives and keeps ranking
+    # on the human queue. Mirror BC: any non-active status means gone.
+    bc_status = bc_todo.get("status")
+    if bc_status and bc_status != "active":
+        store.update_todo(user_id, todo.bc_id, status="archived")
+        return "archived_trashed"
+
+    if bc_todo.get("completed"):
+        completion = bc_todo.get("completion") or {}
+        creator = completion.get("creator") or {}
+        store.update_todo(
+            user_id, todo.bc_id,
+            status="completed",
+            completed_at=completion.get("created_at") or "",
+            completed_by_id=creator.get("id"),
+            completed_by_name=creator.get("name") or "",
+        )
+        return "completed"
+
+    # BC still says active. Leave alone; next sweep / sync retries.
+    return "active"
+
+
 def purge_stale_active_rows(user_id: str) -> dict:
     """Reconcile every local active row against BC.
 
@@ -127,56 +192,18 @@ def purge_stale_active_rows(user_id: str) -> dict:
     errors = 0
 
     for t in active_rows[:CAP_PER_USER]:
-        try:
-            bc_todo = sync._bc_get(
-                f"/buckets/{t.bc_project_id}/todos/{t.bc_id}.json",
-                token,
-            )
-            checked += 1
-        except Exception as e:  # noqa: BLE001 — per-row resilience
+        outcome = reconcile_active_row(user_id, t, token)
+        if outcome == "error":
             errors += 1
-            sync._record_error(
-                user_id,
-                f"purge_fetch:{t.bc_id}",
-                f"{type(e).__name__}: {str(e)[:200]}",
-            )
             continue
-
-        if bc_todo is None:
-            # BC returned 400/404 — the task (or the whole todolist it
-            # lived in, e.g. a deleted "approval queue") is gone. Archive
-            # locally so it stops cluttering the queue without losing the
-            # row. The user could still re-open via dismiss/undismiss
-            # flows if they want, but the queue stops surfacing it.
-            store.update_todo(user_id, t.bc_id, status="archived")
-            archived_missing += 1
-            continue
-
-        # Basecamp soft-deletes ("trash") and archives DON'T 404 — the todo
-        # endpoint still returns a JSON object, just with status != "active"
-        # (e.g. "trashed", "archived"). The None check above only catches
-        # hard 404s, so without this branch a trashed todo (the operator
-        # "deleted" it in BC) survives the sweep and keeps ranking on the
-        # human queue. Mirror BC: any non-active status means gone-from-queue
-        # -> archive the local row.
-        bc_status = bc_todo.get("status")
-        if bc_status and bc_status != "active":
-            store.update_todo(user_id, t.bc_id, status="archived")
-            archived_trashed += 1
-            continue
-
-        if bc_todo.get("completed"):
-            completion = bc_todo.get("completion") or {}
-            creator = completion.get("creator") or {}
-            store.update_todo(
-                user_id, t.bc_id,
-                status="completed",
-                completed_at=completion.get("created_at") or "",
-                completed_by_id=creator.get("id"),
-                completed_by_name=creator.get("name") or "",
-            )
+        checked += 1
+        if outcome == "completed":
             updated_completed += 1
-        # else: BC still says active. Leave alone; next sweep retries.
+        elif outcome == "archived_missing":
+            archived_missing += 1
+        elif outcome == "archived_trashed":
+            archived_trashed += 1
+        # "active": BC still says active. Leave alone; next sweep retries.
 
     overall_status = "ok" if errors == 0 else "partial"
     state.last_purge_at = sync._now_iso()

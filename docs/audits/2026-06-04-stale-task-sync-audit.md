@@ -92,7 +92,7 @@ Post-deploy on `95.216.199.47`:
 
 | Item | Action |
 |---|---|
-| Why the 00:15 sync didn't catch the Press Mike completion despite running after BC marked it done | Investigate next session — possibly a partial-success / silent exception inside `_walk_project_todos` for one project, while others succeeded. The walker works in isolation when re-tested. |
+| Why the 00:15 sync didn't catch the Press Mike completion despite running after BC marked it done | **RESOLVED 2026-06-17** (same bug class as the "Integrate website % tracking" incident). Root cause: the walk's completed-fetch is best-effort — BC's completed-list ordering, the `max_pages=5` cap, or group nesting can keep a fresh completion off the fetched pages, so the row never re-enters the walk's scope and lingers `active` until the 24h purge. Fix: `sync._reconcile_walked_buckets` now reconciles any row BC drops from a fully-walked bucket's *active* set via a confirm GET, on every sync. See [directive store invariant #4](../../directives/my-day-bc-sync.md). |
 | `/my-day/_health` endpoint exposing scheduler state + per-user `last_sync_at` | Next ticket: build for operational monitoring. |
 | Container output dir at `/opt/ai-project-architect/output` shows path-traversal probe artifacts (`pwn`, `rce`, `etc`, etc. as project directories) | Out of scope for this audit but worth flagging — `app/routers/projects.py` `POST /projects/new` is accepting arbitrary `project_name` and creating directories. Should be sanitized. |
 
