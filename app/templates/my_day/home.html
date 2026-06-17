@@ -286,7 +286,7 @@
         </button>
         {% endif %}
         <a href="/library/{{ s.category }}/{{ s.asset_id }}"
-           class="md-btn md-btn-workspace" style="padding: 5px 10px; font-size: 11px;"
+           class="md-btn md-btn-workspace" target="_blank" rel="noopener" style="padding: 5px 10px; font-size: 11px;"
            title="Open this asset's workspace page">
           ⚙ Workspace
         </a>
@@ -454,7 +454,7 @@
             onclick="copyPrompt('focus-prompt', this)">
       📋 Copy Claude Code prompt →
     </button>
-    <a href="/my-day/todo/{{ focus.bc_id }}" class="md-btn md-btn-workspace">⚙ Workspace</a>
+    <a href="/my-day/todo/{{ focus.bc_id }}" class="md-btn md-btn-workspace" target="_blank" rel="noopener">⚙ Workspace</a>
     <form method="post" action="/my-day/todo/{{ focus.bc_id }}/complete" style="display: inline; margin: 0;">
       <button type="submit" class="md-btn md-btn-success">✓ Mark done</button>
     </form>
@@ -560,6 +560,7 @@
                   style="padding: 5px 10px; font-size: 11px;"
                   onclick="copyPrompt('rp-{{ nb.bc_id }}', this)">📋 Prompt</button>
           <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-workspace"
+             target="_blank" rel="noopener"
              style="padding: 5px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
           <textarea id="rp-{{ nb.bc_id }}" class="hidden-prompt" readonly>{{ row_prompts.get(nb.bc_id, '') }}</textarea>
         </div>
@@ -732,6 +733,7 @@
                             style="padding: 4px 10px; font-size: 11px;"
                             onclick="copyPrompt('sp-{{ t.bc_id }}', this)">📋 Prompt</button>
                     <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                       target="_blank" rel="noopener"
                        style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
                     <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
                   </div>
@@ -782,6 +784,7 @@
                             style="padding: 4px 10px; font-size: 11px;"
                             onclick="copyPrompt('sp-{{ t.bc_id }}', this)">📋 Prompt</button>
                     <a href="/my-day/todo/{{ t.bc_id }}" class="md-btn md-btn-workspace"
+                       target="_blank" rel="noopener"
                        style="padding: 4px 10px; font-size: 11px; text-decoration: none;">⚙ Workspace</a>
                     <textarea id="sp-{{ t.bc_id }}" class="hidden-prompt" readonly>{{ seq_prompts.get(t.bc_id, '') }}</textarea>
                   </div>
