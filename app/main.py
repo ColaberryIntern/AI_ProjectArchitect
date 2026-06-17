@@ -87,6 +87,17 @@ async def lifespan(app: FastAPI):
         print(f"[lifespan] FAILED to start pilot dash scheduler: {e}", flush=True)
         logger.warning("Failed to start pilot dash scheduler", exc_info=True)
 
+    try:
+        from execution.products.ops.productivity.scheduler import (
+            start_scheduler as prod_start, stop_scheduler as prod_stop,
+        )
+        prod_start()
+        stops.append(prod_stop)
+        print("[lifespan] productivity report scheduler started", flush=True)
+    except Exception as e:
+        print(f"[lifespan] FAILED to start productivity report scheduler: {e}", flush=True)
+        logger.warning("Failed to start productivity report scheduler", exc_info=True)
+
     yield
 
     for stop in stops:
