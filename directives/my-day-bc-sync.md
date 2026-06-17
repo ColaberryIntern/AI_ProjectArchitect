@@ -23,7 +23,8 @@ For one operator, one sync run:
 5. For each todo, classify whether it belongs in this operator's queue (see *Classification* below). Drop anything not relevant.
 6. Apply the freshness filter (see *Freshness window* below). Drop anything stale with no future due date.
 7. Upsert the survivors into the local store (preserving operator-local fields — see *Store invariants*).
-8. Persist `state.json` with `last_sync_at`, `last_sync_status`, `last_sync_error`, counts.
+8. **Reconcile disappeared rows.** For each bucket walked without error, mark any locally-`active` row BC no longer returns in that bucket's active set as `completed`/`archived`, confirmed by a direct per-row GET (`sync._reconcile_walked_buckets`; see *Store invariants* #4). This catches completions the walk's best-effort completed-fetch missed, without waiting for the daily purge.
+9. Persist `state.json` with `last_sync_at`, `last_sync_status`, `last_sync_error`, counts.
 
 A sync that errors on one or more projects (but completes at least one) records `last_sync_status = "partial"`. A sync that fails before any walk (token missing, BC user id missing) records `last_sync_status = "failed"`. Otherwise `last_sync_status = "ok"`.
 
@@ -70,7 +71,9 @@ Invariants the sync engine relies on:
 
 3. **Operator project overrides survive re-sync.** `upsert_projects` preserves `is_managed` and `weight` across re-walks so an operator's "un-manage this project" choice doesn't get reverted every 5 minutes.
 
-4. **The walk never deletes; the purge sweep reconciles.** `upsert_todos` is upsert-only — items present locally but absent in a fresh BC walk are kept (a task moved between projects may briefly appear in both; subsequent walks converge). Removal is the job of `purge.purge_stale_active_rows` (see "Reconciliation purge" below), which runs out-of-band and re-checks each active row against BC directly. Without it, a deleted Basecamp todolist (e.g. the old "approval queue") would leave its rows rendering as `active` forever, because the walk simply stops returning them.
+4. **The walk never deletes; reconciliation mirrors BC.** `upsert_todos` is upsert-only — items present locally but absent in a fresh BC walk are kept (a task moved between projects may briefly appear in both; subsequent walks converge). Down-grading a row that has left BC's open set (completed/trashed/deleted) is the job of two reconcilers that share one per-row checker, `purge.reconcile_active_row` (re-fetch the row, mirror BC: completed→`completed`, gone/trashed→`archived`, still-active→leave):
+   - **Per-sync** (`sync._reconcile_walked_buckets`, 2026-06-17): the walk records the set of todo ids BC returned in each fully-walked bucket's *active* fetch. Right after the upsert, any locally-`active` row in one of those buckets whose id is **not** in that set is confirmed via a direct GET and reconciled. This is what makes a completion the walk's best-effort completed-fetch missed clear on the **next sync** instead of waiting for the daily purge — the 2026-06-17 "Integrate website % tracking" incident, and the still-open 2026-06-04 Press-Mike question. Only buckets walked **without error** are eligible (a bucket that errored or was budget-deferred is never reconciled on incomplete data), and the confirm GET prevents false positives (a row beyond the active-fetch page cap that's still active in BC is left alone). Bounded by `OPS_WALK_RECONCILE_CAP` (60) and the overall sync budget; kill-switch `OPS_WALK_RECONCILE=0`.
+   - **Hourly/24h backstop** (`purge.purge_stale_active_rows`, see "Reconciliation purge" below): re-checks **every** active row, catching the long tail the per-sync pass doesn't reach — rows in buckets that keep erroring, completions outside the freshness window, and lists deleted while the walk is failing. Without either, a deleted Basecamp todolist (e.g. the old "approval queue") would leave its rows rendering as `active` forever, because the walk simply stops returning them.
 
 5. **Atomic file writes.** Every write uses `tempfile.mkstemp` + `Path.replace` so a process crash mid-write can never produce a partially-written JSON file. The reader's `corrupt JSON → return empty` fallback is a defense-in-depth, not the primary protection.
 
@@ -111,7 +114,7 @@ The freshness window deliberately excludes quietly-completed tasks (>30 days, no
 
 ## Reconciliation purge
 
-`execution/products/ops/purge.py` runs out-of-band of the walk and is the only thing that *removes* rows. The scheduler fires `_purge_all_users` hourly (`OPS_PURGE_CRON_MINUTES=60`); each user is then gated by `is_purge_due` to run at most once per `OPS_PURGE_INTERVAL_HOURS` (24).
+`execution/products/ops/purge.py` runs out-of-band of the walk as the **24h backstop** reconciler. It is no longer the *only* place rows get down-graded — the per-sync `sync._reconcile_walked_buckets` (store invariant #4) handles the common case promptly; the purge catches the long tail. Both call the same per-row checker, `purge.reconcile_active_row`, so "gone from the queue" means the same thing in both. The scheduler fires `_purge_all_users` hourly (`OPS_PURGE_CRON_MINUTES=60`); each user is then gated by `is_purge_due` to run at most once per `OPS_PURGE_INTERVAL_HOURS` (24).
 
 `purge_stale_active_rows` re-checks **every** active, non-dismissed local row (not just stale ones — see below) by re-fetching it one-at-a-time from BC, and mirrors BC's truth:
 
@@ -193,7 +196,7 @@ Common patterns:
 - Operator's Basecamp OAuth grant (vault entry `basecamp_ai_clone`)
 - Operator's tenancy record (`bc_user_id`, `bc_extra_buckets`)
 - Basecamp API at `https://3.basecampapi.com/{BC_ACCOUNT_ID}` (default 3945211)
-- Env vars: `OPS_FRESHNESS_DAYS`, `OPS_PROJECT_FRESHNESS_DAYS`, `OPS_HTTP_TIMEOUT`, `OPS_HTTP_THROTTLE_SECONDS`, `OPS_MAX_RETRY_AFTER`, `OPS_SYNC_INTERVAL_MINUTES`
+- Env vars: `OPS_FRESHNESS_DAYS`, `OPS_PROJECT_FRESHNESS_DAYS`, `OPS_HTTP_TIMEOUT`, `OPS_HTTP_THROTTLE_SECONDS`, `OPS_MAX_RETRY_AFTER`, `OPS_SYNC_INTERVAL_MINUTES`, `OPS_WALK_RECONCILE` (default `1`; set `0` to disable the per-sync disappeared-row reconciliation), `OPS_WALK_RECONCILE_CAP` (default `60`; max confirm-GETs per sync)
 
 **Outputs:**
 - `output/ops/<email>/todos.json` — local mirror, file-locked per user
@@ -214,7 +217,7 @@ Common patterns:
 
 Code in this sync chain is covered by:
 
-- `tests/execution/products/test_ops_sync.py` — classifier, freshness gate, 429 retry, paginator, `pull_todos_for_user` / `pull_todos_for_project` orchestration, coordinator integration
+- `tests/execution/products/test_ops_sync.py` — classifier, freshness gate, 429 retry, paginator, `pull_todos_for_user` / `pull_todos_for_project` orchestration, coordinator integration, and the per-sync disappeared-row reconciliation (`TestWalkDisappearedReconciliation`: completion missed by the walk is reconciled; still-active rows and errored/budget-deferred buckets are left untouched; dismissed rows skipped; kill-switch)
 - `tests/execution/products/test_ops_sync_coordinator.py` — atomic single-flight, TTL, wait_for_sync semantics
 - `tests/execution/products/test_ops_store.py` — preserve-local-fields, concurrent-writer safety
 - `tests/app/test_my_day_sync_redirect.py` — POST /sync filter preservation
