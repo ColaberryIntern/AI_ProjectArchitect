@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from execution.products.ops.productivity import render as render_mod
 from execution.products.ops.productivity.aggregate import build_scorecard
 from execution.products.ops.productivity.render import render_html
 
@@ -64,3 +65,15 @@ def test_low_confidence_banner_when_baseline_missing():
     html = render_html(_scorecard(low_conf_baseline=True))
     assert "low-confidence" in html
     assert "went live" in html
+
+
+def test_operator_table_is_capped_with_overflow_note(monkeypatch):
+    # three people each closing one task; cap to 1 row -> note about the rest
+    todos = []
+    for i, name in enumerate(("Ann", "Ben", "Cy"), 1):
+        todos.append(_todo(i, status="completed", completed_at="2026-06-18T10:00:00Z",
+                           completed_by_name=name, cycle_seconds=DAY, assignee_names=[name]))
+    sc = build_scorecard(todos, baseline={}, now=NOW)
+    monkeypatch.setattr(render_mod, "MAX_OPERATOR_ROWS", 1)
+    html = render_html(sc)
+    assert "more active operators not shown" in html

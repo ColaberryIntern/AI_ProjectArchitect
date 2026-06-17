@@ -10,7 +10,13 @@ Zero em-dashes per the house email contract. Structure:
 """
 from __future__ import annotations
 
+import os
+
 from .aggregate import ProductivityScorecard, OperatorScorecard, TeamRollup
+
+# Keep the email readable: show only people with activity, capped. Everyone is
+# still counted in the team totals; hidden rows are summarized in a note.
+MAX_OPERATOR_ROWS = int(os.environ.get("PRODUCTIVITY_MAX_ROWS", "30"))
 
 _VERDICT_COLOR = {"GREEN": "#1a7f37", "AMBER": "#8a5a00", "RED": "#cf222e", "BASELINE": "#57606a"}
 _VERDICT_LABEL = {
@@ -108,10 +114,17 @@ def render_html(sc: ProductivityScorecard) -> str:
         + "</tr></table>"
     )
 
-    rows = "\n".join(_operator_row(c) for c in sc.operators) or (
+    active = [c for c in sc.operators if c.completed_7d or c.open_count]
+    shown = active[:MAX_OPERATOR_ROWS]
+    rows = "\n".join(_operator_row(c) for c in shown) or (
         '<tr><td colspan="8" style="text-align:center;color:#57606a;padding:20px;">'
         "No operators with activity found.</td></tr>"
     )
+    hidden = len(active) - len(shown)
+    if hidden > 0:
+        rows += (f'\n<tr><td colspan="8" style="text-align:center;color:#57606a;padding:10px;'
+                 f'font-size:12px;">+ {hidden} more active operators not shown '
+                 f'(showing top {len(shown)} by completions)</td></tr>')
 
     a = sc.assumptions
     footer = (
