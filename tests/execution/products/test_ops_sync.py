@@ -527,6 +527,89 @@ class TestPullTodosForUser:
         assert state.todos_synced == 1
         assert state.projects_synced == 1
 
+    def test_walks_todos_inside_todo_groups(self, monkeypatch, isolated_ops_root):
+        """Todos filed under a BC todo GROUP (a "Week 01" style sub-section
+        of a list) must be pulled, not just the list's top-level todos.
+
+        Regression guard for the 2026-06-17 Swati incident: her Curriculum
+        list had ZERO top-level todos and 12 week-groups holding 48 assigned
+        tasks; the old walk fetched only the empty list and dropped all 48.
+        The grouped todos must land, attributed to a "<list>: <group>" name."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(101)]),
+        )
+
+        def _bc(path, token, params=None, _retry=1):
+            completed = bool(params and params.get("completed") == "true")
+            page = (params or {}).get("page", 1)
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Curriculum"}]
+            # The list's own top level is empty — every todo lives in a group.
+            if path == "/buckets/101/todolists/7001/todos.json":
+                return []
+            if path == "/buckets/101/todolists/7001/groups.json":
+                return [{"id": 8001, "name": "Week 01"},
+                        {"id": 8002, "name": "Week 02"}]
+            if path == "/buckets/101/todolists/8001/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9101, assignees=(BC_USER,), title="Lab spec — W1")]
+            if path == "/buckets/101/todolists/8002/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9201, assignees=(BC_USER,), title="Lab spec — W2")]
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+
+        assert result["status"] == "ok"
+        assert result["todos_assigned_to_user"] == 2
+        todos = {t.title: t for t in store.load_todos("ali@colaberry.com")}
+        assert set(todos) == {"Lab spec — W1", "Lab spec — W2"}
+        # Grouped todos are attributed to "<list>: <group>" and the group id.
+        assert todos["Lab spec — W1"].bc_todolist_name == "Curriculum: Week 01"
+        assert todos["Lab spec — W1"].bc_todolist_id == 8001
+        assert todos["Lab spec — W2"].bc_todolist_name == "Curriculum: Week 02"
+
+    def test_list_with_no_groups_endpoint_still_works(self, monkeypatch, isolated_ops_root):
+        """groups.json returning None/[] (lists without groups, or older BC
+        accounts) must not break the walk — top-level todos still land."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(101)]),
+        )
+
+        def _bc(path, token, params=None, _retry=1):
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Inbox"}]
+            if path == "/buckets/101/todolists/7001/todos.json":
+                if params and (params.get("completed") == "true" or params.get("page", 1) > 1):
+                    return []
+                return [_todo_dict(9001, assignees=(BC_USER,), title="Top task")]
+            if path == "/buckets/101/todolists/7001/groups.json":
+                return None  # no groups
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+        assert result["status"] == "ok"
+        assert result["todos_assigned_to_user"] == 1
+        assert store.load_todos("ali@colaberry.com")[0].title == "Top task"
+
     def test_per_project_exception_yields_partial_and_records_error(
         self, monkeypatch, isolated_ops_root,
     ):
