@@ -67,6 +67,7 @@
               onclick="copyPrompt('hp-{{ nb.bc_id }}', this); event.stopPropagation();"
               title="Copy the Claude Code prompt for the next task">📋 Prompt</button>
       <a href="/my-day/todo/{{ nb.bc_id }}" class="md-btn md-btn-workspace"
+         target="_blank" rel="noopener"
          title="Open the workspace for the next task">⚙ Workspace</a>
       <textarea id="hp-{{ nb.bc_id }}" class="ka-prompt" readonly>{{ heat_prompts.get(nb.bc_id, '') }}</textarea>
     </div>

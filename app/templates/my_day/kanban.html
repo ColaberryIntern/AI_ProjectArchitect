@@ -79,7 +79,7 @@
               title="Copy Claude Code prompt for this task">
         📋 Prompt
       </button>
-      <a href="/my-day/todo/{{ t.bc_id }}" class="ka-btn ka-btn-workspace" title="Open the workspace for this task (LLM-enhanced prompt + steps)" style="text-decoration: none;">
+      <a href="/my-day/todo/{{ t.bc_id }}" class="ka-btn ka-btn-workspace" target="_blank" rel="noopener" title="Open the workspace for this task (LLM-enhanced prompt + steps)" style="text-decoration: none;">
         ⚙ Workspace
       </a>
       <form method="post" action="/my-day/todo/{{ t.bc_id }}/complete" style="margin: 0;" onclick="event.stopPropagation();">

@@ -19,6 +19,7 @@ request is fast and deterministic.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -146,3 +147,24 @@ def test_blue_title_links_go_to_basecamp_not_workspace(client):
         assert f'href="/my-day/todo/{t.bc_id}">{t.title[:120]}' not in html, (
             f"title link for todo {t.bc_id} still points at the Workspace page"
         )
+
+
+def test_every_workspace_button_opens_in_a_new_tab(client):
+    """User ask (2026-06-17): Workspace buttons opened in the SAME tab, which
+    loses the operator's place in the queue. Every Workspace button — across
+    the briefing, kanban, and heat-map views — must carry target="_blank".
+
+    Matches both ``md-btn-workspace`` and ``ka-btn-workspace`` (kanban) via the
+    shared ``btn-workspace`` substring; re.S so multi-line opening tags match.
+    """
+    seen_any = False
+    for view in ("briefing", "kanban", "heatmap"):
+        r = client.get(f"/my-day/?view={view}&tier=all")
+        assert r.status_code == 200, f"{view}: {r.text}"
+        anchors = re.findall(r"<a\b[^>]*?btn-workspace[^>]*?>", r.text, re.S)
+        for a in anchors:
+            seen_any = True
+            assert 'target="_blank"' in a, (
+                f"{view}: Workspace button must open in a new tab -> {a!r}"
+            )
+    assert seen_any, "no Workspace buttons rendered in any view"
