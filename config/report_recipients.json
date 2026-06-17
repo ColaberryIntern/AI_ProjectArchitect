@@ -1,0 +1,7 @@
+{
+  "_doc": "Recipients for the daily productivity & AI-leverage report. Delivery is gated OFF by default (env PRODUCTIVITY_REPORT_DELIVERY=1 to enable). SMTP creds come from GMAIL_SMTP_USERNAME + GMAIL_SMTP_APP_PASSWORD, same as the pilot dashboards. Add operators/leads to bcc as the audience grows.",
+  "to": ["ali@colaberry.com"],
+  "bcc": [],
+  "subject_prefix": "Productivity & AI leverage",
+  "from_name": "Colaberry Productivity Report"
+}
