@@ -120,10 +120,11 @@ Recipients default to `ali@colaberry.com` only; widen via `config/report_recipie
 
 ## Scheduling
 
-`scheduler.py` registers a daily weekday job (07:30 ET by default) and is started from
-`app/main` lifespan alongside the other schedulers. Tune via `PRODUCTIVITY_REPORT_HOUR`,
-`PRODUCTIVITY_REPORT_MINUTE`, `PRODUCTIVITY_REPORT_DOW`. It writes the HTML every run;
-it only emails when `PRODUCTIVITY_REPORT_DELIVERY=1`.
+`scheduler.py` registers a daily weekday job (**05:30 America/Chicago = 5:30 AM CST/CDT**)
+and is started from `app/main` lifespan alongside the other schedulers. Tune via
+`PRODUCTIVITY_REPORT_TZ`, `PRODUCTIVITY_REPORT_HOUR`, `PRODUCTIVITY_REPORT_MINUTE`,
+`PRODUCTIVITY_REPORT_DOW`. It writes the HTML every run; it only emails when
+`PRODUCTIVITY_REPORT_DELIVERY=1` (set in prod `.env.prod`).
 
 ## Deploy (prod, Docker)
 
