@@ -31,6 +31,10 @@ def test_resubscribe_job_registered_when_secret_set(monkeypatch, _stop_scheduler
 
 def test_resubscribe_job_absent_when_secret_unset(monkeypatch, _stop_scheduler):
     monkeypatch.delenv("OPS_CB_WEBHOOK_SECRET", raising=False)
+    # POLLING_ENABLED is read from the env at import; the mention job is gated
+    # on it. Pin it True so this test deterministically exercises a registered
+    # "other job" regardless of the ambient OPS_CB_MENTION_POLLING_ENABLED.
+    monkeypatch.setattr(scheduler, "POLLING_ENABLED", True)
     scheduler.start_scheduler()
     job_ids = {j.id for j in scheduler._scheduler.get_jobs()}
     assert scheduler.RESUBSCRIBE_JOB_ID not in job_ids

@@ -229,9 +229,12 @@ def test_scan_all_users_writes_heartbeat(monkeypatch):
         "execution.products.library.vault.list_for_user",
         lambda user_id, caller_id: [MagicMock(tool_name="basecamp_ai_clone")],
     )
+    # scan_all_users calls scan_for_user(email, response_budget=...); the mock
+    # must accept that kwarg or it raises TypeError and the heartbeat tallies
+    # zero mentions.
     monkeypatch.setattr(
         cb, "scan_for_user",
-        lambda email: {
+        lambda email, response_budget=None: {
             "status": "ok", "checked_buckets": 3, "mentions_found": 2,
             "responded": 2, "failed": 0, "skipped_already_seen": 0,
             "skipped_closed_parent": 0, "token_source": "vault-oauth",

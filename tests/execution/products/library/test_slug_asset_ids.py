@@ -393,3 +393,48 @@ class TestGetMetadataFallback:
         assert m.workspace == "global"
         assert m.description == ""
         assert m.enrichment_state == "unenriched"
+
+
+# ── meta_path cross-platform sanitization ──────────────────────────
+
+
+class TestMetaPathSanitization:
+    """Regression: an asset like 'Code Interpreter / Sandbox Execution' nested
+    into a 'Code Interpreter ' (trailing space) directory that Windows can't
+    create, raising FileNotFoundError on write. Each '/'-segment is now
+    trimmed and illegal chars replaced, while '/' still nests."""
+
+    def test_spaced_slash_segments_are_trimmed(self):
+        assert (store._safe_asset_relpath("Code Interpreter / Sandbox Execution")
+                == "Code Interpreter/Sandbox Execution")
+
+    def test_plain_slash_nesting_is_unchanged(self):
+        # No surrounding spaces -> identical to before (no prod churn).
+        assert store._safe_asset_relpath("n8n Cron/Schedule Trigger") == "n8n Cron/Schedule Trigger"
+
+    def test_backslash_and_windows_illegal_chars_replaced(self):
+        assert store._safe_asset_relpath("a\\b") == "a_b"
+        rel = store._safe_asset_relpath('q?:*"<>|x')
+        assert not any(c in rel for c in '?:*"<>|\\')
+
+    def test_save_and_load_roundtrip_for_spaced_slash_name(self, fake_lib_root):
+        # The exact case that raised FileNotFoundError on Windows.
+        store.upsert_metadata("global", "skills",
+                              "Code Interpreter / Sandbox Execution",
+                              description="works")
+        m = store.get_metadata("global", "skills",
+                               "Code Interpreter / Sandbox Execution")
+        assert m.description == "works"
+
+    def test_legacy_raw_path_still_read_after_sanitize(self, fake_lib_root):
+        # A file written under the raw asset_id before sanitize is still found
+        # (no prod metadata loss). A trailing-dot name is changed by sanitize
+        # yet its raw path is creatable on every OS, so this is portable.
+        d = fake_lib_root / "global" / "skills"
+        d.mkdir(parents=True)
+        (d / "MyAsset..meta.json").write_text(json.dumps({
+            "asset_id": "MyAsset.", "category": "skills",
+            "workspace": "global", "description": "legacy",
+        }), encoding="utf-8")
+        m = store.get_metadata("global", "skills", "MyAsset.")
+        assert m.description == "legacy"

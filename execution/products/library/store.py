@@ -170,8 +170,28 @@ class AssetMetadata:
     scoring_method: str = ""              # evals
 
 
+# Windows cannot create a path component with a trailing space or dot, and
+# treats "\" as a separator; POSIX tolerates both. asset_id may legitimately
+# use "/" to nest (e.g. "n8n Cron/Schedule Trigger"), so sanitize each
+# "/"-segment rather than the whole string: trim leading/trailing spaces and
+# dots and replace characters illegal in a Windows path component. Without this
+# an asset like "Code Interpreter / Sandbox Execution" nested into a
+# "Code Interpreter " directory (trailing space) that Windows can't create,
+# raising FileNotFoundError on write. POSIX-valid names without these edge
+# characters are unchanged.
+_ILLEGAL_SEG_CHARS = re.compile(r'[<>:"\\|?*\x00-\x1f]')
+
+
+def _safe_meta_segment(seg: str) -> str:
+    return _ILLEGAL_SEG_CHARS.sub("_", seg).strip(" .") or "_"
+
+
+def _safe_asset_relpath(asset_id: str) -> str:
+    return "/".join(_safe_meta_segment(s) for s in str(asset_id).split("/"))
+
+
 def meta_path(workspace: str, category: str, asset_id: str) -> Path:
-    return _ws_dir(workspace, category) / f"{asset_id}.meta.json"
+    return _ws_dir(workspace, category) / f"{_safe_asset_relpath(asset_id)}.meta.json"
 
 
 _KNOWN_FIELDS: set[str] | None = None
@@ -219,6 +239,15 @@ def get_metadata(workspace: str, category: str, asset_id: str) -> AssetMetadata:
     # to html-to-markdown.meta.json) continue to resolve. Write path is
     # unchanged -- save_metadata still writes to whatever asset_id the
     # caller passed, so new records are unaffected.
+    if not p.exists():
+        # Legacy: records written before meta_path sanitized segments live
+        # under the raw asset_id (POSIX allowed trailing spaces and "\"). Read
+        # the old file if present so no metadata is lost; it migrates to the
+        # sanitized path on the next save. On Windows the raw nested path can't
+        # exist, so this is a harmless no-op there.
+        raw = _ws_dir(workspace, category) / f"{asset_id}.meta.json"
+        if raw != p and raw.exists():
+            p = raw
     if not p.exists():
         slug = slugify(asset_id)
         if slug and slug != asset_id:
