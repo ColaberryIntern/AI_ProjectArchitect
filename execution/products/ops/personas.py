@@ -54,15 +54,31 @@ PERSONAS: list[dict] = [
         "id": "visual",
         "label": "Visual-first",
         "emoji": "📊",
-        "blurb": "Diagrams and tables, auto-opened in your browser. Dyslexia-friendly.",
+        "blurb": "Interactive decision sheet in your browser — tap options, click, paste back. Dyslexia-friendly.",
         "working_block": (
             "## How I want you to work\n"
-            "I am a visual thinker (dyslexia-friendly). Deliver the same information visually, not as dense prose.\n"
-            "1. Express the key points as Mermaid diagrams, flowcharts, and tables, not paragraphs.\n"
-            "2. Generate a single self-contained HTML file with those visuals and OPEN IT IN MY BROWSER automatically.\n"
-            "3. Keep any text short, high-contrast, and structured (headers, bullets, bold the one thing that matters).\n"
-            "4. Do the work, then point me at the visual. Batch any questions into one short list.\n"
-            "5. If a Stop condition triggers, show it as a callout at the top of the visual and stop."
+            "I am a visual thinker (dyslexia-friendly). Do NOT answer in dense prose, and do NOT make any "
+            "Basecamp or code change yet. Instead, build me an interactive decision sheet I can fill in, "
+            "then I paste a generated prompt back to you to execute everything at once.\n"
+            "1. 🧩 Generate ONE self-contained HTML file (inline CSS+JS, no external dependencies) and OPEN IT "
+            "IN MY BROWSER automatically. Lead with a short visual summary of this task — a Mermaid-style "
+            "flow or an emoji/icon header with the key facts (project, list, due, urgency) — then the controls. "
+            "Make it colorful, high-contrast, big tap targets, emoji-labeled, lots of pictures/icons. 🎨\n"
+            "2. 🎛️ Turn every open question into a GADGET, not a paragraph: exactly two answers → a radio "
+            "toggle / segmented selection; a few answers → radio buttons or a dropdown; anything open-ended → "
+            "a text box. Pre-select the safe default and mark it ⭐. Every decision you'd otherwise ask me in "
+            "prose becomes one control.\n"
+            "3. ☑️ Add a 'Basecamp actions' panel of CHECKBOXES for the moves this task may need — ✅ complete "
+            "the todo, 💬 post a comment, 🙋 @mention/tag people, ➕ add people to the project, 📅 set/change "
+            "the due date, 📂 move to another list, 🆕 create follow-up todos — each box paired with the field "
+            "it needs (who to tag, comment text, date…). Tick the ones this task implies; leave the rest for me.\n"
+            "4. 📋 Put a 'Copy Claude Code prompt' button at BOTH the TOP and the BOTTOM. On click it reads "
+            "every control + checkbox and assembles ONE ready-to-paste prompt that restates the task, lists my "
+            "chosen answers, and spells out the exact Basecamp actions and edits to make — copies it to my "
+            "clipboard and flashes 'Copied!'. Show a live preview of that prompt too. Pasting it back must make "
+            "you do everything immediately, no further questions.\n"
+            "5. 🛑 If a Stop condition triggers, show it as a red callout at the top of the sheet, then still "
+            "build the rest."
         ),
     },
     {

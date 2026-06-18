@@ -39,5 +39,30 @@ def test_visual_persona_requests_diagrams_and_browser():
     assert "browser" in block
 
 
+def test_visual_persona_is_an_interactive_decision_sheet():
+    """The visual-first delivery is a fill-in-the-blanks HTML form that
+    round-trips a ready-to-run prompt back into Claude Code — radios/toggles
+    for choices, text boxes for open answers, checkboxes for Basecamp moves,
+    and a 'Copy Claude Code prompt' button at top AND bottom. Locks in the
+    2026-06-18 upgrade so a future edit can't quietly drop a gadget."""
+    block = P.working_block("visual").lower()
+    # Input gadgets for questions.
+    assert "radio" in block          # two-answer toggle / segmented select
+    assert "dropdown" in block       # few-answer select
+    assert "text box" in block       # open-ended
+    # Basecamp action checkboxes.
+    assert "checkbox" in block
+    assert "basecamp actions" in block
+    assert "tag people" in block
+    assert "add people" in block
+    # The round-trip: a copy button at top and bottom, then paste-back executes.
+    assert "copy claude code prompt" in block
+    assert "top" in block and "bottom" in block
+    assert "clipboard" in block
+    assert "immediately" in block
+    # It must NOT silently make changes on the first pass.
+    assert "do not make any" in block or "do not make" in block
+
+
 def test_checklist_persona_tags_decisions():
     assert "[DECISION]" in P.working_block("checklist")

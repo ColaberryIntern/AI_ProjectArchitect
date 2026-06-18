@@ -130,7 +130,13 @@ keeps the deterministic ownership note, resources, and HTML-clean description.
 **Delivery personas — the operator picks how information reaches them.** The
 `## How I want you to work` block is not fixed: each operator chooses one of five
 personas (`personas.py`) — Co-pilot (paced, the default), Just the answer (BLUF),
-Visual-first (Mermaid diagrams auto-opened in the browser — dyslexia-friendly),
+Visual-first (builds an **interactive decision sheet**: a self-contained HTML form
+auto-opened in the browser with radio/toggle/dropdown gadgets for choices, text
+boxes for open answers, a Basecamp-actions checkbox panel — complete / comment /
+@mention / add people / due date / move / follow-ups — and a "Copy Claude Code
+prompt" button at top and bottom that assembles a ready-to-run prompt from the
+filled-in form, so the operator fills it, clicks, and pastes back to execute
+everything at once; dyslexia-friendly),
 Explain it to me (reasoning + teaching), Checklist doer. The choice is stored
 server-side on `tenancy.User.prompt_persona` (set via `POST /my-day/persona` from
 the selector at the top of the workspace page) and passed to `generate_prompt`
