@@ -323,7 +323,17 @@ def _walk_project_todos(
         for t in active_todos + completed_todos:
             _emit(t, src_id, src_name)
 
-    lists = _bc_get(f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token) or []
+    # PAGINATE the todolists fetch — do NOT single-page it. BC returns
+    # todolists in position order and APPENDS newly-created lists to the end,
+    # so a fresh list lands on page 2+ once a project has more than one page of
+    # lists. A single-page `_bc_get` here silently skips every list past page 1,
+    # which renders a just-created list's tasks invisible while the old lists
+    # keep showing — the 2026-06-18 incident (Ali added a batch of lists/tasks
+    # to project 47126345 and My Day showed only the old tasks). The todos and
+    # projects fetches already paginate; this one must too. Regression guard:
+    # test_ops_sync.py::test_paginates_todolists_so_new_lists_on_page_two_are_walked.
+    lists = list(_paginate(
+        f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token))
     for lst in lists:
         lst_id = lst.get("id")
         lst_name = lst.get("name") or "?"
@@ -338,8 +348,11 @@ def _walk_project_todos(
         # top level was empty. Each group has its own id and behaves like a
         # sub-list for the todos endpoint; attribute its todos to a
         # "<list>: <group>" name so the My Day grouping mirrors Basecamp.
-        groups = _bc_get(
-            f"/buckets/{bucket}/todolists/{lst_id}/groups.json", token) or []
+        # PAGINATE groups too — same append-to-the-end pagination semantics as
+        # todolists, so a newly-added group ("Week 13" under a list that
+        # already holds 12) is otherwise dropped.
+        groups = list(_paginate(
+            f"/buckets/{bucket}/todolists/{lst_id}/groups.json", token))
         for g in groups:
             gid = g.get("id")
             if not gid:
