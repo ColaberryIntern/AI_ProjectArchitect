@@ -24,7 +24,8 @@ from fastapi import Form
 from execution.products.library import auth_google, mcp_token, tenancy
 from execution.products.ops import (
     bc_comments, context_collector, llm_suggest, plan_inference,
-    rollup, scorer, store, suggestions, sync, sync_coordinator, tokens,
+    rollup, scorer, standing_orders, store, suggestions, sync,
+    sync_coordinator, tokens,
 )
 
 router = APIRouter(prefix="/my-day", tags=["my-day"])
@@ -608,29 +609,28 @@ async def ops_home(request: Request):
     # newly-promoted focus task, which made the dim overlay feel stuck.
     is_post_action = bool(request.query_params.get("done") or request.query_params.get("skip"))
     if focus:
-        # Try LLM enhancement first: pull recent comments, send to GPT,
-        # get specific steps + Claude Code prompt back. Cached per ticket.
+        # Try LLM enhancement first: pull recent comments, send to GPT, get
+        # ticket-specific FIELDS back (not a prompt). Cached per ticket.
         token, _src = tokens.get_user_token(user.email)
         enhanced = None
+        comments_text = ""
         if not is_post_action:
             comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
             enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
         if enhanced:
-            focus_suggestion = {
-                "action_kind": enhanced.get("action_kind", "default"),
-                "one_line": enhanced.get("goal_line", ""),
-                "steps": enhanced.get("specific_steps", []),
-                "stop_conditions": enhanced.get("stop_conditions", []),
-                "resources": [],
-                "urgency_summary": f"score {focus.urgency_score}" + (f" · due {focus.due_on}" if focus.due_on else ""),
-            }
-            focus_prompt = enhanced.get("claude_code_prompt", "")
+            # Fold the LLM fields into the deterministic suggestion so the focus
+            # card renders through the SAME BLUF generate_prompt as everything else.
+            focus_suggestion = suggestions.merge_llm_suggestion(focus, enhanced)
             focus_llm_source = "llm"
         else:
             # Deterministic fallback when OpenAI is unavailable, errors, or
             # we deliberately skipped it for the post-action snappy render.
             focus_suggestion = suggestions.build_suggestion(focus)
-            focus_prompt = suggestions.generate_prompt(focus, focus_suggestion)
+        # One BLUF renderer for both paths; standing orders + inlined comments
+        # on the focus card regardless of whether the LLM was available.
+        focus_prompt = standing_orders.append_orders(
+            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text)
+        )
 
     # Single-project context (used for big-picture banner)
     project_one = projects[0] if len(projects) == 1 else None
@@ -1187,24 +1187,18 @@ async def ops_decisions_report(request: Request):
     if focus:
         token, _ = tokens.get_user_token(user.email)
         enhanced = None
+        comments_text = ""
         if not is_post_action:
             comments_text = bc_comments.fetch_recent_comments(focus, token) if token else ""
             enhanced = llm_suggest.enhance(user.user_id, focus, comments_text)
         if enhanced:
-            focus_suggestion = {
-                "action_kind": enhanced.get("action_kind", "default"),
-                "one_line": enhanced.get("goal_line", ""),
-                "steps": enhanced.get("specific_steps", []),
-                "stop_conditions": enhanced.get("stop_conditions", []),
-                "summary_paragraph": enhanced.get("summary_paragraph", ""),
-                "resources": [],
-                "urgency_summary": f"score {focus.urgency_score}",
-            }
-            focus_prompt = enhanced.get("claude_code_prompt", "")
+            focus_suggestion = suggestions.merge_llm_suggestion(focus, enhanced)
             focus_llm_source = "llm"
         else:
             focus_suggestion = suggestions.build_suggestion(focus)
-            focus_prompt = suggestions.generate_prompt(focus, focus_suggestion)
+        focus_prompt = standing_orders.append_orders(
+            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text)
+        )
 
     project_one = next((p for p in projects if p.bc_id == project_filter_id), None) if project_filter_id else None
 

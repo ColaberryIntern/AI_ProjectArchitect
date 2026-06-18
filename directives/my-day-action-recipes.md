@@ -112,10 +112,23 @@ copied-prompt assembler (`workspace.html` `rebuildFullPrompt`) does NOT wrap the
 task in a `## Task` heading — the template self-titles with `# {title}`, and a
 wrapper produced a confusing double heading.
 
-**The CONTEXT block links the list and project, not just names them.** Both
-prompt paths — `generate_prompt` (deterministic) and the `claude_code_prompt`
-spec in `llm_suggest.py` — emit the **task URL, the list URL, and the project
-URL** in the CONTEXT block, derived from the todo's own app URL via
+**One renderer for every surface, including the LLM focus card.**
+`generate_prompt` is the single prompt assembler. The deterministic surfaces
+call it directly; the **LLM-enhanced focus card** (and the autopickup worker)
+call `llm_suggest.enhance` for ticket-specific *fields* (`goal_line`,
+`specific_steps`, `stop_conditions`), fold them into the deterministic
+suggestion with `merge_llm_suggestion`, and render through the **same**
+`generate_prompt`. `llm_suggest.py` no longer writes a `claude_code_prompt` — it
+returns fields only (cache `PROMPT_VERSION` bumped to `v5`). This is the runbook
+lesson applied again: a second prompt-assembler drifts; one template can't. The
+focus path passes `comments=` so recent BC thread text renders as a
+`## Recent comments` block, and the router appends `standing_orders` to the
+focus prompt on both the LLM and deterministic branches. `merge_llm_suggestion`
+keeps the deterministic ownership note, resources, and HTML-clean description.
+
+**The CONTEXT block links the list and project, not just names them.**
+`generate_prompt` emits the **task URL, the list URL, and the project URL** in
+the `## Task details` block, derived from the todo's own app URL via
 `execution/products/ops/bc_urls.py` (`OpsTodo.list_url` / `OpsTodo.project_url`;
 the rollup reuses the same module). A title is not a pointer: a fresh session
 must be able to open the list to see sibling tasks and judge project scale. When

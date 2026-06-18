@@ -270,6 +270,64 @@ def test_human_required_non_decision_kind_unaffected():
     assert s["owner_note"] == ""
 
 
+# ── merge_llm_suggestion: LLM fields folded into the deterministic BLUF base ─
+
+def test_merge_llm_suggestion_overrides_content_keeps_ownership():
+    t = _make("Decide on the vendor", desc=_HUMAN_DESC, category="human_required")
+    enhanced = {
+        "action_kind": "decision",
+        "goal_line": "A signed vendor decision memo posted to BC.",
+        "specific_steps": ["Choose ONE: (a) Acme (b) Globex (c) hold"],
+        "stop_conditions": ["If spend >$50k, escalate to Ram"],
+        "summary_paragraph": "Pick the vendor by Friday.",
+    }
+    s = S.merge_llm_suggestion(t, enhanced)
+    # LLM content wins.
+    assert s["deliverable"] == "A signed vendor decision memo posted to BC."
+    assert s["steps"] == ["Choose ONE: (a) Acme (b) Globex (c) hold"]
+    assert s["stop_conditions"] == ["If spend >$50k, escalate to Ram"]
+    assert s["summary_paragraph"] == "Pick the vendor by Friday."
+    # Deterministic ownership + resources survive.
+    assert "Ali Muwwakkil" in s["owner_note"]
+    assert s["resources"]
+
+
+def test_merge_llm_suggestion_rekeys_one_line_on_kind_change():
+    # Deterministic match is 'decision' (title has "decide"); the LLM says
+    # 'reply'. one_line must follow the LLM kind, not keep the decision verb.
+    t = _make("Decide and reply to Karun")
+    s = S.merge_llm_suggestion(
+        t, {"action_kind": "reply", "goal_line": "A sent reply.",
+            "specific_steps": ["Send: 'Hi Karun...'"]},
+    )
+    assert s["action_kind"] == "reply"
+    assert "Make the call" not in s["one_line"]
+
+
+def test_merge_llm_suggestion_robust_to_partial_result():
+    t = _make("Approve the plan")
+    base = build_suggestion(t)
+    s = S.merge_llm_suggestion(
+        t, {"goal_line": "", "specific_steps": [], "stop_conditions": "nope"},
+    )
+    assert s["steps"] == base["steps"]
+    assert s["deliverable"] == base["deliverable"]
+    assert s["stop_conditions"] == base["stop_conditions"]
+
+
+def test_generate_prompt_includes_comments_block_when_present():
+    prompt = generate_prompt(
+        _make("Reply to Karun"),
+        comments="[Karun, 2026-06-10] Can you send the export?",
+    )
+    assert "## Recent comments" in prompt
+    assert "Can you send the export?" in prompt
+
+
+def test_generate_prompt_omits_comments_block_when_absent():
+    assert "## Recent comments" not in generate_prompt(_make("Reply to Karun"))
+
+
 # ── BC-description HTML → plain text for the copied prompt ──────────────────
 
 def test_html_to_text_converts_bc_description():

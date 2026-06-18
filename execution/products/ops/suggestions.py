@@ -346,6 +346,49 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
     }
 
 
+def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, Any]:
+    """Fold an LLM `enhance()` result into the deterministic suggestion so the
+    focus card renders through the SAME BLUF `generate_prompt` as every other
+    surface — one template, no second prompt-assembler to drift (the lesson from
+    the duplicated runbook).
+
+    Start from `build_suggestion` (deterministic: ownership, resources, urgency,
+    HTML-clean description) and override only the ticket-specific content the LLM
+    is better at: the deliverable (`goal_line`), steps, and stop conditions. When
+    the LLM's action_kind differs, re-key `one_line`/`deliverable` defaults off
+    the matching recipe so the task line can't read "This is a reply task. Make
+    the call…". `summary_paragraph` is carried for the focus-card UI (the copied
+    prompt ignores it).
+
+    Robust to a partial/garbage result: each field overrides only when present
+    and well-typed; otherwise the deterministic value stands.
+    """
+    s = build_suggestion(todo)
+
+    kind = (enhanced.get("action_kind") or "").strip().lower()
+    if kind:
+        s["action_kind"] = kind
+        lookup = "reply" if kind == "email" else kind
+        recipe = next((r for r in _RECIPES if r["kind"] == lookup), _DEFAULT_RECIPE)
+        s["one_line"] = recipe["one_line"]
+        s["deliverable"] = recipe["deliverable"]
+
+    goal = (enhanced.get("goal_line") or "").strip()
+    if goal:
+        s["deliverable"] = goal
+
+    steps = enhanced.get("specific_steps")
+    if isinstance(steps, list) and steps:
+        s["steps"] = [str(x) for x in steps]
+
+    stops = enhanced.get("stop_conditions")
+    if isinstance(stops, list) and stops:
+        s["stop_conditions"] = [str(x) for x in stops]
+
+    s["summary_paragraph"] = (enhanced.get("summary_paragraph") or "").strip()
+    return s
+
+
 # BLUF (Bottom Line Up Front): the first three sections answer the questions a
 # newcomer asks before doing anything — what am I being asked to do, what do I
 # hand back (and who owns the call), and what stops me. Everything heavier
@@ -372,7 +415,7 @@ This is a **{action_kind}** task. {one_line}
 
 {description_block}
 
-## Suggested steps
+{comments_block}## Suggested steps
 {steps_block}
 
 ## Lean on
@@ -451,12 +494,25 @@ def _html_to_text(html: str) -> str:
     return out.strip()
 
 
-def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> str:
-    """A ready-to-paste Claude Code prompt for this specific todo."""
+def generate_prompt(
+    todo: OpsTodo,
+    suggestion: dict[str, Any] | None = None,
+    comments: str = "",
+) -> str:
+    """A ready-to-paste Claude Code prompt for this specific todo.
+
+    `comments` (optional) is recent BC thread text; when present it renders a
+    `## Recent comments` block below the description. The focus card passes it
+    so the LLM-enhanced prompt keeps the thread context inline; other surfaces
+    omit it and the block is absent.
+    """
     s = suggestion or build_suggestion(todo)
 
     desc_text = _html_to_text(todo.description) if todo.description else ""
     description_block = f"## Description\n{desc_text}" if desc_text else ""
+    comments_block = (
+        f"## Recent comments\n{comments.strip()}\n\n" if comments and comments.strip() else ""
+    )
     steps_block = "\n".join(f"{i+1}. {step}" for i, step in enumerate(s["steps"]))
     resources_block = (
         "\n".join(f"- **{r['kind']}** `{r['name']}` — {r['why']}" for r in s["resources"])
@@ -480,6 +536,7 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
         bc_app_url=todo.bc_app_url or "(no URL)",
         dependency_block=_dependency_block(todo),
         description_block=description_block,
+        comments_block=comments_block,
         action_kind=s["action_kind"],
         one_line=s["one_line"],
         deliverable=s["deliverable"],

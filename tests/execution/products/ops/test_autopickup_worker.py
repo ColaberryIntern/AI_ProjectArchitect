@@ -37,6 +37,10 @@ def _todo(bc_id, *, project=7463955, status="active",
         due_on=due, is_dismissed=dismissed,
         description="", bc_project_name="Ali Personal",
         bc_todolist_name="AI Products", bc_app_url=f"https://bc/{bc_id}",
+        # project_url/list_url are real OpsTodo properties; the prompt renderer
+        # reads them, so the stub must supply them too.
+        project_url=f"https://bc/{bc_id}/proj",
+        list_url=f"https://bc/{bc_id}/list",
         bc_updated_at="2026-06-09T10:00:00Z",
     )
 
@@ -270,19 +274,27 @@ class TestScanForUser:
                                        lambda e: [_todo(123, urgency=99)])
         self._stub_bc(monkeypatch)
         self._stub_llm_yes(monkeypatch)
-        self._stub_post_ok(monkeypatch)
-        # Stub the enhance pairing so it's not a real LLM call
-        import sys
-        ls_mod = type(sys)("ls_stub")
-        ls_mod.enhance = lambda uid, t, c: {"claude_code_prompt": "PROMPT"}
-        monkeypatch.setitem(sys.modules,
-                                       "execution.products.ops.llm_suggest", ls_mod)
-        # Stub tenancy lookup
-        import sys as _sys
-        ten_mod = type(_sys)("ten_stub")
-        ten_mod.get_user = lambda email: SimpleNamespace(user_id="u-1")
-        monkeypatch.setitem(_sys.modules,
-                                       "execution.products.library.tenancy", ten_mod)
+        # Capture the posted comment so we can assert the embedded prompt.
+        posted = {}
+        monkeypatch.setattr(wi, "_bc_post_comment",
+                            lambda b, t, h, tok: (posted.update(html=h)
+                                                  or (True, "ok",
+                                                      {"id": 999, "app_url": "u"})))
+        # Stub the enhance pairing (FIELDS now, not a hand-written prompt).
+        # Patch the REAL module attributes, not sys.modules: the worker does
+        # `from . import llm_suggest`, and once any other module (e.g. my_day)
+        # has imported the real submodule, that bound attribute wins over a
+        # sys.modules swap — so a setitem stub would be silently bypassed.
+        from execution.products.ops import llm_suggest as _ls
+        monkeypatch.setattr(_ls, "enhance", lambda uid, t, c: {
+            "action_kind": "decision",
+            "goal_line": "A vendor decision posted to BC.",
+            "specific_steps": ["Choose ONE: (a) Acme (b) Globex"],
+            "stop_conditions": [],
+        })
+        from execution.products.library import tenancy as _ten
+        monkeypatch.setattr(_ten, "get_user",
+                            lambda email: SimpleNamespace(user_id="u-1"))
 
         # File-based allowlist with one bucket
         (wi.ALLOWLIST_FILE.parent).mkdir(parents=True, exist_ok=True)
@@ -293,6 +305,10 @@ class TestScanForUser:
         r = wi.scan_for_user("ali@colaberry.com")
         assert r["drafted"] == 1
         assert r["buckets_checked"] == 1
+        # The embedded prompt is rendered through the shared BLUF template from
+        # the LLM fields (not a hand-written claude_code_prompt).
+        assert "## You hand back" in posted["html"]
+        assert "A vendor decision posted to BC." in posted["html"]
 
     def test_skips_when_already_drafted_in_recent_comments(self, monkeypatch):
         monkeypatch.setattr(wi.tokens, "get_user_token",
