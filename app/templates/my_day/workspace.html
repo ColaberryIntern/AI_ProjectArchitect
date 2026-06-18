@@ -188,7 +188,10 @@ function rebuildFullPrompt() {
     parts.push('## Notes from ' + (window._actor || 'me') + '\n\n' + notes + '\n');
   }
   parts.push(_setupBlock(wsUrl));
-  parts.push('## Task\n\n' + taskPrompt);
+  // The task prompt self-titles with a top-level `# {title}` heading (see
+  // _PROMPT_TEMPLATE), so no `## Task` wrapper here — wrapping produced a
+  // confusing double heading (## Task then the prompt's own header).
+  parts.push(taskPrompt);
 
   _fullPrompt = parts.join('\n');
   // innerText setter turns \n into <br>, so the preview renders line breaks
