@@ -34,11 +34,14 @@ Tool call `colaberry_attachment_fetch(args)`:
     via `basecamp.fetch_by_recording`. This is the path for "Briefs to read
     first" / vault links, which expose only the recording id, never the sgid.
     If that recording id is a **Document** rather than an upload (e.g. a "Lab
-    Spec" linked in a comment), the uploads endpoint 404s and the tool
-    transparently falls back to
+    Spec" linked in a comment, or any `.../documents/<id>` link), the uploads
+    endpoint 404s and the tool transparently falls back to
     `GET /buckets/{project}/documents/{recording_id}.json`, materializing the
     document's inline `content` HTML as a `text/html` file named `<title>.html`.
-    No extra args required.
+    No extra args required. **For a Document, the rendered text is ALSO returned
+    inline as `content_text`** (see Outputs) so the operator can read/summarize
+    it in-session without a Google Drive connector — the Drive copy is still
+    staged for audit.
 - Drive args (required when `source="drive"`):
   - `drive_file_id`: Drive file id — passthrough mode; the tool re-resolves
     metadata + returns the same ref without re-uploading (must be a file
@@ -71,6 +74,19 @@ JSON object with these keys:
   "reused_existing": false
 }
 ```
+
+**Basecamp Documents only** carry two extra keys so the operator can read the
+body without a Drive connector:
+
+- `content_text`: the document's HTML rendered to readable text, capped at
+  `_INLINE_TEXT_CAP` (50,000 chars). Returned on the first fetch AND on cache
+  hits (the body is re-fetched cheaply since the index stores only the Drive
+  ref). Binary uploads (pdf/docx/images) never carry `content_text`.
+- `content_truncated`: `true` when the rendered text exceeded the cap; the
+  inline copy ends with a note pointing at `drive_url` for the full document.
+- On a cache hit where the live re-fetch of the body fails, `content_text` is
+  omitted and `content_text_unavailable` explains that the Drive copy was
+  reused — open `drive_url` to read it.
 
 Error case:
 
@@ -115,7 +131,10 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
      on a 404 there (the id is a Document, not an upload) falls back to
      `basecamp_attachment.fetch_document(...)`, which returns the document's
      inline HTML body as a `.html` file. BC token comes from the existing
-     `_bc_token(user)` chain.
+     `_bc_token(user)` chain. When the fetched item is a Document (`text/html`
+     from a `basecamp` source), the handler renders the HTML to text via
+     `_html_to_text` and adds `content_text`/`content_truncated` to the result
+     (see Outputs) — in addition to staging the `.html` to Drive.
    - `drive_attachment.fetch(drive_file_id, access_token)` → `(filename,
      mime_type, metadata)` — no bytes, this is a metadata-only passthrough.
 6. For non-Drive sources: upload bytes to Drive via `drive_staging.upload(
@@ -153,6 +172,15 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
 - **Document payload has no `content` field** → return
   `error: "basecamp_document_no_content"`. Should not happen for a normal BC
   Document; defensive against API shape drift.
+- **Document body exceeds the inline cap** (`_INLINE_TEXT_CAP`, 50,000 chars of
+  rendered text) → return `content_text` truncated to the cap with a trailing
+  note pointing at `drive_url`, and `content_truncated: true`. Never silently
+  drop the tail — the full document is in Drive. Protects the model's context
+  window from a huge doc pasted inline.
+- **Cache hit on a Document, but the live body re-fetch fails** → still return
+  the cached Drive ref with `reused_existing: true`; omit `content_text` and add
+  `content_text_unavailable` so the caller knows to open `drive_url`. A stale
+  Drive ref must never block returning *something* usable.
 - **Drive quota exceeded** during upload → return
   `error: "drive_quota_exceeded"`. The operator owns the quota; surface the
   failure rather than retrying.
@@ -205,6 +233,11 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
   sanitized for the filename); an id that 404s on both returns
   `basecamp_recording_not_found`; a document with no `content` returns
   `basecamp_document_no_content`.
+- Inline-text test (handler level): a BC Document fetch returns `content_text`
+  (HTML rendered to text, tags stripped, entities unescaped) alongside the Drive
+  ref; a binary (pdf) fetch returns NO `content_text`; an over-cap document sets
+  `content_truncated: true`; a cache hit still returns `content_text` by
+  re-fetching the body. `_html_to_text` is unit-tested directly.
 - Idempotency test: two calls with the same args → one Drive upload, two
   identical refs returned.
 - Auth boundary test: call with a `cmcp_*` token whose operator has no vault

@@ -426,6 +426,149 @@ def test_mcp_basecamp_validation_allows_missing_sgid(fake_user):
     assert "missing_required" not in res["error"]
 
 
+# ── Inline document text (read a BC Document in-session, no Drive connector) ──
+
+
+def _bc_document_attachment(html: str):
+    """A FetchedAttachment shaped like basecamp.fetch_document's output."""
+    from execution.products.library.attachment_sources import FetchedAttachment
+    data = html.encode("utf-8")
+    return FetchedAttachment(
+        filename="Updated Program Details.html",
+        mime_type="text/html",
+        size_bytes=len(data),
+        sender="AI Systems Architect Accelerator",
+        data=data,
+    )
+
+
+def test_html_to_text_strips_tags_and_unescapes_entities():
+    from execution.products.library import mcp_tools
+    html = ("<h1>Title</h1><p>Cost is &amp;1,500.</p>"
+            "<ul><li>Item A</li><li>Item B</li></ul>")
+    text = mcp_tools._html_to_text(html)
+    assert "<" not in text and ">" not in text   # tags gone
+    assert "Title" in text
+    assert "Cost is &1,500." in text             # &amp; -> &
+    assert "Item A" in text and "Item B" in text
+    assert "\n" in text                          # block elements broke lines
+
+
+def test_attachment_fetch_basecamp_document_returns_inline_text(
+        fake_user, monkeypatch, tmp_path):
+    """A BC Document fetch stages the .html to Drive AND returns the rendered
+    text inline as content_text -- the fix for 'I have no Drive connector to
+    read it'. (Swati's scenario.)"""
+    from execution.products.library import mcp_tools, drive_staging
+
+    monkeypatch.setattr(attachment_index, "INDEX_DIR", tmp_path)
+    monkeypatch.setattr(google_oauth_token, "get_access_token_for_operator",
+                        lambda user: "access-token")
+    monkeypatch.setattr(mcp_tools, "_bc_token", lambda user: "bc-token")
+    html = ("<div><h1>Updated Program Details</h1>"
+            "<p>Cost is &amp;1,500.</p><p>Duration: 12 weeks.</p></div>")
+    monkeypatch.setattr(bc_source, "fetch_by_recording",
+                        lambda *a, **k: _bc_document_attachment(html))
+    monkeypatch.setattr(
+        drive_staging, "upload",
+        lambda **k: {"id": "DRIVE_DOC_ID",
+                     "webViewLink": "https://drive.google.com/file/d/DRIVE_DOC_ID/view"})
+
+    res = mcp_tools._tool_attachment_fetch(
+        fake_user,
+        {"source": "basecamp", "project_id": 47502609, "recording_id": 10010113835},
+    )
+    assert res["ok"] is True
+    assert res["drive_file_id"] == "DRIVE_DOC_ID"     # still staged to Drive
+    assert res["content_truncated"] is False
+    assert "Updated Program Details" in res["content_text"]
+    assert "Duration: 12 weeks." in res["content_text"]
+    assert "Cost is &1,500." in res["content_text"]   # entity unescaped
+    assert "<h1>" not in res["content_text"]           # tags stripped
+
+
+def test_attachment_fetch_binary_attachment_has_no_inline_text(
+        fake_user, monkeypatch, tmp_path):
+    """A non-document (pdf) attachment stays Drive-only -- no content_text."""
+    from execution.products.library import mcp_tools, drive_staging
+    from execution.products.library.attachment_sources import FetchedAttachment
+
+    monkeypatch.setattr(attachment_index, "INDEX_DIR", tmp_path)
+    monkeypatch.setattr(google_oauth_token, "get_access_token_for_operator",
+                        lambda user: "access-token")
+    monkeypatch.setattr(mcp_tools, "_bc_token", lambda user: "bc-token")
+    pdf = FetchedAttachment(filename="brief.pdf", mime_type="application/pdf",
+                            size_bytes=10, sender="Some Project", data=b"%PDF-1.7..")
+    monkeypatch.setattr(bc_source, "fetch_by_recording", lambda *a, **k: pdf)
+    monkeypatch.setattr(drive_staging, "upload",
+                        lambda **k: {"id": "DRIVE_PDF", "webViewLink": "u"})
+
+    res = mcp_tools._tool_attachment_fetch(
+        fake_user,
+        {"source": "basecamp", "project_id": 47502609, "recording_id": 9946496378},
+    )
+    assert res["ok"] is True
+    assert "content_text" not in res
+    assert "content_truncated" not in res
+
+
+def test_attachment_fetch_document_truncates_large_text(
+        fake_user, monkeypatch, tmp_path):
+    """A very large document is capped inline (with a pointer to Drive) so it
+    can't blow the model's context; the full copy is still staged."""
+    from execution.products.library import mcp_tools, drive_staging
+
+    monkeypatch.setattr(attachment_index, "INDEX_DIR", tmp_path)
+    monkeypatch.setattr(google_oauth_token, "get_access_token_for_operator",
+                        lambda user: "access-token")
+    monkeypatch.setattr(mcp_tools, "_bc_token", lambda user: "bc-token")
+    big = "<p>" + ("word " * 20000) + "</p>"   # ~100k chars of text
+    monkeypatch.setattr(bc_source, "fetch_by_recording",
+                        lambda *a, **k: _bc_document_attachment(big))
+    monkeypatch.setattr(drive_staging, "upload",
+                        lambda **k: {"id": "D", "webViewLink": "u"})
+
+    res = mcp_tools._tool_attachment_fetch(
+        fake_user, {"source": "basecamp", "project_id": 1, "recording_id": 2})
+    assert res["content_truncated"] is True
+    assert "truncated" in res["content_text"].lower()
+    assert "drive_url" in res["content_text"]
+    assert len(res["content_text"]) < mcp_tools._INLINE_TEXT_CAP + 200
+
+
+def test_attachment_fetch_document_cache_hit_still_returns_inline_text(
+        fake_user, monkeypatch, tmp_path):
+    """A repeat call hits the idempotency cache (reused_existing) but STILL
+    returns content_text -- by re-fetching just the document body -- so a
+    second 'read it' doesn't regress to the unreadable Drive ref."""
+    from execution.products.library import mcp_tools
+
+    monkeypatch.setattr(attachment_index, "INDEX_DIR", tmp_path)
+    key = attachment_index.compute_key(
+        source="basecamp", project_id=47502609, recording_id=10010113835, sgid="")
+    attachment_index.record(fake_user.email, attachment_index.AttachmentRef(
+        idempotency_key=key, source="basecamp",
+        drive_file_id="DRIVE_DOC_ID",
+        drive_url="https://drive.google.com/file/d/DRIVE_DOC_ID/view",
+        mime_type="text/html", size_bytes=42,
+        filename="Updated Program Details.html",
+        sender="AI Systems Architect Accelerator",
+        saved_at="2026-06-18T00:00:00Z",
+        source_message_id="10010113835", source_attachment_id="",
+    ))
+    monkeypatch.setattr(mcp_tools, "_bc_token", lambda user: "bc-token")
+    monkeypatch.setattr(bc_source, "fetch_document",
+                        lambda *a, **k: _bc_document_attachment("<p>Revised cost is $2,000.</p>"))
+
+    res = mcp_tools._tool_attachment_fetch(
+        fake_user,
+        {"source": "basecamp", "project_id": 47502609, "recording_id": 10010113835},
+    )
+    assert res["reused_existing"] is True
+    assert res["drive_file_id"] == "DRIVE_DOC_ID"
+    assert "Revised cost is $2,000." in res["content_text"]
+
+
 # ── Drive passthrough adapter ──────────────────────────────────────────
 
 
