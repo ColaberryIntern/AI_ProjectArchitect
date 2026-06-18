@@ -35,12 +35,20 @@ Every sync starts from one of these four code paths. All four funnel through `Sy
 
 | # | Trigger | Code path | Behavior |
 |---|---|---|---|
-| 1 | Manual ↻ Sync button | `POST /my-day/sync` → spawns thread → `sync.pull_todos_for_user` | Redirects immediately with `?sync_started=1`; banner polls real status |
-| 2 | Page load (natural-flow) | `GET /my-day/` → `_natural_flow_sync` → background thread → `sync.pull_todos_for_user` | Non-blocking; only fires when stale or last status ≠ `ok` |
+| 1 | Manual ↻ Sync button | `POST /my-day/sync` → spawns thread → (focused `pull_todos_for_project` if a project filter is active, then) `sync.pull_todos_for_user` | Redirects immediately with `?sync_started=1`; banner polls real status |
+| 2 | Page load (natural-flow) | `GET /my-day/` → `_natural_flow_sync` → background thread (`_kick_bg_full_sync(focus_project_id=...)`) → (focused `pull_todos_for_project` then) `sync.pull_todos_for_user` | Non-blocking; only fires when stale or last status ≠ `ok` |
 | 3 | Mark Done | `POST /my-day/todo/{id}/complete` → `_sync_with_budget` → `sync.pull_todos_for_user` | Blocks up to 6 seconds; targeted re-sync of the project Mark Done touched lands first via `pull_todos_for_project` |
 | 4 | 5-min APScheduler cron | `execution/products/ops/scheduler._sync_all_users` → for each user with a vault token → `sync.pull_todos_for_user` | Background; backstop when none of the other triggers have fired |
 
 If a trigger fires while another sync is already running for that operator, `try_start_sync` returns `False` and the thread short-circuits with `{"status": "already_running"}`. The user-visible banner still polls and reloads when the in-flight sync completes.
+
+### Focused-project walk: the viewed project always matches Basecamp (2026-06-18)
+
+Triggers 1 and 2 fire while the operator is looking at a **specific** project (the `project=<bucket>` filter in the My Day URL). When that filter is present, the background thread walks **that project first** via the targeted, budget-exempt `pull_todos_for_project`, *then* runs the full `pull_todos_for_user` sweep for everything else. Both calls go through `SyncCoordinator` sequentially in the one thread, so they never race each other and the targeted data lands even if the full sweep then no-ops via `already_running`.
+
+**Why this exists.** The full sweep walks projects under a round-robin cursor (`state.last_walked_bc_id`) capped at `SYNC_BUDGET_SECONDS` (120s). An operator with more projects than fit in one budget window — **CB System sees 50+** — can trigger sync after sync and never have the project they are *staring at* refreshed, because the cursor keeps deferring it past the budget. This is the **2026-06-18 follow-up incident** to the #53 pagination fix: Ali's My Day for project 47126345 still didn't match Basecamp after repeated syncs, not because of pagination (that was fixed in #53) but because the budgeted round-robin full sweep kept skipping that bucket. Routing the *viewed* project through the single-project walk (~2-3s, no budget cap) makes "My Day matches Basecamp for the project I'm viewing, after a sync, **no matter what**" a hard guarantee. The full sweep still keeps every *other* project converged via the cron and unfiltered page loads.
+
+This must stay **non-blocking** — `_natural_flow_sync` still returns immediately and never reloads state inline (the page-freeze invariant below). The focused walk runs on the background thread, not in the request path. Regression guards: `test_my_day_natural_flow_sync.py::TestKickBgFullSync::test_focus_project_walks_targeted_project_first` / `::test_no_focus_project_skips_targeted_walk`, `::TestNaturalFlowSync::test_project_view_kicks_focused_sync`, and `test_my_day_sync_redirect.py::test_sync_with_project_walks_that_project_targeted`.
 
 ## Mutual exclusion: `SyncCoordinator`
 

@@ -30,11 +30,12 @@ def _fresh_coordinator():
 @pytest.fixture
 def stub_kick(monkeypatch):
     """Replace _kick_bg_full_sync with a recorder so tests can assert
-    whether a sync was kicked without actually firing one."""
-    calls: list[str] = []
+    whether a sync was kicked (and with which focus project) without
+    actually firing one. Records (email, focus_project_id) tuples."""
+    calls: list[tuple] = []
     monkeypatch.setattr(
         my_day_router, "_kick_bg_full_sync",
-        lambda email: calls.append(email),
+        lambda email, focus_project_id=None: calls.append((email, focus_project_id)),
     )
     return calls
 
@@ -58,10 +59,22 @@ class TestNaturalFlowSync:
         assert stub_kick == []
 
     def test_stale_and_ok_kicks(self, stub_kick):
-        """Age 300s + status='ok' → past 90s threshold, kick a refresh."""
+        """Age 300s + status='ok' → past 90s threshold, kick a refresh.
+        No project filter → focus_project_id is None."""
         state = _state(age_seconds=300, status="ok")
         my_day_router._natural_flow_sync("u@x.com", state, None)
-        assert stub_kick == ["u@x.com"]
+        assert stub_kick == [("u@x.com", None)]
+
+    def test_project_view_kicks_focused_sync(self, stub_kick):
+        """When the operator is viewing one project, the kicked sync must
+        carry that project as focus_project_id so it's walked targeted
+        (budget-exempt) — the 2026-06-18 'sync still doesn't match BC'
+        fix. Without the focus, the full sweep's round-robin
+        SYNC_BUDGET_SECONDS cursor can defer the viewed project run after
+        run for an operator (CB System) with 50+ projects."""
+        state = _state(age_seconds=300, status="ok")
+        my_day_router._natural_flow_sync("u@x.com", state, 47126345)
+        assert stub_kick == [("u@x.com", 47126345)]
 
     def test_fresh_but_partial_kicks(self, stub_kick):
         """H4 fix: age 30s but last sync was 'partial' → kick anyway
@@ -70,7 +83,7 @@ class TestNaturalFlowSync:
         that consistently errors during sync."""
         state = _state(age_seconds=30, status="partial")
         my_day_router._natural_flow_sync("u@x.com", state, None)
-        assert stub_kick == ["u@x.com"], (
+        assert stub_kick == [("u@x.com", None)], (
             "fresh-but-partial state must trigger retry — H4 regression"
         )
 
@@ -79,7 +92,7 @@ class TestNaturalFlowSync:
         complete; we should retry rather than report stale data as fresh."""
         state = _state(age_seconds=30, status="failed")
         my_day_router._natural_flow_sync("u@x.com", state, None)
-        assert stub_kick == ["u@x.com"]
+        assert stub_kick == [("u@x.com", None)]
 
     def test_never_synced_kicks(self, stub_kick):
         """Brand-new user with no sync history → always kick. Documents
@@ -87,7 +100,14 @@ class TestNaturalFlowSync:
         'ok', so the gate falls open."""
         state = store.OpsState(user_id="u@x.com")
         my_day_router._natural_flow_sync("u@x.com", state, None)
-        assert stub_kick == ["u@x.com"]
+        assert stub_kick == [("u@x.com", None)]
+
+    def test_fresh_and_ok_does_not_kick_even_with_project(self, stub_kick):
+        """The focus-project routing must not weaken the freshness gate:
+        a fresh+ok store still does NO sync, project filter or not."""
+        state = _state(age_seconds=30, status="ok")
+        assert my_day_router._natural_flow_sync("u@x.com", state, 47126345) is False
+        assert stub_kick == []
 
     def test_never_returns_true_inline_sync(self, stub_kick):
         """Per the docstring contract: this function NEVER reloads state
@@ -155,6 +175,51 @@ class TestKickBgFullSync:
             if called: break
             _t.sleep(0.01)
         assert called == ["u@x.com"]
+
+    def test_focus_project_walks_targeted_project_first(self, monkeypatch):
+        """With focus_project_id, the thread must walk THAT project via the
+        budget-exempt pull_todos_for_project BEFORE the full sweep — so the
+        project the operator is viewing always matches BC even when the full
+        sweep's round-robin budget would defer it. Order matters: targeted
+        first, then full."""
+        order: list[str] = []
+        def _stub_project(email, project_id, *a, **kw):
+            order.append(f"project:{project_id}")
+            return {"status": "ok", "project_id": project_id}
+        def _stub_full(email, *a, **kw):
+            order.append("full")
+            return {"status": "ok"}
+        monkeypatch.setattr(my_day_router.sync, "pull_todos_for_project", _stub_project)
+        monkeypatch.setattr(my_day_router.sync, "pull_todos_for_user", _stub_full)
+        monkeypatch.setattr(my_day_router.scorer, "score_all_todos",
+                            lambda *a, **kw: None)
+        my_day_router._kick_bg_full_sync("u@x.com", focus_project_id=47126345)
+        import time as _t
+        for _ in range(100):
+            if "full" in order: break
+            _t.sleep(0.01)
+        assert order == ["project:47126345", "full"]
+
+    def test_no_focus_project_skips_targeted_walk(self, monkeypatch):
+        """Default (no focus) must NOT call pull_todos_for_project — the
+        unfiltered queue view kicks only the full sweep, unchanged."""
+        project_calls: list = []
+        monkeypatch.setattr(
+            my_day_router.sync, "pull_todos_for_project",
+            lambda *a, **kw: project_calls.append(a) or {"status": "ok"})
+        full_done: list = []
+        monkeypatch.setattr(
+            my_day_router.sync, "pull_todos_for_user",
+            lambda *a, **kw: full_done.append(True) or {"status": "ok"})
+        monkeypatch.setattr(my_day_router.scorer, "score_all_todos",
+                            lambda *a, **kw: None)
+        my_day_router._kick_bg_full_sync("u@x.com")
+        import time as _t
+        for _ in range(100):
+            if full_done: break
+            _t.sleep(0.01)
+        assert full_done == [True]
+        assert project_calls == []
 
     def test_router_does_not_maintain_lock_dict_anymore(self):
         """Regression guard: the function-attribute `_locks` dict on
