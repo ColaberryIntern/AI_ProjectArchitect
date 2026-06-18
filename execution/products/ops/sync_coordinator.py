@@ -29,16 +29,22 @@ cron) all use the same primitive.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
 
 
-# Stale-lock backstop. Real syncs observed at ~30-60s; 120s leaves comfortable
-# margin so a healthy-but-slow sync isn't pre-empted, but a SIGKILL'd or
-# crashed worker doesn't strand the user for more than 2 minutes.
-# Tunable via constant on the class so tests can shorten it.
-LOCK_TTL_SECONDS_DEFAULT = 120.0
+# Stale-lock backstop. Real syncs run ~30-60s, but a walk that retries through
+# a Cloudflare 522 burst (bounded by sync.PROJECT_SYNC_BUDGET_SECONDS, ~180s)
+# can legitimately run several minutes. The TTL MUST exceed that ceiling: if it
+# doesn't, a long-but-HEALTHY retry-extended walk gets treated as crashed at
+# the TTL and a SECOND walk starts in parallel — piling extra load onto an
+# already-struggling Basecamp (the failure mode the 2026-06-18 522 storm would
+# have triggered at the old 120s). 300s sits comfortably above the per-project
+# walk ceiling while still reclaiming a genuinely crashed worker's slot within
+# 5 minutes. Tunable via env (and the class arg, so tests can shorten it).
+LOCK_TTL_SECONDS_DEFAULT = float(os.environ.get("OPS_SYNC_LOCK_TTL_SECONDS", "300"))
 
 
 @dataclass
