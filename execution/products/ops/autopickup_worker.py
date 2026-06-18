@@ -504,7 +504,9 @@ def scan_for_user(user_email: str) -> dict:
                 if enhanced:
                     suggestion = suggestions.merge_llm_suggestion(t, enhanced)
                     cc_prompt = standing_orders.append_orders(
-                        suggestions.generate_prompt(t, suggestion, comments=comments_blob)
+                        suggestions.generate_prompt(
+                            t, suggestion, comments=comments_blob,
+                            persona=getattr(u, "prompt_persona", None))
                     )
             except Exception:
                 logger.warning("autopickup: enhance() pairing failed for %s",

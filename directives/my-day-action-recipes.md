@@ -23,6 +23,7 @@ code can never disagree silently.
 | Concern | File |
 |---|---|
 | Action-recipe table + recommendation reframing + prompt template | `execution/products/ops/suggestions.py` |
+| Delivery personas (the "How I want you to work" block) + selector save | `execution/products/ops/personas.py`, `app/routers/my_day.py` (`/persona`), `tenancy.User.prompt_persona`, `app/templates/my_day/workspace.html` |
 | "How to run this prompt" runbook — single source `_mdSetupBlock` — + the card/list Copy button | `app/templates/my_day/_my_day_styles.html` (`_mdSetupBlock`, `copyPrompt`) |
 | Workspace-page notes box + Copy button (reuses `_mdSetupBlock`) | `app/templates/my_day/workspace.html` (`rebuildFullPrompt`, `copyWorkspacePrompt`) |
 | Shared button classes + 5-band heat colors + scatter panel CSS | `app/templates/my_day/_my_day_styles.html` |
@@ -125,6 +126,21 @@ focus path passes `comments=` so recent BC thread text renders as a
 `## Recent comments` block, and the router appends `standing_orders` to the
 focus prompt on both the LLM and deterministic branches. `merge_llm_suggestion`
 keeps the deterministic ownership note, resources, and HTML-clean description.
+
+**Delivery personas — the operator picks how information reaches them.** The
+`## How I want you to work` block is not fixed: each operator chooses one of five
+personas (`personas.py`) — Co-pilot (paced, the default), Just the answer (BLUF),
+Visual-first (Mermaid diagrams auto-opened in the browser — dyslexia-friendly),
+Explain it to me (reasoning + teaching), Checklist doer. The choice is stored
+server-side on `tenancy.User.prompt_persona` (set via `POST /my-day/persona` from
+the selector at the top of the workspace page) and passed to `generate_prompt`
+at every call site, so it applies to **every** surface and device until changed.
+`persona=None` resolves to `copilot`, so an operator who never picks sees today's
+behavior (no regression). The block always starts with the same
+`## How I want you to work` header so the BLUF structure is stable; only the
+guidance under it changes. To add a persona, append to `PERSONAS` — no other code
+change. Tests: `test_personas.py`, the persona cases in `test_ops_suggestions.py`,
+and the selector/endpoint cases in `test_my_day_workspace_copy_prompt.py`.
 
 **The CONTEXT block links the list and project, not just names them.**
 `generate_prompt` emits the **task URL, the list URL, and the project URL** in
