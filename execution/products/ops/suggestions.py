@@ -9,6 +9,7 @@ Returned shape:
       "action_kind":  "reply" | "decision" | "meeting" | "research" |
                      "build" | "review" | "schedule" | "default",
       "one_line":     short imperative summary,
+      "deliverable":  one sentence naming the artifact AND where it goes,
       "steps":        ["...", "...", ...]            # numbered approach
       "resources":    [{"kind", "name", "why"}, ...]  # tools/skills/agents to lean on
       "stop_conditions": ["...", "..."],              # when to pause and escalate
@@ -32,6 +33,7 @@ _RECIPES = [
         "kind": "decision",
         "match": re.compile(r"\b(approve|decide|sign[- ]?off|confirm|reject|accept|deny|go/no[- ]go)\b", re.I),
         "one_line": "Make the call: approve, request changes, or reject.",
+        "deliverable": "A short recommendation — **verdict · reason · next action** — saved with `colaberry_remember` and posted to the BC ticket as a decision record once confirmed.",
         "steps": [
             "Read the BC thread + any linked docs to surface the decision being asked.",
             "Identify the 1-2 facts that flip the decision (cost, risk, dependency).",
@@ -60,6 +62,7 @@ _RECIPES = [
         "kind": "reply",
         "match": re.compile(r"\b(reply|respond|follow[- ]up|answer|email|message)\b", re.I),
         "one_line": "Draft and send a reply that closes the loop on this thread.",
+        "deliverable": "A sent reply (Gmail or BC comment, matching where the thread lives) that closes the loop — answer first, then context.",
         "steps": [
             "Read the most recent 3 messages on the thread to understand the ask.",
             "Identify what they actually need (answer / decision / action / acknowledgement).",
@@ -78,6 +81,7 @@ _RECIPES = [
         "kind": "meeting",
         "match": re.compile(r"\b(meeting|schedul|calendar|sync|1:1|standup|huddle|kickoff)\b", re.I),
         "one_line": "Decide whether this meeting is needed; schedule or replace with async.",
+        "deliverable": "Either a calendar invite with an explicit agenda + intended outcome, or a 1-page async doc that replaces the meeting.",
         "steps": [
             "Ask: what decision or alignment does this meeting produce? If unclear, the meeting probably shouldn't happen.",
             "Propose async first: a 1-page doc + 24h comment window often replaces the meeting.",
@@ -96,6 +100,7 @@ _RECIPES = [
         "kind": "research",
         "match": re.compile(r"\b(research|investigat\w*|look[ -]into|figure out|find out|explore|discover|assess|evaluate)\b", re.I),
         "one_line": "Time-box the investigation; produce a written finding.",
+        "deliverable": "A 1-page finding: question · answer · source · confidence.",
         "steps": [
             "Set a hard time-box: 30 min, 2 hours, or 1 day. Don't exceed.",
             "List 3-5 specific questions you need answered.",
@@ -115,6 +120,7 @@ _RECIPES = [
         "kind": "build",
         "match": re.compile(r"\b(build|implement|create|develop|code|ship|deploy|wire|integrate)\b", re.I),
         "one_line": "Ship the smallest version that proves the idea, then iterate.",
+        "deliverable": "The smallest working version that hits the acceptance criteria, plus a 'shipped' BC comment: commit SHA · what it does · what's deferred.",
         "steps": [
             "Re-read the BC thread for acceptance criteria. If absent, write your own + post for confirmation.",
             "Sketch the data model + 1 happy-path flow before writing code.",
@@ -136,6 +142,7 @@ _RECIPES = [
         "kind": "review",
         "match": re.compile(r"\b(review|check|verify|audit|qa|test|validat)\b", re.I),
         "one_line": "Inspect, write findings, recommend a verdict.",
+        "deliverable": "A written verdict — ship / ship-with-fixes / hold / reject — with each concern tagged blocker / nit / question.",
         "steps": [
             "Read what you're reviewing end-to-end before forming an opinion.",
             "List specific concerns with line/section references.",
@@ -154,6 +161,7 @@ _RECIPES = [
         "kind": "schedule",
         "match": re.compile(r"\b(date|deadline|when|by\s+(?:friday|monday|tuesday|wednesday|thursday|saturday|sunday|tomorrow|next week)|due\s+by)\b", re.I),
         "one_line": "Pin down a specific date or set up the cadence.",
+        "deliverable": "A specific date posted back to the thread AND added to the calendar in the same step.",
         "steps": [
             "Identify what's actually being scheduled (a delivery? a recurring touchpoint?).",
             "Propose a specific date with rationale; don't ask 'when works?'",
@@ -172,6 +180,7 @@ _RECIPES = [
 _DEFAULT_RECIPE: dict[str, Any] = {
     "kind": "default",
     "one_line": "Read the task, decide the next concrete step, do it.",
+    "deliverable": "One concrete next action done (a reply, a decision, a doc, or code), with a short note back on what you did + what's next.",
     "steps": [
         "Open the BC ticket + skim the most recent activity.",
         "Identify the single next action — a reply, a decision, a doc, a piece of code.",
@@ -312,6 +321,7 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
     return {
         "action_kind": recipe["kind"],
         "one_line": recipe["one_line"],
+        "deliverable": recipe["deliverable"],
         "steps": steps,
         "resources": list(recipe["resources"]),
         "stop_conditions": list(recipe["stop_conditions"]),
@@ -320,38 +330,45 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
     }
 
 
+# BLUF (Bottom Line Up Front): the first three sections answer the questions a
+# newcomer asks before doing anything — what am I being asked to do, what do I
+# hand back (and who owns the call), and what stops me. Everything heavier
+# (full BC metadata, description, steps, resources, working protocol) sits below
+# the divider so it never buries the point. Order here is load-bearing; the
+# directive my-day-action-recipes.md documents it and a test asserts it.
 _PROMPT_TEMPLATE = """\
-You're helping me work through this Basecamp task. Context first, then the recipe I want you to follow.
+# {title}
+This is a **{action_kind}** task. {one_line}
 
-## Task
-**Title:** {title}
+## You hand back
+{deliverable}
+
+{ownership_block}## Stop & escalate if
+{stop_block}
+{dependency_block}
+———
+
+## Task details
 **Project:** {project_name} — {project_url}
 **List:** {todolist_name} — {list_url}
-**Due:** {due_on}
-**Urgency:** {urgency_summary}
+**Due:** {due_on} · **Urgency:** {urgency_summary}
 **BC URL (this task):** {bc_app_url}
-{dependency_block}
+
 {description_block}
 
-## Action kind
-**{action_kind}** — {one_line}
-
-## Steps
+## Suggested steps
 {steps_block}
 
-## Resources to lean on
+## Lean on
 {resources_block}
 
-## When to stop and escalate
-{stop_block}
-
-## What I want from you
+## How I want you to work
 1. Confirm you understand the task in your own words (one line).
-2. Walk me through step 1 of the recipe above, doing the work as you go (don't just narrate).
+2. Walk me through step 1 above, doing the work as you go (don't just narrate).
 3. After each step, ask if I want to continue or adjust before moving to the next.
 4. Use the Resources listed above; check what's already in the repo before writing new code.
 5. If a Stop condition triggers, stop and tell me what you found.
-{owner_note_block}
+
 Begin.
 """
 
@@ -370,7 +387,10 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
     )
     stop_block = "\n".join(f"- {c}" for c in s["stop_conditions"]) if s["stop_conditions"] else "(none)"
     owner_note = s.get("owner_note") or ""
-    owner_note_block = f"\n## Ownership\n{owner_note}\n" if owner_note else ""
+    # Ownership sits in the BLUF header (right under "You hand back"), not at the
+    # bottom — who owns the call modifies the deliverable, so a reader needs it
+    # before they start. Trailing blank line separates it from "Stop & escalate".
+    ownership_block = f"## Ownership\n{owner_note}\n\n" if owner_note else ""
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
@@ -385,8 +405,9 @@ def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> 
         description_block=description_block,
         action_kind=s["action_kind"],
         one_line=s["one_line"],
+        deliverable=s["deliverable"],
         steps_block=steps_block,
         resources_block=resources_block,
         stop_block=stop_block,
-        owner_note_block=owner_note_block,
+        ownership_block=ownership_block,
     )

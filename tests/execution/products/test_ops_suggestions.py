@@ -50,9 +50,26 @@ def test_default_recipe_when_no_match():
 
 def test_suggestion_has_required_fields():
     s = build_suggestion(_make("Approve the doc"))
-    for k in ("action_kind", "one_line", "steps", "resources", "stop_conditions", "urgency_summary"):
+    for k in ("action_kind", "one_line", "deliverable", "steps", "resources",
+              "stop_conditions", "urgency_summary"):
         assert k in s
     assert s["steps"]   # non-empty
+
+
+def test_every_recipe_declares_a_deliverable():
+    # The BLUF "You hand back" section answers "what am I producing?" — every
+    # recipe (and the default) must name a concrete artifact, or that section
+    # renders empty and the prompt is right back to being vague.
+    for recipe in S._RECIPES + [S._DEFAULT_RECIPE]:
+        d = recipe.get("deliverable", "")
+        assert isinstance(d, str) and d.strip(), (
+            f"recipe '{recipe['kind']}' has no deliverable"
+        )
+
+
+def test_build_suggestion_surfaces_the_deliverable():
+    s = build_suggestion(_make("Approve the budget"))
+    assert "verdict" in s["deliverable"].lower()
 
 
 def test_generate_prompt_includes_title_and_steps():
@@ -65,6 +82,30 @@ def test_generate_prompt_includes_title_and_steps():
     assert "https://3.basecamp.com/x/y" in prompt
     # Steps should be numbered
     assert "1." in prompt
+
+
+def test_generate_prompt_is_bluf_ordered():
+    # The prompt must lead with the point, not a throat-clear: title as the H1,
+    # then "You hand back", and the heavy "Task details" only AFTER. Regression
+    # for the "huhhhh?" wall-of-text the old template produced.
+    t = _make("Approve the budget", desc="Need sign-off by Friday")
+    prompt = generate_prompt(t)
+    assert prompt.startswith("# Approve the budget")
+    assert "## You hand back" in prompt
+    # Deliverable text reaches the reader.
+    assert "verdict" in prompt.lower()
+    # BLUF order: what-you-hand-back comes before the metadata dump.
+    assert prompt.index("## You hand back") < prompt.index("## Task details")
+    # The old process-first opener is gone.
+    assert "You're helping me work through" not in prompt
+
+
+def test_generate_prompt_has_no_duplicate_stop_heading():
+    # "Stop & escalate" lives in the BLUF header now; the old standalone
+    # "When to stop and escalate" section was removed (no duplication).
+    prompt = generate_prompt(_make("Approve the budget"))
+    assert "## Stop & escalate if" in prompt
+    assert "When to stop and escalate" not in prompt
 
 
 def test_generate_prompt_handles_no_description():

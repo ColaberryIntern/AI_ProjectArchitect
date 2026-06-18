@@ -88,9 +88,28 @@ background-load overlay) and the BC deep-link opens Basecamp.
 `suggestions.py` keys a recipe off a deterministic title/description regex
 (no LLM call). Recipe kinds: `decision`, `reply`, `meeting`, `research`,
 `build`, `review`, `schedule`, and a `default` fallback. Each recipe carries
-`one_line`, `steps`, `resources`, and `stop_conditions`. `build_suggestion`
-assembles the structured suggestion; `generate_prompt` wraps it in the
-ready-to-paste Claude Code prompt.
+`one_line`, `deliverable`, `steps`, `resources`, and `stop_conditions`.
+`build_suggestion` assembles the structured suggestion; `generate_prompt` wraps
+it in the ready-to-paste Claude Code prompt.
+
+**`deliverable` is mandatory and answers "what am I producing?"** It is one
+sentence naming the concrete artifact AND where it goes (e.g. the decision
+recipe: "a recommendation — verdict · reason · next action — saved with
+`colaberry_remember` and posted to the BC ticket"). It renders as the prompt's
+`## You hand back` section. `test_every_recipe_declares_a_deliverable` enforces
+that no recipe leaves it blank — an empty deliverable is the vagueness this
+surface exists to kill.
+
+**The prompt is BLUF (Bottom Line Up Front).** `_PROMPT_TEMPLATE` leads with the
+title as an H1, the one-line ask, `## You hand back`, the `## Ownership` line
+(when human-owned), and `## Stop & escalate if` — the questions a newcomer asks
+before starting. Only then, below a divider, come the heavier `## Task details`,
+`## Description`, `## Suggested steps`, `## Lean on`, and the working protocol.
+This order is load-bearing; `test_generate_prompt_is_bluf_ordered` asserts the
+title is the first line and `## You hand back` precedes `## Task details`. The
+copied-prompt assembler (`workspace.html` `rebuildFullPrompt`) does NOT wrap the
+task in a `## Task` heading — the template self-titles with `# {title}`, and a
+wrapper produced a confusing double heading.
 
 **The CONTEXT block links the list and project, not just names them.** Both
 prompt paths — `generate_prompt` (deterministic) and the `claude_code_prompt`
@@ -132,7 +151,9 @@ Today only the `decision` recipe declares an override: its "Write a 3-line
 decision: verdict, reason, next action" step becomes "Draft a recommendation
 ... for {owner} to confirm. Do NOT post it as the final decision; the call is
 theirs." When an override fires, `generate_prompt` also emits an `## Ownership`
-section restating that final confirmation rests with the owner.
+section restating that final confirmation rests with the owner. That section
+sits in the BLUF header (directly under `## You hand back`), not at the bottom —
+who owns the call modifies the deliverable, so the reader needs it up front.
 
 Genuinely delegated decisions (no human marker, not `human_required`) keep the
 original verdict wording and get no ownership note. To extend this rule to
