@@ -318,6 +318,89 @@ def test_basecamp_fetch_by_recording_no_download_url_raises():
     assert exc.value.code == "basecamp_no_download_url"
 
 
+# ── Basecamp document fallback (Lab Spec / brief linked in a comment) ──────
+
+
+def test_basecamp_fetch_by_recording_falls_back_to_document():
+    """A recording id that is a vault Document 404s on /uploads but resolves
+    via /documents — the content HTML is staged as a text/html .html file."""
+    doc = json.dumps({
+        "id": 10010113835,
+        "type": "Document",
+        "title": "Lab Spec",
+        "content": "<div><h1>Lab Spec</h1><p>Build the thing.</p></div>",
+    }).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_http_error(404),          # /uploads/<id>.json -> not an upload
+            _make_urlopen_response(doc),    # /documents/<id>.json -> the document
+        ]
+        result = bc_source.fetch_by_recording(
+            project_id=47502609, recording_id=10010113835,
+            bc_token="bc-token-xyz",
+            project_name_for_audit="Some Project",
+        )
+    assert result.filename == "Lab Spec.html"
+    assert result.mime_type == "text/html"
+    assert b"Build the thing." in result.data
+    assert result.size_bytes == len(result.data)
+    assert "Some Project" in result.sender
+    # The fallback call must hit the *documents* endpoint with the recording id.
+    doc_req = mock_urlopen.call_args_list[1].args[0]
+    assert "/buckets/47502609/documents/10010113835.json" in doc_req.full_url
+
+
+def test_basecamp_fetch_document_direct_happy_path():
+    doc = json.dumps({
+        "title": "Onboarding Brief",
+        "content": "<p>hello</p>",
+    }).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [_make_urlopen_response(doc)]
+        result = bc_source.fetch_document(47502609, 123, "bc-token")
+    assert result.filename == "Onboarding Brief.html"
+    assert result.mime_type == "text/html"
+    assert result.data == b"<p>hello</p>"
+
+
+def test_basecamp_fetch_document_sanitizes_title_into_filename():
+    """Path separators and control chars in the title must not leak into the
+    Drive filename (they'd break the staged path)."""
+    doc = json.dumps({
+        "title": "Q3/Q4: Plan\n(draft)",
+        "content": "<p>x</p>",
+    }).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [_make_urlopen_response(doc)]
+        result = bc_source.fetch_document(47502609, 123, "bc-token")
+    assert "/" not in result.filename
+    assert "\\" not in result.filename
+    assert result.filename.endswith(".html")
+    assert result.filename == "Q3 Q4: Plan (draft).html"
+
+
+def test_basecamp_fetch_document_no_content_raises():
+    doc = json.dumps({"title": "Empty", "type": "Document"}).encode("utf-8")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [_make_urlopen_response(doc)]
+        with pytest.raises(bc_source.BasecampError) as exc:
+            bc_source.fetch_document(47502609, 123, "bc-token")
+    assert exc.value.code == "basecamp_document_no_content"
+
+
+def test_basecamp_fetch_by_recording_unknown_id_raises_recording_not_found():
+    """Neither an upload nor a document (deleted/no access) -> a clearer code
+    than the generic basecamp_blob_not_found."""
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = [
+            _make_http_error(404),   # not an upload
+            _make_http_error(404),   # not a document either
+        ]
+        with pytest.raises(bc_source.BasecampError) as exc:
+            bc_source.fetch_by_recording(47502609, 999, "bc-token")
+    assert exc.value.code == "basecamp_recording_not_found"
+
+
 def test_mcp_basecamp_validation_allows_missing_sgid(fake_user):
     """The MCP tool must accept a basecamp fetch with no sgid (resolves by
     recording id) but still require project_id + recording_id."""
