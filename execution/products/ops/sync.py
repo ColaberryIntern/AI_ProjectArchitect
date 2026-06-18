@@ -44,6 +44,23 @@ HTTP_TIMEOUT = int(os.environ.get("OPS_HTTP_TIMEOUT", "20"))
 HTTP_THROTTLE_SECONDS = float(os.environ.get("OPS_HTTP_THROTTLE_SECONDS", "0.22"))
 # Retry-after ceiling on 429 — never sleep more than this even if BC says so.
 MAX_RETRY_AFTER = int(os.environ.get("OPS_MAX_RETRY_AFTER", "30"))
+# Transient HTTP statuses worth retrying with backoff. 5xx are origin/proxy
+# hiccups; 520-524 are Cloudflare edge codes (522 = "origin connection timed
+# out") that Basecamp sits behind and emits in BURSTS. Before this retry, a
+# single one of these anywhere in a project's walk raised straight out of
+# _walk_project_todos, the project contributed ZERO rows, and its local mirror
+# froze — the 2026-06-18 stale-list incident: project 47126345 grew to 17
+# todolists, its walk almost always hit a 522 partway, and My Day kept showing
+# the pre-restructure lists (old lists still "active", 10 new lists missing) no
+# matter how many times the operator synced. Retrying transient failures the
+# way we already retry 429 lets the walk push through a Cloudflare blip.
+TRANSIENT_HTTP_CODES = frozenset({500, 502, 503, 504, 520, 521, 522, 524})
+# Max retries for a transient 5xx / connection error, with exponential backoff
+# (OPS_TRANSIENT_BACKOFF_SECONDS * 2**attempt). Separate budget from the single
+# 429 Retry-After retry. Bounded so a sustained BC outage still ends the walk
+# (recorded partial) instead of hanging forever on one dead endpoint.
+TRANSIENT_RETRIES = int(os.environ.get("OPS_TRANSIENT_RETRIES", "3"))
+TRANSIENT_BACKOFF_SECONDS = float(os.environ.get("OPS_TRANSIENT_BACKOFF_SECONDS", "1.0"))
 # L6 (2026-06-09 audit): hard wall-clock budget on a full sync. Without
 # this, a BC outage could keep one sync thread alive for nearly an hour
 # (HTTP_TIMEOUT=20s * ~150 calls). At budget, we stop walking, record
@@ -93,13 +110,33 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _bc_get(path: str, token: str, params: dict | None = None, _retry: int = 1):
+def _sleep_transient_backoff(path: str, why: str, transient_left: int) -> None:
+    """Exponential backoff between transient-error retries of _bc_get.
+    `transient_left` counts DOWN from TRANSIENT_RETRIES, so attempt index
+    is TRANSIENT_RETRIES - transient_left (0-based): 1s, 2s, 4s, ..."""
+    attempt = TRANSIENT_RETRIES - transient_left
+    wait = TRANSIENT_BACKOFF_SECONDS * (2 ** attempt)
+    logger.info("BC %s on %s — transient, sleeping %.1fs then retrying (%d left)",
+                why, path, wait, transient_left)
+    time.sleep(wait)
+
+
+def _bc_get(path: str, token: str, params: dict | None = None,
+            _retry: int = 1, _transient: int | None = None):
     """GET a BC endpoint. Returns parsed JSON, or None on 400/404.
 
-    Throttles by HTTP_THROTTLE_SECONDS before each call so we don't
-    sprint through BC's 50-req-per-10-second budget. On 429 we honor
-    Retry-After (capped at MAX_RETRY_AFTER) and retry once.
+    Throttles by HTTP_THROTTLE_SECONDS before each call so we don't sprint
+    through BC's 50-req-per-10-second budget. Retries:
+      - 429: honor Retry-After (capped at MAX_RETRY_AFTER), once.
+      - Transient 5xx / Cloudflare 520-524 / bare connection errors: up to
+        TRANSIENT_RETRIES times with exponential backoff. BC behind
+        Cloudflare emits 522 bursts; without this a single blip aborts the
+        whole project walk and freezes the mirror (see TRANSIENT_HTTP_CODES).
+    Non-transient errors (401/403/etc.) propagate immediately so per-project
+    resilience can record them and surface the actionable message.
     """
+    if _transient is None:
+        _transient = TRANSIENT_RETRIES
     url = f"{BC_API_BASE}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
@@ -125,7 +162,19 @@ def _bc_get(path: str, token: str, params: dict | None = None, _retry: int = 1):
             wait_for = min(MAX_RETRY_AFTER, max(1, wait_for))
             logger.info("BC 429 on %s — sleeping %ds then retrying", path, wait_for)
             time.sleep(wait_for)
-            return _bc_get(path, token, params, _retry=_retry - 1)
+            return _bc_get(path, token, params, _retry=_retry - 1, _transient=_transient)
+        if e.code in TRANSIENT_HTTP_CODES and _transient > 0:
+            _sleep_transient_backoff(path, f"HTTP {e.code}", _transient)
+            return _bc_get(path, token, params, _retry=_retry, _transient=_transient - 1)
+        raise
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        # Pure transport failure with no HTTP status (DNS, connection reset,
+        # client-side timeout). Same transient class as a 5xx — retry with
+        # backoff. HTTPError is a URLError subclass but is handled above, so
+        # this branch only sees non-HTTP transport errors.
+        if _transient > 0:
+            _sleep_transient_backoff(path, f"URLError {getattr(e, 'reason', e)}", _transient)
+            return _bc_get(path, token, params, _retry=_retry, _transient=_transient - 1)
         raise
 
 

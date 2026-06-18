@@ -322,15 +322,81 @@ class TestBcGet:
         )
         assert sync._bc_get("/buckets/1/todos/9.json", "tok") is None
 
-    def test_500_raises(self, monkeypatch):
-        """Server errors must propagate so per-project resilience can
-        record them in the silent-error ring buffer."""
-        monkeypatch.setattr(
-            sync.urllib.request, "urlopen",
-            MagicMock(side_effect=_http_error(500)),
-        )
+    def test_500_transient_retried_then_raises(self, monkeypatch):
+        """500 is transient: retried TRANSIENT_RETRIES times with backoff,
+        and only if EVERY attempt fails does it propagate so per-project
+        resilience records it. Before the 2026-06-18 522 fix the first 5xx
+        raised immediately and aborted the whole project walk."""
+        calls = {"n": 0}
+        def _se(*a, **kw):
+            calls["n"] += 1
+            raise _http_error(500)
+        monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+        sleeps: list[float] = []
+        monkeypatch.setattr(sync.time, "sleep", lambda s: sleeps.append(s))
         with pytest.raises(urllib.error.HTTPError):
             sync._bc_get("/projects.json", "tok")
+        assert calls["n"] == sync.TRANSIENT_RETRIES + 1  # initial try + retries
+        assert len(sleeps) == sync.TRANSIENT_RETRIES     # one backoff per retry
+
+    def test_522_retried_then_succeeds(self, monkeypatch):
+        """Cloudflare 522 (BC origin timeout) is transient: retry, then take
+        the success. THE 2026-06-18 stale-list root cause — a 522 mid-walk
+        used to abort the entire project walk, freezing My Day on the
+        pre-restructure todolists. With retry, the walk pushes through."""
+        responses = [_http_error(522), _http_error(522), _urlopen_cm(b'{"ok": 1}')]
+        def _se(*a, **kw):
+            r = responses.pop(0)
+            if isinstance(r, urllib.error.HTTPError):
+                raise r
+            return r
+        monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+        sleeps: list[float] = []
+        monkeypatch.setattr(sync.time, "sleep", lambda s: sleeps.append(s))
+        assert sync._bc_get("/x", "tok") == {"ok": 1}
+        assert len(sleeps) == 2  # two 522s → two backoff sleeps, then success
+
+    def test_every_transient_code_is_retried(self, monkeypatch):
+        """All of TRANSIENT_HTTP_CODES (not just 522) recover on retry."""
+        monkeypatch.setattr(sync.time, "sleep", lambda s: None)
+        for code in sorted(sync.TRANSIENT_HTTP_CODES):
+            responses = [_http_error(code), _urlopen_cm(b'{"ok": 1}')]
+            def _se(*a, _r=responses, **kw):
+                r = _r.pop(0)
+                if isinstance(r, urllib.error.HTTPError):
+                    raise r
+                return r
+            monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+            assert sync._bc_get("/x", "tok") == {"ok": 1}, f"code {code} not retried"
+
+    def test_connection_error_retried_then_succeeds(self, monkeypatch):
+        """A bare transport failure (no HTTP status) is transient too — a
+        client-side timeout/reset must not kill the walk on the first blip."""
+        responses = [urllib.error.URLError("connection reset"), _urlopen_cm(b'{"ok": 1}')]
+        def _se(*a, **kw):
+            r = responses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+        monkeypatch.setattr(sync.time, "sleep", lambda s: None)
+        assert sync._bc_get("/x", "tok") == {"ok": 1}
+
+    def test_403_is_not_retried(self, monkeypatch):
+        """403 is NOT transient — it's a membership gap with an actionable
+        Basecamp-side fix. It must propagate on the FIRST call, no backoff,
+        so forbidden_buckets / the identity guard fire correctly."""
+        calls = {"n": 0}
+        def _se(*a, **kw):
+            calls["n"] += 1
+            raise _http_error(403)
+        monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+        sleeps: list[float] = []
+        monkeypatch.setattr(sync.time, "sleep", lambda s: sleeps.append(s))
+        with pytest.raises(urllib.error.HTTPError):
+            sync._bc_get("/x", "tok")
+        assert calls["n"] == 1     # no retry
+        assert sleeps == []        # no backoff
 
     def test_429_honors_retry_after_and_retries_once(self, monkeypatch):
         """First call: 429 with Retry-After: 1. Second call: 200. The
