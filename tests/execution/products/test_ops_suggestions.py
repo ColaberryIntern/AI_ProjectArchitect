@@ -211,6 +211,23 @@ def test_human_owned_prompt_has_ownership_section():
     assert "recommendation for them to confirm" in prompt
 
 
+def test_generic_owner_note_has_no_clunky_parenthetical():
+    # human_required but no Owner: marker → owner falls back to the generic
+    # label. The note must NOT read "(owner: the owner)".
+    t = _make("Confirm the launch date", desc="We need to lock this.",
+              category="human_required")
+    s = build_suggestion(t)
+    assert "(owner: the owner)" not in s["owner_note"]
+    assert "rests with the owner" in s["owner_note"]
+    assert "(owner: the owner)" not in generate_prompt(t)
+
+
+def test_named_owner_note_keeps_the_name_parenthetical():
+    t = _make("Approve the cohort plan", desc=_HUMAN_DESC, category="human_required")
+    s = build_suggestion(t)
+    assert "(owner: Ali Muwwakkil)" in s["owner_note"]
+
+
 def test_non_human_decision_keeps_verdict_wording():
     # A genuinely delegated decision (no HUMAN TASK marker, not human_required)
     # keeps the original verdict step and gets no ownership note.
@@ -251,6 +268,41 @@ def test_human_required_non_decision_kind_unaffected():
     s = build_suggestion(t)
     assert s["action_kind"] == "build"
     assert s["owner_note"] == ""
+
+
+# ── BC-description HTML → plain text for the copied prompt ──────────────────
+
+def test_html_to_text_converts_bc_description():
+    html = (
+        "<div><strong>Why:</strong> build our own <em>lifecycle</em> engine.</div>"
+        '<div>See <a href="https://x/y">transcript</a></div>'
+        "<ul><li>API-in</li><li>API-out</li></ul>"
+        "<div>cost &amp; risk</div>"
+    )
+    out = S._html_to_text(html)
+    # No tag soup left.
+    assert "<div>" not in out and "<strong>" not in out and "<a" not in out
+    # Emphasis preserved as markdown.
+    assert "**Why:**" in out
+    assert "*lifecycle*" in out
+    # Link becomes text + url; list items get bullets; entities decode.
+    assert "transcript (https://x/y)" in out
+    assert "- API-in" in out and "- API-out" in out
+    assert "cost & risk" in out
+
+
+def test_html_to_text_passthrough_and_empty():
+    assert S._html_to_text("just plain text") == "just plain text"
+    assert S._html_to_text("") == ""
+    assert S._html_to_text("   ") == ""
+
+
+def test_generate_prompt_description_is_plain_text_not_html():
+    desc = "<div><strong>Done means:</strong> confirmed native.</div>"
+    prompt = generate_prompt(_make("Approve the plan", desc=desc))
+    assert "## Description" in prompt
+    assert "<div>" not in prompt and "<strong>" not in prompt
+    assert "**Done means:**" in prompt
 
 
 # ── F2: no recipe references a non-existent skill/tool ─────────────────────
