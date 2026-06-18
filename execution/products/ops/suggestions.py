@@ -22,6 +22,8 @@ including the todo's full context.
 from __future__ import annotations
 
 import re
+from html import unescape
+from html.parser import HTMLParser
 from typing import Any
 
 from .store import OpsTodo
@@ -209,6 +211,11 @@ def _match_recipe(title: str, description: str) -> dict[str, Any]:
 _OWNER_RE = re.compile(r"Owner:\s*(?:</strong>)?\s*([^<\n]+?)\s*(?:<|$)", re.I)
 _HUMAN_TASK_RE = re.compile(r"\bHUMAN[ _-]?TASK\b", re.I)
 
+# Returned by _human_owner when the todo is human-owned but no owner NAME could
+# be extracted. Callers branch on this so the prompt doesn't print the clunky
+# "(owner: the owner)" — see build_suggestion's owner_note.
+_GENERIC_OWNER = "the owner"
+
 # Dependency markers stamped by the task generator on approval/review tasks.
 # Contract: directives/approval-task-dependency-linking.md. We surface them in
 # the prompt's CONTEXT block so a fresh session can reach the artifact without
@@ -278,7 +285,7 @@ def _human_owner(todo: OpsTodo) -> str | None:
         name = m.group(1).strip()
         if name:
             return name
-    return "the owner"
+    return _GENERIC_OWNER
 
 
 def _urgency_summary(todo: OpsTodo) -> str:
@@ -311,12 +318,21 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
             if 0 <= idx < len(steps):
                 steps[idx] = new_step.format(owner=owner)
         if overrides:
-            owner_note = (
-                f"This task is marked HUMAN TASK (owner: {owner}). Final "
-                f"confirmation rests with {owner}. Your job is to produce a "
-                f"recommendation for them to confirm, not to post the verdict "
-                f"yourself."
-            )
+            if owner == _GENERIC_OWNER:
+                # No name resolved — don't print "(owner: the owner)".
+                owner_note = (
+                    "This task is marked HUMAN TASK. Final confirmation rests "
+                    "with the owner, not you. Your job is to produce a "
+                    "recommendation for them to confirm, not to post the "
+                    "verdict yourself."
+                )
+            else:
+                owner_note = (
+                    f"This task is marked HUMAN TASK (owner: {owner}). Final "
+                    f"confirmation rests with {owner}. Your job is to produce a "
+                    f"recommendation for them to confirm, not to post the verdict "
+                    f"yourself."
+                )
 
     return {
         "action_kind": recipe["kind"],
@@ -373,13 +389,74 @@ Begin.
 """
 
 
+class _HTMLToText(HTMLParser):
+    """Convert a Basecamp description's HTML to markdown-ish plain text.
+
+    The BC description is stored as HTML (`<div>`, `<p>`, `<strong>`, `<a>`,
+    `<li>` …). The workspace WEB page renders it as HTML (`|safe`), but the
+    COPIED PROMPT is plain text pasted into Claude Code, where literal
+    `<div><strong>…` tags are just noise. This keeps the emphasis/links/lists
+    as markdown and drops the tag soup. Only the prompt path uses this; the web
+    page is unchanged.
+    """
+
+    _BLOCK = {"p", "div", "br", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+        self._href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ("strong", "b"):
+            self._parts.append("**")
+        elif tag in ("em", "i"):
+            self._parts.append("*")
+        elif tag == "code":
+            self._parts.append("`")
+        elif tag == "li":
+            self._parts.append("\n- ")
+        elif tag == "a":
+            self._href = dict(attrs).get("href")
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("strong", "b"):
+            self._parts.append("**")
+        elif tag in ("em", "i"):
+            self._parts.append("*")
+        elif tag == "code":
+            self._parts.append("`")
+        elif tag == "a":
+            if self._href:
+                self._parts.append(f" ({self._href})")
+            self._href = None
+        elif tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+
+def _html_to_text(html: str) -> str:
+    """BC-description HTML → trimmed markdown-ish plain text (entities decoded,
+    runs of blank lines collapsed)."""
+    parser = _HTMLToText()
+    parser.feed(html)
+    text = unescape("".join(parser._parts))
+    out = "\n".join(line.rstrip() for line in text.splitlines())
+    while "\n\n\n" in out:
+        out = out.replace("\n\n\n", "\n\n")
+    return out.strip()
+
+
 def generate_prompt(todo: OpsTodo, suggestion: dict[str, Any] | None = None) -> str:
     """A ready-to-paste Claude Code prompt for this specific todo."""
     s = suggestion or build_suggestion(todo)
 
-    description_block = (
-        f"## Description\n{todo.description.strip()}" if todo.description else ""
-    )
+    desc_text = _html_to_text(todo.description) if todo.description else ""
+    description_block = f"## Description\n{desc_text}" if desc_text else ""
     steps_block = "\n".join(f"{i+1}. {step}" for i, step in enumerate(s["steps"]))
     resources_block = (
         "\n".join(f"- **{r['kind']}** `{r['name']}` — {r['why']}" for r in s["resources"])
