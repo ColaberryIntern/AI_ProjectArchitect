@@ -53,6 +53,16 @@ MAX_LOOKBACK_MINUTES = int(os.environ.get("OPS_CB_MENTION_MAX_LOOKBACK_MINUTES",
 # retain their cursor and catch up on the next tick they're scanned — no
 # mentions permanently lost, just higher latency for cold buckets.
 MAX_BUCKETS = int(os.environ.get("OPS_CB_MENTION_MAX_BUCKETS", "100"))
+# Per-tick circuit breaker: hard cap on total auto-responses across ALL users
+# in one scan_all_users tick. Bounds the blast radius of any future bug the
+# way the colaberry-accelerator dispatcher MAX_REPLIES_PER_COMMENT does. Normal
+# operation never approaches it; tripping halts further posting for the tick.
+MAX_RESPONSES_PER_TICK = int(os.environ.get("OPS_CB_MENTION_MAX_RESPONSES_PER_TICK", "12"))
+# Comment authors that must never be treated as @CB requests. 37708014 =
+# colaberry-accelerator "CB System" dispatcher bot. _is_automated_card filters
+# by card CONTENT; this filters by AUTHOR so the worker never answers another
+# agent post (cross-system loop guard).
+BOT_AUTHOR_IDS = {37708014}
 
 
 def _polling_enabled() -> bool:
@@ -225,6 +235,8 @@ def _scan_bucket_for_mentions(bucket: int, token: str, cutoff: datetime) -> list
             continue
         if _is_automated_card(body):
             continue  # loop guard: never answer an automated-response card
+        if (r.get("creator") or {}).get("id") in BOT_AUTHOR_IDS:
+            continue  # author guard: never answer another bot (cross-system loop)
         # Find parent (the ticket/todo the comment is on)
         parent = r.get("parent") or {}
         parent_url = parent.get("app_url") or ""
@@ -365,7 +377,8 @@ def _post_comment(
         return False, f"error_{type(e).__name__}"
 
 
-def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
+def scan_for_user(user_id: str, max_buckets: int | None = None,
+                  response_budget: int | None = None) -> dict:
     """Scan all buckets visible to the user's token; auto-respond to new
     @CB mentions. Returns a summary dict.
     """
@@ -425,6 +438,8 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
     cutoff_sources: dict[str, int] = {"cursor": 0, "cursor_capped": 0,
                                        "first_scan": 0}
     seen = _seen()
+    budget = response_budget if response_budget is not None else 10 ** 9
+    capped = False
     found = 0
     responded = 0
     skipped_seen = 0
@@ -433,6 +448,8 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
     errors: list[dict] = []
 
     for proj in projects:
+        if capped:  # per-tick cap reached on a prior bucket
+            break
         bucket = proj.get("id")
         if not bucket:
             continue
@@ -465,6 +482,9 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
                 seen.add(key)
                 skipped_closed += 1
                 continue
+            if responded >= budget:
+                capped = True
+                break  # per-tick circuit breaker: defer remaining mentions
             seen.add(key)
             # Crawl the parent ticket so the plan has real context
             try:
@@ -524,6 +544,7 @@ def scan_for_user(user_id: str, max_buckets: int | None = None) -> dict:
         "buckets_rotated_out": rotated_out_buckets,
         "mentions_found": found,
         "responded": responded,
+        "capped": capped,
         "skipped_already_seen": skipped_seen,
         "skipped_closed_parent": skipped_closed,
         "failed": failed,
@@ -558,6 +579,8 @@ def scan_all_users() -> dict:
     started_at = _now_iso()
     per_user: list[dict] = []
     fatal_error: str | None = None
+    remaining = MAX_RESPONSES_PER_TICK
+    tick_capped = False
 
     try:
         users = tenancy.list_users(active_only=True)
@@ -579,10 +602,15 @@ def scan_all_users() -> dict:
         if not has_token:
             continue
         try:
-            r = scan_for_user(u.email)
+            r = scan_for_user(u.email, response_budget=remaining)
             r_record = {"user_id": u.user_id, "email": u.email, **r}
             per_user.append(r_record)
             logger.info("cb_mentions for %s: %s", u.email, r)
+            remaining -= r.get("responded", 0)
+            if remaining <= 0:
+                tick_capped = True
+                logger.warning("cb_mentions: per-tick cap %d reached; halting further responses this tick", MAX_RESPONSES_PER_TICK)
+                break
         except Exception as e:
             per_user.append({
                 "user_id": u.user_id, "email": u.email,
@@ -599,6 +627,7 @@ def scan_all_users() -> dict:
         "total_responded": sum(p.get("responded", 0) for p in per_user),
         "total_failed": sum(p.get("failed", 0) for p in per_user),
         "fatal_error": fatal_error,
+        "tick_capped": tick_capped,
         "per_user": per_user,
     }
     _write_heartbeat(summary)
