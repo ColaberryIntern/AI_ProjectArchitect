@@ -75,6 +75,15 @@ def _date_offset(days: int) -> str:
     return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
 
 
+def _first_page_only(items, params):
+    """Mimic BC collection pagination: return ``items`` on page 1 and an empty
+    list on every later page, so a `_paginate` loop terminates. The walk
+    paginates the todolists AND groups fetches (2026-06-18 fix), so mocks for
+    those endpoints must model the same page-exhaustion the todos.json mocks
+    already do — otherwise the paginator sees the same non-empty page forever."""
+    return items if (params or {}).get("page", 1) == 1 else []
+
+
 # ════════════════════════════════════════════════════════════════════
 # _is_fresh — freshness gate for "activity within OPS_FRESHNESS_DAYS"
 # ════════════════════════════════════════════════════════════════════
@@ -500,7 +509,7 @@ class TestPullTodosForUser:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 # First page returns one assigned todo; subsequent pages empty
                 if params and params.get("page", 1) > 1:
@@ -550,13 +559,14 @@ class TestPullTodosForUser:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Curriculum"}]
+                return _first_page_only([{"id": 7001, "name": "Curriculum"}], params)
             # The list's own top level is empty — every todo lives in a group.
             if path == "/buckets/101/todolists/7001/todos.json":
                 return []
             if path == "/buckets/101/todolists/7001/groups.json":
-                return [{"id": 8001, "name": "Week 01"},
-                        {"id": 8002, "name": "Week 02"}]
+                return _first_page_only(
+                    [{"id": 8001, "name": "Week 01"},
+                     {"id": 8002, "name": "Week 02"}], params)
             if path == "/buckets/101/todolists/8001/todos.json":
                 if completed or page > 1:
                     return []
@@ -595,7 +605,7 @@ class TestPullTodosForUser:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 if params and (params.get("completed") == "true" or params.get("page", 1) > 1):
                     return []
@@ -609,6 +619,104 @@ class TestPullTodosForUser:
         assert result["status"] == "ok"
         assert result["todos_assigned_to_user"] == 1
         assert store.load_todos("ali@colaberry.com")[0].title == "Top task"
+
+    def test_paginates_todolists_so_new_lists_on_page_two_are_walked(
+        self, monkeypatch, isolated_ops_root,
+    ):
+        """A project's todolists.json is paginated; new lists land on later
+        pages (BC appends them in position order). The walk MUST fetch every
+        page, or a freshly-created list's tasks are invisible while the old
+        lists keep rendering.
+
+        Regression guard for the 2026-06-18 incident: Ali created a batch of
+        new lists + tasks in project 47126345 and My Day showed only the old
+        tasks. Root cause: the todoset → todolists fetch was a single-page
+        `_bc_get`, so any list past page 1 was never walked. The todos and
+        projects fetches paginate; the todolists fetch did not."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(101)]),
+        )
+
+        def _bc(path, token, params=None, _retry=1):
+            page = (params or {}).get("page", 1)
+            completed = bool(params and params.get("completed") == "true")
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                # Page 1 = the old lists; page 2 = the just-created list.
+                if page == 1:
+                    return [{"id": 7001, "name": "Phase 1 — old"}]
+                if page == 2:
+                    return [{"id": 7002, "name": "Phase 9 — NEW"}]
+                return []
+            if path == "/buckets/101/todolists/7001/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9001, assignees=(BC_USER,), title="Old task")]
+            if path == "/buckets/101/todolists/7002/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9002, assignees=(BC_USER,), title="New task")]
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+
+        assert result["status"] == "ok"
+        titles = {t.title for t in store.load_todos("ali@colaberry.com")}
+        # The new list's task must be present — this is the whole bug.
+        assert titles == {"Old task", "New task"}
+
+    def test_paginates_groups_within_a_list(self, monkeypatch, isolated_ops_root):
+        """A list's groups.json is paginated too. A group past page 1 (a
+        newly-added "Week 13" under a list already holding 12 week-groups)
+        must still be walked, or its tasks are invisible — the grouped-todo
+        analogue of the todolists-pagination bug."""
+        BC_USER = 17454835
+        monkeypatch.setattr(sync.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(sync.tokens, "get_user_bc_id", MagicMock(return_value=BC_USER))
+        monkeypatch.setattr(
+            sync, "discover_projects",
+            MagicMock(return_value=[_project_dict(101)]),
+        )
+
+        def _bc(path, token, params=None, _retry=1):
+            page = (params or {}).get("page", 1)
+            completed = bool(params and params.get("completed") == "true")
+            if path == "/projects/101.json":
+                return _project_dict(101)
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return [{"id": 7001, "name": "Curriculum"}] if page == 1 else []
+            if path == "/buckets/101/todolists/7001/todos.json":
+                return []  # empty top level; all todos live in groups
+            if path == "/buckets/101/todolists/7001/groups.json":
+                if page == 1:
+                    return [{"id": 8001, "name": "Week 01"}]
+                if page == 2:
+                    return [{"id": 8013, "name": "Week 13 — NEW"}]
+                return []
+            if path == "/buckets/101/todolists/8001/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9101, assignees=(BC_USER,), title="W1 task")]
+            if path == "/buckets/101/todolists/8013/todos.json":
+                if completed or page > 1:
+                    return []
+                return [_todo_dict(9113, assignees=(BC_USER,), title="W13 task")]
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = sync.pull_todos_for_user("ali@colaberry.com")
+
+        assert result["status"] == "ok"
+        titles = {t.title for t in store.load_todos("ali@colaberry.com")}
+        assert titles == {"W1 task", "W13 task"}
 
     def test_per_project_exception_yields_partial_and_records_error(
         self, monkeypatch, isolated_ops_root,
@@ -632,7 +740,7 @@ class TestPullTodosForUser:
                 # Simulate BC blowing up only on the bad project
                 raise urllib.error.HTTPError("u", 503, "down", {}, io.BytesIO(b""))
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 return []
             return None
@@ -686,7 +794,7 @@ class TestPullTodosForUser:
                     "u", 403, "Forbidden", {}, io.BytesIO(b""),
                 )
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 return []
             return None
@@ -937,7 +1045,7 @@ class TestPullTodosForUser:
                     _time.sleep(0.1)  # burn the per-project budget so 1/run walks
                     return _project_dict(pid)
                 if path == f"/buckets/{pid}/todosets/555/todolists.json":
-                    return [{"id": pid * 10, "name": "L"}]
+                    return _first_page_only([{"id": pid * 10, "name": "L"}], params)
                 if path == f"/buckets/{pid}/todolists/{pid * 10}/todos.json":
                     if params and (params.get("page", 1) > 1
                                    or params.get("completed") == "true"):
@@ -1123,7 +1231,7 @@ class TestWalkDisappearedReconciliation:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Launch Readiness"}]
+                return _first_page_only([{"id": 7001, "name": "Launch Readiness"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 return []  # nothing active, nothing completed surfaced by walk
             if path == "/buckets/101/todolists/7001/groups.json":
@@ -1224,7 +1332,7 @@ class TestWalkDisappearedReconciliation:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Launch Readiness"}]
+                return _first_page_only([{"id": 7001, "name": "Launch Readiness"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 if params and (params.get("completed") == "true"
                                or params.get("page", 1) > 1):
@@ -1360,7 +1468,7 @@ class TestPullTodosForProject:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 if params and params.get("page", 1) > 1:
                     return []
@@ -1426,7 +1534,7 @@ class TestPullTodosForProject:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 return []
             return None
@@ -1526,7 +1634,7 @@ class TestBcUserIdSelfHeal:
             if path == "/projects/101.json":
                 return _project_dict(101)
             if path == "/buckets/101/todosets/555/todolists.json":
-                return [{"id": 7001, "name": "Inbox"}]
+                return _first_page_only([{"id": 7001, "name": "Inbox"}], params)
             if path == "/buckets/101/todolists/7001/todos.json":
                 if params and params.get("page", 1) > 1:
                     return []
