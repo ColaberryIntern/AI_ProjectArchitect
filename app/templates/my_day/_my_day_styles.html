@@ -417,37 +417,31 @@
 </style>
 
 <script>
-// Build the "How to run this prompt" setup block. Mirrors workspace.html so
-// briefing / kanban / focus-card Copy Prompt buttons produce the same
-// self-contained text. Reads the user's workspace URL from a global
-// data attribute set on document.body (injected by _library_base.html).
+// SINGLE SOURCE OF TRUTH for the "How to run this prompt" runbook across EVERY
+// My Day copy surface: the briefing / kanban / heatmap / focus-card buttons via
+// copyPrompt() below, AND the workspace page via rebuildFullPrompt() (which
+// calls this same function). They MUST share one runbook — when they didn't,
+// the cards kept shipping a stale clone-based runbook for days after the
+// workspace page moved to the MCP model.
+//
+// The per-operator workspace repo is a behind-the-scenes sync artifact —
+// operators never clone or touch it. Doctrine, the mandatory-ticket protocol,
+// and the Basecamp + memory tools all reach the Claude Code session through the
+// Colaberry MCP, so the only setup is "have the MCP connected" — no clone, no
+// cd, no git pull. See directives/my-day-action-recipes.md Rule 2.
 function _mdSetupBlock() {
-  const wsUrl = document.body.dataset.workspaceRepo || '';
-  if (!wsUrl) {
-    return '## How to run this prompt\n\n' +
-      'You do not yet have a personal workspace repo. Ask an admin to provision one ' +
-      '(advisor.colaberry.ai/admin/users/new), then come back here.\n';
-  }
-  const parts = wsUrl.replace(/\/+$/, '').split('/');
-  const dir = parts[parts.length - 1] || '<your-workspace>';
   return (
     '## How to run this prompt\n\n' +
-    '1. Open a terminal on your personal computer.\n' +
-    '2. One-time setup (skip if already cloned):\n' +
-    '   git clone ' + wsUrl + '\n' +
-    '3. cd into your workspace:\n' +
-    '   cd ' + dir + '\n' +
-    '4. Pull latest doctrine + extracted assets:\n' +
-    '   git pull\n' +
-    '5. Start Claude Code:\n' +
-    '   claude\n' +
-    '   Claude reads CLAUDE.md from the workspace root and fires the SessionStart\n' +
-    '   hook in .claude/settings.json. The hook assembles a 5-layer context:\n' +
-    '   org doctrine -> shared KB -> tenant policy -> your CLAUDE.md ->\n' +
-    '   your OPERATOR_MEMORY.md. It also appends the mandatory-ticket protocol\n' +
-    '   wired to your personal BC project, so the first substantive prompt creates\n' +
-    '   a ticket there before any work happens.\n' +
-    '6. Paste the task prompt below into the Claude Code session.\n'
+    '1. Open Claude Code on your computer. Any folder works -- you do NOT need\n' +
+    '   to clone or set up any repo.\n' +
+    '2. Make sure the Colaberry MCP is connected (one-time setup at\n' +
+    '   advisor.colaberry.ai/profile/welcome). With it connected, Claude has\n' +
+    '   your Basecamp tools, your project memory, and the Colaberry doctrine +\n' +
+    '   ticket protocol -- all delivered through the MCP.\n' +
+    '3. Paste the task prompt below.\n' +
+    '\n' +
+    'If the Basecamp / Colaberry tools are not available in your session, the\n' +
+    'MCP is not connected -- reconnect at advisor.colaberry.ai/profile/welcome.\n'
   );
 }
 
@@ -471,7 +465,10 @@ function copyPrompt(promptId, btnEl) {
   const el = document.getElementById(promptId);
   if (!el) return;
   const taskPrompt = el.value || '';
-  const fullText = _mdSetupBlock() + '\n## Task\n\n' + taskPrompt;
+  // No '## Task' wrapper: the task prompt self-titles with a top-level
+  // `# {title}` heading (see suggestions.py _PROMPT_TEMPLATE). Wrapping it
+  // produced a confusing double heading on every card/list copy.
+  const fullText = _mdSetupBlock() + '\n' + taskPrompt;
   navigator.clipboard.writeText(fullText).then(() => {
     const orig = btnEl.innerText;
     btnEl.innerText = '✓ Copied — paste into Claude Code';

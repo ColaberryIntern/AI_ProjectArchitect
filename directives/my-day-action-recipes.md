@@ -23,7 +23,8 @@ code can never disagree silently.
 | Concern | File |
 |---|---|
 | Action-recipe table + recommendation reframing + prompt template | `execution/products/ops/suggestions.py` |
-| "How to run this prompt" runbook + preflight + the Copy button | `app/templates/my_day/workspace.html` (`_setupBlock`, `copyPrompt`) |
+| "How to run this prompt" runbook — single source `_mdSetupBlock` — + the card/list Copy button | `app/templates/my_day/_my_day_styles.html` (`_mdSetupBlock`, `copyPrompt`) |
+| Workspace-page notes box + Copy button (reuses `_mdSetupBlock`) | `app/templates/my_day/workspace.html` (`rebuildFullPrompt`, `copyWorkspacePrompt`) |
 | Shared button classes + 5-band heat colors + scatter panel CSS | `app/templates/my_day/_my_day_styles.html` |
 | Health bands + per-person rollup + BC deep-link derivation | `execution/products/ops/rollup.py` (`score_band`, `per_person`, `_bc_list_url`) |
 | SessionStart hook that assembles doctrine context (full vs limited mode) | `execution/products/library/session_start_hook.py` |
@@ -169,12 +170,28 @@ reach the operator's Claude Code session through the **Colaberry MCP**
 (`colaberry://doctrine/*` resources, served by `mcp_doctrine.py` and read at
 session start), NOT through a cloned repo's SessionStart hook.
 
-So the copied prompt's runbook (`_setupBlock`) carries **no clone / cd / git
-pull / PREFLIGHT** steps. The only setup it states: open Claude Code (any
-folder) with the Colaberry MCP connected, then paste the prompt. The MCP
-connection is the single source of context — if it's connected the doctrine is
-loaded; if not, the Basecamp tools are simply absent and the operator
-reconnects at `/profile/welcome`.
+So the copied prompt's runbook carries **no clone / cd / git pull / PREFLIGHT**
+steps. The only setup it states: open Claude Code (any folder) with the
+Colaberry MCP connected, then paste the prompt. The MCP connection is the single
+source of context — if it's connected the doctrine is loaded; if not, the
+Basecamp tools are simply absent and the operator reconnects at
+`/profile/welcome`.
+
+**The runbook has exactly one definition: `_mdSetupBlock()` in
+`_my_day_styles.html`.** Every copy surface uses it — the card/list/kanban/
+heatmap/focus buttons via `copyPrompt()`, and the workspace page via
+`rebuildFullPrompt()` (which calls the same function). Do NOT add a second copy.
+History (2026-06-18): a duplicated `_setupBlock` in `workspace.html` was updated
+to the MCP model while `_mdSetupBlock` kept the **old clone-based runbook**, so
+every card and list row shipped stale "git clone / cd / git pull / SessionStart
+hook" setup for days after the workspace page was fixed. Collapsed to one source;
+`test_setup_runbook_is_mcp_model_not_clone_based` guards against the drift.
+
+**Neither copy path wraps the task in a `## Task` heading.** The generated
+prompt self-titles with `# {title}` (BLUF), so `copyPrompt` /
+`rebuildFullPrompt` concatenate the runbook + the prompt directly. A `## Task`
+wrapper produced a confusing double heading;
+`test_no_double_task_heading_in_copy_paths` guards it.
 
 History: an earlier design delivered context via a SessionStart hook that only
 fired inside the cloned workspace repo, guarded by a PREFLIGHT "STOP if not in

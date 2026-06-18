@@ -147,27 +147,9 @@
 // + task prompt (bottom). Re-runs whenever the user types in #userNotes.
 // What's visible in #promptText is exactly what gets copied -- no surprises.
 
-function _setupBlock(workspaceUrl) {
-  // The per-operator workspace repo is a behind-the-scenes sync artifact --
-  // operators never clone or touch it. Doctrine, the mandatory-ticket
-  // protocol, and the Basecamp + memory tools all reach the session through
-  // the Colaberry MCP (colaberry://doctrine/* resources). So the only setup
-  // is "have the MCP connected" -- no clone, no cd, no preflight. The
-  // workspaceUrl arg is kept for call-site compatibility but unused.
-  return (
-    '## How to run this prompt\n\n' +
-    '1. Open Claude Code on your computer. Any folder works -- you do NOT need\n' +
-    '   to clone or set up any repo.\n' +
-    '2. Make sure the Colaberry MCP is connected (one-time setup at\n' +
-    '   advisor.colaberry.ai/profile/welcome). With it connected, Claude has\n' +
-    '   your Basecamp tools, your project memory, and the Colaberry doctrine +\n' +
-    '   ticket protocol -- all delivered through the MCP.\n' +
-    '3. Paste the task prompt below.\n' +
-    '\n' +
-    'If the Basecamp / Colaberry tools are not available in your session, the\n' +
-    'MCP is not connected -- reconnect at advisor.colaberry.ai/profile/welcome.\n'
-  );
-}
+// The "How to run this prompt" runbook is _mdSetupBlock(), defined once in
+// _my_day_styles.html (included above) and shared with the briefing / kanban /
+// focus-card copy buttons so the runbook can never drift between surfaces.
 
 // Cache of the assembled prompt. The COPY reads this string directly --
 // never `#promptText.innerText` -- because #promptText lives inside a
@@ -179,7 +161,6 @@ let _fullPrompt = '';
 function rebuildFullPrompt() {
   const builder = document.getElementById('promptBuilder');
   const taskPrompt = builder.dataset.taskPrompt || '';
-  const wsUrl = builder.dataset.workspaceUrl || '';
   const notes = document.getElementById('userNotes').value.trim();
   const bcId = builder.dataset.bcId;
 
@@ -187,7 +168,7 @@ function rebuildFullPrompt() {
   if (notes) {
     parts.push('## Notes from ' + (window._actor || 'me') + '\n\n' + notes + '\n');
   }
-  parts.push(_setupBlock(wsUrl));
+  parts.push(_mdSetupBlock());
   // The task prompt self-titles with a top-level `# {title}` heading (see
   // _PROMPT_TEMPLATE), so no `## Task` wrapper here — wrapping produced a
   // confusing double heading (## Task then the prompt's own header).
