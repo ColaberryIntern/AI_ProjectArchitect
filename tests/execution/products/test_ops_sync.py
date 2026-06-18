@@ -44,6 +44,15 @@ def _clear_ring_buffer():
 
 
 @pytest.fixture(autouse=True)
+def _clear_walk_deadline():
+    """Reset the thread-local per-walk deadline between tests so a test that
+    sets it can't poison a sibling running on the same thread."""
+    sync._walk_ctx.deadline = None
+    yield
+    sync._walk_ctx.deadline = None
+
+
+@pytest.fixture(autouse=True)
 def _fresh_coordinator():
     """Each test starts with a brand-new SyncCoordinator. Without this,
     a test that fails mid-sync leaves a slot locked, and subsequent
@@ -397,6 +406,61 @@ class TestBcGet:
             sync._bc_get("/x", "tok")
         assert calls["n"] == 1     # no retry
         assert sleeps == []        # no backoff
+
+    def test_transient_not_retried_past_walk_deadline(self, monkeypatch):
+        """Inside a _walk_deadline that has already elapsed, a transient 522 is
+        NOT retried — it fails fast so a project walk can't run unbounded during
+        a SUSTAINED BC outage (2026-06-18 hardening). Without the deadline the
+        same 522 WOULD retry (see test_522_retried_then_succeeds)."""
+        calls = {"n": 0}
+        def _se(*a, **kw):
+            calls["n"] += 1
+            raise _http_error(522)
+        monkeypatch.setattr(sync.urllib.request, "urlopen", MagicMock(side_effect=_se))
+        sleeps: list[float] = []
+        monkeypatch.setattr(sync.time, "sleep", lambda s: sleeps.append(s))
+        sync._walk_ctx.deadline = sync.time.time() - 1  # already passed
+        with pytest.raises(urllib.error.HTTPError):
+            sync._bc_get("/x", "tok")
+        assert calls["n"] == 1     # failed fast, no retry
+        assert sleeps == []        # no backoff sleep past the deadline
+
+
+class TestWalkDeadline:
+    """The thread-local per-walk deadline that bounds how long transient
+    retries can stretch one project's walk (2026-06-18 hardening)."""
+
+    def test_default_no_deadline(self):
+        sync._walk_ctx.deadline = None
+        assert sync._walk_deadline_passed() is False
+
+    def test_future_deadline_not_passed_and_restores(self):
+        sync._walk_ctx.deadline = None
+        with sync._walk_deadline(1000):
+            assert sync._walk_deadline_passed() is False  # 1000s in the future
+        # restored to the prior (None) value on exit
+        assert getattr(sync._walk_ctx, "deadline", None) is None
+
+    def test_falsy_seconds_means_unbounded(self):
+        with sync._walk_deadline(0):
+            assert sync._walk_deadline_passed() is False
+
+    def test_nested_deadlines_restore_outer(self):
+        with sync._walk_deadline(1000):
+            outer = sync._walk_ctx.deadline
+            with sync._walk_deadline(2000):
+                assert sync._walk_ctx.deadline != outer
+            assert sync._walk_ctx.deadline == outer  # inner restored the outer
+
+
+class TestSyncBudgetTtlInvariant:
+    def test_lock_ttl_exceeds_project_walk_ceiling(self):
+        """The coordinator lock TTL MUST exceed a single project's bounded
+        walk ceiling, or a long-but-healthy retry-extended walk gets
+        pre-empted at the TTL and a parallel walk starts. Ties the two
+        constants together so a future tweak to one can't silently break it."""
+        assert (sync_coordinator.LOCK_TTL_SECONDS_DEFAULT
+                > sync.PROJECT_SYNC_BUDGET_SECONDS)
 
     def test_429_honors_retry_after_and_retries_once(self, monkeypatch):
         """First call: 429 with Retry-After: 1. Second call: 200. The

@@ -28,7 +28,7 @@ from . import store, sync_coordinator, tokens
 logger = logging.getLogger(__name__)
 
 from collections import deque
-from threading import Lock
+from threading import Lock, local as _thread_local
 
 BC_ACCOUNT_ID = os.environ.get("BC_ACCOUNT_ID", "3945211")
 BC_API_BASE = f"https://3.basecampapi.com/{BC_ACCOUNT_ID}"
@@ -61,6 +61,19 @@ TRANSIENT_HTTP_CODES = frozenset({500, 502, 503, 504, 520, 521, 522, 524})
 # (recorded partial) instead of hanging forever on one dead endpoint.
 TRANSIENT_RETRIES = int(os.environ.get("OPS_TRANSIENT_RETRIES", "3"))
 TRANSIENT_BACKOFF_SECONDS = float(os.environ.get("OPS_TRANSIENT_BACKOFF_SECONDS", "1.0"))
+# Per-project wall-clock ceiling for ONE project's walk. The transient retries
+# above let a walk push through a brief 522 burst, but during a SUSTAINED
+# Cloudflare storm they could otherwise stretch a single large project to many
+# minutes (the 2026-06-18 storm: a 44-list project took ~13 min), blowing the
+# full sync's budget and outliving the coordinator lock TTL. Past this deadline
+# _bc_get stops retrying transient errors and fails fast, so a walk ends
+# bounded; the project keeps its last-good rows and converges on the next walk
+# once BC recovers — far better than one walk monopolizing the slot. The
+# focused (pull_todos_for_project) walk uses this directly; the full sweep
+# bounds each project to min(this, remaining overall budget). Must stay below
+# sync_coordinator.LOCK_TTL_SECONDS_DEFAULT (or a long-but-healthy walk gets
+# pre-empted into a parallel walk).
+PROJECT_SYNC_BUDGET_SECONDS = float(os.environ.get("OPS_PROJECT_SYNC_BUDGET_SECONDS", "180"))
 # L6 (2026-06-09 audit): hard wall-clock budget on a full sync. Without
 # this, a BC outage could keep one sync thread alive for nearly an hour
 # (HTTP_TIMEOUT=20s * ~150 calls). At budget, we stop walking, record
@@ -108,6 +121,40 @@ def clear_recent_errors() -> None:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# Thread-local wall-clock deadline for transient retries within ONE project
+# walk. The sync walk and the _bc_get calls it makes run on the same thread,
+# so a thread-local cleanly scopes "stop retrying after T" to the current walk
+# without threading a deadline arg through _paginate / _collect / the walk.
+# Sequential project walks each set their own.
+_walk_ctx = _thread_local()
+
+
+class _walk_deadline:
+    """Context manager: cap how long transient-error retries may extend the
+    _bc_get calls made on THIS thread, to `seconds` from now. Once the deadline
+    passes, _bc_get stops retrying 5xx/522/connection errors and raises, so a
+    project walk can't run unbounded during a sustained BC outage. A falsy
+    `seconds` means no deadline (unbounded — the historical behavior)."""
+
+    def __init__(self, seconds: float | None):
+        self.seconds = seconds
+
+    def __enter__(self):
+        self._prev = getattr(_walk_ctx, "deadline", None)
+        _walk_ctx.deadline = (time.time() + self.seconds) if self.seconds else None
+        return self
+
+    def __exit__(self, *exc):
+        _walk_ctx.deadline = self._prev
+        return False
+
+
+def _walk_deadline_passed() -> bool:
+    """True iff the current thread is inside a _walk_deadline that has elapsed."""
+    dl = getattr(_walk_ctx, "deadline", None)
+    return dl is not None and time.time() >= dl
 
 
 def _sleep_transient_backoff(path: str, why: str, transient_left: int) -> None:
@@ -163,7 +210,7 @@ def _bc_get(path: str, token: str, params: dict | None = None,
             logger.info("BC 429 on %s — sleeping %ds then retrying", path, wait_for)
             time.sleep(wait_for)
             return _bc_get(path, token, params, _retry=_retry - 1, _transient=_transient)
-        if e.code in TRANSIENT_HTTP_CODES and _transient > 0:
+        if e.code in TRANSIENT_HTTP_CODES and _transient > 0 and not _walk_deadline_passed():
             _sleep_transient_backoff(path, f"HTTP {e.code}", _transient)
             return _bc_get(path, token, params, _retry=_retry, _transient=_transient - 1)
         raise
@@ -172,7 +219,7 @@ def _bc_get(path: str, token: str, params: dict | None = None,
         # client-side timeout). Same transient class as a 5xx — retry with
         # backoff. HTTPError is a URLError subclass but is handled above, so
         # this branch only sees non-HTTP transport errors.
-        if _transient > 0:
+        if _transient > 0 and not _walk_deadline_passed():
             _sleep_transient_backoff(path, f"URLError {getattr(e, 'reason', e)}", _transient)
             return _bc_get(path, token, params, _retry=_retry, _transient=_transient - 1)
         raise
@@ -492,7 +539,11 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
         if not proj:
             return {"status": "project_not_found", "project_id": project_id}
         try:
-            fresh_todos, seen_active_ids = _walk_project_todos(proj, token, bc_user_id)
+            # Bound the focused walk: a sustained 522 storm can't stretch it
+            # past PROJECT_SYNC_BUDGET_SECONDS (it then fails fast and converges
+            # next view), so it can't outlive the coordinator lock TTL.
+            with _walk_deadline(PROJECT_SYNC_BUDGET_SECONDS):
+                fresh_todos, seen_active_ids = _walk_project_todos(proj, token, bc_user_id)
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
             _record_error(user_id, f"project_walk:{project_id}", err)
@@ -783,7 +834,12 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             last_synced_at=_now_iso(),
         ))
         try:
-            walked_todos, seen_active_ids = _walk_project_todos(proj, token, classify_id)
+            # Bound each project to the smaller of its own ceiling and the
+            # overall budget still remaining, so one storm-stalled project
+            # can't blow the whole sweep's budget or outlive the lock TTL.
+            _remaining = SYNC_BUDGET_SECONDS - (time.time() - sync_start)
+            with _walk_deadline(min(PROJECT_SYNC_BUDGET_SECONDS, max(5.0, _remaining))):
+                walked_todos, seen_active_ids = _walk_project_todos(proj, token, classify_id)
             fresh_todos.extend(walked_todos)
             walked_active_by_bucket[bucket] = seen_active_ids
             projects_walked += 1
