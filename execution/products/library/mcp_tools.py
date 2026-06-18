@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -673,10 +674,72 @@ def _tool_remember(user, args: dict) -> dict:
     return {"ok": True, "scope": scope, "saved": True}
 
 
+# Inline-text surfacing for Basecamp Documents. A BC Document is rich-text HTML
+# (small, no binary blob) that the operator usually wants to *read* in-session,
+# not stage for a downstream Drive-connector session. So in addition to staging a
+# copy to Drive, we render the HTML to readable text and return it inline as
+# `content_text`, capped so a very large doc can't blow the model's context.
+_INLINE_TEXT_CAP = 50_000  # chars; the full doc is always staged to Drive regardless
+
+_BLOCK_BREAK_RE = re.compile(
+    r"(?i)</(?:p|div|li|ul|ol|h[1-6]|tr|table|blockquote|pre|figure)>|<br\s*/?>"
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+_TRAILING_WS_RE = re.compile(r"[ \t]+\n")
+_MULTI_NL_RE = re.compile(r"\n{3,}")
+
+
+def _html_to_text(raw_html: str) -> str:
+    """Lightweight HTML -> readable text for inline LLM consumption.
+
+    BC Documents are Trix rich-text HTML (paragraphs, lists, headings, links).
+    We don't need perfect fidelity -- just readable text the model can summarize.
+    Block-level close tags become newlines; remaining tags are stripped; HTML
+    entities are unescaped. Stdlib only (no bs4 dependency), matching the rest
+    of the adapter stack.
+    """
+    import html as _html
+
+    text = _BLOCK_BREAK_RE.sub("\n", raw_html)
+    text = _TAG_RE.sub("", text)
+    text = _html.unescape(text)
+    text = _TRAILING_WS_RE.sub("\n", text)
+    text = _MULTI_NL_RE.sub("\n\n", text)
+    return text.strip()
+
+
+def _inline_text_payload(raw_html: str) -> dict:
+    """Build the `content_text` result fields from a document's HTML body.
+
+    Renders the HTML to readable text capped at `_INLINE_TEXT_CAP`. Truncation
+    affects only the inline copy -- the full document is still staged to Drive,
+    so the note points the reader at `drive_url` for the remainder.
+    """
+    text = _html_to_text(raw_html)
+    if len(text) > _INLINE_TEXT_CAP:
+        note = (
+            f"\n\n[... truncated at {_INLINE_TEXT_CAP:,} of {len(text):,} characters. "
+            f"The full document is staged in Drive -- see drive_url.]"
+        )
+        return {"content_text": text[:_INLINE_TEXT_CAP] + note, "content_truncated": True}
+    return {"content_text": text, "content_truncated": False}
+
+
+def _is_inline_document(source: str, mime_type: str) -> bool:
+    """True for a Basecamp Document fetch whose text we should return inline.
+
+    BC Documents are materialized as `text/html` by `basecamp.fetch_document`.
+    Binary uploads (pdf/docx/images) keep their own content types and stay
+    Drive-only.
+    """
+    return source == "basecamp" and (mime_type or "").lower().startswith("text/html")
+
+
 def _tool_attachment_fetch(user, args: dict) -> dict:
     """Stage an attachment from Gmail / Basecamp / Drive into the operator's
-    Google Drive and return a Drive ref. See
-    directives/colaberry-attachment-fetch.md for the contract.
+    Google Drive and return a Drive ref. For Basecamp Documents, also return the
+    document text inline as `content_text` so the operator can read it without a
+    Drive connector. See directives/colaberry-attachment-fetch.md for the contract.
     """
     from . import attachment_index, drive_staging, google_oauth_token
     from .attachment_sources import (
@@ -744,7 +807,7 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
     )
     existing = attachment_index.lookup(user.email, idempotency_key)
     if existing:
-        return {
+        out = {
             "ok": True,
             "drive_file_id": existing.drive_file_id,
             "drive_url": existing.drive_url,
@@ -757,6 +820,26 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
             "saved_at": existing.saved_at,
             "reused_existing": True,
         }
+        # The index stores only the Drive ref, not the body. For a Basecamp
+        # Document the operator wants the *text*, so re-surface it inline on a
+        # cache hit too (a single cheap GET) -- otherwise a repeat "read it"
+        # call would regress to the unreadable-Drive-ref behavior. The Drive
+        # copy stays idempotent; only the inline text is re-fetched.
+        if _is_inline_document(existing.source, existing.mime_type):
+            try:
+                doc = bc_source.fetch_document(
+                    int(id_echo["project_id"]),
+                    int(id_echo["recording_id"]),
+                    _bc_token(user),
+                )
+                out.update(_inline_text_payload(
+                    doc.data.decode("utf-8", errors="replace")))
+            except Exception:
+                out["content_text_unavailable"] = (
+                    "Reused the cached Drive copy, but re-fetching the document "
+                    "text failed. Open drive_url to read it."
+                )
+        return out
 
     # 3. Concurrency guard. Two MCP calls with the same key shouldn't both
     # upload; second caller gets a clean retry signal.
@@ -869,7 +952,7 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
         )
         attachment_index.record(user.email, ref)
 
-        return {
+        out = {
             "ok": True,
             "drive_file_id": drive_file_id,
             "drive_url": drive_url,
@@ -882,6 +965,12 @@ def _tool_attachment_fetch(user, args: dict) -> dict:
             "saved_at": now_iso,
             "reused_existing": False,
         }
+        # Basecamp Document: surface the text inline so the operator can read it
+        # in-session. The bytes we just staged ARE the document HTML.
+        if _is_inline_document(source, fetched.mime_type) and fetched.data:
+            out.update(_inline_text_payload(
+                fetched.data.decode("utf-8", errors="replace")))
+        return out
     finally:
         attachment_index.end_inflight(user.email, idempotency_key)
 
@@ -1045,6 +1134,11 @@ TOOLS: list[Tool] = [
             "a Drive ref (file id + URL + metadata) -- never the raw bytes -- so downstream Claude "
             "sessions can read the file with their existing Google Drive connector. Idempotent: "
             "repeat calls with the same source identifiers return the previously-staged file. "
+            "ALSO READS BASECAMP DOCUMENTS: to read a Basecamp Document (a `.../buckets/<bucket>/documents/<id>` "
+            "URL -- the rich-text 'Docs & Files' type, NOT a file upload), call source=basecamp with "
+            "project_id=<bucket> and recording_id=<the documents/<id> number>. The document's text is "
+            "returned inline as `content_text` (rendered from its HTML, truncated at ~50K chars with the "
+            "full copy staged to Drive), so you can read/summarize it in-session WITHOUT a Drive connector. "
             "Operator must have run scripts/bootstrap_google_oauth.py first."
         ),
         input_schema={
@@ -1059,7 +1153,7 @@ TOOLS: list[Tool] = [
                 "filename": {"type": "string", "description": "Gmail attachment filename (preferred over attachment_id -- robust against id-format drift across Gmail-API wrappers). Case-insensitive basename match."},
                 "attachment_id": {"type": "string", "description": "Canonical Gmail v1 attachment id from `users.messages.get(format=full).payload.parts[*].body.attachmentId`. Use `filename` instead if your Gmail client returns a wrapper-internal id format."},
                 "project_id": {"type": "integer", "description": "Basecamp bucket id"},
-                "recording_id": {"type": "integer", "description": "Basecamp recording id. For todo/comment attachments this hosts the blob (pair with attachment_sgid). For a vault/brief upload it is the trailing id in the `.../uploads/<id>` link and is sufficient on its own."},
+                "recording_id": {"type": "integer", "description": "Basecamp recording id. For todo/comment attachments this hosts the blob (pair with attachment_sgid). For a vault/brief upload it is the trailing id in the `.../uploads/<id>` link and is sufficient on its own. For a Basecamp **Document** it is the trailing id in the `.../documents/<id>` link -- sufficient on its own; the doc's text comes back inline as `content_text`."},
                 "attachment_sgid": {"type": "string", "description": "Basecamp blob sgid. Optional: omit for `.../uploads/<id>` upload links and the blob is resolved from recording_id alone."},
                 "drive_file_id": {"type": "string", "description": "Drive file id for passthrough mode"},
                 "destination_subpath": {"type": "string", "description": "Optional override for the YYYY-MM folder segment"},
