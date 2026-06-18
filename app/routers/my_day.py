@@ -319,11 +319,27 @@ def _log_bg_exception(user_email: str, kind: str, exc: BaseException) -> None:
         )
 
 
-def _kick_bg_full_sync(user_email: str) -> None:
-    """Spawn a background full sync. Mutual exclusion is enforced INSIDE
-    pull_todos_for_user via SyncCoordinator (2026-06-09 audit H1/H2 fix)
-    — if a sync is already in flight, the thread no-ops via the inner
-    `already_running` short-circuit, so no router-level lock dict needed.
+def _kick_bg_full_sync(user_email: str, focus_project_id: int | None = None) -> None:
+    """Spawn a background sync. Mutual exclusion is enforced INSIDE
+    pull_todos_for_user / pull_todos_for_project via SyncCoordinator
+    (2026-06-09 audit H1/H2 fix) — if a sync is already in flight, the
+    thread no-ops via the inner `already_running` short-circuit, so no
+    router-level lock dict needed.
+
+    `focus_project_id` — when the operator is viewing ONE project, walk
+    that project first via the targeted, budget-exempt
+    pull_todos_for_project, THEN run the full sweep for everything else.
+    This is the 2026-06-18 'sync still doesn't match BC' follow-up to the
+    #53 pagination fix: the full sweep walks projects under a round-robin
+    cursor capped at SYNC_BUDGET_SECONDS (120s). An operator with more
+    projects than fit in one budget window — CB System sees 50+ — can
+    trigger sync after sync and never have the project they are STARING AT
+    refreshed, because the cursor keeps deferring it past the budget. The
+    targeted walk is a single project (~2-3s, no budget cap), so the viewed
+    project ALWAYS matches BC after a sync. Both calls go through the
+    coordinator sequentially in this one thread, so they never race each
+    other; the targeted walk's data lands even if the full sweep then
+    no-ops via `already_running`.
 
     History: this used to manage a `_maybe_async_sync._locks` function-
     attribute dict. That dict was a hidden global mutated from four
@@ -334,8 +350,15 @@ def _kick_bg_full_sync(user_email: str) -> None:
 
     def _run():
         try:
+            produced = False
+            if focus_project_id is not None:
+                # Targeted walk of the viewed project first — budget-exempt,
+                # so the round-robin cursor can't starve it.
+                pr = sync.pull_todos_for_project(user_email, focus_project_id)
+                produced = pr.get("status") == "ok"
             r = sync.pull_todos_for_user(user_email)
-            if r.get("status") in ("ok", "partial"):
+            produced = r.get("status") in ("ok", "partial") or produced
+            if produced:
                 scorer.score_all_todos(user_email)
         except Exception as e:
             _log_bg_exception(user_email, "bg_full_sync", e)
@@ -380,9 +403,12 @@ def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) ->
     # Fresh AND clean → no work. Stale OR last-was-bad → retry.
     if age < 90 and last_status == "ok":
         return False
-    # Kick a full bg sync. This includes whichever project the user is
-    # currently viewing, plus everything else. Returns immediately.
-    _kick_bg_full_sync(user_email)
+    # Kick a bg sync. When the operator is viewing one project, walk THAT
+    # project first (targeted, budget-exempt) so the view they're looking
+    # at always reflects BC — the full sweep's round-robin SYNC_BUDGET_SECONDS
+    # cap can otherwise defer it indefinitely (CB System sees 50+ projects).
+    # Still non-blocking: returns immediately either way.
+    _kick_bg_full_sync(user_email, focus_project_id=project_filter_id)
     return False  # never reload state inline -- avoid the 30s freeze
 
 
@@ -875,19 +901,11 @@ async def ops_sync(
     user = _require_user(request)
     legacy = ALI_LEGACY_BUCKET if user.email == "ali@colaberry.com" else None
 
-    def _bg():
-        try:
-            result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
-            if result.get("status") in ("ok", "partial"):
-                scorer.score_all_todos(user.email)
-        except Exception as e:
-            _log_bg_exception(user.email, "manual_sync", e)
-
-    _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
-
     # Defensive fallback: if the form lacked any filter fields (a stale
     # template version, a proxy stripping the POST body, or a direct
     # curl), parse the Referer query string so we still preserve filters.
+    # Resolved BEFORE the sync kicks so the focused-project walk below
+    # AND the redirect both see the recovered project filter.
     if not (view or tier or project or list_id or person):
         from urllib.parse import urlparse, parse_qs
         ref_qs = parse_qs(urlparse(request.headers.get("Referer", "")).query)
@@ -896,6 +914,32 @@ async def ops_sync(
         project = ref_qs.get("project", [""])[0]
         list_id = ref_qs.get("list", [""])[0]
         person = ref_qs.get("person", [""])[0]
+
+    # When Sync is triggered while viewing one project, walk THAT project
+    # first (targeted, budget-exempt) so it always reflects BC. The full
+    # sweep alone can defer it indefinitely behind the round-robin
+    # SYNC_BUDGET_SECONDS cursor (CB System sees 50+ projects) — the user's
+    # "MyDay should match BC after a sync, no matter what". See
+    # _kick_bg_full_sync's focus_project_id contract.
+    try:
+        focus_project = int(project) if project else None
+    except ValueError:
+        focus_project = None
+
+    def _bg():
+        try:
+            produced = False
+            if focus_project is not None:
+                pr = sync.pull_todos_for_project(user.email, focus_project)
+                produced = pr.get("status") == "ok"
+            result = sync.pull_todos_for_user(user.email, ali_legacy_bucket=legacy)
+            produced = result.get("status") in ("ok", "partial") or produced
+            if produced:
+                scorer.score_all_todos(user.email)
+        except Exception as e:
+            _log_bg_exception(user.email, "manual_sync", e)
+
+    _th.Thread(target=_bg, daemon=True, name=f"manual-sync-{user.email}").start()
 
     from urllib.parse import urlencode
     params: list[tuple[str, str]] = []

@@ -43,6 +43,12 @@ def client(monkeypatch, stub_user):
         my_day_router.sync, "pull_todos_for_user",
         lambda *a, **kw: {"status": "ok", "todos": 0, "projects": 0},
     )
+    # The viewed-project targeted walk (focus_project_id path) — stub too so
+    # the bg thread never reaches BC when a project filter is present.
+    monkeypatch.setattr(
+        my_day_router.sync, "pull_todos_for_project",
+        lambda *a, **kw: {"status": "ok", "project_id": a[1] if len(a) > 1 else None},
+    )
     monkeypatch.setattr(
         my_day_router.scorer, "score_all_todos",
         lambda *a, **kw: None,
@@ -138,3 +144,64 @@ def test_sync_form_wins_over_referer(client):
     params = _redirect_params(r)
     assert params["view"] == "briefing"
     assert params["tier"] == "assigned"
+
+
+def test_sync_with_project_walks_that_project_targeted(monkeypatch, stub_user):
+    """Manual Sync while viewing one project must walk THAT project via the
+    budget-exempt pull_todos_for_project, so the viewed project always
+    matches BC — the 2026-06-18 'sync still doesn't match' fix. The full
+    sweep alone defers it behind the round-robin SYNC_BUDGET_SECONDS cursor
+    (CB System sees 50+ projects)."""
+    import time as _t
+    monkeypatch.setattr(my_day_router, "_require_user", lambda r: stub_user)
+    monkeypatch.setattr(my_day_router.sync, "pull_todos_for_user",
+                        lambda *a, **kw: {"status": "ok"})
+    monkeypatch.setattr(my_day_router.scorer, "score_all_todos", lambda *a, **kw: None)
+    sync_coordinator.reset_coordinator_for_tests()
+    focused: list[int] = []
+    monkeypatch.setattr(
+        my_day_router.sync, "pull_todos_for_project",
+        lambda email, project_id, *a, **kw: focused.append(project_id) or {"status": "ok"},
+    )
+    app = FastAPI()
+    app.include_router(my_day_router.router)
+    client = TestClient(app)
+
+    r = client.post("/my-day/sync",
+                    data={"view": "briefing", "tier": "all", "project": "47126345"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    # Daemon thread — wait for the targeted walk to register.
+    for _ in range(100):
+        if focused: break
+        _t.sleep(0.01)
+    assert focused == [47126345]
+
+
+def test_sync_without_project_skips_targeted_walk(monkeypatch, stub_user):
+    """No project filter → only the full sweep runs; the targeted walk must
+    NOT fire (nothing to focus)."""
+    import time as _t
+    monkeypatch.setattr(my_day_router, "_require_user", lambda r: stub_user)
+    full_done: list = []
+    monkeypatch.setattr(my_day_router.sync, "pull_todos_for_user",
+                        lambda *a, **kw: full_done.append(True) or {"status": "ok"})
+    monkeypatch.setattr(my_day_router.scorer, "score_all_todos", lambda *a, **kw: None)
+    sync_coordinator.reset_coordinator_for_tests()
+    focused: list[int] = []
+    monkeypatch.setattr(
+        my_day_router.sync, "pull_todos_for_project",
+        lambda email, project_id, *a, **kw: focused.append(project_id) or {"status": "ok"},
+    )
+    app = FastAPI()
+    app.include_router(my_day_router.router)
+    client = TestClient(app)
+
+    r = client.post("/my-day/sync", data={"view": "briefing", "tier": "all"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    for _ in range(100):
+        if full_done: break
+        _t.sleep(0.01)
+    assert full_done == [True]
+    assert focused == []
