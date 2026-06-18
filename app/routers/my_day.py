@@ -23,7 +23,7 @@ from fastapi import Form
 
 from execution.products.library import auth_google, mcp_token, tenancy
 from execution.products.ops import (
-    bc_comments, context_collector, llm_suggest, plan_inference,
+    bc_comments, context_collector, llm_suggest, personas, plan_inference,
     rollup, scorer, standing_orders, store, suggestions, sync,
     sync_coordinator, tokens,
 )
@@ -525,7 +525,7 @@ async def ops_home(request: Request):
                 seen_ids.add(t.bc_id)
                 try:
                     s = suggestions.build_suggestion(t)
-                    kanban_prompts[t.bc_id] = suggestions.generate_prompt(t, s)
+                    kanban_prompts[t.bc_id] = suggestions.generate_prompt(t, s, persona=getattr(user, "prompt_persona", None))
                 except Exception:
                     kanban_prompts[t.bc_id] = ""
     # ── Heat map extras: People group, scatter-plot points, next-task prompts ──
@@ -552,7 +552,7 @@ async def ops_home(request: Request):
     def _prompt_for(t) -> str:
         try:
             s = suggestions.build_suggestion(t)
-            return suggestions.generate_prompt(t, s)
+            return suggestions.generate_prompt(t, s, persona=getattr(user, "prompt_persona", None))
         except Exception:
             return ""
 
@@ -629,7 +629,8 @@ async def ops_home(request: Request):
         # One BLUF renderer for both paths; standing orders + inlined comments
         # on the focus card regardless of whether the LLM was available.
         focus_prompt = standing_orders.append_orders(
-            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text)
+            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text,
+                                        persona=getattr(user, "prompt_persona", None))
         )
 
     # Single-project context (used for big-picture banner)
@@ -815,11 +816,28 @@ async def ops_todo(bc_id: int, request: Request):
     if not todo:
         raise HTTPException(404, f"Todo {bc_id} not in your queue (run /my-day/sync to refresh)")
     suggestion = suggestions.build_suggestion(todo)
-    prompt = suggestions.generate_prompt(todo, suggestion)
+    prompt = suggestions.generate_prompt(todo, suggestion, persona=getattr(user, "prompt_persona", None))
     return request.app.state.templates.TemplateResponse(
         request, "my_day/workspace.html",
-        _ctx(request, user, todo=todo, suggestion=suggestion, prompt=prompt),
+        _ctx(request, user, todo=todo, suggestion=suggestion, prompt=prompt,
+             personas=personas.PERSONAS,
+             active_persona=personas.get(getattr(user, "prompt_persona", None))["id"]),
     )
+
+
+@router.post("/persona")
+async def ops_set_persona(request: Request, persona: str = Form(""),
+                          next: str = Form("/my-day/")):
+    """Save the operator's prompt-delivery persona (server-side, per operator).
+    It then applies to every prompt they copy, on every surface and device,
+    until they change it. Redirects back so the page re-renders with the new
+    persona embedded in the prompt."""
+    user = _require_user(request)
+    if personas.is_valid(persona):
+        user.prompt_persona = persona
+        tenancy.upsert_user(user)
+    dest = next if next.startswith("/my-day") else "/my-day/"
+    return RedirectResponse(url=dest, status_code=303)
 
 
 @router.post("/sync")
@@ -1197,7 +1215,8 @@ async def ops_decisions_report(request: Request):
         else:
             focus_suggestion = suggestions.build_suggestion(focus)
         focus_prompt = standing_orders.append_orders(
-            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text)
+            suggestions.generate_prompt(focus, focus_suggestion, comments=comments_text,
+                                        persona=getattr(user, "prompt_persona", None))
         )
 
     project_one = next((p for p in projects if p.bc_id == project_filter_id), None) if project_filter_id else None

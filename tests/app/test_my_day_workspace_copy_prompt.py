@@ -110,6 +110,46 @@ def test_clipboard_failure_has_a_fallback(client):
     assert "Copy failed" in html
 
 
+def test_workspace_renders_persona_selector(client):
+    """The delivery-persona selector appears at the top of the workspace tab
+    with all 5 personas; the default (copilot) is highlighted for a user who
+    hasn't chosen one."""
+    html = client.get("/my-day/todo/9946498486").text
+    assert "How should Claude deliver to you?" in html
+    assert 'action="/my-day/persona"' in html
+    for label in ["Co-pilot", "Just the answer", "Visual-first",
+                  "Explain it to me", "Checklist doer"]:
+        assert label in html
+    # Default persona (copilot) is the selected/highlighted chip.
+    assert 'value="copilot"' in html and "checked" in html
+
+
+def test_persona_post_saves_and_redirects(client, monkeypatch, stub_user):
+    """POST /my-day/persona persists the choice on the operator and redirects
+    back to the workspace page."""
+    saved = {}
+    monkeypatch.setattr(my_day_router.tenancy, "upsert_user",
+                        lambda u: saved.update(persona=u.prompt_persona) or u)
+    r = client.post("/my-day/persona",
+                    data={"persona": "visual", "next": "/my-day/todo/9946498486"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/my-day/todo/9946498486"
+    assert saved["persona"] == "visual"
+    assert stub_user.prompt_persona == "visual"
+
+
+def test_persona_post_ignores_unknown_value(client, monkeypatch, stub_user):
+    called = {"upsert": False}
+    monkeypatch.setattr(my_day_router.tenancy, "upsert_user",
+                        lambda u: called.update(upsert=True) or u)
+    r = client.post("/my-day/persona", data={"persona": "bogus"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    # Unknown persona is not saved.
+    assert called["upsert"] is False
+
+
 def test_setup_runbook_is_mcp_model_not_clone_based(client):
     """The "How to run this prompt" runbook must be the MCP model (no clone),
     and must come from the single shared _mdSetupBlock() so the card/list copy

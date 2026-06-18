@@ -270,6 +270,31 @@ def test_human_required_non_decision_kind_unaffected():
     assert s["owner_note"] == ""
 
 
+# ── persona swaps the "How I want you to work" block ────────────────────────
+
+def test_generate_prompt_default_persona_is_copilot():
+    prompt = generate_prompt(_make("Approve the plan"))
+    assert "## How I want you to work" in prompt
+    # Co-pilot's distinctive paced wording.
+    assert "ask if I want to continue or adjust" in prompt
+
+
+def test_generate_prompt_visual_persona_embeds_browser_instruction():
+    prompt = generate_prompt(_make("Approve the plan"), persona="visual")
+    assert "OPEN IT IN MY BROWSER" in prompt
+    # And the co-pilot default wording is gone.
+    assert "ask if I want to continue or adjust" not in prompt
+
+
+def test_generate_prompt_checklist_persona_embeds_decision_tag():
+    assert "[DECISION]" in generate_prompt(_make("Approve the plan"), persona="checklist")
+
+
+def test_generate_prompt_unknown_persona_falls_back_to_copilot():
+    prompt = generate_prompt(_make("Approve the plan"), persona="bogus")
+    assert "ask if I want to continue or adjust" in prompt
+
+
 # ── merge_llm_suggestion: LLM fields folded into the deterministic BLUF base ─
 
 def test_merge_llm_suggestion_overrides_content_keeps_ownership():

@@ -101,6 +101,10 @@ class User:
     roles: list[str] = field(default_factory=lambda: ["consumer"])
     google_subject: str | None = None   # OAuth `sub` (Auth 2)
     workspace_repo: str | None = None   # Provision 1
+    # My Day prompt delivery persona id (execution/products/ops/personas.py).
+    # Swaps the "How I want you to work" block in every prompt this operator
+    # copies. None => default ("copilot"). Set on the workspace page.
+    prompt_persona: str | None = None
     personal_bc_project_id: str | None = None  # Op 2 - the user's personal BC project for ticket anchoring
     personal_bc_todolist_id: str | None = None  # Op 2 - default todolist within that project (created at provision time)
     # MCP token tracking (Phase 8). We store sha256(token), never the plain token.

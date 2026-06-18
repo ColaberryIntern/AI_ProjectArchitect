@@ -26,6 +26,7 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
+from . import personas
 from .store import OpsTodo
 
 # ── Action recipes (regex-keyed, ordered most-specific-first) ──────────
@@ -421,12 +422,7 @@ This is a **{action_kind}** task. {one_line}
 ## Lean on
 {resources_block}
 
-## How I want you to work
-1. Confirm you understand the task in your own words (one line).
-2. Walk me through step 1 above, doing the work as you go (don't just narrate).
-3. After each step, ask if I want to continue or adjust before moving to the next.
-4. Use the Resources listed above; check what's already in the repo before writing new code.
-5. If a Stop condition triggers, stop and tell me what you found.
+{working_block}
 
 Begin.
 """
@@ -498,6 +494,7 @@ def generate_prompt(
     todo: OpsTodo,
     suggestion: dict[str, Any] | None = None,
     comments: str = "",
+    persona: str | None = None,
 ) -> str:
     """A ready-to-paste Claude Code prompt for this specific todo.
 
@@ -505,6 +502,10 @@ def generate_prompt(
     `## Recent comments` block below the description. The focus card passes it
     so the LLM-enhanced prompt keeps the thread context inline; other surfaces
     omit it and the block is absent.
+
+    `persona` (optional) is the operator's delivery preference id; it swaps the
+    `## How I want you to work` block for that persona's guidance (default =
+    `copilot`, today's behavior). See `personas.py`.
     """
     s = suggestion or build_suggestion(todo)
 
@@ -544,4 +545,5 @@ def generate_prompt(
         resources_block=resources_block,
         stop_block=stop_block,
         ownership_block=ownership_block,
+        working_block=personas.working_block(persona),
     )
