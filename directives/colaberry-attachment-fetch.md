@@ -33,6 +33,12 @@ Tool call `colaberry_attachment_fetch(args)`:
     (`GET /buckets/{project}/uploads/{recording_id}.json` → `download_url`)
     via `basecamp.fetch_by_recording`. This is the path for "Briefs to read
     first" / vault links, which expose only the recording id, never the sgid.
+    If that recording id is a **Document** rather than an upload (e.g. a "Lab
+    Spec" linked in a comment), the uploads endpoint 404s and the tool
+    transparently falls back to
+    `GET /buckets/{project}/documents/{recording_id}.json`, materializing the
+    document's inline `content` HTML as a `text/html` file named `<title>.html`.
+    No extra args required.
 - Drive args (required when `source="drive"`):
   - `drive_file_id`: Drive file id — passthrough mode; the tool re-resolves
     metadata + returns the same ref without re-uploading (must be a file
@@ -105,8 +111,11 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
    - `basecamp_attachment.fetch(project_id, recording_id, sgid, bc_token)` →
      `(filename, mime_type, bytes, sender_project_name)` when an sgid is given;
      otherwise `basecamp_attachment.fetch_by_recording(project_id,
-     recording_id, bc_token)` resolves the blob from the upload recording. BC
-     token comes from the existing `_bc_token(user)` chain.
+     recording_id, bc_token)` resolves the blob from the upload recording — and
+     on a 404 there (the id is a Document, not an upload) falls back to
+     `basecamp_attachment.fetch_document(...)`, which returns the document's
+     inline HTML body as a `.html` file. BC token comes from the existing
+     `_bc_token(user)` chain.
    - `drive_attachment.fetch(drive_file_id, access_token)` → `(filename,
      mime_type, metadata)` — no bytes, this is a metadata-only passthrough.
 6. For non-Drive sources: upload bytes to Drive via `drive_staging.upload(
@@ -132,6 +141,18 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
 - **Basecamp blob URL changed format** (BC sometimes restructures URLs) →
   attempt the documented URL; on 404, log the attempt and return
   `error: "basecamp_blob_unreachable"`.
+- **Basecamp recording id is a Document, not an upload** (e.g. a "Lab Spec"
+  linked in a comment) → `fetch_by_recording` 404s on `/uploads/{id}.json` and
+  transparently retries `/documents/{id}.json`, returning the document's inline
+  `content` as a `text/html` file named `<title>.html`. No sgid or extra args
+  needed.
+- **Recording id is neither an upload nor a readable document** (deleted, or
+  the operator's BC grant can't see it) → after both endpoints 404, return
+  `error: "basecamp_recording_not_found"` (clearer than the generic
+  `basecamp_blob_not_found`).
+- **Document payload has no `content` field** → return
+  `error: "basecamp_document_no_content"`. Should not happen for a normal BC
+  Document; defensive against API shape drift.
 - **Drive quota exceeded** during upload → return
   `error: "drive_quota_exceeded"`. The operator owns the quota; surface the
   failure rather than retrying.
@@ -178,7 +199,12 @@ Drive path used: `Drive:/Colaberry Inbound/<source>/<sender_or_project_slug>/<YY
 ## Verification
 
 - Unit tests (mocked HTTP) for each source adapter — happy, 401, 404, 429,
-  malformed payload. Live at `tests/execution/products/library/test_attachment_fetch.py`.
+  malformed payload. Live at `tests/execution/products/test_attachment_fetch.py`.
+- Document fallback test: a recording id that 404s on `/uploads` but resolves
+  on `/documents` returns a `text/html` `<title>.html` attachment (title
+  sanitized for the filename); an id that 404s on both returns
+  `basecamp_recording_not_found`; a document with no `content` returns
+  `basecamp_document_no_content`.
 - Idempotency test: two calls with the same args → one Drive upload, two
   identical refs returned.
 - Auth boundary test: call with a `cmcp_*` token whose operator has no vault
