@@ -110,6 +110,46 @@ def test_clipboard_failure_has_a_fallback(client):
     assert "Copy failed" in html
 
 
+def test_setup_runbook_is_mcp_model_not_clone_based(client):
+    """The "How to run this prompt" runbook must be the MCP model (no clone),
+    and must come from the single shared _mdSetupBlock() so the card/list copy
+    buttons can't drift back to the stale clone-based runbook.
+
+    Regression (2026-06-18): the workspace page moved to the MCP runbook but the
+    shared copyPrompt in _my_day_styles.html kept shipping the old "git clone /
+    cd / git pull / SessionStart hook" runbook on every card and list row.
+    """
+    html = client.get("/my-day/todo/9946498486").text
+
+    # MCP model present.
+    assert "Colaberry MCP is connected" in html
+    assert "to clone or set up any repo" in html
+
+    # Stale clone-based runbook gone everywhere on the page. Use full step
+    # phrases (not bare "git pull") so the assertion can't collide with a code
+    # comment that legitimately says "no clone, no cd, no git pull".
+    assert "One-time setup (skip if already cloned)" not in html
+    assert "Pull latest doctrine" not in html
+    assert "OPERATOR_MEMORY" not in html
+    assert "fires the SessionStart" not in html
+
+    # Single source of truth: the workspace page uses the shared block, and its
+    # old local _setupBlock copy is gone.
+    assert "parts.push(_mdSetupBlock())" in html
+    assert "function _setupBlock(" not in html
+
+
+def test_no_double_task_heading_in_copy_paths(client):
+    """Neither copy path wraps the task in a `## Task` heading — the prompt
+    self-titles with `# {title}` (BLUF). A wrapper produced a confusing double
+    heading on every card/list copy."""
+    html = client.get("/my-day/todo/9946498486").text
+
+    # The shared copyPrompt no longer prepends the '## Task' wrapper.
+    assert r"'\n## Task\n\n'" not in html
+    assert r"_mdSetupBlock() + '\n' + taskPrompt" in html
+
+
 def test_task_prompt_is_embedded_for_the_js_to_read(client):
     """The JS assembles its prompt from data-task-prompt — it must be present
     and carry the server-generated prompt (here: the todo title appears)."""
