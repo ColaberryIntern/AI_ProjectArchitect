@@ -1,8 +1,11 @@
 """LLM-enhanced per-ticket action plan.
 
-Replaces the regex-based recipes from `suggestions.py` with a per-ticket
-LLM analysis that produces SPECIFIC steps and a Claude Code-ready prompt
-grounded in the ticket's title + description + recent comments.
+Enriches the regex-based recipes from `suggestions.py` with a per-ticket
+LLM analysis that produces SPECIFIC, ticket-grounded fields: the deliverable
+(`goal_line`), `specific_steps`, and `stop_conditions`. It does NOT write the
+final prompt — `suggestions.merge_llm_suggestion` folds these fields into the
+deterministic suggestion and `suggestions.generate_prompt` renders the shared
+BLUF template. One template for every surface; this path only supplies content.
 
 Cached on disk under output/ops/{user_id}/_llm_cache.json keyed by
 (bc_id, bc_updated_at, comments_hash) so we only re-LLM when the ticket
@@ -84,14 +87,14 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
         raise
 
 
-# Bump PROMPT_VERSION when SYSTEM_PROMPT or claude_code_prompt rules change
-# so existing cache entries do not serve stale prompts. v3 = v2 + structured
-# section newlines (the LLM was emitting one wall-of-text line; v3 adds
-# explicit \n\n between TITLE / DESCRIPTION / COMMENTS / STEPS / CLOSE
-# sections so the prompt reads as a document).
-# v4 = v3 + PROJECT URL / LIST URL in the CONTEXT block and Depends-on/Artifact
-# lift (approval-task-dependency-linking.md).
-PROMPT_VERSION = "v4"
+# Bump PROMPT_VERSION when SYSTEM_PROMPT or the output schema changes so
+# existing cache entries do not serve stale results. v3 = structured section
+# newlines. v4 = PROJECT/LIST URLs + Depends-on/Artifact lift.
+# v5 = the LLM no longer writes `claude_code_prompt`; it returns only fields
+# (action_kind, goal_line, summary_paragraph, specific_steps, stop_conditions)
+# which merge_llm_suggestion folds into the shared BLUF template. Old v4 cache
+# entries carry a now-unused claude_code_prompt, so the bump forces a refresh.
+PROMPT_VERSION = "v5"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -100,27 +103,26 @@ def _cache_key(todo: OpsTodo, comments: str) -> str:
 
 
 SYSTEM_PROMPT = """You are helping Ali (a busy CEO/CTO) clear a Basecamp ticket. \
-Produce a Claude Code-ready action plan SPECIFIC to THIS ticket using ONLY \
-the title, description, and comments provided.
+Analyze THIS ticket using ONLY the title, description, and comments provided, and \
+return structured fields. You do NOT write the final prompt — the app folds your \
+fields into a fixed template, so focus entirely on making the fields SPECIFIC.
 
 Respond with strict JSON matching this exact schema:
 
 {
   "action_kind": "decision|reply|email|build|research|meeting|schedule|review|default",
-  "goal_line": "One sentence: what 'done' concretely looks like. A deliverable, not an activity.",
-  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) describing what to do AND how to do it. Mention specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. Just a clear paragraph a smart human can read in 15 seconds and know exactly what to do.",
+  "goal_line": "One sentence naming the concrete DELIVERABLE: what 'done' looks like as an artifact, not an activity. This becomes the 'You hand back' line.",
+  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) describing what to do AND how, with specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. A smart human reads it in 15 seconds and knows exactly what to do.",
   "specific_steps": [
-    "<verb> <specific named thing>",
-    "<verb> <specific named thing>",
+    "<verb> <specific named thing from the ticket>",
     "..."
   ],
   "stop_conditions": [
     "Specific named conditions that should pause the work and get a human in the loop"
-  ],
-  "claude_code_prompt": "A FULL-CONTEXT, ACTION-ORIENTED prompt the user pastes into a fresh Claude Code session. NOT short. Inline EVERYTHING Claude Code needs to either solve the ticket or write a precise list of missing inputs. The session may not have BC fetch capability so do NOT rely on the BC URL alone. See the MUST list below for required content."
+  ]
 }
 
-ABSOLUTE RULES. These are violations of the contract:
+ABSOLUTE RULES for specific_steps. These are violations of the contract:
 
 ❌ BANNED step shapes (generic "thinking" verbs without a specific named target):
    - "Review the existing documentation"
@@ -163,24 +165,9 @@ If the ticket is genuinely too vague to be specific, the steps must be:
   - "Ask <specific named person> in BC reply: '<specific question>'"
   - Not "Clarify the requirements".
 
-Length: 3-6 steps. Total response ≤ 1000 tokens.
+Length: 3-6 steps, each a single line. Total response ≤ 1000 tokens.
 
-The claude_code_prompt MUST be a single plain-text string (no markdown headers like ##), ready to paste. CRITICAL: the string must use REAL newline characters between sections. In the JSON output, encode each section break as a literal \\n\\n (so json.loads produces a string with actual blank lines). The structure is FIVE sections separated by blank lines:
-
-Section 1: WHAT to do (the goal_line) on a single line at the top.
-
-Section 2: A "CONTEXT:" block with TITLE, PROJECT, PROJECT URL, LIST, LIST URL, DUE, BC URL each on its own line (copy the PROJECT URL and LIST URL through verbatim so the reader can open the list and see sibling tasks at project scale), followed by a blank line, then "DESCRIPTION:" on its own line, then the full description verbatim. If the description contains "Depends-on:" or "Artifact:" lines, lift them to the TOP of the CONTEXT block as "DRAFTING TASK:" and "ARTIFACT:" so the reader can reach the thing being approved without scrolling. If "Artifact:" is "PENDING", state plainly that the artifact does not exist yet and the next step belongs to the drafting task's owner, not this approval gate.
-
-Section 3: A "RECENT COMMENTS:" block with each comment on its own paragraph, prefixed with "[Author Name, YYYY-MM-DD]" on its own line, then the comment body. Oldest first.
-
-Section 4: A "STEPS:" block with each specific_step on its own numbered line. Then a "STOP IF:" block listing stop_conditions, one per line.
-
-Section 5: This EXACT closing block, byte-for-byte (replace nothing):
-"DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
-
-Length: do not constrain the prompt. Inline whatever context the ticket has. A short ticket produces a short prompt. A rich ticket produces a long one. Treat the prompt as self-sufficient: if Claude Code has zero ability to fetch external resources, it must still be able to act from this prompt alone.
-
-Forbidden in the claude_code_prompt:
+Forbidden everywhere (goal_line, summary_paragraph, steps):
 - em-dashes (use a colon or hyphen)
 - "as needed" / "where applicable" / "and so on"
 - "Review the situation" / "Understand what they need" without a named target
@@ -204,10 +191,12 @@ def _build_user_message(todo: OpsTodo, comments_text: str) -> str:
 
 
 def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None:
-    """Return {action_kind, goal_line, specific_steps, stop_conditions,
-    claude_code_prompt} or None if LLM unavailable / failed.
+    """Return {action_kind, goal_line, summary_paragraph, specific_steps,
+    stop_conditions} or None if the LLM is unavailable / failed.
 
-    Cached on disk; re-runs only when ticket or comments change.
+    These are FIELDS, not a prompt — the caller folds them in via
+    `suggestions.merge_llm_suggestion`. Cached on disk; re-runs only when the
+    ticket or comments change.
     """
     client = _get_client()
     if client is None:
@@ -234,8 +223,9 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
         logger.warning("LLM enhance failed for todo %s", todo.bc_id, exc_info=True)
         return None
 
-    # Validate shape
-    required = ("action_kind", "goal_line", "specific_steps", "claude_code_prompt")
+    # Validate shape. The LLM returns fields only now (no claude_code_prompt);
+    # the app renders the prompt via the shared template.
+    required = ("action_kind", "goal_line", "specific_steps")
     if not all(k in out for k in required):
         logger.warning("LLM returned malformed JSON for todo %s (missing keys)", todo.bc_id)
         return None
@@ -243,11 +233,6 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
         return None
     out.setdefault("stop_conditions", [])
     out.setdefault("summary_paragraph", "")
-
-    # Append standing orders deterministically so EVERY prompt has them,
-    # regardless of whether the LLM remembered to include them.
-    from .standing_orders import append_orders
-    out["claude_code_prompt"] = append_orders(out["claude_code_prompt"])
 
     cache[key] = out
     try:

@@ -479,14 +479,16 @@ def scan_for_user(user_email: str) -> dict:
                 seen.add(key)  # don't retry until ticket updates
                 continue
 
-            # Pair with llm_suggest.enhance() to get the paste-ready
-            # claude_code_prompt the user copies into Claude Code. Cached
-            # by (bc_id, bc_updated_at, comments_hash, PROMPT_VERSION) so
-            # the same ticket is not re-LLM'd between scans, and the
-            # My Day surface shares the cache.
+            # Pair with llm_suggest.enhance() for ticket-specific FIELDS, then
+            # render the paste-ready prompt through the SAME shared BLUF
+            # template the My Day surfaces use (suggestions.generate_prompt) so
+            # the autopickup comment can't drift from them. Cached by
+            # (bc_id, bc_updated_at, comments_hash, PROMPT_VERSION) so the same
+            # ticket is not re-LLM'd between scans, and the My Day surface shares
+            # the cache.
             cc_prompt = ""
             try:
-                from . import llm_suggest
+                from . import llm_suggest, standing_orders, suggestions
                 from execution.products.library import tenancy as _tenancy
                 u = _tenancy.get_user(user_email)
                 uid = u.user_id if u else user_email
@@ -500,7 +502,10 @@ def scan_for_user(user_email: str) -> dict:
                 )
                 enhanced = llm_suggest.enhance(uid, t, comments_blob)
                 if enhanced:
-                    cc_prompt = enhanced.get("claude_code_prompt", "") or ""
+                    suggestion = suggestions.merge_llm_suggestion(t, enhanced)
+                    cc_prompt = standing_orders.append_orders(
+                        suggestions.generate_prompt(t, suggestion, comments=comments_blob)
+                    )
             except Exception:
                 logger.warning("autopickup: enhance() pairing failed for %s",
                                             t.bc_id, exc_info=True)

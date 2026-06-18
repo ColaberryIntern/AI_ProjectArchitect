@@ -149,7 +149,7 @@ the human_required/CRITICAL approver-delay band.
 |---|---|---|
 | Generate drafting-then-approval pairs; embed `Depends-on:` / `Artifact:` / `List:`; sgid upload links; inline BC text | `generateLaunchTasks.js` | Accelerator (`ColaberryEnterprise_AI_LeadershipAccelerator`) |
 | List/project URL derivation reused by the prompt | `execution/products/ops/rollup.py` (`_bc_list_url`, `_bc_project_url`) | this repo |
-| Prompt CONTEXT block must surface task + list + project + dependency links | `execution/products/ops/suggestions.py` (`generate_prompt`, `_PROMPT_TEMPLATE`), `execution/products/ops/llm_suggest.py` (`SYSTEM_PROMPT`, `_build_user_message`) | this repo |
+| Prompt must surface task + list + project + dependency links | `execution/products/ops/suggestions.py` (`generate_prompt`, `_PROMPT_TEMPLATE`, `_dependency_block`) — the SINGLE renderer for every surface, including the LLM-enhanced focus card (which folds LLM fields in via `merge_llm_suggestion` and renders through this same path). `llm_suggest.py` only feeds the LLM the URLs for grounding (`_build_user_message`); it no longer emits a prompt. | this repo |
 | Runtime gate: reroute escalation from approval gate to drafter when `Artifact: PENDING` | `execution/products/ops/scorer.py`, `execution/products/ops/rollup.py` | this repo |
 | Marker parsing (mirror the `Owner:` / `HUMAN TASK` pattern) | `execution/products/ops/suggestions.py` | this repo |
 
@@ -161,8 +161,9 @@ the human_required/CRITICAL approver-delay band.
 - Runtime gate: a test asserting an approval task with `Artifact: PENDING` is
   **not** scored into the CRITICAL approver-delay band, and that its urgency is
   attributed to the drafting task instead.
-- Prompt: a test asserting `generate_prompt` and the LLM CONTEXT spec include the
-  list URL and (when present) the `Depends-on:` artifact link.
+- Prompt: a test asserting `generate_prompt` includes the list URL and (when
+  present) the `Depends-on:` / `Artifact:` link. The LLM-enhanced focus card
+  renders through the same `generate_prompt`, so it inherits this automatically.
 - The binary acceptance test above is the end-to-end gate: a session given only
   the approval task can reach and read the artifact.
 
