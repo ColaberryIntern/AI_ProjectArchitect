@@ -128,7 +128,7 @@ focus prompt on both the LLM and deterministic branches. `merge_llm_suggestion`
 keeps the deterministic ownership note, resources, and HTML-clean description.
 
 **Delivery personas — the operator picks how information reaches them.** The
-`## How I want you to work` block is not fixed: each operator chooses one of five
+`## How I want you to work` block is not fixed: each operator chooses one of six
 personas (`personas.py`) — Co-pilot (paced, the default), Just the answer (BLUF),
 Visual-first (builds a **professional interactive decision sheet**: a
 self-contained HTML page auto-opened in the browser, styled like a clean
@@ -146,7 +146,12 @@ the operator adjusts rather than decides each one. A "Copy Claude Code prompt"
 button at top and bottom assembles a ready-to-run prompt from the filled-in form,
 so the operator reviews, clicks, and pastes back to execute everything at once;
 dyslexia-friendly),
-Explain it to me (reasoning + teaching), Checklist doer. The choice is stored
+Explain it to me (reasoning + teaching), Checklist doer, and **Plain & friendly**
+(for the many non-technical people going through the program who just want to
+"vibe" and build: plain language only, no jargon/acronyms/code, the AI handles
+all the technical work rather than asking the operator to run commands or make
+technical choices, decisions framed as plain outcome questions, and a warm,
+conversational tone instead of a coding session). The choice is stored
 server-side on `tenancy.User.prompt_persona` (set via `POST /my-day/persona` from
 the selector at the top of the workspace page) and passed to `generate_prompt`
 at every call site, so it applies to **every** surface and device until changed.

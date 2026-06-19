@@ -2,10 +2,10 @@
 from execution.products.ops import personas as P
 
 
-def test_five_personas_each_complete():
-    assert len(P.PERSONAS) == 5
+def test_six_personas_each_complete():
+    assert len(P.PERSONAS) == 6
     ids = [p["id"] for p in P.PERSONAS]
-    assert len(set(ids)) == 5  # unique
+    assert len(set(ids)) == 6  # unique
     for p in P.PERSONAS:
         for k in ("id", "label", "emoji", "blurb", "working_block"):
             assert p.get(k), f"persona {p.get('id')} missing {k}"
@@ -90,3 +90,19 @@ def test_visual_persona_is_professional_and_pre_decides():
 
 def test_checklist_persona_tags_decisions():
     assert "[DECISION]" in P.working_block("checklist")
+
+
+def test_plain_persona_is_nontechnical_and_conversational():
+    """The non-technical 'vibe' persona: plain language, no jargon, the AI
+    handles the technical work, and it reads like a friendly conversation rather
+    than a coding session — for the many non-coders going through the program."""
+    assert P.is_valid("plain")
+    assert P.get("plain")["id"] == "plain"
+    block = P.working_block("plain").lower()
+    # Plain, jargon-free, conversational tone.
+    assert "plain language" in block
+    assert "jargon" in block
+    assert "conversation" in block or "conversational" in block
+    # The AI does the technical work; the operator isn't asked to run commands.
+    assert "run commands" in block
+    assert "technical" in block
