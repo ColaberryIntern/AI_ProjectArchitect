@@ -64,5 +64,29 @@ def test_visual_persona_is_an_interactive_decision_sheet():
     assert "do not make any" in block or "do not make" in block
 
 
+def test_visual_persona_is_professional_and_pre_decides():
+    """The 2026-06-19 refinement: the sheet must read like a professional
+    business one-pager (not a colorful kids' app), lead with a plain-English
+    summary of the ticket, surface only consequential decisions (defaulting the
+    rest), always let the operator type their OWN answer alongside the offered
+    ones, and PRE-DECIDE the Basecamp actions instead of asking each time."""
+    block = P.working_block("visual").lower()
+    # Professional, not childish.
+    assert "professional" in block
+    assert "no neon" in block          # explicit guard against the old palette
+    # Summary-first: a plain-English brief at the top.
+    assert "what this is" in block
+    assert "what you need to do" in block
+    # Fewer questions; recommend a default the operator can override.
+    assert "recommend" in block
+    assert "assumed defaults" in block
+    # Always offer a write-your-own escape hatch on preset questions.
+    assert "other" in block
+    assert "my own answer" in block or "type my own" in block
+    # Pre-decide Basecamp actions rather than interrogating per move.
+    assert "pre-tick" in block
+    assert "pre-fill" in block
+
+
 def test_checklist_persona_tags_decisions():
     assert "[DECISION]" in P.working_block("checklist")
