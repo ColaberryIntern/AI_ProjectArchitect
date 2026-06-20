@@ -15,6 +15,8 @@ on:
       - 'library/**/*.md'
       - 'execution/products/ops/cb_mention_worker.py'
       - 'execution/products/ops/autopickup_worker.py'
+      - 'execution/advisory/**/*.py'
+      - 'execution/products/ops/productivity/**/*.py'
       - 'config/tbi_runtime_agents.json'
       - '**/*.tbi.json'
       - 'execution/ops_platform/tbi_compliance.py'
@@ -53,7 +55,9 @@ jobs:
             'agents/**/*.md' 'docs/personas/**/*.md' 'config/blueprints/*.json' \
             'config/skill_registry.json' 'library/**/*.md' \
             'execution/products/ops/cb_mention_worker.py' \
-            'execution/products/ops/autopickup_worker.py' | tr '\n' ' ')
+            'execution/products/ops/autopickup_worker.py' \
+            'execution/advisory/recommendation_engine.py' \
+            'execution/products/ops/productivity/runner.py' | tr '\n' ' ')
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
           echo "AI artifacts to gate: $FILES"
 

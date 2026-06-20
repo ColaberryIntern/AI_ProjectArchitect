@@ -1,0 +1,33 @@
+{
+  "artifact_id": "runtime:productivity_report",
+  "artifact_kind": "workflow",
+  "artifact_path": "execution/products/ops/productivity/runner.py",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Scheduled daily batch report (weekday cron); not a latency-bound interactive surface." },
+    "natural": { "status": "n_a", "evidence": "Deterministic data report (HTML scorecard + JSON), not a natural-language conversational surface; no NL generation." },
+    "permitted": { "status": "satisfied", "evidence": "Email delivery gated by PRODUCTIVITY_REPORT_DELIVERY=1 (off by default) to a fixed recipient list (config/report_recipients.json), always BCC ali@colaberry.com; reads from local todo mirrors only." },
+    "adaptive": { "status": "n_a", "evidence": "Deterministic heuristic scorer; thresholds are config (env), not learned. Baseline is computed once and cached." },
+    "contextual": { "status": "satisfied", "evidence": "Grounds every verdict in real Basecamp completion data: post-launch 7-day window vs a pre-launch baseline, deduped by task id, with AI-actor attribution." },
+    "transparent": { "status": "satisfied", "evidence": "Writes an HTML report + JSON sidecar per run, surfaces assumptions and low-confidence baseline flags, and logs operators/verdict/delivery/path." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Off-by-default delivery flag is the human approval gate; fixed recipient list; EXCLUDE_PROJECTS scoping; scheduler max_instances=1." },
+    "observability": { "status": "satisfied", "evidence": "Per-day HTML + JSON artifacts under output/ops/_productivity/, a ReportResult return, and INFO logs." },
+    "availability": { "status": "satisfied", "evidence": "Manual CLI fallback; scheduler job replace_existing; email failure is non-fatal (report still on disk); baseline caching." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized verdict vocabulary (GREEN/AMBER/RED/NODATA) and consistent metric names across report and sidecar." },
+    "solid": { "status": "satisfied", "evidence": "Fully deterministic (no LLM); dedupe by task id; baseline caching; low-confidence flagging; email non-fatal." }
+  },
+  "layers": [
+    { "layer": 1, "name": "Multi-Modal Storage", "how": "Reads local BC todo mirrors; writes HTML + JSON report artifacts + baseline snapshot." },
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Aggregates real completion data into the pre/post-launch comparison." },
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Delivery behind an off-by-default flag + fixed recipient list." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Daily report artifacts + JSON sidecar + logs." }
+  ],
+  "trust_score_ref": "agent_runtime_productivity_report",
+  "risk_level": "MODERATE",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "Deterministic, no LLM. Autonomous email send is gated off-by-default (PRODUCTIVITY_REPORT_DELIVERY) to a fixed internal recipient list — the env flag is the approval gate."
+}
