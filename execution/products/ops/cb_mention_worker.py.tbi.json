@@ -1,0 +1,33 @@
+{
+  "artifact_id": "runtime:cb_mention_responder",
+  "artifact_kind": "workflow",
+  "artifact_path": "execution/products/ops/cb_mention_worker.py",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "satisfied", "evidence": "Near-real-time: scheduler polls recent BC comments on a short window (MENTION_WINDOW_MINUTES) with per-bucket cursors so new mentions are answered promptly and catch-up survives downtime." },
+    "natural": { "status": "satisfied", "evidence": "Responds with a natural-language plan (anticipated goal, summary, proposed steps, confidence) as a BC comment." },
+    "permitted": { "status": "satisfied", "evidence": "Acts only via each user's own BC OAuth token (per-user identity/visibility); bot-author guard (BOT_AUTHOR_IDS) and automated-card loop guard prevent answering other agents; never re-answers closed tickets." },
+    "adaptive": { "status": "satisfied", "evidence": "Feeds the human's comment (user_feedback) plus crawled context into plan_inference for each response; per-bucket cursors adapt the scan window over time." },
+    "contextual": { "status": "satisfied", "evidence": "context_collector crawls the parent ticket to ground the plan (retrieval), rather than answering from the model alone." },
+    "transparent": { "status": "satisfied", "evidence": "Writes a heartbeat (output/ops/_cb_mentions/heartbeat.json) exposed at /admin/cb-mentions.json; every response carries an explicit confidence %; per-user results and cutoff_sources logged." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Per-tick circuit breaker (MAX_RESPONSES_PER_TICK=12) bounds blast radius; OPS_CB_MENTION_POLLING_ENABLED=false halts; the posted comment proposes work that a human approves to execute." },
+    "observability": { "status": "satisfied", "evidence": "Heartbeat + admin endpoint + structured per-user logging answer 'is CB alive, did it fail silently?'." },
+    "availability": { "status": "satisfied", "evidence": "Per-bucket cursors + MAX_LOOKBACK cap + bucket rotation + best-effort disk writes keep the cron resilient; a single bucket/user failure is isolated." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized 'CB System: automated response' header and rubric-conformant response shape; loop guard keys on that lexicon." },
+    "solid": { "status": "satisfied", "evidence": "Idempotent via seen.json; sentinel fallback comment on failure; circuit breaker; bot/automated-card guards; errors isolated per mention." }
+  },
+  "layers": [
+    { "layer": 2, "name": "Real-Time Data Fabric", "how": "Short-window polling with per-bucket cursors for near-real-time mention response." },
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "context_collector crawls the parent ticket to ground each plan." },
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Per-user OAuth scope, loop/bot guards, per-tick circuit breaker, polling kill-switch." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Heartbeat + /admin/cb-mentions.json + confidence surfaced per response." }
+  ],
+  "trust_score_ref": "agent_runtime_cb_mention_responder",
+  "risk_level": "MODERATE",
+  "verdict": "compliant",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "Prod-facing autonomous AI (live since 2026-06-14). agent_registry posture declared in config/tbi_runtime_agents.json (autonomous_low_risk_only; auto-action = post a non-binding recommendation; proposed work is human-approved)."
+}

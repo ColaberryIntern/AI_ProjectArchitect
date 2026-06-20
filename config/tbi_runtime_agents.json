@@ -1,0 +1,34 @@
+{
+  "_doc": "Declarative source of truth for governed RUNTIME AI agents (code under /execution that takes autonomous action in prod). Each entry (1) names the entrypoint the TBI CI gate will require a `<entrypoint>.tbi.json` attestation for, and (2) declares the agent_registry autonomy posture applied at deploy by execution/ops_platform/runtime_agents.upsert_runtime_agents(). Registering live agents is a runtime/deploy action (CLAUDE.md: Claude is not the runtime executor) — this file is the reviewable contract; the upsert runs at deploy.",
+  "_schema": "config/schemas/ops/tbi_runtime_agents.schema.json",
+  "agents": [
+    {
+      "id": "cb_mention_responder",
+      "name": "My Day @CB mention auto-responder",
+      "entrypoint": "execution/products/ops/cb_mention_worker.py",
+      "autonomy_policy": "autonomous_low_risk_only",
+      "confidence_threshold": 0.5,
+      "permitted_actions": ["bc.comment.post_recommendation"],
+      "rollback_required": true,
+      "rollback_plan": "Set OPS_CB_MENTION_POLLING_ENABLED=false to halt immediately; seen.json prevents re-posting; MAX_RESPONSES_PER_TICK (12) bounds blast radius per tick.",
+      "scope": { "system": "my_day_scheduler", "buckets": "per-user BC OAuth visibility", "loop_guards": "automated-card + bot-author filters" },
+      "status": "live_prod",
+      "live_since": "2026-06-14",
+      "notes": "Auto-posts a non-binding recommendation comment (plan + confidence); the proposed WORK is human-approved ('Approve to execute'). The low-risk action is the comment itself, bounded by the per-tick circuit breaker. confidence_threshold documents the intended bar for promoting to execution (future phase)."
+    },
+    {
+      "id": "autopickup_worker",
+      "name": "My Day auto-pickup (draft-only)",
+      "entrypoint": "execution/products/ops/autopickup_worker.py",
+      "autonomy_policy": "approval_required",
+      "confidence_threshold": 0.5,
+      "permitted_actions": ["bc.comment.draft"],
+      "rollback_required": true,
+      "rollback_plan": "Disabled by default (OPS_AUTOPICKUP_ENABLED unset); remove the bucket from config/autopickup_allowlist.json to stop drafting on it; draft-only mode never executes side effects; seen-set prevents re-draft.",
+      "scope": { "system": "my_day_scheduler", "buckets": "config/autopickup_allowlist.json", "rate_limit": "per-bucket rate_limit_per_15m" },
+      "status": "gated_off_by_default",
+      "live_since": "2026-06-09",
+      "notes": "Phase 1 draft-only: posts a 'proposed next step' with explicit side_effects and confidence; humans approve to execute. Per-project allowlist carries approved_by/approved_at."
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TBI Runtime Agents Declaration",
+  "description": "Committed source of truth for governed runtime AI agents. Drives both the TBI CI gate (requires <entrypoint>.tbi.json per agent) and deploy-time agent_registry registration via execution/ops_platform/runtime_agents.py.",
+  "type": "object",
+  "required": ["agents"],
+  "properties": {
+    "_doc": { "type": "string" },
+    "_schema": { "type": "string" },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "entrypoint", "autonomy_policy", "confidence_threshold", "permitted_actions", "rollback_required"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "name": { "type": "string" },
+          "entrypoint": { "type": "string", "description": "Repo-relative path to the runtime entrypoint module the gate attests." },
+          "autonomy_policy": {
+            "type": "string",
+            "enum": ["recommend_only", "approval_required", "autonomous_low_risk_only", "autonomous_full"]
+          },
+          "confidence_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+          "permitted_actions": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "rollback_required": { "type": "boolean" },
+          "rollback_plan": { "type": "string" },
+          "scope": { "type": "object" },
+          "status": { "type": "string" },
+          "live_since": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
