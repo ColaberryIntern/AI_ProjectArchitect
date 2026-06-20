@@ -1,0 +1,29 @@
+{
+  "artifact_id": "agent:document_assembler",
+  "artifact_kind": "agent",
+  "artifact_path": "agents/document_assembler.md",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Batch compilation step at final assembly; not a latency-bound interactive surface." },
+    "natural": { "status": "n_a", "evidence": "Mechanical compiler; it transforms approved chapters and has no conversational surface." },
+    "permitted": { "status": "satisfied", "evidence": "Compiles only after all chapters are approved and quality gates pass; introduces no new content." },
+    "adaptive": { "status": "n_a", "evidence": "Deterministic, mechanical assembly by design; intentionally does not learn or rewrite." },
+    "contextual": { "status": "satisfied", "evidence": "Assembles from approved chapters in exact outline order with cross-reference integrity checking." },
+    "transparent": { "status": "satisfied", "evidence": "Version tagging with change summaries; pre-delivery validation checklist; deterministic and auditable output." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Hard precondition: compiles only post-approval and post-gates." },
+    "observability": { "status": "satisfied", "evidence": "version_manager tracks version number, date, and change summary per assembly." },
+    "availability": { "status": "n_a", "evidence": "On-demand assembly step, not an always-on service." },
+    "lexicon": { "status": "satisfied", "evidence": "Enforces consistent terminology and heading hierarchy; prohibits inconsistent terminology." },
+    "solid": { "status": "satisfied", "evidence": "Mechanical, no rewriting; deterministic document_assembler / template_renderer / version_manager." }
+  },
+  "layers": [
+    { "layer": 7, "name": "Multi-Agent Orchestration", "how": "Final composition step assembling approved chapters into one artifact." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "version_manager records versions and change summaries." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z"
+}

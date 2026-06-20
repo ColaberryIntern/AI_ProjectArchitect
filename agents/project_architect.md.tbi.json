@@ -1,0 +1,30 @@
+{
+  "artifact_id": "agent:project_architect",
+  "artifact_kind": "agent",
+  "artifact_path": "agents/project_architect.md",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Design-time orchestration persona invoked interactively in VS Code / Claude Code; human-paced, no sub-second response SLO applies." },
+    "natural": { "status": "satisfied", "evidence": "Conversation-before-construction; one-intent questions; progressive specificity (Vision -> Scope -> Constraints -> Execution)." },
+    "permitted": { "status": "satisfied", "evidence": "Suggests, never decides unilaterally; advances only on explicit approval language ('Approved','Lock this'); never assumes approval from vague affirmation." },
+    "adaptive": { "status": "satisfied", "evidence": "Updates living directives with learnings after each phase; participates in the self-annealing loop (CLAUDE.md section 5)." },
+    "contextual": { "status": "satisfied", "evidence": "Reads the relevant directive before acting and maintains full state awareness (decided/open/locked/phase) via state_manager." },
+    "transparent": { "status": "satisfied", "evidence": "Records every significant action through execution scripts; never guesses silently; flags ambiguity as a blocking condition." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Approval gates enforced; never skips gates; never mixes layers." },
+    "observability": { "status": "satisfied", "evidence": "State recorded through execution scripts at each step; decisions are reconstructable." },
+    "availability": { "status": "n_a", "evidence": "Interactive design-time tool, not a hosted always-on service; no uptime SLO applies." },
+    "lexicon": { "status": "satisfied", "evidence": "Maintains consistent terminology across phases; vocabulary standardized in the directives it reads." },
+    "solid": { "status": "satisfied", "evidence": "Delegates execution to deterministic, tested scripts (state_manager, quality_gate_runner); covered by /tests." }
+  },
+  "layers": [
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Approval gates + suggests-not-decides authority model." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "state_manager records every significant action." },
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Reads the relevant directive and current state before acting." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z"
+}

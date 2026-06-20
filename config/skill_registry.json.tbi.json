@@ -1,0 +1,30 @@
+{
+  "artifact_id": "skill_registry",
+  "artifact_kind": "skill_registry",
+  "artifact_path": "config/skill_registry.json",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Static curated catalog; no runtime latency surface." },
+    "natural": { "status": "n_a", "evidence": "Data catalog of capabilities, not a conversational agent." },
+    "permitted": { "status": "satisfied", "evidence": "Curation is governed by config/library_approvers.json; each entry carries provenance (source, source_url)." },
+    "adaptive": { "status": "satisfied", "evidence": "Auto re-scanned: registry tracks last_scan_status and sources_scanned; entries carry last_verified and are refreshed on scan." },
+    "contextual": { "status": "n_a", "evidence": "This is the catalog itself; retrieval/grounding happens in the consumers that read it, not here." },
+    "transparent": { "status": "satisfied", "evidence": "Every entry carries source, source_url, and last_verified; the registry carries last_updated and last_scan_status." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Curated from approved sources under the approver matrix." },
+    "observability": { "status": "satisfied", "evidence": "Scan status + per-entry verification timestamps make staleness visible." },
+    "availability": { "status": "n_a", "evidence": "A committed catalog file, not a hosted service." },
+    "lexicon": { "status": "satisfied", "evidence": "Canonical skill schema: consistent id/name/category/tags vocabulary across entries." },
+    "solid": { "status": "satisfied", "evidence": "Entries conform to skill.schema.json; scan status is tracked per refresh." }
+  },
+  "layers": [
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Curation governed by the approver matrix with per-entry provenance." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Scan status + last_verified timestamps expose freshness." },
+    { "layer": 7, "name": "Multi-Agent Orchestration", "how": "Capability catalog that downstream agents draw on." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z"
+}

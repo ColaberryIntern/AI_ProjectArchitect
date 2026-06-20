@@ -1,0 +1,29 @@
+{
+  "artifact_id": "blueprint:standard",
+  "artifact_kind": "blueprint",
+  "artifact_path": "config/blueprints/standard.json",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Inert default blueprint config; it injects no architecture context and has no runtime behavior of its own." },
+    "natural": { "status": "n_a", "evidence": "Static configuration object, not an interactive agent." },
+    "permitted": { "status": "n_a", "evidence": "No agent behavior; governance applies at the pipeline that consumes the blueprint, not at the blueprint itself." },
+    "adaptive": { "status": "n_a", "evidence": "Static no-op default; nothing to learn." },
+    "contextual": { "status": "n_a", "evidence": "Empty default: forced_depth_mode null, no feature seeds, no architecture context injected." },
+    "transparent": { "status": "n_a", "evidence": "Inert plain-config default; fully inspectable as committed JSON." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Validated against blueprint.schema.json and consumed only inside the approval-gated build pipeline." },
+    "observability": { "status": "n_a", "evidence": "Inert static config; no runtime signals to observe." },
+    "availability": { "status": "n_a", "evidence": "Not a service." },
+    "lexicon": { "status": "satisfied", "evidence": "Uses the canonical blueprint schema vocabulary (id/label/forced_depth_mode/feature_seeds)." },
+    "solid": { "status": "satisfied", "evidence": "Static, schema-validated, deterministic default with no side effects." }
+  },
+  "layers": [
+    { "layer": 7, "name": "Multi-Agent Orchestration", "how": "Selectable architecture preset feeding the build pipeline (here: the no-op default)." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "The 'standard' blueprint is an intentionally empty default. INPACT is largely n_a because the artifact prescribes no AI behavior; the agents a project later builds under this blueprint each require their own attestation."
+}

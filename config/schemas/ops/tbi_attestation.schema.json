@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TBI Compliance Attestation",
+  "description": "Per-artifact Trust Before Intelligence attestation. One sidecar file `<artifact>.tbi.json` per AI artifact. Validated in CI by scripts/tbi_compliance_check.py and scored by execution/ops_platform/tbi_compliance.py. Required by CLAUDE.md before any AI artifact ships.",
+  "type": "object",
+  "required": [
+    "artifact_id",
+    "artifact_kind",
+    "framework_version",
+    "inpact",
+    "goals",
+    "layers",
+    "verdict",
+    "approver",
+    "verified_at"
+  ],
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "description": "Stable id of the AI artifact this attestation covers (e.g. 'agent:project_architect')."
+    },
+    "artifact_kind": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "skill",
+        "blueprint",
+        "persona",
+        "library_asset",
+        "workflow",
+        "advisory",
+        "prompt_template",
+        "skill_registry",
+        "other"
+      ]
+    },
+    "artifact_path": {
+      "type": "string",
+      "description": "Repo-relative path to the artifact this attestation covers."
+    },
+    "framework_version": {
+      "type": "string",
+      "description": "TBI framework snapshot version this attestation was made against. Must equal CURRENT_FRAMEWORK_VERSION in tbi_compliance.py, else the artifact must be re-attested after a framework refresh."
+    },
+    "inpact": {
+      "type": "object",
+      "description": "All six INPACT dimensions. Each must be 'satisfied' or 'n_a' (with evidence).",
+      "required": ["instant", "natural", "permitted", "adaptive", "contextual", "transparent"],
+      "properties": {
+        "instant": { "$ref": "#/$defs/dimension" },
+        "natural": { "$ref": "#/$defs/dimension" },
+        "permitted": { "$ref": "#/$defs/dimension" },
+        "adaptive": { "$ref": "#/$defs/dimension" },
+        "contextual": { "$ref": "#/$defs/dimension" },
+        "transparent": { "$ref": "#/$defs/dimension" }
+      },
+      "additionalProperties": false
+    },
+    "goals": {
+      "type": "object",
+      "description": "All five GOALS targets. Each must be 'satisfied' or 'n_a' (with evidence).",
+      "required": ["governance", "observability", "availability", "lexicon", "solid"],
+      "properties": {
+        "governance": { "$ref": "#/$defs/dimension" },
+        "observability": { "$ref": "#/$defs/dimension" },
+        "availability": { "$ref": "#/$defs/dimension" },
+        "lexicon": { "$ref": "#/$defs/dimension" },
+        "solid": { "$ref": "#/$defs/dimension" }
+      },
+      "additionalProperties": false
+    },
+    "layers": {
+      "type": "array",
+      "description": "Which of the 7 trust layers this artifact relies on, and how each is satisfied.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["layer", "how"],
+        "properties": {
+          "layer": { "type": "integer", "minimum": 1, "maximum": 7 },
+          "name": { "type": "string" },
+          "how": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "trust_score_ref": {
+      "type": "string",
+      "description": "Optional capability_id to pull a live trust_engine profile for runtime artifacts."
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["LOW", "MODERATE", "HIGH", "CRITICAL"]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["compliant", "conditional", "non_compliant"],
+      "description": "Self-declared verdict. The scorer independently recomputes it; CI fails on 'non_compliant' (declared or computed)."
+    },
+    "approver": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" }
+      },
+      "additionalProperties": false
+    },
+    "verified_at": { "type": "string", "format": "date-time" },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["satisfied", "n_a", "gap"]
+        },
+        "evidence": {
+          "type": "string",
+          "description": "How the dimension is satisfied, or why it is not applicable. Required (non-empty) when status is 'n_a'."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

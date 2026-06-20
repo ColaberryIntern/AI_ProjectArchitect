@@ -22,8 +22,9 @@ Run the final quality validation suite on the complete document. The five **lexi
 | 6 | **Requirement Coverage** | Structural | `quality_gate_runner.check_requirement_coverage` |
 | 7 | **AC Testability** | LLM-judged | `quality_gate_runner.check_ac_testability` |
 | 8 | **Chapter Intern Test (semantic)** | LLM-judged | `quality_gate_runner.check_chapter_intern_semantic` |
+| 9 | **TBI Compliance** | Deterministic (per AI artifact) | `tbi_compliance.evaluate_attestation` via `scripts/tbi_compliance_check.py` |
 
-Gates 1–5 run as `run_final_gates(document_text)`. Gates 6–8 run as `run_spec_gates(requirements, chapters)`. Both result objects expose an `all_passed` field.
+Gates 1–5 run as `run_final_gates(document_text)`. Gates 6–8 run as `run_spec_gates(requirements, chapters)`. Both result objects expose an `all_passed` field. Gate 9 runs per AI artifact (not per document) — see [compliance/tbi-compliance-gate.md](compliance/tbi-compliance-gate.md).
 
 ## Steps
 
@@ -83,6 +84,9 @@ For every acceptance criterion attached to a `must`-priority Requirement, an LLM
 
 **Gate 8 — Chapter Intern Test (semantic, LLM-judged)**
 Per chapter, the LLM judge is asked: given this chapter and the linked Requirements, can you answer (a) inputs, (b) outputs, (c) one runnable test scenario, (d) the definition of done? Each question must be answered "yes" with concrete evidence quoted from the chapter or its linked Requirements. This replaces the keyword-based Gate 5 for the per-chapter case; Gate 5 remains for the assembled-document scan.
+
+**Gate 9 — TBI Compliance (deterministic, per AI artifact)**
+If the build produced or changed any **AI artifact** (agent persona, skill, blueprint, advisory/workflow agent, library AI asset), each must carry a passing **Trust Before Intelligence** attestation (`<artifact>.tbi.json`). Run `python scripts/tbi_compliance_check.py <artifact paths>`; the gate fails on any `non_compliant` verdict. This is the document-pipeline surface of the repo-wide TBI mandate (CLAUDE.md). Full procedure: [compliance/tbi-compliance-gate.md](compliance/tbi-compliance-gate.md).
 
 ### Step 3: Generate Quality Report
 Record results via `state_manager.record_final_quality()`.

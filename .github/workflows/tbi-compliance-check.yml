@@ -1,0 +1,62 @@
+name: TBI compliance gate
+
+# Trust Before Intelligence compliance gate (mandated by CLAUDE.md).
+# Fails the PR if any added/changed AI artifact lacks a passing TBI attestation
+# (<artifact>.tbi.json) that validates against the schema and scores != non_compliant.
+# Canonical framework: directives/compliance/trust-before-intelligence.md
+
+on:
+  pull_request:
+    paths:
+      - 'agents/**/*.md'
+      - 'docs/personas/**/*.md'
+      - 'config/blueprints/*.json'
+      - 'config/skill_registry.json'
+      - 'library/**/*.md'
+      - '**/*.tbi.json'
+      - 'execution/ops_platform/tbi_compliance.py'
+      - 'scripts/tbi_compliance_check.py'
+      - 'config/schemas/ops/tbi_attestation.schema.json'
+      - '.github/workflows/tbi-compliance-check.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tbi-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install jsonschema
+
+      - name: Find changed AI artifacts
+        id: changed
+        run: |
+          set -e
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
+            'agents/**/*.md' 'docs/personas/**/*.md' 'config/blueprints/*.json' \
+            'config/skill_registry.json' 'library/**/*.md' | tr '\n' ' ')
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "AI artifacts to gate: $FILES"
+
+      - name: Run TBI compliance gate
+        if: steps.changed.outputs.files != ''
+        run: |
+          python scripts/tbi_compliance_check.py ${{ steps.changed.outputs.files }}
+
+      - name: No-op (no AI artifacts changed)
+        if: steps.changed.outputs.files == ''
+        run: echo "No AI artifacts in this PR — TBI gate not required."

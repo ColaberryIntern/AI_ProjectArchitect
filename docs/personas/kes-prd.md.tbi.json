@@ -1,0 +1,31 @@
+{
+  "artifact_id": "persona:kes",
+  "artifact_kind": "persona",
+  "artifact_path": "docs/personas/kes-prd.md",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "satisfied", "evidence": "The /kes-dash skill emits the pre-1:1 dashboard within 60s, ahead of the weekly Ali<->Kes 1:1." },
+    "natural": { "status": "satisfied", "evidence": "Dashboard presents natural-language summaries plus a 'top-1 question' to open the meeting." },
+    "permitted": { "status": "satisfied", "evidence": "Approval authority scoped via config/library_approvers.json (tech-side DRI); explicit out-of-scope section; reads governed sources only." },
+    "adaptive": { "status": "satisfied", "evidence": "Weekly rubric-delta log to output/library/_pilot/kes/{date}.jsonl; per-number rubric refined each 1:1." },
+    "contextual": { "status": "satisfied", "evidence": "Reads live BC + GitHub + advisor.colaberry.ai Library + skill_registry + MCP catalog via MCP to ground the 5 numbers (L4 retrieval)." },
+    "transparent": { "status": "satisfied", "evidence": "Changelog + source-of-truth table + ratification flow; scores cite their source signals." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Approver matrix + ratification gate + explicit out-of-scope boundary." },
+    "observability": { "status": "satisfied", "evidence": "Rubric-delta jsonl, changelog, and week-over-week score deltas on the 5 numbers." },
+    "availability": { "status": "n_a", "evidence": "Scheduled weekly pre-1:1 dashboard generation, not an always-on hosted service; no uptime SLO applies." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized '5 numbers' + one-line falsifiable per-number rubric vocabulary, symmetric with the Karun persona." },
+    "solid": { "status": "satisfied", "evidence": "Deterministic scoring against the ratified rubric, computed from MCP reads." }
+  },
+  "layers": [
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Grounds the 5 numbers in live MCP reads across BC/GitHub/Library/skill_registry/MCP catalog." },
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Approval scope per library_approvers.json + ratification gate." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Rubric-delta log + score deltas surfaced each 1:1." }
+  ],
+  "risk_level": "MODERATE",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "Symmetric tech-side counterpart to the Karun persona. PRD is DRAFT pending ratification; re-confirm when flagged Colaberry-approved."
+}

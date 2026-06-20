@@ -24,6 +24,51 @@ Claude is **never** the runtime executor of business logic, tests, or workflows.
 
 ---
 
+## Trust Before Intelligence — Mandatory Compliance (Non-Negotiable)
+
+**This is a compliance requirement, not a guideline.**
+
+No AI artifact may be **designed, built, modified, or shipped** in this repository
+unless it provably follows the **Trust Before Intelligence (TBI)** framework. The
+canonical, pinned definition lives at
+[`/directives/compliance/trust-before-intelligence.md`](directives/compliance/trust-before-intelligence.md).
+Read it before building any AI.
+
+**The rule:** *Trust before intelligence.* Stand up the trust foundation **before**
+you deploy intelligence. An AI artifact is not "done" until it carries a **passing
+TBI attestation**.
+
+### What counts as an "AI artifact"
+Anything that defines, generates, or governs AI behavior — including agent personas
+(`/agents`, `docs/personas`), skills (`config/skill_registry.json`), blueprints
+(`config/blueprints`), advisory/workflow agents, prompt templates, and library AI assets.
+
+### Every AI artifact must satisfy (or justify as `n_a` with written evidence)
+- **INPACT** — Instant · Natural · Permitted · Adaptive · Contextual · Transparent
+- **GOALS** — Governance · Observability · Availability · Lexicon · Solid
+- **7-Layer Architecture of Trust** — map which layers the artifact relies on and how
+
+### How compliance is proved and enforced
+- Each artifact carries a **TBI attestation** validated against
+  `config/schemas/ops/tbi_attestation.schema.json` (sidecar file: `<artifact>.tbi.json`).
+- The deterministic scorer `execution/ops_platform/tbi_compliance.py` decides
+  `compliant` / `conditional` / `non_compliant`.
+- The CI gate (`.github/workflows/tbi-compliance-check.yml` →
+  `scripts/tbi_compliance_check.py`) **blocks any PR** that adds or changes an AI
+  artifact without a passing attestation.
+- The procedure and checklist live at
+  [`/directives/compliance/tbi-compliance-gate.md`](directives/compliance/tbi-compliance-gate.md).
+
+**Reuse, don't rebuild.** The `execution/ops_platform/` substrate (`trust_engine`,
+`audit_log`, `agent_registry`, `governance_scorecards`, `reputation_scorer`,
+`compliance_reports`) already implements most of the trust foundation — map to it.
+
+**`n_a` discipline.** Marking a dimension not-applicable is allowed (e.g. a static
+blueprint has no live latency), but every `n_a` requires written justification or the
+gate fails. The gate cannot be bypassed by hand-waving.
+
+---
+
 ## High-Level Architecture
 
 This project follows an **Agent-First, Deterministic-Execution** model with **Test-First Validation**.
@@ -244,6 +289,7 @@ Claude must request approval before:
 - deleting files
 - production-impacting logic
 - modifying safety, compliance, or testing baselines
+- changing the TBI baseline, refreshing the vendored framework snapshot, or altering attestation thresholds
 
 ---
 
@@ -257,6 +303,10 @@ When something fails:
 5. Confirm the system is stronger
 
 Failures are inputs, not mistakes.
+
+A **TBI gate failure** (missing or non-compliant attestation) is a first-class trigger
+for this loop: fix the artifact or its attestation, add/extend the scorer test, update
+the compliance directive if the rule itself was unclear, then re-run the gate.
 
 ---
 
@@ -301,6 +351,7 @@ A change is not complete unless:
 - end-to-end impact is verified when applicable
 - no secrets are introduced
 - validation scripts pass
+- **every new or changed AI artifact carries a passing TBI attestation** (the TBI gate is green)
 - changes are understandable by a junior developer
 
 ---

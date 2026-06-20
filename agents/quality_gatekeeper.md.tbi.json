@@ -1,0 +1,30 @@
+{
+  "artifact_id": "agent:quality_gatekeeper",
+  "artifact_kind": "agent",
+  "artifact_path": "agents/quality_gatekeeper.md",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Design-time validation persona; runs gates on demand, not a latency-bound service." },
+    "natural": { "status": "satisfied", "evidence": "Flags specific failures in plain language with chapter/section references." },
+    "permitted": { "status": "satisfied", "evidence": "Binary gate authority; partial success is not sufficient; never marks a gate passed when failures exist." },
+    "adaptive": { "status": "n_a", "evidence": "Deterministic checklist validator; gate rules change only via approval-gated directive edits (CLAUDE.md), not autonomous learning." },
+    "contextual": { "status": "satisfied", "evidence": "Validates each chapter against the outline and the project's Requirement set." },
+    "transparent": { "status": "satisfied", "evidence": "Per-gate results recorded via state_manager.record_final_quality(); failures cite exact location." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Enforces the gate sequence; never skips a gate; partial success rejected." },
+    "observability": { "status": "satisfied", "evidence": "Quality report with per-gate results is persisted." },
+    "availability": { "status": "n_a", "evidence": "On-demand validation tool, not an always-on service." },
+    "lexicon": { "status": "satisfied", "evidence": "Directly enforces consistent terminology (Gate 2 Clarity) and anti-vagueness." },
+    "solid": { "status": "satisfied", "evidence": "Backed by deterministic quality_gate_runner, ambiguity_detector, outline_validator; covered by /tests." }
+  },
+  "layers": [
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Binary, non-bypassable quality gates." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Per-gate quality report persisted via state_manager." },
+    { "layer": 3, "name": "Unified Semantic Layer", "how": "Enforces consistent terminology and anti-vagueness." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z"
+}

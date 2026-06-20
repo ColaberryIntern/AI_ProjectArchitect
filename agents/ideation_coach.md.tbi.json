@@ -1,0 +1,30 @@
+{
+  "artifact_id": "agent:ideation_coach",
+  "artifact_kind": "agent",
+  "artifact_path": "agents/ideation_coach.md",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Design-time conversational persona invoked interactively; human-paced, no sub-second SLO applies." },
+    "natural": { "status": "satisfied", "evidence": "Accepts ideas in any state (sentence, rant, half-thought); one-intent questions; hybrid choice+escape-hatch prompting." },
+    "permitted": { "status": "satisfied", "evidence": "Suggest-don't-hijack: all improvements are optional directions, never overrides; prevents feature creep." },
+    "adaptive": { "status": "satisfied", "evidence": "References prior answers and builds on them; refines intent before adding scope; learnings flow into directives." },
+    "contextual": { "status": "satisfied", "evidence": "Never asks what was already answered; grounds suggestions in the feature catalog and the captured original idea." },
+    "transparent": { "status": "satisfied", "evidence": "Captures the original idea verbatim as a reference point; calls out ambiguity explicitly; records selections via state_manager." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Ambiguity is a blocking condition; feature-creep is flagged and deferred." },
+    "observability": { "status": "satisfied", "evidence": "Idea and feature selections recorded via state_manager." },
+    "availability": { "status": "n_a", "evidence": "Interactive design-time tool, not an always-on service." },
+    "lexicon": { "status": "satisfied", "evidence": "Does not rephrase prematurely; preserves and reuses the user's own terms consistently." },
+    "solid": { "status": "satisfied", "evidence": "Backed by deterministic tools: ambiguity_detector, feature_catalog, state_manager." }
+  },
+  "layers": [
+    { "layer": 3, "name": "Unified Semantic Layer", "how": "Natural-language idea capture grounded in a shared feature vocabulary." },
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Filters the feature catalog and reuses prior answers as context." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Records idea + feature selections via state_manager." }
+  ],
+  "risk_level": "LOW",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z"
+}
