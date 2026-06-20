@@ -184,3 +184,151 @@ def snapshot() -> dict:
         "governance": governance(),
         "audit": audit_explorer(),
     }
+
+
+# ── 7-Layer Architecture of Trust (with live metrics) ──
+
+# Canonical layers (directives/compliance/trust-before-intelligence.md) mapped to
+# their member modules (execution/ops_platform/__layers__.py). Bottom (L1) -> top (L7).
+_LAYER_DEFS = [
+    {"layer": 1, "name": "Multi-Modal Storage", "tag": "foundation",
+     "members": ["session_store", "audit_log", "retention_policy"],
+     "tech": ["JSON/JSONL (output/)", "Redis (optional)", "filesystem", "SQL Server (CCPP, ext)"]},
+    {"layer": 2, "name": "Real-Time Data Fabric", "tag": "Instant",
+     "members": ["event_fabric", "realtime_bus", "cache_bus", "redis_backends"],
+     "tech": ["event_fabric", "Redis Streams", "SSE", "APScheduler"]},
+    {"layer": 3, "name": "Unified Semantic Layer", "tag": "Natural",
+     "members": ["semantic_analyzer", "search_index", "knowledge_graph"],
+     "tech": ["OpenAI gpt-4o-mini", "keyword search_index", "knowledge_graph"]},
+    {"layer": 4, "name": "Intelligent Retrieval (RAG)", "tag": "Contextual",
+     "members": ["scoped_memory", "organizational_memory", "feedback_store"],
+     "tech": ["keyword/TF retrieval", "file-backed memory", "feedback_store", "(no vector DB yet)"]},
+    {"layer": 5, "name": "Agent-Aware Governance", "tag": "Permitted",
+     "members": ["rbac", "enforcement", "controls", "agent_registry", "approvals"],
+     "tech": ["RBAC", "controls", "approvals", "Google OAuth SSO", "AES-GCM vault", "TBI gate"]},
+    {"layer": 6, "name": "Observability & Feedback", "tag": "Transparent",
+     "members": ["audit_log", "telemetry", "prometheus_exporter", "reliability_monitor"],
+     "tech": ["audit_log (JSONL)", "Prometheus", "telemetry", "heartbeats"]},
+    {"layer": 7, "name": "Multi-Agent Orchestration", "tag": "orchestration",
+     "members": ["workflow_runner", "pipeline_engine", "orchestration_engine", "agent_runtime"],
+     "tech": ["FastAPI", "workflow_runner", "pipeline_engine", "OpenAI", "Docker/uvicorn"]},
+]
+
+# Reference stack from the Trust-Before-Intelligence book (Echo Health example),
+# shown alongside our actual stack for contrast. Source: book repo codex.
+_REFERENCE_TECH = {
+    1: ["Databricks / Snowflake"], 2: ["Redis", "Trino", "Kafka"], 3: ["dbt"],
+    4: ["Neo4j (knowledge graph)"], 5: ["Collibra (governance)"],
+    6: ["observability suite"], 7: ["OpenAI + Anthropic (LLM/agents)"],
+}
+
+
+def _signals() -> dict:
+    """Fetch the shared live signals once (defensive)."""
+    def _audit(days):
+        from execution.ops_platform import audit_log
+        return audit_log.stats(days=days)
+
+    def _health():
+        from execution.ops_platform import telemetry
+        return telemetry.health_summary().to_dict()
+
+    def _pending():
+        from execution.ops_platform import approvals
+        return len(approvals.list_requests(state="pending"))
+
+    audit7 = _safe(lambda: _audit(7), {})
+    audit1 = _safe(lambda: _audit(1), {})
+    audit30 = _safe(lambda: _audit(30), {})
+    health = _safe(_health, {})
+    by_action30 = audit30.get("by_action", {}) if isinstance(audit30, dict) else {}
+    return {
+        "audit7_total": (audit7 or {}).get("total", 0) if isinstance(audit7, dict) else 0,
+        "audit1_total": (audit1 or {}).get("total", 0) if isinstance(audit1, dict) else 0,
+        "runs_24h": (health or {}).get("total_runs_24h", 0) if isinstance(health, dict) else 0,
+        "fail_pct": (health or {}).get("failure_rate_24h_pct", 0) if isinstance(health, dict) else 0,
+        "capabilities": (health or {}).get("capability_count", 0) if isinstance(health, dict) else 0,
+        "approvals_pending": _safe(_pending, 0) if isinstance(_safe(_pending, 0), int) else 0,
+        "denials_30d": by_action30.get("enforcement.denied", 0),
+        "runtime_agents": len(_safe(lambda: runtime_agents_summary().get("agents", []), [])),
+    }
+
+
+def layers() -> dict:
+    """The 7 trust layers, each with a live metric for the animated diagram."""
+    s = _signals()
+    metric_for = {
+        1: ("audit records / 7d", s["audit7_total"], "ok"),
+        2: ("runs / 24h", s["runs_24h"], "ok"),
+        3: ("capabilities", s["capabilities"], "ok"),
+        4: ("grounded agents", s["runtime_agents"], "ok"),
+        5: (f"{s['approvals_pending']} pending · {s['denials_30d']} denials",
+            s["approvals_pending"], "warn" if s["approvals_pending"] else "ok"),
+        6: ("audit events / 24h", s["audit1_total"], "ok"),
+        7: (f"{s['runs_24h']} runs · {s['fail_pct']}% fail", s["runs_24h"],
+            "warn" if (isinstance(s["fail_pct"], (int, float)) and s["fail_pct"] >= 20) else "ok"),
+    }
+    out = []
+    for d in _LAYER_DEFS:
+        label, value, status = metric_for[d["layer"]]
+        out.append({**d, "reference": _REFERENCE_TECH.get(d["layer"], []),
+                    "metric": {"label": label, "value": value, "status": status}})
+    return {"layers": out, "signals": s}
+
+
+# ── Controls state (drives the levers) ──
+
+
+def controls_state() -> dict:
+    def _runtime():
+        from execution.ops_platform import runtime_controls
+        return runtime_controls.get_state()
+
+    def _active_controls():
+        from execution.ops_platform import controls
+        return [c.to_dict() for c in controls.list_active()]
+
+    def _pending_approvals():
+        from execution.ops_platform import approvals
+        rows = approvals.list_requests(state="pending")
+        return [
+            {"request_id": getattr(r, "request_id", None),
+             "action": getattr(r, "action", None),
+             "entity_type": getattr(r, "entity_type", None),
+             "entity_id": getattr(r, "entity_id", None),
+             "state": getattr(r, "state", None),
+             "created_at": getattr(r, "created_at", None)}
+            for r in rows
+        ]
+
+    return {
+        "runtime": _safe(_runtime, None),
+        "active_controls": _safe(_active_controls, []),
+        "pending_approvals": _safe(_pending_approvals, []),
+        "runtime_agents": _safe(runtime_agents_summary, None),
+    }
+
+
+# ── Compact live payload for the dashboard poller ──
+
+
+def live() -> dict:
+    comp = _safe(tbi_compliance_summary, None)
+    counts = comp.get("counts", {}) if isinstance(comp, dict) else {}
+    return {
+        "layers": layers()["layers"],
+        "controls": controls_state(),
+        "counters": {
+            "compliance": counts,
+            "audit_24h": _signals()["audit1_total"],
+        },
+    }
+
+
+def page_data() -> dict:
+    """Everything the HTML page needs for first paint."""
+    return {
+        "overview": overview(),
+        "layers": layers(),
+        "controls": controls_state(),
+    }

@@ -379,6 +379,14 @@ async def save_capabilities(request: Request, session_id: str):
 @router.get("/{session_id}/generate")
 async def generate_results(request: Request, session_id: str):
     """Run all generation engines and redirect to results."""
+    from execution.ops_platform import runtime_controls
+    if runtime_controls.is_paused("advisory_pipeline"):
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            "<h2>Advisory is temporarily paused</h2>"
+            "<p>The AI advisory is paused by an administrator. Please check back shortly.</p>",
+            status_code=503,
+        )
     from execution.advisory.advisory_state_manager import (
         advance_status,
         load_session,
