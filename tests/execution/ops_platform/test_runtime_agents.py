@@ -67,7 +67,8 @@ def test_registry_id_prefix():
 
 def test_load_declarations_reads_committed_file():
     ids = {d["id"] for d in runtime_agents.load_declarations()}
-    assert {"cb_mention_responder", "autopickup_worker"} <= ids
+    assert {"cb_mention_responder", "autopickup_worker",
+            "advisory_pipeline", "productivity_report"} <= ids
 
 
 def test_upsert_runtime_agents_registers_all_idempotently():

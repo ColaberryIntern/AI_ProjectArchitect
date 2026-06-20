@@ -48,8 +48,13 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 |--------|-----------|--------|---------|--------|
 | My Day `@CB` auto-responder | `execution/products/ops/cb_mention_worker.py` | `autonomous_low_risk_only` | **compliant** | ✅ P0 done |
 | My Day auto-pickup (draft-only) | `execution/products/ops/autopickup_worker.py` | `approval_required` | **conditional** | ✅ P0 done |
-| Advisory session pipeline | `execution/advisory` | — | — | ⬜ P1 |
-| Productivity report generator | `execution/products/ops/productivity` | — | — | ⬜ P1 |
+| Advisory session pipeline | `execution/advisory/recommendation_engine.py` | `recommend_only` | **compliant** (HIGH risk) | ✅ P1 done* |
+| Productivity report generator | `execution/products/ops/productivity/runner.py` | `autonomous_low_risk_only` | **conditional** | ✅ P1 done |
+
+> \*Advisory is compliant on the framework dimensions but carries **HIGH residual risk**: a
+> public unauthenticated endpoint that creates Basecamp projects and fires enterprise
+> webhooks, with no single kill-switch (only per-subsystem env degradation). Tracked as a
+> hardening follow-up below — not a clean bill of health.
 
 > Note: My Day `sync`/`purge` are deterministic data operations (not LLM agents), so they
 > are out of scope for per-artifact TBI attestation; their governance is the pipeline's.
@@ -73,11 +78,12 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 - [x] Vendor the pinned framework; bind the mandate in CLAUDE.md; ship schema + scorer + CI gate + tests.
 - [x] Attest all 9 declarative artifacts → gate green.
 - [x] **P0:** runtime declaration + attestations for the My Day auto-responder + auto-pickup (`config/tbi_runtime_agents.json`, gate-covered, `agent_registry` policy wired via `runtime_agents.upsert_runtime_agents()`). Deploy step: run the upsert so the registry reflects the declaration.
-- [ ] **P1:** attest the advisory pipeline and productivity report generator (same runtime-declaration pattern).
+- [x] **P1:** attest the advisory pipeline and productivity report generator (same runtime-declaration pattern).
+- [ ] **P1.5 (HIGH, advisory hardening):** add an `OPS_ADVISORY_ENABLED` kill-switch + access review for the public advisory endpoint (creates BC projects + fires webhooks unauthenticated).
 - [ ] Close systemic gaps 1–3 (availability signal, glossary, reputation wiring).
 - [ ] Re-confirm `persona:karun` / `persona:kes` attestations when their PRDs are ratified (Colaberry-approved).
 
 > Each backlog item is its own approval-gated PR (CLAUDE.md). **Coverage now:** all gated
-> declarative artifacts + the two P0 runtime AI agents are compliant. P1 runtime systems
-> (advisory, productivity report) are not yet attested — do not read this as "100% of AI
-> compliant" until P1 closes.
+> declarative artifacts + all four runtime AI agents (P0 + P1) are attested and pass the
+> gate. Remaining: the advisory HIGH-risk hardening (P1.5) and the systemic gaps. Do not
+> read this as "100% trusted" until P1.5 + the systemic gaps close.

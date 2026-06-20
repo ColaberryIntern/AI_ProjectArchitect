@@ -1,0 +1,33 @@
+{
+  "artifact_id": "runtime:advisory_pipeline",
+  "artifact_kind": "advisory",
+  "artifact_path": "execution/advisory/recommendation_engine.py",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "satisfied", "evidence": "Interactive chatbot: answer validation is a small bounded LLM call (max ~300 tokens) and the simulation timeline streams events; responses are prompt." },
+    "natural": { "status": "satisfied", "evidence": "Conversational 10-question intake with LLM answer validation (complete/partial/off-topic) and natural-language blueprint output." },
+    "permitted": { "status": "satisfied", "evidence": "Public-by-design lead funnel: anonymous intake, but the deliverable (PDF/results) is gated behind lead capture, the enterprise webhook is HMAC-signed, and calendar writes use a scoped service account. See RESIDUAL note." },
+    "adaptive": { "status": "satisfied", "evidence": "Taxonomy registry caches and LLM-syncs new industries on cache miss; maturity scoring adapts recommended outcomes to the answers given." },
+    "contextual": { "status": "satisfied", "evidence": "Grounds recommendations in the persisted Q&A corpus + industry taxonomy + the 40+ capability catalog rather than free-form generation." },
+    "transparent": { "status": "satisfied", "evidence": "Append-only event log (output/advisory/_events_log.json) + per-session state snapshots (advisory_state.json) + surfaced system-confidence and maturity scores." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Session state machine prevents re-generation; deliverable gated behind lead capture; per-subsystem degradation. See RESIDUAL note re: kill-switch." },
+    "observability": { "status": "satisfied", "evidence": "Event log + session-state snapshots + INFO logs for each lifecycle stage (started/questions_completed/results_generated/lead_captured)." },
+    "availability": { "status": "satisfied", "evidence": "Graceful degradation: LLM unavailable -> safe keyword-only defaults; calendar key absent -> static slots; webhook URL absent -> no-op. Atomic temp+rename writes." },
+    "lexicon": { "status": "satisfied", "evidence": "Consistent advisory vocabulary (Revenue/Operations/Customer Engine systems, capability catalog ids, 5 maturity dimensions)." },
+    "solid": { "status": "satisfied", "evidence": "LLM calls wrapped in try/except with fallbacks; lead upsert-by-email prevents duplicates; webhook is fire-and-forget non-blocking; atomic writes." }
+  },
+  "layers": [
+    { "layer": 3, "name": "Unified Semantic Layer", "how": "Industry taxonomy + capability catalog give shared meaning to free-text answers." },
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Grounds the blueprint in the Q&A corpus + taxonomy + capability catalog." },
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Lead-gated deliverable; HMAC-signed downstream webhook; scoped calendar service account." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Event log + per-session state snapshots + confidence/maturity surfaced." }
+  ],
+  "trust_score_ref": "agent_runtime_advisory_pipeline",
+  "risk_level": "HIGH",
+  "verdict": "compliant",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "RESIDUAL RISK (HIGH), tracked in docs/audits/tbi-fleet-audit.md: this is a PUBLIC unauthenticated endpoint that creates Basecamp projects and fires enterprise webhooks, with no single kill-switch (only per-subsystem env degradation). Compliant on the framework dimensions (the access model is an intentional lead-funnel design with gated deliverable + signed/scoped downstream), but the hardening follow-up is: add an OPS_ADVISORY_ENABLED kill-switch + an access review. Representative entrypoint; the same posture covers answer_validator.py, taxonomy_registry.py, and the generation engines."
+}

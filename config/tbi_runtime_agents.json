@@ -29,6 +29,34 @@
       "status": "gated_off_by_default",
       "live_since": "2026-06-09",
       "notes": "Phase 1 draft-only: posts a 'proposed next step' with explicit side_effects and confidence; humans approve to execute. Per-project allowlist carries approved_by/approved_at."
+    },
+    {
+      "id": "advisory_pipeline",
+      "name": "Advisory session pipeline (AI Transformation Blueprint)",
+      "entrypoint": "execution/advisory/recommendation_engine.py",
+      "autonomy_policy": "recommend_only",
+      "confidence_threshold": 0.5,
+      "permitted_actions": ["advisory.blueprint.generate", "advisory.lead.capture", "advisory.project.create", "advisory.webhook.emit"],
+      "rollback_required": false,
+      "rollback_plan": "Unset OPENAI_API_KEY to drop to safe keyword-only defaults; unset ENTERPRISE_WEBHOOK_URL to stop downstream sync; unset GOOGLE_PRIVATE_KEY to stop calendar writes. HARDENING FOLLOW-UP: add a single OPS_ADVISORY_ENABLED kill-switch + access review (public endpoint creates BC projects + fires webhooks).",
+      "scope": { "system": "public_advisory_funnel", "identity": "anonymous web visitor; deliverable gated behind lead capture; downstream webhook HMAC-signed; calendar via scoped service account" },
+      "status": "live_prod",
+      "live_since": "2026-06-08",
+      "notes": "User-in-the-loop advisory chatbot (recommend_only): the human drives every step and the output is advice. Representative entrypoint is the recommendation engine; the same posture covers the sibling LLM modules (answer_validator, taxonomy_registry) and generation engines. RESIDUAL RISK (HIGH): public unauthenticated endpoint with downstream side effects and no single kill-switch — tracked as a hardening item."
+    },
+    {
+      "id": "productivity_report",
+      "name": "Daily productivity report generator",
+      "entrypoint": "execution/products/ops/productivity/runner.py",
+      "autonomy_policy": "autonomous_low_risk_only",
+      "confidence_threshold": 0.5,
+      "permitted_actions": ["email.report.send"],
+      "rollback_required": true,
+      "rollback_plan": "Set PRODUCTIVITY_REPORT_DELIVERY=0 (the default) to stop all email; the report still renders to disk. Stop the APScheduler job to halt daily runs.",
+      "scope": { "system": "my_day_scheduler", "recipients": "config/report_recipients.json (BCC ali@colaberry.com)", "sources": "local BC todo mirrors output/ops/<user_id>/" },
+      "status": "live_prod",
+      "live_since": "2026-06-17",
+      "notes": "Fully deterministic (no LLM): aggregates real BC completions, compares post-launch vs pre-launch baseline, renders an HTML/JSON scorecard. Email is autonomous on schedule but OFF BY DEFAULT (PRODUCTIVITY_REPORT_DELIVERY) and to a fixed recipient list — the env flag is the human approval gate."
     }
   ]
 }
