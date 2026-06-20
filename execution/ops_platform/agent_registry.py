@@ -94,6 +94,55 @@ def register_agent(
     return agent
 
 
+def upsert_agent(
+    *,
+    agent_id: str,
+    name: str,
+    description: str,
+    autonomy_policy: str,
+    confidence_threshold: float,
+    permitted_actions: list,
+    scope: dict | None = None,
+    rollback_required: bool = True,
+    created_by: dict | str = "anonymous",
+) -> Agent:
+    """Idempotent register-or-update keyed on a STABLE caller-supplied agent_id.
+
+    ``register_agent`` mints a random id, so calling it repeatedly (e.g. from a
+    deploy-time bootstrap) duplicates agents. ``upsert_agent`` lets declarative
+    callers — like ``runtime_agents.upsert_runtime_agents`` — converge the
+    registry to the committed declaration. Preserves ``paused`` and creation
+    provenance across updates so a human pause is never silently reset.
+    """
+    if autonomy_policy not in VALID_AUTONOMY_POLICIES:
+        raise ValueError(f"autonomy_policy must be one of {VALID_AUTONOMY_POLICIES}")
+    if not (0.0 <= confidence_threshold <= 1.0):
+        raise ValueError("confidence_threshold must be between 0 and 1")
+    actor = created_by if isinstance(created_by, dict) else {"name": str(created_by)}
+    existing = get(agent_id)
+    agent = Agent(
+        agent_id=agent_id,
+        name=name, description=description,
+        autonomy_policy=autonomy_policy,
+        confidence_threshold=float(confidence_threshold),
+        permitted_actions=list(permitted_actions),
+        scope=dict(scope or {}),
+        rollback_required=bool(rollback_required),
+        paused=existing.paused if existing else False,
+        created_at=existing.created_at if existing else datetime.now(timezone.utc).isoformat(),
+        created_by=existing.created_by if existing else actor,
+    )
+    _persist(agent)
+    audit_log.record(
+        action="agent.updated" if existing else "agent.registered",
+        entity_type="agent", entity_id=agent_id, actor=actor,
+        previous_state=({"autonomy_policy": existing.autonomy_policy} if existing else None),
+        new_state={"name": name, "autonomy_policy": autonomy_policy,
+                   "permitted_actions": permitted_actions},
+    )
+    return agent
+
+
 def pause(agent_id: str, *, actor: dict | str = "anonymous",
             reason: str = "operator pause") -> Agent | None:
     a = get(agent_id)

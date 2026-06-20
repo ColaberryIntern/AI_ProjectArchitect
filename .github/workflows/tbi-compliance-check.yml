@@ -13,6 +13,9 @@ on:
       - 'config/blueprints/*.json'
       - 'config/skill_registry.json'
       - 'library/**/*.md'
+      - 'execution/products/ops/cb_mention_worker.py'
+      - 'execution/products/ops/autopickup_worker.py'
+      - 'config/tbi_runtime_agents.json'
       - '**/*.tbi.json'
       - 'execution/ops_platform/tbi_compliance.py'
       - 'scripts/tbi_compliance_check.py'
@@ -48,7 +51,9 @@ jobs:
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
             'agents/**/*.md' 'docs/personas/**/*.md' 'config/blueprints/*.json' \
-            'config/skill_registry.json' 'library/**/*.md' | tr '\n' ' ')
+            'config/skill_registry.json' 'library/**/*.md' \
+            'execution/products/ops/cb_mention_worker.py' \
+            'execution/products/ops/autopickup_worker.py' | tr '\n' ' ')
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
           echo "AI artifacts to gate: $FILES"
 

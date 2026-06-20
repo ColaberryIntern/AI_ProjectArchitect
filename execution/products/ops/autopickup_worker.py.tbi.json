@@ -1,0 +1,33 @@
+{
+  "artifact_id": "runtime:autopickup_worker",
+  "artifact_kind": "workflow",
+  "artifact_path": "execution/products/ops/autopickup_worker.py",
+  "framework_version": "TBI-2025.12.0",
+  "inpact": {
+    "instant": { "status": "n_a", "evidence": "Scheduled batch draft worker (default 15-min interval); not a latency-bound interactive surface." },
+    "natural": { "status": "satisfied", "evidence": "Posts a natural-language 'proposed next step' (action, why, side-effects, needs-input) per ticket." },
+    "permitted": { "status": "satisfied", "evidence": "Disabled by default (OPS_AUTOPICKUP_ENABLED); per-project allowlist (config/autopickup_allowlist.json) carries approved_by/approved_at; draft-only mode never executes side effects; per-user OAuth token; per-bucket rate_limit_per_15m." },
+    "adaptive": { "status": "satisfied", "evidence": "Confidence calibration doctrine (>=0.85 / 0.5-0.85 / <0.5 clarifying question); reads recent comments and skips tickets it already drafted on so humans can react first." },
+    "contextual": { "status": "satisfied", "evidence": "Grounds each proposal in the BC todo description + recent comments + the local ops store (urgency-ranked AI-tier todos)." },
+    "transparent": { "status": "satisfied", "evidence": "Per-todo audit JSONL with autopickup_id; the id is embedded in the comment; explicit side_effects disclosure; heartbeat." }
+  },
+  "goals": {
+    "governance": { "status": "satisfied", "evidence": "Off by default + per-project allowlist with recorded approver + draft-only mode + per-bucket rate limit + TOP_N cap." },
+    "observability": { "status": "satisfied", "evidence": "Per-scan + per-todo audit JSONL, heartbeat, and autopickup_id traceability from comment to log." },
+    "availability": { "status": "satisfied", "evidence": "Best-effort disk writes, per-user/per-todo error isolation, seen-set cap (5000) prevents unbounded growth." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized 'Auto-pickup: proposed next step' shape + autopickup_id; explicit no-em-dash output lexicon in the system prompt." },
+    "solid": { "status": "satisfied", "evidence": "Idempotent seen-set keyed on (todo_id, bc_updated_at); rate-limited; draft-only; confidence-gated; disabled by default." }
+  },
+  "layers": [
+    { "layer": 4, "name": "Intelligent Retrieval (RAG)", "how": "Grounds proposals in BC todo + recent comments + local ops store." },
+    { "layer": 5, "name": "Agent-Aware Governance", "how": "Disabled-by-default + approver allowlist + draft-only + rate limits." },
+    { "layer": 6, "name": "Observability & Feedback", "how": "Per-todo audit JSONL + heartbeat + autopickup_id." },
+    { "layer": 7, "name": "Multi-Agent Orchestration", "how": "Runs under the My Day scheduler alongside the @CB responder." }
+  ],
+  "trust_score_ref": "agent_runtime_autopickup_worker",
+  "risk_level": "MODERATE",
+  "verdict": "conditional",
+  "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
+  "verified_at": "2026-06-20T00:00:00Z",
+  "notes": "Phase 1 draft-only. agent_registry posture declared in config/tbi_runtime_agents.json (approval_required). Promotion to local-execute (Phase 2) requires re-attestation at a higher risk tier."
+}

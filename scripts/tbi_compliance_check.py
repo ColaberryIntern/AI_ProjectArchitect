@@ -29,6 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 from execution.ops_platform.tbi_compliance import evaluate_attestation  # noqa: E402
 
 _SCHEMA_PATH = _REPO_ROOT / "config" / "schemas" / "ops" / "tbi_attestation.schema.json"
+_RUNTIME_DECL_PATH = _REPO_ROOT / "config" / "tbi_runtime_agents.json"
 
 # Path globs (repo-relative, posix) that count as AI artifacts requiring attestation.
 ARTIFACT_GLOBS = (
@@ -40,6 +41,26 @@ ARTIFACT_GLOBS = (
     "config/skill_registry.json",
     "library/**/*.md",
 )
+
+_RUNTIME_ENTRYPOINTS_CACHE: set[str] | None = None
+
+
+def _runtime_entrypoints() -> set[str]:
+    """Runtime AI entrypoints declared in config/tbi_runtime_agents.json. These are
+    gated like declarative artifacts (each needs <entrypoint>.tbi.json)."""
+    global _RUNTIME_ENTRYPOINTS_CACHE
+    if _RUNTIME_ENTRYPOINTS_CACHE is None:
+        eps: set[str] = set()
+        try:
+            raw = json.loads(_RUNTIME_DECL_PATH.read_text(encoding="utf-8"))
+            for a in raw.get("agents") or []:
+                ep = a.get("entrypoint")
+                if ep:
+                    eps.add(Path(ep).as_posix())
+        except (OSError, json.JSONDecodeError):
+            pass
+        _RUNTIME_ENTRYPOINTS_CACHE = eps
+    return _RUNTIME_ENTRYPOINTS_CACHE
 
 
 def _rel_posix(path: Path) -> str:
@@ -53,6 +74,8 @@ def is_ai_artifact(path: Path) -> bool:
     rel = _rel_posix(path)
     if rel.endswith(".tbi.json"):
         return False  # the attestation itself is not an artifact
+    if rel in _runtime_entrypoints():
+        return True  # declared runtime AI agent
     return any(fnmatch(rel, g) for g in ARTIFACT_GLOBS)
 
 

@@ -35,22 +35,26 @@ silently assumed compliant.
 
 **Result:** `python scripts/tbi_compliance_check.py <all 9>` → exit 0, 0 `non_compliant`.
 
-## Tier 0 — runtime AI NOT covered by the path-based gate (remediation backlog)
+## Tier 0 — runtime AI (code under `/execution`)
 
-These live in `/execution` as code, not as declarative artifacts under the gated paths,
-so the CI gate does not yet attest them. They are the **highest-risk** AI in the system
-(prod-facing, autonomous, live). Each needs a runtime-level attestation wired to the
-`ops_platform` trust controls in a follow-up batch.
+These take autonomous action on live data — per the TBI thesis, exactly where trust
+must be proven. They are now gated via a committed declaration
+([config/tbi_runtime_agents.json](../../config/tbi_runtime_agents.json)): each declared
+entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces it), and
+`execution/ops_platform/runtime_agents.upsert_runtime_agents()` registers each with an
+`agent_registry` autonomy policy at deploy (idempotent via `agent_registry.upsert_agent`).
 
-| System | Where | Status | Priority |
-|--------|-------|--------|----------|
-| My Day `@CB` auto-responder | `execution/` My Day scheduler | Live since 2026-06-14, prod | **P0** |
-| My Day auto-pickup / sync / purge | My Day scheduler | Live, prod | **P0** |
-| Advisory session pipeline | `execution/advisory` | Live | P1 |
-| Productivity report generator | `execution/products/ops/productivity` | Live (07:30 ET weekdays) | P1 |
+| System | Entrypoint | Policy | Verdict | Status |
+|--------|-----------|--------|---------|--------|
+| My Day `@CB` auto-responder | `execution/products/ops/cb_mention_worker.py` | `autonomous_low_risk_only` | **compliant** | ✅ P0 done |
+| My Day auto-pickup (draft-only) | `execution/products/ops/autopickup_worker.py` | `approval_required` | **conditional** | ✅ P0 done |
+| Advisory session pipeline | `execution/advisory` | — | — | ⬜ P1 |
+| Productivity report generator | `execution/products/ops/productivity` | — | — | ⬜ P1 |
 
-**Why P0:** these take autonomous actions on live data (posting to Basecamp, picking up
-work). Per the TBI thesis, autonomous action is exactly where trust must be proven.
+> Note: My Day `sync`/`purge` are deterministic data operations (not LLM agents), so they
+> are out of scope for per-artifact TBI attestation; their governance is the pipeline's.
+> Promotion of auto-pickup to `local-execute` (Phase 2) requires re-attestation at a
+> higher risk tier.
 
 ## Systemic gaps (apply across the fleet)
 
@@ -68,11 +72,12 @@ work). Per the TBI thesis, autonomous action is exactly where trust must be prov
 
 - [x] Vendor the pinned framework; bind the mandate in CLAUDE.md; ship schema + scorer + CI gate + tests.
 - [x] Attest all 9 declarative artifacts → gate green.
-- [ ] **P0:** runtime attestations for the My Day auto-responder + auto-pickup (wrap with `agent_registry` autonomy policy + `trust_engine`, add `*.tbi.json` or a runtime registry).
-- [ ] **P1:** attest the advisory pipeline and productivity report generator.
+- [x] **P0:** runtime declaration + attestations for the My Day auto-responder + auto-pickup (`config/tbi_runtime_agents.json`, gate-covered, `agent_registry` policy wired via `runtime_agents.upsert_runtime_agents()`). Deploy step: run the upsert so the registry reflects the declaration.
+- [ ] **P1:** attest the advisory pipeline and productivity report generator (same runtime-declaration pattern).
 - [ ] Close systemic gaps 1–3 (availability signal, glossary, reputation wiring).
 - [ ] Re-confirm `persona:karun` / `persona:kes` attestations when their PRDs are ratified (Colaberry-approved).
 
-> Each backlog item is its own approval-gated PR (CLAUDE.md). Until Tier 0 is closed, this
-> audit must not be read as "100% of AI is compliant" — it is "100% of *gated declarative*
-> AI is compliant; runtime AI attestation is in progress."
+> Each backlog item is its own approval-gated PR (CLAUDE.md). **Coverage now:** all gated
+> declarative artifacts + the two P0 runtime AI agents are compliant. P1 runtime systems
+> (advisory, productivity report) are not yet attested — do not read this as "100% of AI
+> compliant" until P1 closes.
