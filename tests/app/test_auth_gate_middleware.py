@@ -117,7 +117,7 @@ def test_sso_enabled_auth_login_is_anonymous(gated_app, enabled_sso):
 
 def test_sso_enabled_library_no_cookie_redirects_to_login(gated_app, enabled_sso):
     client = TestClient(gated_app)
-    response = client.get("/library/", follow_redirects=False)
+    response = client.get("/library/", headers={"Accept": "text/html"}, follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"].startswith("/auth/login?next=")
     # Original path is URL-encoded in the next= param
@@ -126,7 +126,7 @@ def test_sso_enabled_library_no_cookie_redirects_to_login(gated_app, enabled_sso
 
 def test_sso_enabled_library_query_string_preserved_in_next(gated_app, enabled_sso):
     client = TestClient(gated_app)
-    response = client.get("/library/?view=skills&tier=ai", follow_redirects=False)
+    response = client.get("/library/?view=skills&tier=ai", headers={"Accept": "text/html"}, follow_redirects=False)
     assert response.status_code == 302
     loc = response.headers["location"]
     assert loc.startswith("/auth/login?next=")
@@ -142,6 +142,7 @@ def test_sso_enabled_library_invalid_cookie_redirects(gated_app, enabled_sso, mo
     client = TestClient(gated_app)
     response = client.get(
         "/library/",
+        headers={"Accept": "text/html"},
         cookies={auth_google.SESSION_COOKIE_NAME: "garbage-or-expired"},
         follow_redirects=False,
     )
@@ -152,9 +153,19 @@ def test_sso_enabled_library_invalid_cookie_redirects(gated_app, enabled_sso, mo
 def test_sso_enabled_subpath_under_library_is_gated(gated_app, enabled_sso):
     """/library/skills/ should also redirect — gate is by prefix."""
     client = TestClient(gated_app)
-    response = client.get("/library/skills/", follow_redirects=False)
+    response = client.get("/library/skills/", headers={"Accept": "text/html"}, follow_redirects=False)
     assert response.status_code == 302
     assert "%2Flibrary%2Fskills%2F" in response.headers["location"]
+
+
+def test_sso_enabled_api_request_passes_through_not_redirect(gated_app, enabled_sso):
+    """Non-HTML (API/JSON) requests on a gated path fall through to the route
+    instead of redirecting, so secret-authed/API endpoints keep working."""
+    client = TestClient(gated_app)
+    response = client.get("/library/", headers={"Accept": "application/json"},
+                          follow_redirects=False)
+    assert response.status_code == 200
+    assert response.json() == {"path": "/library/"}
 
 
 # ── Branch 4: login-required + valid session -> passes through ───

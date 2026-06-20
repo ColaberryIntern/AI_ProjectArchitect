@@ -40,6 +40,13 @@ async def auth_gate_middleware(request: Request, call_next):
         cookie = request.cookies.get(auth_google.SESSION_COOKIE_NAME)
         user = auth_google.current_user_from_cookie(cookie)
         if user is None:
+            # Redirect browser navigations to login; let API/JSON requests fall
+            # through so the route returns its own 401 (or validates a secret).
+            # Keeps secret-authed endpoints like /admin/cb-mentions.json working.
+            accept = request.headers.get("accept", "")
+            wants_html = "text/html" in accept and not path.endswith(".json")
+            if not wants_html:
+                return await call_next(request)
             qs = request.url.query
             full = path + ("?" + qs if qs else "")
             return RedirectResponse(

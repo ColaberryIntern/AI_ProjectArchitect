@@ -31,6 +31,8 @@
     "/openapi.json"
   ],
   "login_required_paths": [
-    "/library/"
+    "/library/",
+    "/admin/",
+    "/my-day/"
   ]
 }
