@@ -1,27 +1,56 @@
-"""Trust Command Center — read-only dashboard at /admin/trust (Phase 10 v1).
+"""Trust Command Center — flagship dashboard + autonomy controls at /admin/trust.
 
-Super-admin gated (reuses app.routers.admin._require_super_admin). Renders a
-self-contained HTML overview plus JSON twins for each view. All data comes from
-execution.ops_platform.trust_center (read-only aggregator over existing stores);
-no metric is fabricated — not-yet-instrumented signals are labeled as such.
+Super-admin gated (reuses app.routers.admin auth). The page renders a templated,
+on-brand dashboard with a live 7-layer architecture diagram; the control endpoints
+let an operator pause/kill/freeze/approve live AI autonomy. All reads come from the
+read-only aggregator (execution.ops_platform.trust_center); all control mutations are
+audited by the underlying ops modules and gated by _require_super_admin (always
+enforced, independent of OPS_ENFORCE_RBAC).
 
 Design: docs/trust-audit/dashboard-design.md
 """
 
 from __future__ import annotations
 
-import html
-
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
-from app.routers.admin import _require_super_admin
+from app.routers.admin import _ctx, _current_user, _require_super_admin
 from execution.ops_platform import trust_center as tc
 
 router = APIRouter(prefix="/admin/trust")
 
 
-# ── JSON twins ──
+def _actor(request: Request) -> dict:
+    u = _current_user(request)
+    if u:
+        return {"name": getattr(u, "email", "admin"),
+                "email": getattr(u, "email", None),
+                "roles": list(getattr(u, "roles", []) or [])}
+    return {"name": "admin", "roles": ["admin"]}
+
+
+async def _body(request: Request) -> dict:
+    try:
+        b = await request.json()
+        return b if isinstance(b, dict) else {}
+    except Exception:
+        return {}
+
+
+# ── HTML page ──
+
+
+@router.get("")
+async def trust_home(request: Request):
+    _require_super_admin(request)
+    return request.app.state.templates.TemplateResponse(
+        request, "admin/trust_center.html",
+        _ctx(request, page_title="Trust Command Center", data=tc.page_data()),
+    )
+
+
+# ── JSON read twins ──
 
 
 @router.get("/overview.json")
@@ -49,88 +78,96 @@ async def audit_json(request: Request, days: int = 7, limit: int = 50,
     return JSONResponse(tc.audit_explorer(days=days, limit=limit, action=action))
 
 
+@router.get("/layers.json")
+async def layers_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.layers())
+
+
+@router.get("/live.json")
+async def live_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.live())
+
+
 @router.get("/snapshot.json")
 async def snapshot_json(request: Request):
     _require_super_admin(request)
     return JSONResponse(tc.snapshot())
 
 
-# ── HTML overview ──
+# ── Control levers (super-admin gated; underlying calls are audited) ──
 
 
-def _bar(score: int) -> str:
-    filled = max(0, min(20, round(score / 5)))
-    color = "#16a34a" if score >= 80 else ("#ca8a04" if score >= 65 else "#dc2626")
-    return (f"<span style='font-family:monospace'>{'█' * filled}{'░' * (20 - filled)}</span> "
-            f"<b style='color:{color}'>{score}</b>")
-
-
-def _render_html(data: dict) -> str:
-    ts = data.get("trust_score", {})
-    pillars = ts.get("pillars", {})
-    comp = data.get("compliance") or {}
-    counts = comp.get("counts", {}) if isinstance(comp, dict) else {}
-    agents = (data.get("runtime_agents") or {}).get("agents", []) if isinstance(data.get("runtime_agents"), dict) else []
-    audit = data.get("audit_7d") or {}
-    by_action = audit.get("by_action", {}) if isinstance(audit, dict) else {}
-
-    pillar_rows = "".join(
-        f"<tr><td>{html.escape(k)}</td><td>{_bar(int(v))}</td></tr>"
-        for k, v in pillars.items()
-    )
-    agent_rows = "".join(
-        f"<tr><td>{html.escape(str(a.get('name','')))}</td>"
-        f"<td><code>{html.escape(str(a.get('autonomy_policy','')))}</code></td>"
-        f"<td>{html.escape(str(a.get('status','')))}</td></tr>"
-        for a in agents
-    ) or "<tr><td colspan=3>none</td></tr>"
-    top_actions = sorted(by_action.items(), key=lambda kv: kv[1], reverse=True)[:8]
-    action_rows = "".join(
-        f"<tr><td><code>{html.escape(k)}</code></td><td>{v}</td></tr>" for k, v in top_actions
-    ) or "<tr><td colspan=2>no audit rows in window</td></tr>"
-
-    overall = ts.get("overall", "?")
-    return f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Trust Command Center</title>
-<style>
- body{{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#111;background:#fafafa}}
- h1{{margin:0 0 2px}} .sub{{color:#666;font-size:13px;margin-bottom:18px}}
- .grid{{display:flex;flex-wrap:wrap;gap:16px}}
- .card{{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;min-width:320px;flex:1}}
- .score{{font-size:40px;font-weight:700}}
- table{{border-collapse:collapse;width:100%;font-size:13px}} td,th{{padding:4px 8px;text-align:left;border-bottom:1px solid #f0f0f0}}
- .badge{{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}}
- .warn{{background:#fef3c7;color:#92400e}} .ok{{background:#dcfce7;color:#166534}}
- a{{color:#2563eb}} code{{background:#f6f8fa;padding:1px 4px;border-radius:4px}}
-</style></head><body>
-<h1>Trust Command Center <span class="badge warn">read-only v1</span></h1>
-<div class="sub">Overall trust score is the {html.escape(str(ts.get('source','')))} value
- ({html.escape(str(ts.get('note','')))}). JSON twins:
- <a href="/admin/trust/snapshot.json">snapshot</a> ·
- <a href="/admin/trust/overview.json">overview</a> ·
- <a href="/admin/trust/operations.json">operations</a> ·
- <a href="/admin/trust/governance.json">governance</a> ·
- <a href="/admin/trust/audit.json">audit</a></div>
-<div class="grid">
- <div class="card"><div>Overall Trust</div><div class="score">{overall}<span style="font-size:16px">/100</span></div>
-   <table>{pillar_rows}</table></div>
- <div class="card"><div>TBI Compliance</div>
-   <p>framework <code>{html.escape(str(comp.get('framework_version','?')))}</code> ·
-   total {comp.get('total','?')}</p>
-   <p><span class="badge ok">compliant {counts.get('compliant',0)}</span>
-      <span class="badge warn">conditional {counts.get('conditional',0)}</span>
-      <span class="badge" style="background:#fee2e2;color:#991b1b">non-compliant {counts.get('non_compliant',0)}</span></p>
-   <div>Cost (7d): <span class="badge warn">not yet instrumented</span></div></div>
- <div class="card"><div>Runtime AI agents</div><table>
-   <tr><th>name</th><th>policy</th><th>status</th></tr>{agent_rows}</table></div>
- <div class="card"><div>Audit activity (7d, top actions)</div><table>
-   <tr><th>action</th><th>count</th></tr>{action_rows}</table></div>
-</div>
-<p class="sub">Full audit: <code>docs/trust-audit/TRUST_COMPLIANCE_REPORT.md</code></p>
-</body></html>"""
-
-
-@router.get("")
-async def trust_home(request: Request):
+@router.post("/control/global/{action}")
+async def control_global(request: Request, action: str):
     _require_super_admin(request)
-    return HTMLResponse(_render_html(tc.overview()))
+    if action not in ("pause", "resume"):
+        return JSONResponse({"error": "action must be pause|resume"}, status_code=400)
+    from execution.ops_platform import runtime_controls
+    body = await _body(request)
+    state = runtime_controls.set_global_paused(
+        action == "pause", actor=_actor(request),
+        reason=body.get("reason", "Trust Center global kill-switch"))
+    return JSONResponse({"ok": True, "state": state})
+
+
+@router.post("/control/agent/{agent_id}/{action}")
+async def control_agent(request: Request, agent_id: str, action: str):
+    _require_super_admin(request)
+    if action not in ("pause", "resume"):
+        return JSONResponse({"error": "action must be pause|resume"}, status_code=400)
+    from execution.ops_platform import runtime_controls
+    body = await _body(request)
+    state = runtime_controls.set_agent_paused(
+        agent_id, action == "pause", actor=_actor(request),
+        reason=body.get("reason", "Trust Center per-agent toggle"))
+    return JSONResponse({"ok": True, "state": state})
+
+
+@router.post("/control/freeze/{capability_id}")
+async def control_freeze(request: Request, capability_id: str):
+    _require_super_admin(request)
+    from execution.ops_platform import controls
+    body = await _body(request)
+    ctrl = controls.freeze(capability_id, actor=_actor(request),
+                           reason=body.get("reason", "Trust Center freeze"))
+    return JSONResponse({"ok": True, "control_id": ctrl.control_id})
+
+
+@router.post("/control/unfreeze/{capability_id}")
+async def control_unfreeze(request: Request, capability_id: str):
+    _require_super_admin(request)
+    from execution.ops_platform import controls
+    body = await _body(request)
+    ok = controls.unfreeze(capability_id, actor=_actor(request),
+                           reason=body.get("reason", "Trust Center unfreeze"))
+    return JSONResponse({"ok": bool(ok)})
+
+
+@router.post("/control/rollback/{capability_id}")
+async def control_rollback(request: Request, capability_id: str):
+    _require_super_admin(request)
+    from execution.ops_platform import controls
+    body = await _body(request)
+    target = body.get("target_version_id")
+    if not target:
+        return JSONResponse({"error": "target_version_id required"}, status_code=400)
+    result = controls.emergency_rollback(
+        capability_id, target_version_id=target, actor=_actor(request),
+        reason=body.get("reason", "Trust Center emergency rollback"))
+    return JSONResponse({"ok": True, "result": result})
+
+
+@router.post("/control/approval/{request_id}/decide")
+async def control_approval(request: Request, request_id: str):
+    _require_super_admin(request)
+    from execution.ops_platform import approvals
+    body = await _body(request)
+    decision = body.get("decision")
+    if decision not in ("approved", "rejected"):
+        return JSONResponse({"error": "decision must be approved|rejected"}, status_code=400)
+    req = approvals.submit_decision(
+        request_id, approver=_actor(request), decision=decision,
+        comment=body.get("comment", "via Trust Center"))
+    return JSONResponse({"ok": True, "state": getattr(req, "state", None)})

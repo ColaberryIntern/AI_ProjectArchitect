@@ -49,3 +49,51 @@ def test_router_wired_into_app():
     paths = {getattr(r, "path", "") for r in app.routes}
     assert "/admin/trust" in paths
     assert "/admin/trust/snapshot.json" in paths
+
+
+# ── v2: layers (with tech stack), controls, live ──
+
+
+def test_layers_seven_with_metric_tech_and_reference():
+    out = tc.layers()
+    layers = out["layers"]
+    assert len(layers) == 7
+    nums = [L["layer"] for L in layers]
+    assert nums == [1, 2, 3, 4, 5, 6, 7]
+    scored = 0
+    for L in layers:
+        assert L["metric"]["label"] and "value" in L["metric"]
+        assert isinstance(L["tech"], list) and L["tech"]      # our stack present
+        for ti in L["tech"]:
+            assert "name" in ti                               # tech items are scored objects
+            if ti.get("inpact"):
+                scored += 1
+        assert isinstance(L["reference"], list)               # framework reference present
+    assert scored >= 1  # at least some of our stack carries a framework INPACT score
+    # INPACT tags mapped onto the right layers
+    by_num = {L["layer"]: L for L in layers}
+    assert by_num[5]["tag"] == "Permitted"
+    assert by_num[6]["tag"] == "Transparent"
+
+
+def test_controls_state_shape():
+    s = tc.controls_state()
+    assert "runtime" in s and "active_controls" in s and "pending_approvals" in s
+    assert isinstance(s["active_controls"], list)
+
+
+def test_live_and_page_data_shape():
+    live = tc.live()
+    assert "layers" in live and "controls" in live and "counters" in live
+    pd = tc.page_data()
+    assert set(pd) >= {"overview", "layers", "controls"}
+
+
+def test_control_endpoints_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/live.json" in paths
+    assert "/admin/trust/layers.json" in paths
+    assert "/admin/trust/control/global/{action}" in paths
+    assert "/admin/trust/control/agent/{agent_id}/{action}" in paths
+    assert "/admin/trust/control/freeze/{capability_id}" in paths

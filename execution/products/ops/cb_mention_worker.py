@@ -561,6 +561,18 @@ def scan_all_users() -> dict:
 
     Returns the heartbeat dict (also persisted to HEARTBEAT_PATH).
     """
+    from execution.ops_platform import runtime_controls
+    if runtime_controls.is_paused("cb_mention_responder"):
+        summary = {
+            "started_at": _now_iso(), "finished_at": _now_iso(),
+            "skipped": True, "reason": "paused_by_operator",
+            "users_with_token": 0, "total_mentions_found": 0,
+            "total_responded": 0, "total_failed": 0,
+            "fatal_error": None, "per_user": [],
+        }
+        _write_heartbeat(summary)
+        return summary
+
     if not _polling_enabled():
         summary = {
             "started_at": _now_iso(),

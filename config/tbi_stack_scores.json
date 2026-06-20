@@ -1,0 +1,25 @@
+{
+  "_doc": "Vendored snapshot of per-vendor INPACT (/36) + GOALS (/30) scores scraped from the Trust Before Intelligence Stack Builder. Used to annotate THIS system's tech stack per layer in the Trust Command Center. Pinned so the dashboard does not depend on the live SPA; refresh deliberately.",
+  "_source": "https://trustbeforeintelligence.ai/tech-stack",
+  "_scraped_at": "2026-06-20",
+  "scores": {
+    "Redis": { "layer": "L1", "inpact": 23, "goals": 16 },
+    "Valkey": { "layer": "L1", "inpact": 23, "goals": 16 },
+    "PostgreSQL": { "layer": "L1", "inpact": 29, "goals": 22 },
+    "Trino": { "layer": "L1", "inpact": 27, "goals": 18 },
+    "dbt Core": { "layer": "L3", "inpact": 25, "goals": 20 },
+    "OpenAI (GPT-4)": { "layer": "L4", "inpact": 29, "goals": 24 },
+    "GPT-4o": { "layer": "L4", "inpact": 29, "goals": 23 },
+    "Anthropic Claude": { "layer": "L4", "inpact": 28, "goals": 23 },
+    "Prometheus": { "layer": "L6", "inpact": 25, "goals": 22 },
+    "OpenTelemetry": { "layer": "L6", "inpact": 25, "goals": 23 },
+    "Grafana": { "layer": "L6", "inpact": 27, "goals": 22 },
+    "Apache Kafka (Self-hosted)": { "layer": "L2", "inpact": 26, "goals": 20 },
+    "Confluent Cloud": { "layer": "L2", "inpact": 28, "goals": 24 },
+    "LangGraph": { "layer": "L7", "inpact": 27, "goals": 21 },
+    "Temporal": { "layer": "L7", "inpact": 27, "goals": 23 },
+    "Cerbos": { "layer": "L5", "inpact": 31, "goals": 21 },
+    "Auth0": { "layer": "L5", "inpact": 28, "goals": 22 },
+    "HashiCorp Vault": { "layer": "L5", "inpact": 26, "goals": 22 }
+  }
+}

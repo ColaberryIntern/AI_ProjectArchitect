@@ -62,6 +62,9 @@ def _gather_todos(user_ids: list[str]) -> list:
 
 def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> ReportResult:
     started = (now or datetime.now(timezone.utc)).isoformat()
+    from execution.ops_platform import runtime_controls
+    if runtime_controls.is_paused("productivity_report"):
+        return ReportResult(ran_at=started, output_path="", status="paused_by_operator")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     date_str = started[:10]
     out_path = OUTPUT_DIR / f"{date_str}.html"

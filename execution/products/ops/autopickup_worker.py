@@ -550,6 +550,9 @@ def scan_for_user(user_email: str) -> dict:
 def scan_all_users() -> dict:
     """Cron entrypoint. Walks PHASE1_USERS (default just Ali) and runs
     scan_for_user for each. No-op when OPS_AUTOPICKUP_ENABLED is false."""
+    from execution.ops_platform import runtime_controls
+    if runtime_controls.is_paused("autopickup_worker"):
+        return {"status": "paused_by_operator"}
     if not ENABLED:
         return {"status": "disabled",
                        "hint": "set OPS_AUTOPICKUP_ENABLED=true to enable"}

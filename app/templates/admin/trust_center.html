@@ -1,0 +1,236 @@
+{% extends "admin/_admin_base.html" %}
+{% block content %}
+{# Trust Command Center — hybrid: on-brand light page + dark animated 7-layer diagram. #}
+<style>
+  .tcc-sub { color: var(--fg-muted); font-size: 13px; margin: -6px 0 16px; }
+  .tcc-grid { display:grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-4); align-items:start; }
+  @media (max-width: 1100px){ .tcc-grid{ grid-template-columns:1fr; } }
+
+  /* ── dark animated diagram panel ── */
+  .tcc-diagram {
+    background: radial-gradient(120% 100% at 50% 0%, #11203a 0%, #0a0f1c 60%, #070b14 100%);
+    border:1px solid #1e2a44; border-radius: var(--radius-lg); padding: 18px 18px 22px;
+    color:#e6edf3; position:relative; overflow:hidden;
+  }
+  .tcc-diagram h3 { color:#cdd9e5; margin:0 0 4px; font-size:15px; letter-spacing:.04em; }
+  .tcc-diagram .legend { color:#7d8aa3; font-size:11px; margin-bottom:14px; }
+  .tcc-stream { position:absolute; left:30px; top:60px; bottom:18px; width:2px;
+    background:linear-gradient(#0000,#2b3a5b,#0000); }
+  .tcc-stream::after{ content:""; position:absolute; left:-3px; width:8px; height:8px; border-radius:50%;
+    background:#39d3ff; box-shadow:0 0 10px 3px #39d3ff; animation:tccflow 3.2s linear infinite; }
+  @keyframes tccflow{ 0%{ top:100%; opacity:0 } 10%{opacity:1} 90%{opacity:1} 100%{ top:0%; opacity:0 } }
+
+  .tcc-layer {
+    display:flex; align-items:center; gap:12px; padding:10px 12px; margin:7px 0 7px 18px;
+    border:1px solid #20304d; border-radius:10px; background:rgba(255,255,255,.02);
+    transition:box-shadow .3s, border-color .3s;
+  }
+  .tcc-layer .lnum { font-weight:800; font-size:13px; width:30px; height:30px; display:flex;
+    align-items:center; justify-content:center; border-radius:8px; background:#16233c; color:#8fb6ff; flex:none; }
+  .tcc-layer .lbody { flex:1; min-width:0; }
+  .tcc-layer .lname { font-size:13.5px; font-weight:700; color:#eaf2ff; }
+  .tcc-layer .ltag { font-size:10px; color:#0a0f1c; background:#7fd6a0; border-radius:999px; padding:1px 7px; margin-left:6px; font-weight:700; }
+  .tcc-layer .ltag.muted { background:#3a4a66; color:#aebfdc; }
+  .tcc-layer .ltech { margin-top:4px; }
+  .tcc-chip { display:inline-block; font-size:10.5px; color:#bcd; background:#13213a;
+    border:1px solid #24375c; border-radius:6px; padding:1px 6px; margin:2px 4px 0 0; }
+  .tcc-chip.ref { color:#8a7; background:#10231a; border-color:#1f4030; }
+  .tcc-chip .tcc-score { color:#7fffc4; font-weight:700; margin-left:3px; }
+  .tcc-metric { text-align:right; flex:none; min-width:120px; }
+  .tcc-metric .mv { font-size:20px; font-weight:800; color:#fff; }
+  .tcc-metric .ml { font-size:10px; color:#8aa; }
+  .tcc-layer.ok { box-shadow:0 0 0 1px #1d5e3a inset, 0 0 18px -8px #2ecf78; }
+  .tcc-layer.warn { box-shadow:0 0 0 1px #6e5a1f inset, 0 0 18px -8px #e3b341; border-color:#5c4a1c; }
+  .tcc-layer.ok .mv{ color:#7fffc4 } .tcc-layer.warn .mv{ color:#ffd479 }
+
+  /* ── control panel (light) ── */
+  .tcc-card { background:var(--bg-canvas); border:1px solid var(--border-default);
+    border-radius:var(--radius-lg); padding:16px; margin-bottom:14px; }
+  .tcc-card h3 { margin:0 0 10px; font-size:14px; }
+  .tcc-kill { width:100%; padding:12px; border:0; border-radius:10px; font-weight:800; font-size:14px;
+    background:#cf222e; color:#fff; cursor:pointer; letter-spacing:.03em; }
+  .tcc-kill.armed { background:#1a7f37; }
+  .tcc-agent { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 0; border-bottom:1px solid var(--border-muted); }
+  .tcc-agent:last-child{ border-bottom:0 }
+  .tcc-agent .an { font-size:13px; font-weight:600; }
+  .tcc-agent .ap { font-size:11px; color:var(--fg-muted); }
+  .tcc-btn { border:1px solid var(--border-default); background:var(--bg-elevated); border-radius:6px;
+    padding:4px 10px; font-size:12px; cursor:pointer; }
+  .tcc-btn.pause{ background:#ffebe9; border-color:#ff8182; color:#cf222e; }
+  .tcc-btn.resume{ background:#dafbe1; border-color:#1a7f37; color:#1a7f37; }
+  .tcc-pill{ display:inline-block; font-size:10px; border-radius:999px; padding:1px 8px; font-weight:700; }
+  .tcc-pill.live{ background:#dafbe1; color:#1a7f37 } .tcc-pill.paused{ background:#ffebe9; color:#cf222e }
+  .tcc-pillars td{ padding:3px 6px; font-size:12px; }
+  .tcc-bar{ height:8px; border-radius:4px; background:var(--bg-sunken); overflow:hidden; }
+  .tcc-bar > i{ display:block; height:100%; }
+  .tcc-row{ display:flex; gap:6px; }
+  .tcc-input{ flex:1; border:1px solid var(--border-default); border-radius:6px; padding:4px 8px; font-size:12px; }
+  .tcc-muted{ color:var(--fg-muted); font-size:12px; }
+</style>
+
+<div class="tcc-sub">The live entry point to everything: the 7-layer Architecture of Trust with real-time
+  flow, your tech stack per layer, and full control of AI autonomy. <span id="tcc-clock"></span></div>
+
+<div class="tcc-grid">
+  <!-- ════ LEFT: live architecture diagram ════ -->
+  <div class="tcc-diagram">
+    <h3>⚡ Architecture of Trust — live</h3>
+    <div class="legend">Bottom → top. Each layer shows a live metric and your tech stack; green scores are the framework's
+      INPACT/36 · GOALS/30 rating for that tool (from trustbeforeintelligence.ai/tech-stack).</div>
+    <div class="tcc-stream"></div>
+    {% for L in (data.layers.layers | reverse) %}
+    <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}">
+      <div class="lnum">L{{ L.layer }}</div>
+      <div class="lbody">
+        <div class="lname">{{ L.name }}
+          <span class="ltag {% if L.tag in ['foundation','orchestration'] %}muted{% endif %}">{{ L.tag }}</span>
+        </div>
+        <div class="ltech">
+          {% for ti in L.tech %}<span class="tcc-chip">{{ ti.name }}{% if ti.inpact %} <b class="tcc-score" title="framework INPACT/GOALS score">{{ ti.inpact }}/36 · {{ ti.goals }}/30</b>{% endif %}</span>{% endfor %}
+        </div>
+      </div>
+      <div class="tcc-metric">
+        <div class="mv" data-metric="{{ L.layer }}">{{ L.metric.value }}</div>
+        <div class="ml" data-metric-label="{{ L.layer }}">{{ L.metric.label }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ════ RIGHT: controls + posture ════ -->
+  <div>
+    <div class="tcc-card">
+      <h3>🛑 Autonomy control</h3>
+      {% set gp = data.controls.runtime.global_paused if data.controls.runtime else false %}
+      <button id="tcc-global" class="tcc-kill {% if gp %}armed{% endif %}"
+        onclick="tccGlobal({{ 'false' if gp else 'true' }})">
+        {{ 'RESUME ALL AUTONOMY' if gp else 'PAUSE ALL AUTONOMY' }}
+      </button>
+      <div class="tcc-muted" style="margin-top:6px;">Kill-switch the workers actually obey at call-time. Audited.</div>
+      <div style="margin-top:12px;">
+        {% set agents = data.controls.runtime_agents.agents if data.controls.runtime_agents else [] %}
+        {% set rt = data.controls.runtime.agents if data.controls.runtime else {} %}
+        {% for a in agents %}
+        {% set paused = rt.get(a.id, {}).get('paused', False) %}
+        <div class="tcc-agent">
+          <div>
+            <div class="an">{{ a.name }}
+              <span class="tcc-pill {{ 'paused' if paused else 'live' }}">{{ 'paused' if paused else 'live' }}</span>
+            </div>
+            <div class="ap"><code>{{ a.autonomy_policy }}</code></div>
+          </div>
+          {% if paused %}
+          <button class="tcc-btn resume" onclick="tccAgent('{{ a.id }}','resume')">Resume</button>
+          {% else %}
+          <button class="tcc-btn pause" onclick="tccAgent('{{ a.id }}','pause')">Pause</button>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="tcc-card">
+      <h3>🛡️ Trust posture</h3>
+      {% set ts = data.overview.trust_score %}
+      <div style="font-size:30px; font-weight:800;">{{ ts.overall }}<span style="font-size:14px;color:var(--fg-muted)">/100</span></div>
+      <table class="tcc-pillars" style="width:100%; margin-top:6px;">
+        {% for k, v in ts.pillars.items() %}
+        <tr><td style="width:38%">{{ k }}</td>
+          <td><div class="tcc-bar"><i style="width:{{ v }}%; background:{{ '#1a7f37' if v>=80 else ('#9a6700' if v>=65 else '#cf222e') }}"></i></div></td>
+          <td style="width:30px;text-align:right;font-weight:700">{{ v }}</td></tr>
+        {% endfor %}
+      </table>
+      {% set c = data.overview.compliance %}
+      <div class="tcc-muted" style="margin-top:8px;">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
+        {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant</div>
+    </div>
+
+    <div class="tcc-card">
+      <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-muted"></span></h3>
+      <div id="tcc-approvals">
+        {% set pend = data.controls.pending_approvals %}
+        {% if pend %}{% for p in pend %}
+        <div class="tcc-agent">
+          <div><div class="an">{{ p.action }}</div><div class="ap">{{ p.entity_type }}:{{ p.entity_id }}</div></div>
+          <div class="tcc-row">
+            <button class="tcc-btn resume" onclick="tccApprove('{{ p.request_id }}','approved')">Approve</button>
+            <button class="tcc-btn pause" onclick="tccApprove('{{ p.request_id }}','rejected')">Reject</button>
+          </div>
+        </div>
+        {% endfor %}{% else %}<div class="tcc-muted">No pending approvals.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="tcc-card">
+      <h3>❄️ Capability controls</h3>
+      <div class="tcc-row">
+        <input id="tcc-cap" class="tcc-input" placeholder="capability_id">
+        <button class="tcc-btn pause" onclick="tccFreeze()">Freeze</button>
+        <button class="tcc-btn resume" onclick="tccUnfreeze()">Unfreeze</button>
+      </div>
+      {% set ac = data.controls.active_controls %}
+      <div class="tcc-muted" style="margin-top:8px;">{{ ac|length }} active control(s).</div>
+    </div>
+
+    <div class="tcc-card">
+      <h3>🧾 Live audit</h3>
+      <div id="tcc-audit" class="tcc-muted">loading…</div>
+      <div class="tcc-muted" style="margin-top:8px;">JSON:
+        <a href="/admin/trust/snapshot.json">snapshot</a> ·
+        <a href="/admin/trust/layers.json">layers</a> ·
+        <a href="/admin/trust/live.json">live</a></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function tccPost(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body||{})});
+  if(!r.ok){ alert('Action failed: '+r.status); return null; }
+  return r.json();
+}
+async function tccGlobal(pause){
+  if(pause && !confirm('Pause ALL AI autonomy? The live workers will stop on their next tick.')) return;
+  await tccPost('/admin/trust/control/global/'+(pause?'pause':'resume'), {});
+  location.reload();
+}
+async function tccAgent(id, action){
+  await tccPost('/admin/trust/control/agent/'+id+'/'+action, {});
+  location.reload();
+}
+async function tccApprove(id, decision){
+  await tccPost('/admin/trust/control/approval/'+id+'/decide', {decision:decision});
+  location.reload();
+}
+async function tccFreeze(){
+  const c=document.getElementById('tcc-cap').value.trim(); if(!c) return;
+  if(!confirm('Freeze '+c+'? It cannot run until unfrozen.')) return;
+  await tccPost('/admin/trust/control/freeze/'+encodeURIComponent(c), {}); location.reload();
+}
+async function tccUnfreeze(){
+  const c=document.getElementById('tcc-cap').value.trim(); if(!c) return;
+  await tccPost('/admin/trust/control/unfreeze/'+encodeURIComponent(c), {}); location.reload();
+}
+// Live poll — refresh per-layer metrics + audit ticker every 5s (no reload).
+async function tccPoll(){
+  try{
+    const r = await fetch('/admin/trust/live.json'); if(!r.ok) return;
+    const d = await r.json();
+    (d.layers||[]).forEach(L=>{
+      const mv=document.querySelector('[data-metric="'+L.layer+'"]');
+      const ml=document.querySelector('[data-metric-label="'+L.layer+'"]');
+      if(mv) mv.textContent = L.metric.value;
+      if(ml) ml.textContent = L.metric.label;
+    });
+    const au=document.getElementById('tcc-audit');
+    if(au) au.textContent = (d.counters && d.counters.audit_24h!=null)
+      ? (d.counters.audit_24h+' audit events in last 24h') : '—';
+    const cl=document.getElementById('tcc-clock');
+    if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();
+  }catch(e){}
+}
+tccPoll(); setInterval(tccPoll, 5000);
+</script>
+{% endblock %}
