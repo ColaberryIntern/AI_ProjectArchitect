@@ -222,6 +222,45 @@ _REFERENCE_TECH = {
     6: ["observability suite"], 7: ["OpenAI + Anthropic (LLM/agents)"],
 }
 
+# Map a tech string in our stack -> the catalogued vendor whose framework
+# INPACT/GOALS score applies (scores in config/tbi_stack_scores.json, scraped from
+# trustbeforeintelligence.ai/tech-stack). Only items we genuinely run on a
+# catalogued tool get a score; custom/internal modules stay unscored.
+_TECH_VENDOR = {
+    "Redis (optional)": "Redis",
+    "Redis Streams": "Redis",
+    "OpenAI gpt-4o-mini": "GPT-4o",
+    "OpenAI": "GPT-4o",
+    "Prometheus": "Prometheus",
+}
+
+_STACK_SCORES_PATH = PROJECT_ROOT / "config" / "tbi_stack_scores.json"
+_STACK_SCORES_CACHE: dict | None = None
+
+
+def _stack_scores() -> dict:
+    global _STACK_SCORES_CACHE
+    if _STACK_SCORES_CACHE is None:
+        try:
+            _STACK_SCORES_CACHE = json.loads(
+                _STACK_SCORES_PATH.read_text(encoding="utf-8")).get("scores", {})
+        except (OSError, json.JSONDecodeError):
+            _STACK_SCORES_CACHE = {}
+    return _STACK_SCORES_CACHE
+
+
+def _score_tech(items) -> list:
+    """Turn our per-layer tech strings into objects, annotated with the
+    framework INPACT/GOALS score where the tech maps to a catalogued vendor."""
+    scores = _stack_scores()
+    out = []
+    for t in items:
+        vendor = _TECH_VENDOR.get(t)
+        s = scores.get(vendor) if vendor else None
+        out.append({"name": t, "vendor": vendor,
+                    "inpact": (s or {}).get("inpact"), "goals": (s or {}).get("goals")})
+    return out
+
 
 def _signals() -> dict:
     """Fetch the shared live signals once (defensive)."""
@@ -271,7 +310,8 @@ def layers() -> dict:
     out = []
     for d in _LAYER_DEFS:
         label, value, status = metric_for[d["layer"]]
-        out.append({**d, "reference": _REFERENCE_TECH.get(d["layer"], []),
+        out.append({**d, "tech": _score_tech(d["tech"]),
+                    "reference": _REFERENCE_TECH.get(d["layer"], []),
                     "metric": {"label": label, "value": value, "status": status}})
     return {"layers": out, "signals": s}
 

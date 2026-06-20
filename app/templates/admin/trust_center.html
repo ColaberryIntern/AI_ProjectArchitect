@@ -35,6 +35,7 @@
   .tcc-chip { display:inline-block; font-size:10.5px; color:#bcd; background:#13213a;
     border:1px solid #24375c; border-radius:6px; padding:1px 6px; margin:2px 4px 0 0; }
   .tcc-chip.ref { color:#8a7; background:#10231a; border-color:#1f4030; }
+  .tcc-chip .tcc-score { color:#7fffc4; font-weight:700; margin-left:3px; }
   .tcc-metric { text-align:right; flex:none; min-width:120px; }
   .tcc-metric .mv { font-size:20px; font-weight:800; color:#fff; }
   .tcc-metric .ml { font-size:10px; color:#8aa; }
@@ -75,7 +76,8 @@
   <!-- ════ LEFT: live architecture diagram ════ -->
   <div class="tcc-diagram">
     <h3>⚡ Architecture of Trust — live</h3>
-    <div class="legend">Bottom → top. Each layer shows a live metric, your stack, and (green) the framework reference.</div>
+    <div class="legend">Bottom → top. Each layer shows a live metric and your tech stack; green scores are the framework's
+      INPACT/36 · GOALS/30 rating for that tool (from trustbeforeintelligence.ai/tech-stack).</div>
     <div class="tcc-stream"></div>
     {% for L in (data.layers.layers | reverse) %}
     <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}">
@@ -85,8 +87,7 @@
           <span class="ltag {% if L.tag in ['foundation','orchestration'] %}muted{% endif %}">{{ L.tag }}</span>
         </div>
         <div class="ltech">
-          {% for t in L.tech %}<span class="tcc-chip">{{ t }}</span>{% endfor %}
-          {% for r in L.reference %}<span class="tcc-chip ref" title="framework reference">{{ r }}</span>{% endfor %}
+          {% for ti in L.tech %}<span class="tcc-chip">{{ ti.name }}{% if ti.inpact %} <b class="tcc-score" title="framework INPACT/GOALS score">{{ ti.inpact }}/36 · {{ ti.goals }}/30</b>{% endif %}</span>{% endfor %}
         </div>
       </div>
       <div class="tcc-metric">

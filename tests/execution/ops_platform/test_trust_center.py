@@ -60,10 +60,16 @@ def test_layers_seven_with_metric_tech_and_reference():
     assert len(layers) == 7
     nums = [L["layer"] for L in layers]
     assert nums == [1, 2, 3, 4, 5, 6, 7]
+    scored = 0
     for L in layers:
         assert L["metric"]["label"] and "value" in L["metric"]
         assert isinstance(L["tech"], list) and L["tech"]      # our stack present
+        for ti in L["tech"]:
+            assert "name" in ti                               # tech items are scored objects
+            if ti.get("inpact"):
+                scored += 1
         assert isinstance(L["reference"], list)               # framework reference present
+    assert scored >= 1  # at least some of our stack carries a framework INPACT score
     # INPACT tags mapped onto the right layers
     by_num = {L["layer"]: L for L in layers}
     assert by_num[5]["tag"] == "Permitted"
