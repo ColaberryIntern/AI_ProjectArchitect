@@ -67,6 +67,24 @@
   .tcc-row{ display:flex; gap:6px; }
   .tcc-input{ flex:1; border:1px solid var(--border-default); border-radius:6px; padding:4px 8px; font-size:12px; }
   .tcc-muted{ color:var(--fg-muted); font-size:12px; }
+  .tcc-link{ cursor:pointer; }
+  .tcc-layer{ cursor:pointer; }
+  .tcc-overlay{ position:fixed; inset:0; background:rgba(10,15,28,.55); display:none; z-index:50;
+    align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; }
+  .tcc-overlay.open{ display:flex; }
+  .tcc-modal{ background:var(--bg-canvas); border:1px solid var(--border-default); border-radius:12px;
+    width:min(880px,96vw); max-height:86vh; overflow:auto; box-shadow:0 24px 60px -20px #000a; }
+  .tcc-modal h3{ margin:0; padding:14px 18px; border-bottom:1px solid var(--border-muted);
+    display:flex; justify-content:space-between; align-items:center; font-size:15px; }
+  .tcc-modal .tcc-x{ cursor:pointer; color:var(--fg-muted); font-weight:700; font-size:18px; }
+  .tcc-modal .tcc-body{ padding:16px 18px; }
+  .tcc-dtable{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .tcc-dtable th,.tcc-dtable td{ padding:5px 8px; border-bottom:1px solid var(--border-muted); text-align:left; vertical-align:top; }
+  .tcc-dtable th{ color:var(--fg-muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .tcc-dtable tr.click{ cursor:pointer; } .tcc-dtable tr.click:hover td{ background:var(--bg-elevated); }
+  .tcc-kv{ display:grid; grid-template-columns:170px 1fr; gap:4px 10px; font-size:13px; margin-bottom:14px; }
+  .tcc-kv .k{ color:var(--fg-muted); }
+  .tcc-input.sm{ max-width:130px; }
 </style>
 
 <div class="tcc-sub">The live entry point to everything: the 7-layer Architecture of Trust with real-time
@@ -80,7 +98,7 @@
       INPACT/36 · GOALS/30 rating for that tool (from trustbeforeintelligence.ai/tech-stack).</div>
     <div class="tcc-stream"></div>
     {% for L in (data.layers.layers | reverse) %}
-    <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}">
+    <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}" onclick="tccLayer({{ L.layer }})" title="Drill into this layer">
       <div class="lnum">L{{ L.layer }}</div>
       <div class="lbody">
         <div class="lname">{{ L.name }}
@@ -114,11 +132,11 @@
         {% for a in agents %}
         {% set paused = rt.get(a.id, {}).get('paused', False) %}
         <div class="tcc-agent">
-          <div>
+          <div class="tcc-link" onclick="tccAgentDetail('{{ a.id }}')" title="Agent detail">
             <div class="an">{{ a.name }}
               <span class="tcc-pill {{ 'paused' if paused else 'live' }}">{{ 'paused' if paused else 'live' }}</span>
             </div>
-            <div class="ap"><code>{{ a.autonomy_policy }}</code></div>
+            <div class="ap"><code>{{ a.autonomy_policy }}</code> · <span class="tcc-muted">details →</span></div>
           </div>
           {% if paused %}
           <button class="tcc-btn resume" onclick="tccAgent('{{ a.id }}','resume')">Resume</button>
@@ -142,8 +160,8 @@
         {% endfor %}
       </table>
       {% set c = data.overview.compliance %}
-      <div class="tcc-muted" style="margin-top:8px;">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
-        {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant</div>
+      <div class="tcc-muted tcc-link" style="margin-top:8px;" onclick="tccCompliance()" title="All attestations">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
+        {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant · <b>details →</b></div>
     </div>
 
     <div class="tcc-card">
@@ -176,6 +194,7 @@
     <div class="tcc-card">
       <h3>🧾 Live audit</h3>
       <div id="tcc-audit" class="tcc-muted">loading…</div>
+      <button class="tcc-btn" style="margin-top:8px;" onclick="tccAudit()">Open audit explorer →</button>
       <div class="tcc-muted" style="margin-top:8px;">JSON:
         <a href="/admin/trust/snapshot.json">snapshot</a> ·
         <a href="/admin/trust/layers.json">layers</a> ·
@@ -184,7 +203,108 @@
   </div>
 </div>
 
+<div class="tcc-overlay" id="tcc-overlay" onclick="if(event.target===this)tccClose()">
+  <div class="tcc-modal">
+    <h3><span id="tcc-modal-title">Detail</span><span class="tcc-x" onclick="tccClose()">×</span></h3>
+    <div class="tcc-body" id="tcc-modal-body">loading…</div>
+  </div>
+</div>
+
 <script>
+function tccEsc(s){ return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function tccClose(){ document.getElementById('tcc-overlay').classList.remove('open'); }
+function tccShow(title, html){
+  document.getElementById('tcc-modal-title').textContent = title;
+  document.getElementById('tcc-modal-body').innerHTML = html;
+  document.getElementById('tcc-overlay').classList.add('open');
+}
+document.addEventListener('keydown', e => { if(e.key==='Escape') tccClose(); });
+async function tccJSON(url){ const r=await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
+function tccTable(rows, cols, opts){
+  opts=opts||{};
+  if(!rows||!rows.length) return '<p class="tcc-muted">none</p>';
+  let h='<table class="tcc-dtable"><tr>'+cols.map(c=>'<th>'+tccEsc(c.h)+'</th>').join('')+'</tr>';
+  rows.forEach(r=>{
+    const click = opts.onrow && r[opts.onrow] ? ' class="click" onclick="'+opts.onclick+'(\''+tccEsc(r[opts.onrow])+'\')"' : '';
+    h+='<tr'+click+'>'+cols.map(c=>'<td>'+tccEsc(c.f?c.f(r):r[c.k])+'</td>').join('')+'</tr>';
+  });
+  return h+'</table>';
+}
+const AUDIT_COLS=[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'action'},
+  {h:'entity',f:r=>(r.entity_type||'')+':'+(r.entity_id||'')},{h:'corr',k:'correlation_id'}];
+
+async function tccLayer(n){
+  tccShow('Layer '+n, 'loading…');
+  try{ const d=await tccJSON('/admin/trust/layer/'+n+'.json');
+    let h='<div class="tcc-kv"><div class="k">Layer</div><div>L'+d.layer+' · '+tccEsc(d.name)+' <span class="tcc-muted">('+tccEsc(d.tag)+')</span></div>';
+    h+='<div class="k">Live metric</div><div><b>'+tccEsc(d.metric.value)+'</b> '+tccEsc(d.metric.label)+'</div>';
+    h+='<div class="k">Components</div><div>'+(d.members||[]).map(tccEsc).join(', ')+'</div>';
+    h+='<div class="k">Tech stack</div><div>'+(d.tech||[]).map(t=>tccEsc(t.name)+(t.inpact?' <b>'+t.inpact+'/36·'+t.goals+'/30</b>':'')).join(' · ')+'</div></div>';
+    h+='<h4 style="margin:6px 0">Recent '+(d.events_kind==='workflow_runs'?'workflow runs':'events flowing through this layer')+'</h4>';
+    h+= d.events_kind==='workflow_runs'
+      ? tccTable(d.recent_events,[{h:'run',k:'run_id'},{h:'capability',k:'capability_id'},{h:'status',k:'status'},{h:'ms',k:'duration_ms'},{h:'started',k:'started_at'}])
+      : tccTable(d.recent_events, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
+    tccShow('Layer '+d.layer+': '+d.name, h);
+  }catch(e){ tccShow('Layer '+n, '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
+async function tccAgentDetail(id){
+  tccShow('Agent', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/agent/'+encodeURIComponent(id)+'.json');
+    const a=d.attestation||{}, hb=d.heartbeat||{};
+    let h='<div class="tcc-kv">';
+    h+='<div class="k">Agent</div><div>'+tccEsc(d.name||id)+'</div>';
+    h+='<div class="k">Autonomy policy</div><div><code>'+tccEsc(d.autonomy_policy)+'</code></div>';
+    h+='<div class="k">State</div><div>'+(d.paused?'<b style="color:#cf222e">PAUSED</b>'+(d.global_paused?' (global)':''):'<b style="color:#1a7f37">live</b>')+'</div>';
+    if(d.pause_meta){ h+='<div class="k">Pause by</div><div>'+tccEsc(d.pause_meta.by)+' — '+tccEsc(d.pause_meta.reason)+' @ '+tccEsc(d.pause_meta.at)+'</div>'; }
+    h+='<div class="k">Entrypoint</div><div><code>'+tccEsc(d.entrypoint)+'</code></div>';
+    if(a.verdict){ h+='<div class="k">Attestation</div><div>'+tccEsc(a.verdict)+' · risk '+tccEsc(a.risk_level)+' · INPACT '+a.inpact_satisfied+'/6 · GOALS '+a.goals_satisfied+'/5</div>'; }
+    if(Object.keys(hb).length){ h+='<div class="k">Last run</div><div>'+tccEsc(hb.status||hb.reason||'')+' '+tccEsc(hb.finished_at||hb.started_at||'')+(hb.total_responded!=null?(' · responded '+hb.total_responded):'')+'</div>'; }
+    h+='<div class="k">Rollback</div><div class="tcc-muted">'+tccEsc(d.rollback_plan)+'</div></div>';
+    h+='<h4 style="margin:6px 0">Recent audit for this agent</h4>'+tccTable(d.recent_audit, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
+    tccShow('Agent: '+(d.name||id), h);
+  }catch(e){ tccShow('Agent', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
+async function tccCompliance(){
+  tccShow('TBI Compliance', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/compliance.json');
+    let h='<p>'+d.total+' attestations · <b style="color:#1a7f37">'+d.counts.compliant+'</b> compliant · <b style="color:#9a6700">'+d.counts.conditional+'</b> conditional · <b style="color:#cf222e">'+d.counts.non_compliant+'</b> non-compliant · framework <code>'+tccEsc(d.framework_version)+'</code></p>';
+    h+=tccTable(d.items,[{h:'artifact',k:'artifact_id'},{h:'kind',k:'kind'},{h:'verdict',k:'verdict'},
+      {h:'risk',k:'risk_level'},{h:'INPACT',f:r=>r.inpact_satisfied+'/6'},{h:'GOALS',f:r=>r.goals_satisfied+'/5'},
+      {h:'layers',f:r=>(r.layers||[]).join(',')}]);
+    tccShow('TBI Compliance — '+d.total+' artifacts', h);
+  }catch(e){ tccShow('TBI Compliance', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
+function tccAudit(){
+  let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
+    +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
+    +'<input id="aud-actor" class="tcc-input sm" placeholder="actor">'
+    +'<input id="aud-days" class="tcc-input sm" placeholder="days" value="7">'
+    +'<button class="tcc-btn" onclick="tccAuditLoad()">Search</button></div>'
+    +'<div id="aud-result" class="tcc-muted">Search to load. Click a row to replay its correlation chain.</div>';
+  tccShow('Audit explorer', h);
+}
+async function tccAuditLoad(){
+  const q=new URLSearchParams();
+  const a=document.getElementById('aud-action').value.trim(); if(a)q.set('action',a);
+  const ac=document.getElementById('aud-actor').value.trim(); if(ac)q.set('actor',ac);
+  const dy=document.getElementById('aud-days').value.trim(); if(dy)q.set('days',dy);
+  q.set('limit','150');
+  const res=document.getElementById('aud-result'); res.textContent='loading…';
+  try{ const d=await tccJSON('/admin/trust/audit.json?'+q.toString());
+    res.innerHTML='<p class="tcc-muted">'+(d.recent.length)+' rows</p>'+tccTable(d.recent, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
+  }catch(e){ res.innerHTML='<p class="tcc-muted">failed: '+e+'</p>'; }
+}
+async function tccReplay(cid){
+  if(!cid) return;
+  tccShow('Replay '+cid, 'loading…');
+  try{ const d=await tccJSON('/admin/trust/audit/replay.json?correlation_id='+encodeURIComponent(cid));
+    tccShow('Correlation chain · '+cid, '<p class="tcc-muted">'+d.chain.length+' linked actions</p>'+tccTable(d.chain,[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'action'},{h:'entity',f:r=>(r.entity_type||'')+':'+(r.entity_id||'')}]));
+  }catch(e){ tccShow('Replay', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
 async function tccPost(url, body){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body||{})});

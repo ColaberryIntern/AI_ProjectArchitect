@@ -97,3 +97,55 @@ def test_control_endpoints_wired():
     assert "/admin/trust/control/global/{action}" in paths
     assert "/admin/trust/control/agent/{agent_id}/{action}" in paths
     assert "/admin/trust/control/freeze/{capability_id}" in paths
+
+
+# ── drill-downs ──
+
+
+def test_layer_detail_shapes():
+    for n in range(1, 8):
+        d = tc.layer_detail(n)
+        assert d["layer"] == n and d["name"]
+        assert isinstance(d["recent_events"], list)
+        assert d["events_kind"] in ("audit", "workflow_runs")
+        assert isinstance(d["tech"], list)
+    assert "error" in tc.layer_detail(99)
+
+
+def test_agent_detail_known_runtime_agent():
+    d = tc.agent_detail("cb_mention_responder")
+    assert d["agent_id"] == "cb_mention_responder"
+    assert d["declared"] is True
+    assert d["autonomy_policy"] == "autonomous_low_risk_only"
+    assert isinstance(d["recent_audit"], list)
+    # attestation is read from the committed sidecar
+    assert d["attestation"] and d["attestation"]["verdict"] in ("compliant", "conditional", "non_compliant")
+
+
+def test_agent_detail_unknown_is_safe():
+    d = tc.agent_detail("does_not_exist")
+    assert d["declared"] is False
+    assert isinstance(d["recent_audit"], list)
+
+
+def test_compliance_detail_lists_all_attestations():
+    d = tc.compliance_detail()
+    assert d["total"] >= 13
+    assert d["counts"]["non_compliant"] == 0
+    assert all("verdict" in it and "artifact_id" in it for it in d["items"])
+
+
+def test_audit_detail_and_replay_shapes():
+    ad = tc.audit_detail(days=7, limit=5)
+    assert set(ad) >= {"filters", "stats", "recent"} and isinstance(ad["recent"], list)
+    rp = tc.audit_replay("no-such-correlation")
+    assert rp["correlation_id"] == "no-such-correlation" and isinstance(rp["chain"], list)
+
+
+def test_drilldown_endpoints_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/layer/{n}.json" in paths
+    assert "/admin/trust/agent/{agent_id}.json" in paths
+    assert "/admin/trust/compliance.json" in paths
+    assert "/admin/trust/audit/replay.json" in paths

@@ -72,10 +72,39 @@ async def governance_json(request: Request):
 
 
 @router.get("/audit.json")
-async def audit_json(request: Request, days: int = 7, limit: int = 50,
-                     action: str | None = None):
+async def audit_json(request: Request, days: int = 7, limit: int = 100,
+                     action: str | None = None, actor: str | None = None,
+                     entity_id: str | None = None):
     _require_super_admin(request)
-    return JSONResponse(tc.audit_explorer(days=days, limit=limit, action=action))
+    return JSONResponse(tc.audit_detail(days=days, limit=limit, action=action,
+                                        actor=actor, entity_id=entity_id))
+
+
+@router.get("/audit/replay.json")
+async def audit_replay_json(request: Request, correlation_id: str):
+    _require_super_admin(request)
+    return JSONResponse(tc.audit_replay(correlation_id))
+
+
+# ── Drill-down detail (read-only) ──
+
+
+@router.get("/layer/{n}.json")
+async def layer_json(request: Request, n: int):
+    _require_super_admin(request)
+    return JSONResponse(tc.layer_detail(n))
+
+
+@router.get("/agent/{agent_id}.json")
+async def agent_json(request: Request, agent_id: str):
+    _require_super_admin(request)
+    return JSONResponse(tc.agent_detail(agent_id))
+
+
+@router.get("/compliance.json")
+async def compliance_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.compliance_detail())
 
 
 @router.get("/layers.json")

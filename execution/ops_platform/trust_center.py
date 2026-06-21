@@ -372,3 +372,153 @@ def page_data() -> dict:
         "layers": layers(),
         "controls": controls_state(),
     }
+
+
+# ── Drill-downs (read-only detail, all _safe-wrapped) ──
+
+# Audit actions that "flow through" a given layer (for the layer drill-down).
+_LAYER_AUDIT_ACTIONS = {
+    5: ("approval.requested", "approval.approved", "approval.rejected",
+        "enforcement.denied", "controls.frozen", "controls.unfrozen",
+        "controls.quarantined", "controls.rollback", "agent.paused",
+        "agent.resumed", "runtime_agent.paused", "runtime_agent.resumed",
+        "runtime.global_paused", "runtime.global_resumed"),
+    6: ("tbi.evaluated", "trust.calculated"),
+}
+
+_AGENT_HEARTBEAT = {
+    "cb_mention_responder": "output/ops/_cb_mentions/heartbeat.json",
+    "autopickup_worker": "output/ops/_autopickup/heartbeat.json",
+}
+
+
+def _row(r: dict) -> dict:
+    return {"timestamp": r.get("timestamp"), "actor": (r.get("actor") or {}).get("name"),
+            "action": r.get("action"), "entity_type": r.get("entity_type"),
+            "entity_id": r.get("entity_id"), "correlation_id": r.get("correlation_id")}
+
+
+def _recent_audit(*, actions=None, entity_id=None, days=21, limit=15) -> list:
+    from execution.ops_platform import audit_log
+    rows: list = []
+    if actions:
+        for a in actions:
+            rows.extend(audit_log.list_entries(action=a, days=days, limit=limit))
+        rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    else:
+        rows = audit_log.list_entries(entity_id=entity_id, days=days, limit=limit)
+    return [_row(r) for r in rows[:limit]]
+
+
+def _layer7_runs() -> list:
+    from execution.ops_platform import workflow_runner
+    runs = workflow_runner.list_runs(limit=15)
+    return [{"run_id": getattr(r, "run_id", None), "capability_id": getattr(r, "capability_id", None),
+             "status": getattr(r, "status", None), "started_at": getattr(r, "started_at", None),
+             "duration_ms": getattr(r, "duration_ms", None)} for r in runs]
+
+
+def layer_detail(n) -> dict:
+    n = int(n)
+    by_num = {L["layer"]: L for L in layers()["layers"]}
+    base = by_num.get(n)
+    if not base:
+        return {"error": f"unknown layer {n}"}
+    out = {"layer": n, "name": base["name"], "tag": base["tag"], "members": base["members"],
+           "tech": base["tech"], "reference": base.get("reference", []), "metric": base["metric"]}
+    if n == 7:
+        out["recent_events"] = _safe(_layer7_runs, [])
+        out["events_kind"] = "workflow_runs"
+    else:
+        out["recent_events"] = _safe(
+            lambda: _recent_audit(actions=_LAYER_AUDIT_ACTIONS.get(n), days=21, limit=15), [])
+        out["events_kind"] = "audit"
+    return out
+
+
+def _agent_attestation(decl) -> dict | None:
+    if not decl or not decl.get("entrypoint"):
+        return None
+    from execution.ops_platform import tbi_compliance
+    att = json.loads((PROJECT_ROOT / (decl["entrypoint"] + ".tbi.json")).read_text(encoding="utf-8"))
+    v = tbi_compliance.evaluate_attestation(att)
+    return {"verdict": v.verdict, "risk_level": att.get("risk_level"),
+            "inpact_satisfied": v.inpact_satisfied, "goals_satisfied": v.goals_satisfied,
+            "framework_version": v.framework_version}
+
+
+def _agent_heartbeat(agent_id) -> dict | None:
+    rel = _AGENT_HEARTBEAT.get(agent_id)
+    if not rel:
+        return None
+    data = json.loads((PROJECT_ROOT / rel).read_text(encoding="utf-8"))
+    keep = ("started_at", "finished_at", "status", "reason", "total_responded",
+            "total_mentions_found", "total_failed", "drafted", "skipped")
+    return {k: data.get(k) for k in keep if k in data}
+
+
+def agent_detail(agent_id: str) -> dict:
+    from execution.ops_platform import runtime_agents, runtime_controls
+    decl = next((d for d in _safe(runtime_agents.load_declarations, []) if d.get("id") == agent_id), None)
+    state = _safe(runtime_controls.get_state, {}) or {}
+    cell = (state.get("agents", {}) or {}).get(agent_id) or {}
+    return {
+        "agent_id": agent_id,
+        "declared": decl is not None,
+        "name": (decl or {}).get("name"),
+        "autonomy_policy": (decl or {}).get("autonomy_policy"),
+        "entrypoint": (decl or {}).get("entrypoint"),
+        "status": (decl or {}).get("status"),
+        "rollback_plan": (decl or {}).get("rollback_plan"),
+        "notes": (decl or {}).get("notes"),
+        "paused": bool(cell.get("paused")) or bool(state.get("global_paused")),
+        "global_paused": bool(state.get("global_paused")),
+        "pause_meta": cell or None,
+        "attestation": _safe(lambda: _agent_attestation(decl), None),
+        "heartbeat": _safe(lambda: _agent_heartbeat(agent_id), None),
+        "recent_audit": _safe(lambda: _recent_audit(entity_id=agent_id, days=30, limit=20), []),
+    }
+
+
+def compliance_detail() -> dict:
+    from execution.ops_platform import tbi_compliance
+    items, counts = [], {"compliant": 0, "conditional": 0, "non_compliant": 0}
+    for path in sorted(PROJECT_ROOT.rglob("*.tbi.json")):
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        if rel.startswith(".claude/") or "/.claude/" in f"/{rel}":
+            continue
+        try:
+            att = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        v = tbi_compliance.evaluate_attestation(att)
+        counts[v.verdict] = counts.get(v.verdict, 0) + 1
+        items.append({
+            "artifact_id": v.artifact_id, "kind": att.get("artifact_kind"), "path": rel,
+            "verdict": v.verdict, "risk_level": att.get("risk_level"),
+            "inpact_satisfied": v.inpact_satisfied, "goals_satisfied": v.goals_satisfied,
+            "layers": [l.get("layer") for l in att.get("layers", [])],
+            "approver": (att.get("approver") or {}).get("name"), "notes": att.get("notes"),
+        })
+    _risk_rank = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "LOW": 3, None: 4}
+    items.sort(key=lambda x: (x["verdict"] != "non_compliant", _risk_rank.get(x["risk_level"], 4),
+                              x["artifact_id"]))
+    return {"framework_version": tbi_compliance.CURRENT_FRAMEWORK_VERSION,
+            "total": len(items), "counts": counts, "items": items}
+
+
+def audit_detail(*, days: int = 7, action=None, actor=None, entity_id=None, limit: int = 100) -> dict:
+    from execution.ops_platform import audit_log
+    rows = _safe(lambda: audit_log.list_entries(days=days, action=action, actor_name=actor,
+                                                entity_id=entity_id, limit=limit), [])
+    return {"filters": {"days": days, "action": action, "actor": actor, "entity_id": entity_id},
+            "stats": _safe(lambda: audit_log.stats(days=days), {}),
+            "recent": [_row(r) for r in (rows or [])]}
+
+
+def audit_replay(correlation_id: str) -> dict:
+    from execution.ops_platform import audit_log
+    rows = _safe(lambda: audit_log.replay(correlation_id, days=90), [])
+    chain = [_row(r) for r in (rows or [])]
+    chain.sort(key=lambda r: r.get("timestamp") or "")
+    return {"correlation_id": correlation_id, "chain": chain}
