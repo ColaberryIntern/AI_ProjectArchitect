@@ -530,6 +530,45 @@ class TestSyncBudgetTtlInvariant:
         assert "status=active" in captured["url"]
 
 
+class TestWalkHeartbeat:
+    """_walk_project_todos pulses the heartbeat once per todolist so a long
+    walk keeps its coordinator slot alive (2026-06-22 mega-project hardening)."""
+
+    def test_heartbeat_called_once_per_todolist(self, monkeypatch):
+        BC_USER = 17454835
+        def _bc(path, token, params=None, _retry=1, _transient=None):
+            page = (params or {}).get("page", 1)
+            if path == "/projects/101.json":
+                return {"id": 101, "name": "P",
+                        "dock": [{"name": "todoset", "id": 555}]}
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return ([{"id": 7001, "name": "A"}, {"id": 7002, "name": "B"}]
+                        if page == 1 else [])
+            if path in ("/buckets/101/todolists/7001/todos.json",
+                        "/buckets/101/todolists/7002/todos.json",
+                        "/buckets/101/todolists/7001/groups.json",
+                        "/buckets/101/todolists/7002/groups.json"):
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+        beats: list[int] = []
+        sync._walk_project_todos({"id": 101, "name": "P"}, "tok", BC_USER,
+                                 heartbeat=lambda: beats.append(1))
+        assert len(beats) == 2  # one per todolist
+
+    def test_heartbeat_optional(self, monkeypatch):
+        """heartbeat=None (the default / legacy call shape) must still work."""
+        def _bc(path, token, params=None, _retry=1, _transient=None):
+            if path == "/projects/101.json":
+                return {"id": 101, "dock": [{"name": "todoset", "id": 555}]}
+            if path == "/buckets/101/todosets/555/todolists.json":
+                return []
+            return None
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+        out, seen = sync._walk_project_todos({"id": 101}, "tok", 1)
+        assert out == [] and seen == set()
+
+
 # ════════════════════════════════════════════════════════════════════
 # _paginate — yield pages until empty or max_pages
 # ════════════════════════════════════════════════════════════════════
