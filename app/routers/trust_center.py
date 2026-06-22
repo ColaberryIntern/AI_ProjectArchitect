@@ -107,6 +107,12 @@ async def compliance_json(request: Request):
     return JSONResponse(tc.compliance_detail())
 
 
+@router.get("/cost.json")
+async def cost_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.cost_detail())
+
+
 @router.get("/layers.json")
 async def layers_json(request: Request):
     _require_super_admin(request)

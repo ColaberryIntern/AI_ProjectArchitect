@@ -119,8 +119,7 @@ def overview() -> dict:
         "compliance": _safe(tbi_compliance_summary, None),
         "runtime_agents": _safe(runtime_agents_summary, None),
         "audit_7d": _safe(lambda: _audit_stats(7), None),
-        "cost_7d": {"status": "not_instrumented",
-                    "reason": "no cost ledger yet (gap OBS-5 / C4)"},
+        "cost_7d": _safe(cost_summary, {"status": "unavailable"}),
     }
 
 
@@ -361,6 +360,7 @@ def live() -> dict:
         "counters": {
             "compliance": counts,
             "audit_24h": _signals()["audit1_total"],
+            "cost": _safe(cost_summary, {}),
         },
     }
 
@@ -522,3 +522,23 @@ def audit_replay(correlation_id: str) -> dict:
     chain = [_row(r) for r in (rows or [])]
     chain.sort(key=lambda r: r.get("timestamp") or "")
     return {"correlation_id": correlation_id, "chain": chain}
+
+
+# ── Cost explorer (from the forward cost ledger) ──
+
+
+def cost_summary() -> dict:
+    from execution.ops_platform import cost_ledger
+    s7 = cost_ledger.summary(7)
+    s1 = cost_ledger.summary(1)
+    return {
+        "usd_7d": s7["total_usd"], "calls_7d": s7["calls"], "tokens_7d": s7["total_tokens"],
+        "usd_24h": s1["total_usd"], "calls_24h": s1["calls"],
+        "by_model": s7["by_model"], "by_source": s7["by_source"],
+        "instrumented_since": s7["instrumented_since"],
+    }
+
+
+def cost_detail() -> dict:
+    from execution.ops_platform import cost_ledger
+    return cost_ledger.summary(30, recent=50)

@@ -16,8 +16,8 @@ def test_overview_scorecard_and_cost_honesty():
     ov = tc.overview()
     assert ov["trust_score"]["overall"] == 74
     assert "governance" in ov["trust_score"]["pillars"]
-    # Cost must be honestly labeled, never a fabricated number.
-    assert ov["cost_7d"]["status"] == "not_instrumented"
+    # Cost is now instrumented (real ledger summary), not a placeholder.
+    assert "usd_7d" in ov["cost_7d"]
 
 
 def test_tbi_compliance_summary_scans_real_attestations():
@@ -149,3 +149,19 @@ def test_drilldown_endpoints_wired():
     assert "/admin/trust/agent/{agent_id}.json" in paths
     assert "/admin/trust/compliance.json" in paths
     assert "/admin/trust/audit/replay.json" in paths
+
+
+# ── cost explorer ──
+
+
+def test_cost_summary_and_detail_shapes():
+    s = tc.cost_summary()
+    assert {"usd_7d", "calls_7d", "by_model", "by_source", "instrumented_since"} <= set(s)
+    d = tc.cost_detail()
+    assert {"total_usd", "recent", "by_model"} <= set(d)
+
+
+def test_cost_endpoint_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/cost.json" in paths

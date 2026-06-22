@@ -259,6 +259,13 @@ def _llm_propose(todo_title: str, todo_description: str,
             max_tokens=1200,
         )
         text = resp.choices[0].message.content or ""
+        try:
+            from execution.ops_platform import cost_ledger
+            cost_ledger.record(model=getattr(resp, "model", model), source="ops_autopickup",
+                               prompt_tokens=resp.usage.prompt_tokens,
+                               completion_tokens=resp.usage.completion_tokens)
+        except Exception:
+            pass
         return json.loads(text)
     except Exception:
         logger.warning("autopickup: LLM call failed", exc_info=True)

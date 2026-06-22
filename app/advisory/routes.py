@@ -7,9 +7,10 @@ Integrates with lead management, campaign enrollment, and event tracking.
 """
 
 import logging
+import os
 from pathlib import Path
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -30,6 +31,22 @@ def _extract_utm(request: Request) -> dict:
         if val:
             params[key] = val
     return params
+
+
+def _advisory_enabled() -> bool:
+    """Call-time kill-switch (P1.5 hardening). Default ON; set
+    OPS_ADVISORY_ENABLED=false to disable the public advisory funnel."""
+    return os.environ.get("OPS_ADVISORY_ENABLED", "true").strip().lower() != "false"
+
+
+def require_advisory_enabled():
+    """Dependency on the mutating/side-effecting advisory routes. Read-only pages
+    stay up so a disabled banner can still render."""
+    if not _advisory_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="AI Advisory is temporarily disabled by an administrator.",
+        )
 
 
 # ─── Landing & Session Start ────────────────────────────────────────
@@ -53,7 +70,7 @@ async def demo_walkthrough(request: Request):
     })
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(require_advisory_enabled)])
 async def start_session(request: Request, business_idea: str = Form(...)):
     """Create a new advisory session and redirect to questions."""
     from execution.advisory.advisory_state_manager import advance_status, initialize_session
@@ -114,7 +131,7 @@ async def question_flow(request: Request, session_id: str):
     })
 
 
-@router.post("/{session_id}/answer")
+@router.post("/{session_id}/answer", dependencies=[Depends(require_advisory_enabled)])
 async def submit_answer(
     request: Request,
     session_id: str,
@@ -252,7 +269,7 @@ async def design_studio(request: Request, session_id: str):
     })
 
 
-@router.post("/{session_id}/design")
+@router.post("/{session_id}/design", dependencies=[Depends(require_advisory_enabled)])
 async def save_design(request: Request, session_id: str):
     """Save outcomes + systems, compute recommendations, redirect to capabilities."""
     from execution.advisory.advisory_state_manager import (
@@ -342,7 +359,7 @@ async def capability_selector(request: Request, session_id: str):
     })
 
 
-@router.post("/{session_id}/capabilities")
+@router.post("/{session_id}/capabilities", dependencies=[Depends(require_advisory_enabled)])
 async def save_capabilities(request: Request, session_id: str):
     """Save selected capabilities and proceed to generation."""
     from execution.advisory.advisory_state_manager import (
@@ -376,7 +393,7 @@ async def save_capabilities(request: Request, session_id: str):
 
 # ─── Generation ─────────────────────────────────────────────────────
 
-@router.get("/{session_id}/generate")
+@router.get("/{session_id}/generate", dependencies=[Depends(require_advisory_enabled)])
 async def generate_results(request: Request, session_id: str):
     """Run all generation engines and redirect to results."""
     from execution.ops_platform import runtime_controls
@@ -675,7 +692,7 @@ async def gate_page(request: Request, session_id: str):
     })
 
 
-@router.post("/{session_id}/save-lead")
+@router.post("/{session_id}/save-lead", dependencies=[Depends(require_advisory_enabled)])
 async def save_lead(
     request: Request,
     session_id: str,
@@ -833,7 +850,7 @@ async def resume_session(request: Request, session_id: str):
 
 # ─── Booking Integration ────────────────────────────────────────────
 
-@router.post("/{session_id}/book-strategy-call")
+@router.post("/{session_id}/book-strategy-call", dependencies=[Depends(require_advisory_enabled)])
 async def book_strategy_call(request: Request, session_id: str):
     """Record a strategy call booking event with full sales context."""
     from execution.advisory.advisory_state_manager import load_session
@@ -890,7 +907,7 @@ async def calendar_availability(request: Request):
         return JSONResponse({"error": str(e), "dates": [], "timezone": "America/Chicago"}, status_code=200)
 
 
-@router.post("/api/calendar/book")
+@router.post("/api/calendar/book", dependencies=[Depends(require_advisory_enabled)])
 async def calendar_book(request: Request):
     """Book a strategy call."""
     try:

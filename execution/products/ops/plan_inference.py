@@ -152,6 +152,13 @@ def infer(user_feedback: str, basecamp_url: str, output_type: str,
         )
         raw = resp.choices[0].message.content or "{}"
         out = json.loads(raw)
+        try:
+            from execution.ops_platform import cost_ledger
+            cost_ledger.record(model=getattr(resp, "model", MODEL), source="ops_plan",
+                               prompt_tokens=resp.usage.prompt_tokens,
+                               completion_tokens=resp.usage.completion_tokens)
+        except Exception:
+            pass
     except Exception:
         logger.warning("plan_inference: LLM call failed", exc_info=True)
         return None

@@ -164,6 +164,13 @@
         {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant · <b>details →</b></div>
     </div>
 
+    <div class="tcc-card tcc-link" onclick="tccCost()" title="Cost explorer">
+      <h3>💰 AI cost <span class="tcc-muted">details →</span></h3>
+      {% set cost = data.overview.cost_7d %}
+      <div style="font-size:26px;font-weight:800;">$<span id="tcc-cost-usd">{{ '%.4f'|format(cost.usd_7d|default(0)|float) }}</span><span style="font-size:12px;color:var(--fg-muted)"> · last 7d</span></div>
+      <div class="tcc-muted"><span id="tcc-cost-calls">{{ cost.calls_7d|default(0) }}</span> LLM calls · ${{ '%.4f'|format(cost.usd_24h|default(0)|float) }} last 24h · instrumented {{ cost.instrumented_since|default('—') }}</div>
+    </div>
+
     <div class="tcc-card">
       <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-muted"></span></h3>
       <div id="tcc-approvals">
@@ -277,6 +284,20 @@ async function tccCompliance(){
   }catch(e){ tccShow('TBI Compliance', '<p class="tcc-muted">failed: '+e+'</p>'); }
 }
 
+async function tccCost(){
+  tccShow('AI cost', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/cost.json');
+    const bm=Object.entries(d.by_model||{}).map(([k,v])=>({k:k,v:v}));
+    const bs=Object.entries(d.by_source||{}).map(([k,v])=>({k:k,v:v}));
+    let h='<p><b style="font-size:18px">$'+(d.total_usd||0).toFixed(4)+'</b> over last '+d.days+'d · '+d.calls+' calls · '+(d.total_tokens||0).toLocaleString()+' tokens · instrumented '+tccEsc(d.instrumented_since)+'</p>';
+    h+='<div style="display:flex;gap:18px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h4 style="margin:6px 0">By model</h4>'+tccTable(bm,[{h:'model',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div>';
+    h+='<div style="flex:1;min-width:220px"><h4 style="margin:6px 0">By source</h4>'+tccTable(bs,[{h:'source',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div></div>';
+    h+='<h4 style="margin:10px 0 6px">Recent calls</h4>'+tccTable(d.recent,[{h:'time',k:'timestamp'},{h:'model',k:'model'},{h:'source',k:'source'},{h:'prompt',k:'prompt_tokens'},{h:'compl',k:'completion_tokens'},{h:'usd',f:r=>"$"+(r.usd||0).toFixed(4)}]);
+    if(!d.calls) h+='<p class="tcc-muted">No LLM calls recorded yet — the ledger fills as the system runs.</p>';
+    tccShow('AI cost — last '+d.days+'d', h);
+  }catch(e){ tccShow('AI cost', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
 function tccAudit(){
   let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
     +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
@@ -347,6 +368,10 @@ async function tccPoll(){
     const au=document.getElementById('tcc-audit');
     if(au) au.textContent = (d.counters && d.counters.audit_24h!=null)
       ? (d.counters.audit_24h+' audit events in last 24h') : '—';
+    if(d.counters && d.counters.cost){
+      const cu=document.getElementById('tcc-cost-usd'); if(cu && d.counters.cost.usd_7d!=null) cu.textContent=Number(d.counters.cost.usd_7d).toFixed(4);
+      const cc=document.getElementById('tcc-cost-calls'); if(cc && d.counters.cost.calls_7d!=null) cc.textContent=d.counters.cost.calls_7d;
+    }
     const cl=document.getElementById('tcc-clock');
     if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();
   }catch(e){}

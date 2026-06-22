@@ -219,6 +219,13 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
         )
         raw = resp.choices[0].message.content or "{}"
         out = json.loads(raw)
+        try:
+            from execution.ops_platform import cost_ledger
+            cost_ledger.record(model=getattr(resp, "model", MODEL), source="ops_suggest",
+                               prompt_tokens=resp.usage.prompt_tokens,
+                               completion_tokens=resp.usage.completion_tokens)
+        except Exception:
+            pass
     except Exception:
         logger.warning("LLM enhance failed for todo %s", todo.bc_id, exc_info=True)
         return None

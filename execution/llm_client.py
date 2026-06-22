@@ -40,6 +40,7 @@ def chat(
     max_tokens: int | None = None,
     temperature: float | None = None,
     response_format: dict | None = None,
+    source: str = "llm_client",
 ) -> LLMResponse:
     """Send a conversation to the OpenAI API and return the response.
 
@@ -92,6 +93,16 @@ def chat(
         raise LLMClientError(f"LLM call failed: {e}") from e
 
     choice = response.choices[0]
+    # Cost accounting — best-effort, must never break the call.
+    try:
+        from execution.ops_platform import cost_ledger
+        cost_ledger.record(
+            model=response.model, source=source,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+        )
+    except Exception:
+        pass
     return LLMResponse(
         content=choice.message.content,
         model=response.model,
