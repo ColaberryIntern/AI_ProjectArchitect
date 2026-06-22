@@ -1,259 +1,389 @@
 {% extends "admin/_admin_base.html" %}
 {% block content %}
-{# Trust Command Center — hybrid: on-brand light page + dark animated 7-layer diagram. #}
+{# Trust Command Center — "Command Center": dark hero + KPI rail + live 7-layer
+   diagram + Mission Control, with polished drill-down modals. Presentation only;
+   all data comes from tc.page_data()/tc.live() and /admin/trust/*.json. #}
 <style>
-  .tcc-sub { color: var(--fg-muted); font-size: 13px; margin: -6px 0 16px; }
-  .tcc-grid { display:grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-4); align-items:start; }
-  @media (max-width: 1100px){ .tcc-grid{ grid-template-columns:1fr; } }
-
-  /* ── dark animated diagram panel ── */
-  .tcc-diagram {
-    background: radial-gradient(120% 100% at 50% 0%, #11203a 0%, #0a0f1c 60%, #070b14 100%);
-    border:1px solid #1e2a44; border-radius: var(--radius-lg); padding: 18px 18px 22px;
-    color:#e6edf3; position:relative; overflow:hidden;
+  /* ===== command-center surface (scoped) ===== */
+  .tcc{
+    --c-panel:#111a30; --c-panel2:#0d1424; --c-line:#1e2a44; --c-line2:#27324f;
+    --c-text:#dfe8f4; --c-fg:#eaf2ff; --c-muted:#8da2c0; --c-dim:#6c7d9c;
+    --c-accent:#1f6feb; --c-cyan:#39d3ff;
+    --c-ok:#2ecf78; --c-warn:#e3b341; --c-bad:#ff5d6c;
+    position:relative; color:var(--c-text); font-family:var(--font-sans); margin-top:var(--space-3);
   }
-  .tcc-diagram h3 { color:#cdd9e5; margin:0 0 4px; font-size:15px; letter-spacing:.04em; }
-  .tcc-diagram .legend { color:#7d8aa3; font-size:11px; margin-bottom:14px; }
-  .tcc-stream { position:absolute; left:30px; top:60px; bottom:18px; width:2px;
-    background:linear-gradient(#0000,#2b3a5b,#0000); }
+  .tcc *{ box-sizing:border-box; }
+
+  /* ── hero ── */
+  .tcc-hero{
+    display:grid; grid-template-columns:auto 1fr auto; gap:28px; align-items:center;
+    background:radial-gradient(130% 200% at 0% 0%, #16294c 0%, #0c1426 55%, #0a0f1c 100%);
+    border:1px solid var(--c-line); border-radius:16px; padding:22px 28px;
+    box-shadow:0 22px 60px -28px #000, inset 0 1px 0 #ffffff0d; overflow:hidden;
+  }
+  @media (max-width:900px){ .tcc-hero{ grid-template-columns:1fr; gap:18px; text-align:center; } }
+  .tcc-ring-wrap{ position:relative; width:132px; height:132px; cursor:pointer; flex:none; margin:0 auto; }
+  .tcc-ring{ transform:rotate(-90deg); display:block; }
+  .tcc-ring .bg{ fill:none; stroke:#1b2742; stroke-width:11; }
+  .tcc-ring .fg{ fill:none; stroke-width:11; stroke-linecap:round; transition:stroke-dasharray .9s cubic-bezier(.22,1,.36,1), stroke .5s; filter:drop-shadow(0 0 6px currentColor); }
+  .tcc-ring-c{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+  .tcc-ring-c .n{ font-size:40px; font-weight:800; color:#fff; line-height:1; }
+  .tcc-ring-c .of{ font-size:12px; color:var(--c-dim); margin-top:1px; }
+  .tcc-ring-c .band{ font-size:10.5px; font-weight:800; letter-spacing:.1em; margin-top:5px; }
+  .tcc-statusblock .eyebrow{ font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--c-dim); }
+  .tcc-statusblock .big{ font-size:24px; font-weight:800; letter-spacing:.01em; color:#fff; margin-top:4px; display:flex; align-items:center; gap:10px; }
+  @media (max-width:900px){ .tcc-statusblock .big{ justify-content:center; } }
+  .tcc-statusblock .dot{ width:11px; height:11px; border-radius:50%; box-shadow:0 0 0 4px #ffffff14; }
+  .tcc-statusblock .dot.pulse{ animation:tccpulse 2s ease-in-out infinite; }
+  @keyframes tccpulse{ 0%,100%{ box-shadow:0 0 0 0 #2ecf7855 } 50%{ box-shadow:0 0 0 7px #2ecf7800 } }
+  .tcc-statusblock .sub{ color:var(--c-muted); font-size:13px; margin-top:8px; }
+  .tcc-statusblock .sub b{ color:var(--c-fg); font-weight:700; }
+  .tcc-heroright{ text-align:right; flex:none; }
+  @media (max-width:900px){ .tcc-heroright{ text-align:center; } }
+  .tcc-kill{ border:0; border-radius:12px; font-weight:800; font-size:13.5px; letter-spacing:.04em;
+    padding:14px 22px; cursor:pointer; color:#fff; background:linear-gradient(180deg,#e5484d,#cf222e);
+    box-shadow:0 10px 24px -10px #cf222e88; }
+  .tcc-kill.armed{ background:linear-gradient(180deg,#2ea043,#1a7f37); box-shadow:0 10px 24px -10px #1a7f3788; }
+  .tcc-killnote{ color:var(--c-dim); font-size:11px; margin-top:8px; }
+
+  /* ── KPI rail ── */
+  .tcc-kpis{ display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-top:14px; }
+  @media (max-width:1100px){ .tcc-kpis{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:600px){ .tcc-kpis{ grid-template-columns:1fr; } }
+  .tcc-kpi{ position:relative; overflow:hidden; cursor:pointer; padding:15px 16px 15px 19px;
+    background:linear-gradient(180deg,var(--c-panel),var(--c-panel2)); border:1px solid var(--c-line);
+    border-radius:14px; transition:transform .15s, box-shadow .15s, border-color .15s; }
+  .tcc-kpi:hover{ transform:translateY(-3px); box-shadow:0 16px 34px -18px #000d; border-color:var(--c-line2); }
+  .tcc-kpi .accent{ position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c-accent); }
+  .tcc-kpi.ok .accent{ background:var(--c-ok); } .tcc-kpi.warn .accent{ background:var(--c-warn); } .tcc-kpi.bad .accent{ background:var(--c-bad); }
+  .tcc-kpi .top{ display:flex; align-items:center; gap:7px; color:var(--c-muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; }
+  .tcc-kpi .v{ font-size:26px; font-weight:800; color:#fff; margin-top:9px; line-height:1; }
+  .tcc-kpi .v small{ font-size:13px; color:var(--c-muted); font-weight:700; }
+  .tcc-kpi .s{ color:var(--c-dim); font-size:11.5px; margin-top:7px; }
+
+  /* ── main grid ── */
+  .tcc-main{ display:grid; grid-template-columns:1.55fr 1fr; gap:16px; margin-top:16px; align-items:start; }
+  @media (max-width:1100px){ .tcc-main{ grid-template-columns:1fr; } }
+  .tcc-panel{ background:linear-gradient(180deg,var(--c-panel),var(--c-panel2)); border:1px solid var(--c-line); border-radius:14px; }
+  .tcc-phead{ display:flex; align-items:center; justify-content:space-between; padding:13px 16px 0; }
+  .tcc-phead h3{ margin:0; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:#cdd9e5; }
+  .tcc-phead .hint{ font-size:11px; color:var(--c-dim); }
+
+  /* ── diagram ── */
+  .tcc-diagram{ position:relative; overflow:hidden; border-radius:14px;
+    background:radial-gradient(130% 110% at 50% 0%, #122banchor 0%, #0a0f1c 62%, #070b14 100%);
+    background:radial-gradient(130% 110% at 50% 0%, #12203c 0%, #0a0f1c 62%, #070b14 100%); }
+  .tcc-diagram .legend{ color:var(--c-dim); font-size:11px; padding:4px 16px 8px; }
+  .tcc-stream{ position:absolute; left:34px; top:64px; bottom:18px; width:2px; background:linear-gradient(#0000,#2b3a5b,#0000); }
   .tcc-stream::after{ content:""; position:absolute; left:-3px; width:8px; height:8px; border-radius:50%;
-    background:#39d3ff; box-shadow:0 0 10px 3px #39d3ff; animation:tccflow 3.2s linear infinite; }
+    background:var(--c-cyan); box-shadow:0 0 10px 3px var(--c-cyan); animation:tccflow 3.2s linear infinite; }
   @keyframes tccflow{ 0%{ top:100%; opacity:0 } 10%{opacity:1} 90%{opacity:1} 100%{ top:0%; opacity:0 } }
-
-  .tcc-layer {
-    display:flex; align-items:center; gap:12px; padding:10px 12px; margin:7px 0 7px 18px;
-    border:1px solid #20304d; border-radius:10px; background:rgba(255,255,255,.02);
-    transition:box-shadow .3s, border-color .3s;
-  }
-  .tcc-layer .lnum { font-weight:800; font-size:13px; width:30px; height:30px; display:flex;
-    align-items:center; justify-content:center; border-radius:8px; background:#16233c; color:#8fb6ff; flex:none; }
-  .tcc-layer .lbody { flex:1; min-width:0; }
-  .tcc-layer .lname { font-size:13.5px; font-weight:700; color:#eaf2ff; }
-  .tcc-layer .ltag { font-size:10px; color:#0a0f1c; background:#7fd6a0; border-radius:999px; padding:1px 7px; margin-left:6px; font-weight:700; }
-  .tcc-layer .ltag.muted { background:#3a4a66; color:#aebfdc; }
-  .tcc-layer .ltech { margin-top:4px; }
-  .tcc-chip { display:inline-block; font-size:10.5px; color:#bcd; background:#13213a;
-    border:1px solid #24375c; border-radius:6px; padding:1px 6px; margin:2px 4px 0 0; }
-  .tcc-chip.ref { color:#8a7; background:#10231a; border-color:#1f4030; }
-  .tcc-chip .tcc-score { color:#7fffc4; font-weight:700; margin-left:3px; }
-  .tcc-metric { text-align:right; flex:none; min-width:120px; }
-  .tcc-metric .mv { font-size:20px; font-weight:800; color:#fff; }
-  .tcc-metric .ml { font-size:10px; color:#8aa; }
-  .tcc-layer.ok { box-shadow:0 0 0 1px #1d5e3a inset, 0 0 18px -8px #2ecf78; }
-  .tcc-layer.warn { box-shadow:0 0 0 1px #6e5a1f inset, 0 0 18px -8px #e3b341; border-color:#5c4a1c; }
+  .tcc-layer{ display:flex; align-items:center; gap:12px; padding:10px 12px; margin:7px 14px 7px 22px; cursor:pointer;
+    border:1px solid #20304d; border-radius:11px; background:rgba(255,255,255,.02); transition:box-shadow .3s, border-color .3s, transform .15s; }
+  .tcc-layer:hover{ transform:translateX(2px); border-color:var(--c-line2); }
+  .tcc-layer .lnum{ font-weight:800; font-size:12px; width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    border-radius:9px; background:#16233c; color:#8fb6ff; flex:none; border:1px solid #21345a; }
+  .tcc-layer .lbody{ flex:1; min-width:0; }
+  .tcc-layer .lname{ font-size:13.5px; font-weight:700; color:#eaf2ff; }
+  .tcc-layer .ltag{ font-size:9.5px; color:#08130c; background:#7fd6a0; border-radius:999px; padding:1px 7px; margin-left:6px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
+  .tcc-layer .ltag.muted{ background:#3a4a66; color:#aebfdc; }
+  .tcc-layer .ltech{ margin-top:5px; }
+  .tcc-chip{ display:inline-block; font-size:10px; color:#bcd; background:#13213a; border:1px solid #24375c; border-radius:6px; padding:1px 6px; margin:2px 4px 0 0; }
+  .tcc-chip .tcc-score{ color:#7fffc4; font-weight:700; margin-left:3px; }
+  .tcc-metric{ text-align:right; flex:none; min-width:108px; }
+  .tcc-metric .mv{ font-size:19px; font-weight:800; color:#fff; }
+  .tcc-metric .ml{ font-size:10px; color:#8aa; }
+  .tcc-layer.ok{ box-shadow:0 0 0 1px #1d5e3a inset, 0 0 20px -9px #2ecf78; }
+  .tcc-layer.warn{ box-shadow:0 0 0 1px #6e5a1f inset, 0 0 20px -9px #e3b341; border-color:#5c4a1c; }
   .tcc-layer.ok .mv{ color:#7fffc4 } .tcc-layer.warn .mv{ color:#ffd479 }
 
-  /* ── control panel (light) ── */
-  .tcc-card { background:var(--bg-canvas); border:1px solid var(--border-default);
-    border-radius:var(--radius-lg); padding:16px; margin-bottom:14px; }
-  .tcc-card h3 { margin:0 0 10px; font-size:14px; }
-  .tcc-kill { width:100%; padding:12px; border:0; border-radius:10px; font-weight:800; font-size:14px;
-    background:#cf222e; color:#fff; cursor:pointer; letter-spacing:.03em; }
-  .tcc-kill.armed { background:#1a7f37; }
-  .tcc-agent { display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:8px 0; border-bottom:1px solid var(--border-muted); }
+  /* ── mission control console ── */
+  .tcc-console{ display:flex; flex-direction:column; gap:14px; }
+  .tcc-sec{ padding:14px 16px; }
+  .tcc-sec h3{ margin:0 0 10px; font-size:13px; letter-spacing:.05em; text-transform:uppercase; color:#cdd9e5; display:flex; justify-content:space-between; align-items:center; }
+  .tcc-kbtn{ width:100%; padding:12px; border:0; border-radius:11px; font-weight:800; font-size:13.5px; cursor:pointer; letter-spacing:.03em; color:#fff;
+    background:linear-gradient(180deg,#e5484d,#cf222e); }
+  .tcc-kbtn.armed{ background:linear-gradient(180deg,#2ea043,#1a7f37); }
+  .tcc-agent{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 0; border-bottom:1px solid #1b2740; }
   .tcc-agent:last-child{ border-bottom:0 }
-  .tcc-agent .an { font-size:13px; font-weight:600; }
-  .tcc-agent .ap { font-size:11px; color:var(--fg-muted); }
-  .tcc-btn { border:1px solid var(--border-default); background:var(--bg-elevated); border-radius:6px;
-    padding:4px 10px; font-size:12px; cursor:pointer; }
-  .tcc-btn.pause{ background:#ffebe9; border-color:#ff8182; color:#cf222e; }
-  .tcc-btn.resume{ background:#dafbe1; border-color:#1a7f37; color:#1a7f37; }
-  .tcc-pill{ display:inline-block; font-size:10px; border-radius:999px; padding:1px 8px; font-weight:700; }
-  .tcc-pill.live{ background:#dafbe1; color:#1a7f37 } .tcc-pill.paused{ background:#ffebe9; color:#cf222e }
-  .tcc-pillars td{ padding:3px 6px; font-size:12px; }
-  .tcc-bar{ height:8px; border-radius:4px; background:var(--bg-sunken); overflow:hidden; }
-  .tcc-bar > i{ display:block; height:100%; }
-  .tcc-row{ display:flex; gap:6px; }
-  .tcc-input{ flex:1; border:1px solid var(--border-default); border-radius:6px; padding:4px 8px; font-size:12px; }
-  .tcc-muted{ color:var(--fg-muted); font-size:12px; }
-  .tcc-link{ cursor:pointer; }
-  .tcc-layer{ cursor:pointer; }
-  .tcc-overlay{ position:fixed; inset:0; background:rgba(10,15,28,.55); display:none; z-index:50;
-    align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; }
+  .tcc-agent .an{ font-size:13px; font-weight:700; color:var(--c-fg); }
+  .tcc-agent .ap{ font-size:11px; color:var(--c-muted); margin-top:2px; }
+  .tcc-agent .ap code{ color:#9fc0ff; background:#13213a; padding:0 5px; border-radius:5px; }
+  .tcc-btn{ border:1px solid var(--c-line2); background:#16233c; color:#cfe0ff; border-radius:7px; padding:5px 11px; font-size:12px; cursor:pointer; }
+  .tcc-btn:hover{ border-color:#3a578f; }
+  .tcc-btn.pause{ background:#2c1418; border-color:#7a2530; color:#ff9aa2; }
+  .tcc-btn.resume{ background:#0f2a1c; border-color:#1f6e44; color:#7fe3a6; }
+  .tcc-cpill{ display:inline-block; font-size:9.5px; font-weight:800; border-radius:999px; padding:1px 8px; letter-spacing:.04em; text-transform:uppercase; }
+  .tcc-cpill.live{ background:#0f2a1c; color:#6fe3a0; border:1px solid #1f6e44; }
+  .tcc-cpill.paused{ background:#2c1418; color:#ff9aa2; border:1px solid #7a2530; }
+  .tcc-input{ flex:1; border:1px solid var(--c-line2); border-radius:7px; padding:6px 9px; font-size:12px; background:#0c1424; color:var(--c-fg); }
+  .tcc-input::placeholder{ color:var(--c-dim); }
+  .tcc-row{ display:flex; gap:7px; }
+  .tcc-mut{ color:var(--c-muted); font-size:12px; } .tcc-mut a{ color:#79c0ff; }
+  .tcc-clock{ color:var(--c-dim); font-size:11px; }
+
+  /* ── drill-down modal (dark header, readable light body) ── */
+  .tcc-overlay{ position:fixed; inset:0; background:rgba(7,11,20,.66); display:none; z-index:50; align-items:flex-start; justify-content:center; padding:44px 16px; overflow:auto; }
   .tcc-overlay.open{ display:flex; }
-  .tcc-modal{ background:var(--bg-canvas); border:1px solid var(--border-default); border-radius:12px;
-    width:min(880px,96vw); max-height:86vh; overflow:auto; box-shadow:0 24px 60px -20px #000a; }
-  .tcc-modal h3{ margin:0; padding:14px 18px; border-bottom:1px solid var(--border-muted);
-    display:flex; justify-content:space-between; align-items:center; font-size:15px; }
-  .tcc-modal .tcc-x{ cursor:pointer; color:var(--fg-muted); font-weight:700; font-size:18px; }
-  .tcc-modal .tcc-body{ padding:16px 18px; }
-  .tcc-dtable{ width:100%; border-collapse:collapse; font-size:12.5px; }
-  .tcc-dtable th,.tcc-dtable td{ padding:5px 8px; border-bottom:1px solid var(--border-muted); text-align:left; vertical-align:top; }
-  .tcc-dtable th{ color:var(--fg-muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
-  .tcc-dtable tr.click{ cursor:pointer; } .tcc-dtable tr.click:hover td{ background:var(--bg-elevated); }
-  .tcc-kv{ display:grid; grid-template-columns:170px 1fr; gap:4px 10px; font-size:13px; margin-bottom:14px; }
+  .tcc-modal{ background:var(--bg-canvas); border:1px solid var(--c-line); border-radius:14px; width:min(940px,96vw); max-height:88vh; overflow:auto; box-shadow:0 30px 80px -24px #000d; }
+  .tcc-modal .head{ position:sticky; top:0; z-index:2; background:linear-gradient(90deg,#0c1426,#16294c); color:#eaf2ff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; }
+  .tcc-modal .head .t{ font-size:15px; font-weight:700; display:flex; gap:10px; align-items:center; }
+  .tcc-modal .head .tcc-x{ cursor:pointer; color:#9fb2d4; font-size:20px; font-weight:700; line-height:1; }
+  .tcc-modal .head .tcc-x:hover{ color:#fff; }
+  .tcc-mbody{ padding:16px 18px; color:var(--fg-default); }
+  .tcc-mbody h4{ margin:16px 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--fg-muted); }
+  .tcc-mbody h4:first-child{ margin-top:0; }
+  .statrow{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .stat{ flex:1; min-width:118px; background:var(--bg-elevated); border:1px solid var(--border-muted); border-radius:11px; padding:10px 13px; }
+  .stat .sl{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--fg-muted); }
+  .stat .sv{ font-size:21px; font-weight:800; margin-top:5px; color:var(--fg-default); line-height:1.1; }
+  .stat.ok .sv{ color:#1a7f37; } .stat.warn .sv{ color:#9a6700; } .stat.bad .sv{ color:#cf222e; } .stat.info .sv{ color:#0969da; }
+  .pill{ display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; line-height:1.5; white-space:nowrap; }
+  .pill.compliant,.pill.ok,.pill.healthy,.pill.live,.pill.clean{ background:#dafbe1; color:#1a7f37; }
+  .pill.conditional,.pill.warn,.pill.stale,.pill.on_demand{ background:#fff8c5; color:#9a6700; }
+  .pill.non_compliant,.pill.block,.pill.bad,.pill.down,.pill.paused,.pill.drift{ background:#ffebe9; color:#cf222e; }
+  .pill.disabled,.pill.muted,.pill.unknown{ background:#eef1f4; color:#57606a; }
+  .pill.info,.pill.live_blue{ background:#ddf4ff; color:#0969da; }
+  .tcc-kv{ display:grid; grid-template-columns:160px 1fr; gap:5px 12px; font-size:13px; margin-bottom:6px; }
   .tcc-kv .k{ color:var(--fg-muted); }
-  .tcc-input.sm{ max-width:130px; }
+  .tcc-kv code{ background:var(--bg-elevated); padding:0 5px; border-radius:5px; font-size:12px; }
+  .tcc-dtable{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .tcc-dtable thead th{ position:sticky; top:48px; background:var(--bg-elevated); color:var(--fg-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding:7px 10px; text-align:left; border-bottom:1px solid var(--border-default); }
+  .tcc-dtable td{ padding:7px 10px; border-bottom:1px solid var(--border-muted); vertical-align:top; }
+  .tcc-dtable tbody tr:nth-child(even) td{ background:#fafbfc; }
+  .tcc-dtable tr.click{ cursor:pointer; } .tcc-dtable tr.click:hover td{ background:#eef4ff; }
+  .tcc-mbody code{ font-family:var(--font-mono); }
+  .tcc-chips-l .c{ display:inline-block; font-size:11px; background:var(--bg-elevated); border:1px solid var(--border-muted); border-radius:6px; padding:2px 8px; margin:0 5px 5px 0; }
+  .tcc-chips-l .c b{ color:#1a7f37; }
+  .tcc-mut2{ color:var(--fg-muted); font-size:12.5px; }
 </style>
 
-<div class="tcc-sub">The live entry point to everything: the 7-layer Architecture of Trust with real-time
-  flow, your tech stack per layer, and full control of AI autonomy. <span id="tcc-clock"></span></div>
+<div class="tcc">
+  {% set ts = data.overview.trust_score %}
+  {% set ov = ts.overall|default(0)|int %}
+  {% set band = 'STRONG' if ov>=85 else ('GOOD' if ov>=70 else ('FAIR' if ov>=50 else 'WEAK')) %}
+  {% set scol = '#2ecf78' if ov>=85 else ('#39d3ff' if ov>=70 else ('#e3b341' if ov>=50 else '#ff5d6c')) %}
+  {% set C = 339.292 %}
+  {% set gp = data.controls.runtime.global_paused if data.controls.runtime else false %}
+  {% set c = data.overview.compliance %}
+  {% set nc = c.counts.non_compliant if c else 0 %}
+  {% set lx = data.lexicon %}
+  {% set lxb = lx.blocking|default(0) %}
+  {% set av = data.availability %}
+  {% set cost = data.overview.cost_7d %}
+  {% set agents = data.controls.runtime_agents.agents if data.controls.runtime_agents else [] %}
+  {% set rt = data.controls.runtime.agents if data.controls.runtime else {} %}
+  {% set healthy = (not gp) and (nc == 0) and (lxb == 0) %}
 
-<div class="tcc-grid">
-  <!-- ════ LEFT: live architecture diagram ════ -->
-  <div class="tcc-diagram">
-    <h3>⚡ Architecture of Trust — live</h3>
-    <div class="legend">Bottom → top. Each layer shows a live metric and your tech stack; green scores are the framework's
-      INPACT/36 · GOALS/30 rating for that tool (from trustbeforeintelligence.ai/tech-stack).</div>
-    <div class="tcc-stream"></div>
-    {% for L in (data.layers.layers | reverse) %}
-    <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}" onclick="tccLayer({{ L.layer }})" title="Drill into this layer">
-      <div class="lnum">L{{ L.layer }}</div>
-      <div class="lbody">
-        <div class="lname">{{ L.name }}
-          <span class="ltag {% if L.tag in ['foundation','orchestration'] %}muted{% endif %}">{{ L.tag }}</span>
-        </div>
-        <div class="ltech">
-          {% for ti in L.tech %}<span class="tcc-chip">{{ ti.name }}{% if ti.inpact %} <b class="tcc-score" title="framework INPACT/GOALS score">{{ ti.inpact }}/36 · {{ ti.goals }}/30</b>{% endif %}</span>{% endfor %}
-        </div>
-      </div>
-      <div class="tcc-metric">
-        <div class="mv" data-metric="{{ L.layer }}">{{ L.metric.value }}</div>
-        <div class="ml" data-metric-label="{{ L.layer }}">{{ L.metric.label }}</div>
+  <!-- ════ HERO ════ -->
+  <div class="tcc-hero">
+    <div class="tcc-ring-wrap" onclick="tccScorecard()" title="How the trust score is computed">
+      <svg class="tcc-ring" width="132" height="132" viewBox="0 0 132 132">
+        <circle class="bg" cx="66" cy="66" r="54"></circle>
+        <circle class="fg" id="tcc-ring-fg" cx="66" cy="66" r="54"
+          style="stroke:{{ scol }}; stroke-dasharray:{{ (ov/100*C)|round(2) }} {{ C }};"></circle>
+      </svg>
+      <div class="tcc-ring-c">
+        <div class="n" id="tcc-score-overall">{{ ov }}</div>
+        <div class="of">/ 100</div>
+        <div class="band" id="tcc-score-band" style="color:{{ scol }}">{{ band }}</div>
       </div>
     </div>
-    {% endfor %}
-  </div>
 
-  <!-- ════ RIGHT: controls + posture ════ -->
-  <div>
-    <div class="tcc-card">
-      <h3>🛑 Autonomy control</h3>
-      {% set gp = data.controls.runtime.global_paused if data.controls.runtime else false %}
+    <div class="tcc-statusblock">
+      <div class="eyebrow">Trust Command Center · live</div>
+      <div class="big">
+        <span class="dot {{ 'pulse' if healthy else '' }}" id="tcc-status-dot" style="background:{{ '#2ecf78' if healthy else '#e3b341' }}"></span>
+        <span id="tcc-status-big">{{ 'ALL SYSTEMS HEALTHY' if healthy else ('AUTONOMY PAUSED' if gp else 'ATTENTION NEEDED') }}</span>
+      </div>
+      <div class="sub">
+        <b>{{ agents|length }}</b> runtime AI agents ·
+        <b>{{ c.counts.compliant if c else 0 }}</b> compliant · <b>{{ c.counts.conditional if c else 0 }}</b> conditional ·
+        <b>{{ nc }}</b> non-compliant ·
+        Lexicon <b>{{ 'clean' if lxb == 0 else (lxb ~ ' blocking') }}</b> ·
+        <span class="tcc-clock">framework {{ c.framework_version if c else 'TBI' }} <span id="tcc-clock"></span></span>
+      </div>
+    </div>
+
+    <div class="tcc-heroright">
       <button id="tcc-global" class="tcc-kill {% if gp %}armed{% endif %}"
         onclick="tccGlobal({{ 'false' if gp else 'true' }})">
-        {{ 'RESUME ALL AUTONOMY' if gp else 'PAUSE ALL AUTONOMY' }}
+        {{ '▶  RESUME ALL AUTONOMY' if gp else '⏸  PAUSE ALL AUTONOMY' }}
       </button>
-      <div class="tcc-muted" style="margin-top:6px;">Kill-switch the workers actually obey at call-time. Audited.</div>
-      <div style="margin-top:12px;">
-        {% set agents = data.controls.runtime_agents.agents if data.controls.runtime_agents else [] %}
-        {% set rt = data.controls.runtime.agents if data.controls.runtime else {} %}
-        {% for a in agents %}
-        {% set paused = rt.get(a.id, {}).get('paused', False) %}
-        <div class="tcc-agent">
-          <div class="tcc-link" onclick="tccAgentDetail('{{ a.id }}')" title="Agent detail">
-            <div class="an">{{ a.name }}
-              <span class="tcc-pill {{ 'paused' if paused else 'live' }}">{{ 'paused' if paused else 'live' }}</span>
+      <div class="tcc-killnote">Kill-switch the live workers obey at call-time · audited</div>
+    </div>
+  </div>
+
+  <!-- ════ KPI RAIL ════ -->
+  <div class="tcc-kpis">
+    <div class="tcc-kpi {{ 'ok' if nc == 0 else 'bad' }}" onclick="tccCompliance()" title="TBI compliance">
+      <div class="accent"></div>
+      <div class="top">🛡️ Compliance</div>
+      <div class="v">{{ (c.counts.compliant + c.counts.conditional) if c else 0 }}<small> / {{ c.total if c else 0 }} pass</small></div>
+      <div class="s">{{ nc }} non-compliant · {{ c.framework_version if c else 'TBI' }}</div>
+    </div>
+    <div class="tcc-kpi {{ 'ok' if (av.overall_pct is not none and av.overall_pct>=90) else ('warn' if av.overall_pct is not none else 'warn') }}" onclick="tccAvailability()" title="Availability / health">
+      <div class="accent"></div>
+      <div class="top">🟢 Availability</div>
+      <div class="v"><span id="tcc-kpi-avail">{{ av.overall_pct if av.overall_pct is not none else '—' }}</span><small>%</small></div>
+      <div class="s">{{ av.healthy|default(0) }}/{{ av.monitored|default(0) }} monitored agents healthy</div>
+    </div>
+    <div class="tcc-kpi" onclick="tccCost()" title="AI cost explorer">
+      <div class="accent"></div>
+      <div class="top">💰 AI cost</div>
+      <div class="v">$<span id="tcc-kpi-cost">{{ '%.2f'|format(cost.usd_7d|default(0)|float) }}</span><small> 7d</small></div>
+      <div class="s"><span id="tcc-kpi-cost-calls">{{ cost.calls_7d|default(0) }}</span> LLM calls · ${{ '%.2f'|format(cost.usd_24h|default(0)|float) }} 24h</div>
+    </div>
+    <div class="tcc-kpi {{ 'ok' if lxb == 0 else 'bad' }}" onclick="tccLexicon()" title="Lexicon / canonical glossary">
+      <div class="accent"></div>
+      <div class="top">📖 Lexicon</div>
+      <div class="v" id="tcc-kpi-lex" style="color:{{ '#2ecf78' if lxb == 0 else '#ff5d6c' }}">{{ 'CLEAN' if lxb == 0 else 'DRIFT' }}</div>
+      <div class="s"><span id="tcc-kpi-lex-terms">{{ lx.term_count|default(0) }}</span> terms · {{ lx.forbidden_count|default(0) }} forbidden · <span id="tcc-kpi-lex-viol">{{ lx.violations|default(0) }}</span> violations</div>
+    </div>
+    <div class="tcc-kpi" onclick="tccAudit()" title="Audit explorer">
+      <div class="accent"></div>
+      <div class="top">🧾 Audit</div>
+      <div class="v"><span id="tcc-kpi-audit">—</span><small> /24h</small></div>
+      <div class="s">append-only governance trail · explore →</div>
+    </div>
+  </div>
+
+  <!-- ════ MAIN GRID ════ -->
+  <div class="tcc-main">
+    <!-- live architecture diagram -->
+    <div class="tcc-panel tcc-diagram">
+      <div class="tcc-phead"><h3>⚡ Architecture of Trust — live</h3><span class="hint">click a layer to drill in</span></div>
+      <div class="legend">Bottom → top. Each layer shows a live metric + your tech stack; green scores are the framework's
+        INPACT/36 · GOALS/30 rating for that tool.</div>
+      <div class="tcc-stream"></div>
+      {% for L in (data.layers.layers | reverse) %}
+      <div class="tcc-layer {{ L.metric.status }}" data-layer="{{ L.layer }}" onclick="tccLayer({{ L.layer }})">
+        <div class="lnum">L{{ L.layer }}</div>
+        <div class="lbody">
+          <div class="lname">{{ L.name }}
+            <span class="ltag {% if L.tag in ['foundation','orchestration'] %}muted{% endif %}">{{ L.tag }}</span>
+          </div>
+          <div class="ltech">
+            {% for ti in L.tech %}<span class="tcc-chip">{{ ti.name }}{% if ti.inpact %} <b class="tcc-score">{{ ti.inpact }}/36·{{ ti.goals }}/30</b>{% endif %}</span>{% endfor %}
+          </div>
+        </div>
+        <div class="tcc-metric">
+          <div class="mv" data-metric="{{ L.layer }}">{{ L.metric.value }}</div>
+          <div class="ml" data-metric-label="{{ L.layer }}">{{ L.metric.label }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- mission control -->
+    <div class="tcc-console">
+      <div class="tcc-panel tcc-sec">
+        <h3>🛰️ Autonomy &amp; agents</h3>
+        <button id="tcc-global2" class="tcc-kbtn {% if gp %}armed{% endif %}" onclick="tccGlobal({{ 'false' if gp else 'true' }})">
+          {{ 'RESUME ALL AUTONOMY' if gp else 'PAUSE ALL AUTONOMY' }}
+        </button>
+        <div style="margin-top:12px;">
+          {% for a in agents %}
+          {% set paused = rt.get(a.id, {}).get('paused', False) %}
+          <div class="tcc-agent">
+            <div class="tcc-link" style="cursor:pointer; min-width:0;" onclick="tccAgentDetail('{{ a.id }}')" title="Agent detail">
+              <div class="an">{{ a.name }}
+                <span class="tcc-cpill {{ 'paused' if paused else 'live' }}">{{ 'paused' if paused else 'live' }}</span>
+              </div>
+              <div class="ap"><code>{{ a.autonomy_policy }}</code> · details →</div>
             </div>
-            <div class="ap"><code>{{ a.autonomy_policy }}</code> · <span class="tcc-muted">details →</span></div>
+            {% if paused %}
+            <button class="tcc-btn resume" onclick="tccAgent('{{ a.id }}','resume')">Resume</button>
+            {% else %}
+            <button class="tcc-btn pause" onclick="tccAgent('{{ a.id }}','pause')">Pause</button>
+            {% endif %}
           </div>
-          {% if paused %}
-          <button class="tcc-btn resume" onclick="tccAgent('{{ a.id }}','resume')">Resume</button>
-          {% else %}
-          <button class="tcc-btn pause" onclick="tccAgent('{{ a.id }}','pause')">Pause</button>
-          {% endif %}
+          {% endfor %}
         </div>
-        {% endfor %}
       </div>
-    </div>
 
-    <div class="tcc-card tcc-link" onclick="tccScorecard()" title="How the trust score is computed">
-      <h3>🛡️ Trust posture <span class="tcc-muted">details →</span></h3>
-      {% set ts = data.overview.trust_score %}
-      <div style="font-size:30px; font-weight:800;"><span id="tcc-score-overall">{{ ts.overall }}</span><span style="font-size:14px;color:var(--fg-muted)">/100</span></div>
-      <div class="tcc-muted" style="font-size:11px;margin:-2px 0 4px">{{ 'live composite' if ts.source == 'live' else ts.source|default('static') }} · weighted from the signals below</div>
-      <table class="tcc-pillars" style="width:100%; margin-top:6px;">
-        {% for k, v in ts.pillars.items() %}
-        <tr><td style="width:38%">{{ k }}</td>
-          <td><div class="tcc-bar"><i data-pillar-bar="{{ k }}" style="width:{{ v }}%; background:{{ '#1a7f37' if v>=80 else ('#9a6700' if v>=65 else '#cf222e') }}"></i></div></td>
-          <td data-pillar-val="{{ k }}" style="width:30px;text-align:right;font-weight:700">{{ v }}</td></tr>
-        {% endfor %}
-      </table>
-      {% set c = data.overview.compliance %}
-      <div class="tcc-muted tcc-link" style="margin-top:8px;" onclick="event.stopPropagation();tccCompliance()" title="All attestations">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
-        {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant · <b>details →</b></div>
-    </div>
-
-    <div class="tcc-card tcc-link" onclick="tccCost()" title="Cost explorer">
-      <h3>💰 AI cost <span class="tcc-muted">details →</span></h3>
-      {% set cost = data.overview.cost_7d %}
-      <div style="font-size:26px;font-weight:800;">$<span id="tcc-cost-usd">{{ '%.4f'|format(cost.usd_7d|default(0)|float) }}</span><span style="font-size:12px;color:var(--fg-muted)"> · last 7d</span></div>
-      <div class="tcc-muted"><span id="tcc-cost-calls">{{ cost.calls_7d|default(0) }}</span> LLM calls · ${{ '%.4f'|format(cost.usd_24h|default(0)|float) }} last 24h · instrumented {{ cost.instrumented_since|default('—') }}</div>
-    </div>
-
-    <div class="tcc-card tcc-link" onclick="tccAvailability()" title="Availability / health detail">
-      <h3>🟢 Availability <span class="tcc-muted">details →</span></h3>
-      {% set av = data.availability %}
-      <div style="font-size:26px;font-weight:800;"><span id="tcc-avail-pct">{{ av.overall_pct if av.overall_pct is not none else '—' }}</span><span style="font-size:12px;color:var(--fg-muted)">% live agents healthy</span></div>
-      <div class="tcc-muted">{% for a in av.agents %}{{ a.name|default(a.id) }}: <b>{{ a.status }}</b>{% if not loop.last %} · {% endif %}{% endfor %}</div>
-    </div>
-
-    <div class="tcc-card tcc-link" onclick="tccLexicon()" title="Lexicon / canonical glossary">
-      {% set lx = data.lexicon %}
-      <h3>📖 Lexicon <span class="tcc-muted">details →</span></h3>
-      <div style="font-size:26px;font-weight:800;">
-        <span id="tcc-lex-status" style="color:{{ 'var(--ok,#36d399)' if (lx.blocking|default(0)) == 0 else 'var(--bad,#f87272)' }}">{{ 'CLEAN' if (lx.blocking|default(0)) == 0 else 'DRIFT' }}</span>
-        <span style="font-size:12px;color:var(--fg-muted)"> · GOALS-Lexicon</span>
-      </div>
-      <div class="tcc-muted"><span id="tcc-lex-terms">{{ lx.term_count|default(0) }}</span> canonical terms · {{ lx.forbidden_count|default(0) }} forbidden · <span id="tcc-lex-viol">{{ lx.violations|default(0) }}</span> violations across {{ lx.artifacts_scanned|default(0) }} artifacts</div>
-    </div>
-
-    <div class="tcc-card">
-      <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-muted"></span></h3>
-      <div id="tcc-approvals">
-        {% set pend = data.controls.pending_approvals %}
-        {% if pend %}{% for p in pend %}
-        <div class="tcc-agent">
-          <div><div class="an">{{ p.action }}</div><div class="ap">{{ p.entity_type }}:{{ p.entity_id }}</div></div>
-          <div class="tcc-row">
-            <button class="tcc-btn resume" onclick="tccApprove('{{ p.request_id }}','approved')">Approve</button>
-            <button class="tcc-btn pause" onclick="tccApprove('{{ p.request_id }}','rejected')">Reject</button>
+      <div class="tcc-panel tcc-sec">
+        <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-mut"></span></h3>
+        <div id="tcc-approvals">
+          {% set pend = data.controls.pending_approvals %}
+          {% if pend %}{% for p in pend %}
+          <div class="tcc-agent">
+            <div style="min-width:0;"><div class="an">{{ p.action }}</div><div class="ap">{{ p.entity_type }}:{{ p.entity_id }}</div></div>
+            <div class="tcc-row">
+              <button class="tcc-btn resume" onclick="tccApprove('{{ p.request_id }}','approved')">Approve</button>
+              <button class="tcc-btn pause" onclick="tccApprove('{{ p.request_id }}','rejected')">Reject</button>
+            </div>
           </div>
+          {% endfor %}{% else %}<div class="tcc-mut">No pending approvals.</div>{% endif %}
         </div>
-        {% endfor %}{% else %}<div class="tcc-muted">No pending approvals.</div>{% endif %}
       </div>
-    </div>
 
-    <div class="tcc-card">
-      <h3>❄️ Capability controls</h3>
-      <div class="tcc-row">
-        <input id="tcc-cap" class="tcc-input" placeholder="capability_id">
-        <button class="tcc-btn pause" onclick="tccFreeze()">Freeze</button>
-        <button class="tcc-btn resume" onclick="tccUnfreeze()">Unfreeze</button>
+      <div class="tcc-panel tcc-sec">
+        <h3>❄️ Capability controls</h3>
+        <div class="tcc-row">
+          <input id="tcc-cap" class="tcc-input" placeholder="capability_id">
+          <button class="tcc-btn pause" onclick="tccFreeze()">Freeze</button>
+          <button class="tcc-btn resume" onclick="tccUnfreeze()">Unfreeze</button>
+        </div>
+        {% set ac = data.controls.active_controls %}
+        <div class="tcc-mut" style="margin-top:8px;">{{ ac|length }} active control(s).</div>
       </div>
-      {% set ac = data.controls.active_controls %}
-      <div class="tcc-muted" style="margin-top:8px;">{{ ac|length }} active control(s).</div>
-    </div>
 
-    <div class="tcc-card">
-      <h3>🧾 Live audit</h3>
-      <div id="tcc-audit" class="tcc-muted">loading…</div>
-      <button class="tcc-btn" style="margin-top:8px;" onclick="tccAudit()">Open audit explorer →</button>
-      <div class="tcc-muted" style="margin-top:8px;">JSON:
-        <a href="/admin/trust/snapshot.json">snapshot</a> ·
-        <a href="/admin/trust/layers.json">layers</a> ·
-        <a href="/admin/trust/live.json">live</a></div>
+      <div class="tcc-panel tcc-sec">
+        <h3>🧾 Live audit</h3>
+        <div id="tcc-audit" class="tcc-mut">loading…</div>
+        <button class="tcc-btn" style="margin-top:10px;" onclick="tccAudit()">Open audit explorer →</button>
+        <div class="tcc-mut" style="margin-top:10px;">JSON:
+          <a href="/admin/trust/snapshot.json">snapshot</a> ·
+          <a href="/admin/trust/scorecard.json">scorecard</a> ·
+          <a href="/admin/trust/live.json">live</a></div>
+      </div>
     </div>
   </div>
 </div>
 
 <div class="tcc-overlay" id="tcc-overlay" onclick="if(event.target===this)tccClose()">
   <div class="tcc-modal">
-    <h3><span id="tcc-modal-title">Detail</span><span class="tcc-x" onclick="tccClose()">×</span></h3>
-    <div class="tcc-body" id="tcc-modal-body">loading…</div>
+    <div class="head"><span class="t" id="tcc-modal-title">Detail</span><span class="tcc-x" onclick="tccClose()">×</span></div>
+    <div class="tcc-mbody" id="tcc-modal-body">loading…</div>
   </div>
 </div>
 
 <script>
-function tccEsc(s){ return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function tccEsc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function tccClose(){ document.getElementById('tcc-overlay').classList.remove('open'); }
 function tccShow(title, html){
-  document.getElementById('tcc-modal-title').textContent = title;
+  document.getElementById('tcc-modal-title').innerHTML = title;
   document.getElementById('tcc-modal-body').innerHTML = html;
   document.getElementById('tcc-overlay').classList.add('open');
 }
 document.addEventListener('keydown', e => { if(e.key==='Escape') tccClose(); });
 async function tccJSON(url){ const r=await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
+
+function tccPill(text, kind){ return '<span class="pill '+(kind||'muted')+'">'+tccEsc(text)+'</span>'; }
+function tccStat(label, value, kind){ return '<div class="stat '+(kind||'')+'"><div class="sl">'+tccEsc(label)+'</div><div class="sv">'+value+'</div></div>'; }
+function tccStatRow(items){ return '<div class="statrow">'+items.map(i=>tccStat(i.label,i.value,i.kind)).join('')+'</div>'; }
+function tccBar(v){ v=Number(v)||0; const col=v>=80?'#1a7f37':(v>=65?'#9a6700':'#cf222e');
+  return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:90px;height:8px;border-radius:4px;background:#eef1f4;overflow:hidden"><i style="display:block;height:100%;width:'+v+'%;background:'+col+'"></i></div><b style="width:30px;text-align:right">'+v+'</b></div>'; }
+function tccScoreColor(ov){ return ov>=85?'#2ecf78':(ov>=70?'#39d3ff':(ov>=50?'#e3b341':'#ff5d6c')); }
+function tccBand(ov){ return ov>=85?'STRONG':(ov>=70?'GOOD':(ov>=50?'FAIR':'WEAK')); }
+
 function tccTable(rows, cols, opts){
   opts=opts||{};
-  if(!rows||!rows.length) return '<p class="tcc-muted">none</p>';
-  let h='<table class="tcc-dtable"><tr>'+cols.map(c=>'<th>'+tccEsc(c.h)+'</th>').join('')+'</tr>';
+  if(!rows||!rows.length) return '<p class="tcc-mut2">none</p>';
+  let h='<table class="tcc-dtable"><thead><tr>'+cols.map(c=>'<th>'+tccEsc(c.h)+'</th>').join('')+'</tr></thead><tbody>';
   rows.forEach(r=>{
     const click = opts.onrow && r[opts.onrow] ? ' class="click" onclick="'+opts.onclick+'(\''+tccEsc(r[opts.onrow])+'\')"' : '';
-    h+='<tr'+click+'>'+cols.map(c=>'<td>'+tccEsc(c.f?c.f(r):r[c.k])+'</td>').join('')+'</tr>';
+    h+='<tr'+click+'>'+cols.map(c=>{
+      const val = c.f?c.f(r):r[c.k];
+      let cell;
+      if(c.pill){ cell = tccPill(val, c.pill(r)); }
+      else if(c.raw){ cell = (val==null?'':val); }
+      else cell = tccEsc(val);
+      return '<td>'+cell+'</td>';
+    }).join('')+'</tr>';
   });
-  return h+'</table>';
+  return h+'</tbody></table>';
 }
 const AUDIT_COLS=[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'action'},
   {h:'entity',f:r=>(r.entity_type||'')+':'+(r.entity_id||'')},{h:'corr',k:'correlation_id'}];
@@ -261,46 +391,62 @@ const AUDIT_COLS=[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'
 async function tccLayer(n){
   tccShow('Layer '+n, 'loading…');
   try{ const d=await tccJSON('/admin/trust/layer/'+n+'.json');
-    let h='<div class="tcc-kv"><div class="k">Layer</div><div>L'+d.layer+' · '+tccEsc(d.name)+' <span class="tcc-muted">('+tccEsc(d.tag)+')</span></div>';
-    h+='<div class="k">Live metric</div><div><b>'+tccEsc(d.metric.value)+'</b> '+tccEsc(d.metric.label)+'</div>';
-    h+='<div class="k">Components</div><div>'+(d.members||[]).map(tccEsc).join(', ')+'</div>';
-    h+='<div class="k">Tech stack</div><div>'+(d.tech||[]).map(t=>tccEsc(t.name)+(t.inpact?' <b>'+t.inpact+'/36·'+t.goals+'/30</b>':'')).join(' · ')+'</div></div>';
-    h+='<h4 style="margin:6px 0">Recent '+(d.events_kind==='workflow_runs'?'workflow runs':'events flowing through this layer')+'</h4>';
+    let h=tccStatRow([
+      {label:'Live metric', value:tccEsc(d.metric.value)+' <span class="tcc-mut2" style="font-size:12px">'+tccEsc(d.metric.label)+'</span>'},
+      {label:'Components', value:(d.members||[]).length},
+      {label:'Tech in stack', value:(d.tech||[]).length}]);
+    h+='<div class="tcc-kv"><div class="k">Layer</div><div>L'+d.layer+' · '+tccEsc(d.name)+' '+tccPill(d.tag,'muted')+'</div>';
+    h+='<div class="k">Components</div><div>'+(d.members||[]).map(tccEsc).join(', ')+'</div></div>';
+    h+='<h4>Tech stack</h4><div class="tcc-chips-l">'+(d.tech||[]).map(t=>'<span class="c">'+tccEsc(t.name)+(t.inpact?' <b>'+t.inpact+'/36·'+t.goals+'/30</b>':'')+'</span>').join('')+'</div>';
+    h+='<h4>Recent '+(d.events_kind==='workflow_runs'?'workflow runs':'events flowing through this layer')+'</h4>';
     h+= d.events_kind==='workflow_runs'
-      ? tccTable(d.recent_events,[{h:'run',k:'run_id'},{h:'capability',k:'capability_id'},{h:'status',k:'status'},{h:'ms',k:'duration_ms'},{h:'started',k:'started_at'}])
+      ? tccTable(d.recent_events,[{h:'run',k:'run_id'},{h:'capability',k:'capability_id'},{h:'status',k:'status',pill:r=>(r.status==='completed'?'ok':(r.status==='failed'?'bad':'muted'))},{h:'ms',k:'duration_ms'},{h:'started',k:'started_at'}])
       : tccTable(d.recent_events, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
-    tccShow('Layer '+d.layer+': '+d.name, h);
-  }catch(e){ tccShow('Layer '+n, '<p class="tcc-muted">failed: '+e+'</p>'); }
+    tccShow('L'+d.layer+' · '+tccEsc(d.name), h);
+  }catch(e){ tccShow('Layer '+n, '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccAgentDetail(id){
   tccShow('Agent', 'loading…');
   try{ const d=await tccJSON('/admin/trust/agent/'+encodeURIComponent(id)+'.json');
-    const a=d.attestation||{}, hb=d.heartbeat||{};
-    let h='<div class="tcc-kv">';
+    const a=d.attestation||{}, hb=d.heartbeat||{}, tr=d.trust||{};
+    let h=tccStatRow([
+      {label:'State', value: d.paused?tccPill('paused','paused'):tccPill('live','live')},
+      {label:'Runtime trust', value: (tr.trust_score!=null? tr.trust_score+'<small style="font-size:12px;color:#57606a"> '+tccEsc(tr.band||'')+'</small>':'—'), kind:(tr.trust_score>=85?'ok':(tr.trust_score>=70?'info':(tr.trust_score!=null?'warn':'')))},
+      {label:'Attestation', value: a.verdict?tccPill(a.verdict,a.verdict):'—'},
+      {label:'Risk', value: tccEsc(a.risk_level||'—')}]);
+    h+='<div class="tcc-kv">';
     h+='<div class="k">Agent</div><div>'+tccEsc(d.name||id)+'</div>';
     h+='<div class="k">Autonomy policy</div><div><code>'+tccEsc(d.autonomy_policy)+'</code></div>';
-    h+='<div class="k">State</div><div>'+(d.paused?'<b style="color:#cf222e">PAUSED</b>'+(d.global_paused?' (global)':''):'<b style="color:#1a7f37">live</b>')+'</div>';
-    if(d.pause_meta){ h+='<div class="k">Pause by</div><div>'+tccEsc(d.pause_meta.by)+' — '+tccEsc(d.pause_meta.reason)+' @ '+tccEsc(d.pause_meta.at)+'</div>'; }
     h+='<div class="k">Entrypoint</div><div><code>'+tccEsc(d.entrypoint)+'</code></div>';
-    if(a.verdict){ h+='<div class="k">Attestation</div><div>'+tccEsc(a.verdict)+' · risk '+tccEsc(a.risk_level)+' · INPACT '+a.inpact_satisfied+'/6 · GOALS '+a.goals_satisfied+'/5</div>'; }
-    if(d.trust){ h+='<div class="k">Runtime trust</div><div><b>'+d.trust.trust_score+'/100</b> '+tccEsc(d.trust.band)+' — '+Object.entries(d.trust.components||{}).map(function(e){return e[0]+' '+Math.round(e[1]*100)+'%';}).join(' · ')+'</div>'; }
+    if(a.verdict){ h+='<div class="k">INPACT / GOALS</div><div>'+a.inpact_satisfied+'/6 · '+a.goals_satisfied+'/5</div>'; }
+    if(d.pause_meta){ h+='<div class="k">Paused by</div><div>'+tccEsc(d.pause_meta.by)+' — '+tccEsc(d.pause_meta.reason)+' @ '+tccEsc(d.pause_meta.at)+'</div>'; }
     if(Object.keys(hb).length){ h+='<div class="k">Last run</div><div>'+tccEsc(hb.status||hb.reason||'')+' '+tccEsc(hb.finished_at||hb.started_at||'')+(hb.total_responded!=null?(' · responded '+hb.total_responded):'')+'</div>'; }
-    h+='<div class="k">Rollback</div><div class="tcc-muted">'+tccEsc(d.rollback_plan)+'</div></div>';
-    h+='<h4 style="margin:6px 0">Recent audit for this agent</h4>'+tccTable(d.recent_audit, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
-    tccShow('Agent: '+(d.name||id), h);
-  }catch(e){ tccShow('Agent', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    h+='<div class="k">Rollback</div><div class="tcc-mut2">'+tccEsc(d.rollback_plan)+'</div></div>';
+    if(tr.components){
+      const cr=Object.entries(tr.components).map(e=>({comp:e[0], pct:Math.round(e[1]*100)}));
+      h+='<h4>Runtime trust components</h4>'+tccTable(cr,[{h:'component',k:'comp'},{h:'score',raw:true,f:r=>tccBar(r.pct)}]);
+    }
+    h+='<h4>Recent audit for this agent</h4>'+tccTable(d.recent_audit, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
+    tccShow(tccEsc(d.name||id), h);
+  }catch(e){ tccShow('Agent', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccCompliance(){
   tccShow('TBI Compliance', 'loading…');
   try{ const d=await tccJSON('/admin/trust/compliance.json');
-    let h='<p>'+d.total+' attestations · <b style="color:#1a7f37">'+d.counts.compliant+'</b> compliant · <b style="color:#9a6700">'+d.counts.conditional+'</b> conditional · <b style="color:#cf222e">'+d.counts.non_compliant+'</b> non-compliant · framework <code>'+tccEsc(d.framework_version)+'</code></p>';
-    h+=tccTable(d.items,[{h:'artifact',k:'artifact_id'},{h:'kind',k:'kind'},{h:'verdict',k:'verdict'},
-      {h:'risk',k:'risk_level'},{h:'INPACT',f:r=>r.inpact_satisfied+'/6'},{h:'GOALS',f:r=>r.goals_satisfied+'/5'},
+    let h=tccStatRow([
+      {label:'Attestations', value:d.total},
+      {label:'Compliant', value:d.counts.compliant, kind:'ok'},
+      {label:'Conditional', value:d.counts.conditional, kind:'warn'},
+      {label:'Non-compliant', value:d.counts.non_compliant, kind:(d.counts.non_compliant?'bad':'ok')}]);
+    h+='<p class="tcc-mut2">Framework <code>'+tccEsc(d.framework_version)+'</code></p>';
+    h+=tccTable(d.items,[{h:'artifact',k:'artifact_id'},{h:'kind',k:'kind'},
+      {h:'verdict',k:'verdict',pill:r=>r.verdict},{h:'risk',k:'risk_level'},
+      {h:'INPACT',f:r=>r.inpact_satisfied+'/6'},{h:'GOALS',f:r=>r.goals_satisfied+'/5'},
       {h:'layers',f:r=>(r.layers||[]).join(',')}]);
-    tccShow('TBI Compliance — '+d.total+' artifacts', h);
-  }catch(e){ tccShow('TBI Compliance', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    tccShow('TBI Compliance '+tccPill(d.total+' artifacts','info'), h);
+  }catch(e){ tccShow('TBI Compliance', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccCost(){
@@ -308,76 +454,87 @@ async function tccCost(){
   try{ const d=await tccJSON('/admin/trust/cost.json');
     const bm=Object.entries(d.by_model||{}).map(([k,v])=>({k:k,v:v}));
     const bs=Object.entries(d.by_source||{}).map(([k,v])=>({k:k,v:v}));
-    let h='<p><b style="font-size:18px">$'+(d.total_usd||0).toFixed(4)+'</b> over last '+d.days+'d · '+d.calls+' calls · '+(d.total_tokens||0).toLocaleString()+' tokens · instrumented '+tccEsc(d.instrumented_since)+'</p>';
-    h+='<div style="display:flex;gap:18px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h4 style="margin:6px 0">By model</h4>'+tccTable(bm,[{h:'model',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div>';
-    h+='<div style="flex:1;min-width:220px"><h4 style="margin:6px 0">By source</h4>'+tccTable(bs,[{h:'source',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div></div>';
-    h+='<h4 style="margin:10px 0 6px">Recent calls</h4>'+tccTable(d.recent,[{h:'time',k:'timestamp'},{h:'model',k:'model'},{h:'source',k:'source'},{h:'prompt',k:'prompt_tokens'},{h:'compl',k:'completion_tokens'},{h:'usd',f:r=>"$"+(r.usd||0).toFixed(4)}]);
-    if(!d.calls) h+='<p class="tcc-muted">No LLM calls recorded yet — the ledger fills as the system runs.</p>';
-    tccShow('AI cost — last '+d.days+'d', h);
-  }catch(e){ tccShow('AI cost', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    let h=tccStatRow([
+      {label:'Spend ('+d.days+'d)', value:'$'+(d.total_usd||0).toFixed(4)},
+      {label:'LLM calls', value:(d.calls||0).toLocaleString()},
+      {label:'Tokens', value:(d.total_tokens||0).toLocaleString()}]);
+    h+='<p class="tcc-mut2">Instrumented '+tccEsc(d.instrumented_since)+' · forward-only ledger</p>';
+    h+='<div style="display:flex;gap:18px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h4>By model</h4>'+tccTable(bm,[{h:'model',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div>';
+    h+='<div style="flex:1;min-width:220px"><h4>By source</h4>'+tccTable(bs,[{h:'source',k:'k'},{h:'usd',f:r=>"$"+(r.v||0).toFixed(4)}])+'</div></div>';
+    h+='<h4>Recent calls</h4>'+tccTable(d.recent,[{h:'time',k:'timestamp'},{h:'model',k:'model'},{h:'source',k:'source'},{h:'prompt',k:'prompt_tokens'},{h:'compl',k:'completion_tokens'},{h:'usd',f:r=>"$"+(r.usd||0).toFixed(4)}]);
+    if(!d.calls) h+='<p class="tcc-mut2">No LLM calls recorded yet — the ledger fills as the system runs.</p>';
+    tccShow('AI cost '+tccPill('last '+d.days+'d','info'), h);
+  }catch(e){ tccShow('AI cost', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccAvailability(){
   tccShow('Availability', 'loading…');
   try{ const d=await tccJSON('/admin/trust/availability.json');
     const pct = d.overall_pct==null ? '—' : d.overall_pct+'%';
-    let h='<p><b style="font-size:18px">'+pct+'</b> of '+d.monitored+' monitored agents healthy';
-    if(d.app) h+=' · app runs 24h '+(d.app.runs_24h||0)+' · fail '+(d.app.failure_rate_24h_pct||0)+'%';
-    h+='</p>'+tccTable(d.agents,[{h:'agent',f:r=>r.name||r.id},{h:'status',k:'status'},
+    let h=tccStatRow([
+      {label:'Overall healthy', value:pct, kind:(d.overall_pct>=90?'ok':(d.overall_pct!=null?'warn':''))},
+      {label:'Monitored', value:d.monitored},
+      {label:'App fail rate 24h', value:((d.app&&d.app.failure_rate_24h_pct)||0)+'%', kind:((d.app&&d.app.failure_rate_24h_pct)?'warn':'ok')}]);
+    h+=tccTable(d.agents,[{h:'agent',f:r=>r.name||r.id},{h:'status',k:'status',pill:r=>r.status},
       {h:'age',f:r=>r.age_seconds==null?'—':Math.round(r.age_seconds/60)+'m'},
       {h:'last run',k:'last_run'},{h:'detail',k:'detail'}]);
-    tccShow('Availability — '+pct, h);
-  }catch(e){ tccShow('Availability', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    tccShow('Availability '+tccPill(pct, d.overall_pct>=90?'ok':'warn'), h);
+  }catch(e){ tccShow('Availability', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccLexicon(){
   tccShow('Lexicon', 'loading…');
   try{ const d=await tccJSON('/admin/trust/lexicon.json');
-    const s=d.summary||{};
-    const ok = (s.blocking||0)===0;
-    let h='<p><b style="font-size:18px;color:'+(ok?'#1a7f37':'#cf222e')+'">'+(ok?'CLEAN':'DRIFT')+'</b> · GOALS-Lexicon · glossary v'+tccEsc(s.version)+' ('+tccEsc(s.framework_ref)+') · '
-      +(s.term_count||0)+' canonical terms · '+(s.forbidden_count||0)+' forbidden · scanned '+(s.artifacts_scanned||0)+' artifacts</p>';
+    const s=d.summary||{}; const ok=(s.blocking||0)===0;
+    let h=tccStatRow([
+      {label:'Status', value: ok?tccPill('CLEAN','clean'):tccPill((s.blocking||0)+' BLOCKING','block')},
+      {label:'Canonical terms', value:s.term_count||0},
+      {label:'Forbidden', value:s.forbidden_count||0},
+      {label:'Artifacts scanned', value:s.artifacts_scanned||0}]);
+    h+='<p class="tcc-mut2">GOALS-Lexicon · glossary v'+tccEsc(s.version)+' ('+tccEsc(s.framework_ref)+')</p>';
     if((d.violations||[]).length){
-      h+='<h4 style="margin:10px 0 6px">Violations ('+d.violations.length+')</h4>'+tccTable(d.violations,[
-        {h:'severity',k:'severity'},{h:'kind',k:'kind'},{h:'term',k:'term'},
-        {h:'suggest',f:r=>r.suggestion||'—'},{h:'file',k:'source'},{h:'context',f:r=>tccEsc(r.excerpt||'')}]);
+      h+='<h4>Violations ('+d.violations.length+')</h4>'+tccTable(d.violations,[
+        {h:'severity',k:'severity',pill:r=>r.severity==='block'?'block':'warn'},{h:'kind',k:'kind'},{h:'term',k:'term'},
+        {h:'suggest',f:r=>r.suggestion||'—'},{h:'file',k:'source'},{h:'context',f:r=>r.excerpt||''}]);
     } else {
-      h+='<p class="tcc-muted">No terminology drift across the AI fleet — every artifact uses the canonical vocabulary.</p>';
+      h+='<p style="margin:12px 0"><span class="pill clean">CLEAN</span> No terminology drift across the AI fleet — every artifact uses the canonical vocabulary.</p>';
     }
-    h+='<h4 style="margin:12px 0 6px">Canonical glossary</h4>'+tccTable(d.terms,[
-      {h:'term',f:r=>r.term+(r.abbr?(' ('+tccEsc(r.abbr)+')'):'')},{h:'definition',f:r=>tccEsc(r.definition||'')},
-      {h:'aliases→drift',f:r=>(r.aliases||[]).join(', ')||'—'}]);
-    h+='<h4 style="margin:12px 0 6px">Forbidden terms</h4>'+tccTable(d.forbidden,[
-      {h:'term',k:'term'},{h:'why blocked',f:r=>tccEsc(r.reason||'')}]);
-    tccShow('Lexicon — '+(ok?'clean':((s.blocking||0)+' blocking')), h);
-  }catch(e){ tccShow('Lexicon', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    h+='<h4>Canonical glossary</h4>'+tccTable(d.terms,[
+      {h:'term',f:r=>r.term+(r.abbr?(' ('+r.abbr+')'):'')},{h:'definition',f:r=>r.definition||''},
+      {h:'aliases → drift',f:r=>(r.aliases||[]).join(', ')||'—'}]);
+    h+='<h4>Forbidden terms</h4>'+tccTable(d.forbidden,[{h:'term',k:'term'},{h:'why blocked',f:r=>r.reason||''}]);
+    tccShow('Lexicon '+(ok?tccPill('clean','clean'):tccPill((s.blocking||0)+' blocking','block')), h);
+  }catch(e){ tccShow('Lexicon', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccScorecard(){
   tccShow('Trust score', 'loading…');
   try{ const d=await tccJSON('/admin/trust/scorecard.json');
-    let h='<p><b style="font-size:20px">'+d.overall+'</b>/100 · <span class="tcc-muted">'+tccEsc(d.source)+(d.generated_at?(' · updated '+tccEsc(d.generated_at)):'')+'</span></p>';
-    const rows=Object.entries(d.pillars||{}).map(function(e){
-      return {pillar:e[0], score:e[1], weight:Math.round(((d.weights||{})[e[0]]||0)*100)+'%', basis:(d.components||{})[e[0]]||''};});
-    h+='<h4 style="margin:8px 0 6px">Live pillars (measured signals)</h4>'+tccTable(rows,[
-      {h:'pillar',k:'pillar'},{h:'score',k:'score'},{h:'weight',k:'weight'},{h:'basis',f:r=>tccEsc(r.basis)}]);
+    let h=tccStatRow([
+      {label:'Overall', value:d.overall+'<small style="font-size:13px;color:#57606a"> /100 '+tccEsc(tccBand(d.overall))+'</small>', kind:(d.overall>=85?'ok':(d.overall>=70?'info':'warn'))},
+      {label:'Source', value: tccPill(d.source,'info')},
+      {label:'Pillars live', value:Object.keys(d.pillars||{}).length}]);
+    if(d.generated_at) h+='<p class="tcc-mut2">Updated '+tccEsc(d.generated_at)+'</p>';
+    const rows=Object.entries(d.pillars||{}).map(e=>({pillar:e[0], score:e[1], weight:Math.round(((d.weights||{})[e[0]]||0)*100)+'%', basis:(d.components||{})[e[0]]||''}));
+    h+='<h4>Live pillars (measured signals)</h4>'+tccTable(rows,[
+      {h:'pillar',k:'pillar'},{h:'score',raw:true,f:r=>tccBar(r.score)},{h:'weight',k:'weight'},{h:'basis',f:r=>r.basis}]);
     if(d.baseline){ const b=d.baseline;
-      const br=Object.entries(b.pillars||{}).map(function(e){return {pillar:e[0],score:e[1]};});
-      h+='<h4 style="margin:12px 0 6px">2026-06-20 audit baseline</h4>'
-        +'<p class="tcc-muted">overall '+b.overall+'/100 — the qualitative dimensions (security, privacy, business impact) remain a separate periodic human audit, not yet live-measured.</p>'
-        +tccTable(br,[{h:'pillar',k:'pillar'},{h:'audit score',k:'score'}]);
+      const br=Object.entries(b.pillars||{}).map(e=>({pillar:e[0],score:e[1]}));
+      h+='<h4>2026-06-20 audit baseline</h4>'
+        +'<p class="tcc-mut2">overall '+b.overall+'/100 — the qualitative dimensions (security, privacy, business impact) remain a separate periodic human audit, not yet live-measured.</p>'
+        +tccTable(br,[{h:'pillar',k:'pillar'},{h:'audit score',raw:true,f:r=>tccBar(r.score)}]);
     }
-    tccShow('Trust score — '+d.overall+'/100 ('+tccEsc(d.source)+')', h);
-  }catch(e){ tccShow('Trust score', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    tccShow('Trust score '+tccPill(d.overall+'/100','info'), h);
+  }catch(e){ tccShow('Trust score', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 function tccAudit(){
-  let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
-    +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
-    +'<input id="aud-actor" class="tcc-input sm" placeholder="actor">'
-    +'<input id="aud-days" class="tcc-input sm" placeholder="days" value="7">'
-    +'<button class="tcc-btn" onclick="tccAuditLoad()">Search</button></div>'
-    +'<div id="aud-result" class="tcc-muted">Search to load. Click a row to replay its correlation chain.</div>';
+  let h='<div class="statrow" style="margin-bottom:12px"><div class="tcc-row" style="flex:1;gap:8px;flex-wrap:wrap">'
+    +'<input id="aud-action" class="tcc-input" style="max-width:150px" placeholder="action">'
+    +'<input id="aud-actor" class="tcc-input" style="max-width:150px" placeholder="actor">'
+    +'<input id="aud-days" class="tcc-input" style="max-width:90px" placeholder="days" value="7">'
+    +'<button class="tcc-btn resume" onclick="tccAuditLoad()">Search</button></div></div>'
+    +'<div id="aud-result" class="tcc-mut2">Search to load. Click a row to replay its correlation chain.</div>';
   tccShow('Audit explorer', h);
 }
 async function tccAuditLoad(){
@@ -388,36 +545,28 @@ async function tccAuditLoad(){
   q.set('limit','150');
   const res=document.getElementById('aud-result'); res.textContent='loading…';
   try{ const d=await tccJSON('/admin/trust/audit.json?'+q.toString());
-    res.innerHTML='<p class="tcc-muted">'+(d.recent.length)+' rows</p>'+tccTable(d.recent, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
-  }catch(e){ res.innerHTML='<p class="tcc-muted">failed: '+e+'</p>'; }
+    res.innerHTML='<p class="tcc-mut2">'+(d.recent.length)+' rows</p>'+tccTable(d.recent, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
+  }catch(e){ res.innerHTML='<p class="tcc-mut2">failed: '+e+'</p>'; }
 }
 async function tccReplay(cid){
   if(!cid) return;
   tccShow('Replay '+cid, 'loading…');
   try{ const d=await tccJSON('/admin/trust/audit/replay.json?correlation_id='+encodeURIComponent(cid));
-    tccShow('Correlation chain · '+cid, '<p class="tcc-muted">'+d.chain.length+' linked actions</p>'+tccTable(d.chain,[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'action'},{h:'entity',f:r=>(r.entity_type||'')+':'+(r.entity_id||'')}]));
-  }catch(e){ tccShow('Replay', '<p class="tcc-muted">failed: '+e+'</p>'); }
+    tccShow('Correlation chain '+tccPill(d.chain.length+' actions','info'), tccTable(d.chain,[{h:'time',k:'timestamp'},{h:'actor',k:'actor'},{h:'action',k:'action'},{h:'entity',f:r=>(r.entity_type||'')+':'+(r.entity_id||'')}]));
+  }catch(e){ tccShow('Replay', '<p class="tcc-mut2">failed: '+e+'</p>'); }
 }
 
 async function tccPost(url, body){
-  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body||{})});
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
   if(!r.ok){ alert('Action failed: '+r.status); return null; }
   return r.json();
 }
 async function tccGlobal(pause){
   if(pause && !confirm('Pause ALL AI autonomy? The live workers will stop on their next tick.')) return;
-  await tccPost('/admin/trust/control/global/'+(pause?'pause':'resume'), {});
-  location.reload();
+  await tccPost('/admin/trust/control/global/'+(pause?'pause':'resume'), {}); location.reload();
 }
-async function tccAgent(id, action){
-  await tccPost('/admin/trust/control/agent/'+id+'/'+action, {});
-  location.reload();
-}
-async function tccApprove(id, decision){
-  await tccPost('/admin/trust/control/approval/'+id+'/decide', {decision:decision});
-  location.reload();
-}
+async function tccAgent(id, action){ await tccPost('/admin/trust/control/agent/'+id+'/'+action, {}); location.reload(); }
+async function tccApprove(id, decision){ await tccPost('/admin/trust/control/approval/'+id+'/decide', {decision:decision}); location.reload(); }
 async function tccFreeze(){
   const c=document.getElementById('tcc-cap').value.trim(); if(!c) return;
   if(!confirm('Freeze '+c+'? It cannot run until unfrozen.')) return;
@@ -427,47 +576,42 @@ async function tccUnfreeze(){
   const c=document.getElementById('tcc-cap').value.trim(); if(!c) return;
   await tccPost('/admin/trust/control/unfreeze/'+encodeURIComponent(c), {}); location.reload();
 }
-// Live poll — refresh per-layer metrics + audit ticker every 5s (no reload).
+
+// ── Live poll every 5s (no reload) ──
+function tccRing(ov){
+  const C=339.292, f=Math.max(0,Math.min(100,ov))/100*C, col=tccScoreColor(ov);
+  const fg=document.getElementById('tcc-ring-fg'); if(fg){ fg.style.strokeDasharray=f.toFixed(2)+' '+C; fg.style.stroke=col; }
+  const n=document.getElementById('tcc-score-overall'); if(n) n.textContent=ov;
+  const b=document.getElementById('tcc-score-band'); if(b){ b.textContent=tccBand(ov); b.style.color=col; }
+}
 async function tccPoll(){
   try{
     const r = await fetch('/admin/trust/live.json'); if(!r.ok) return;
-    const d = await r.json();
+    const d = await r.json(); const ct = d.counters||{};
     (d.layers||[]).forEach(L=>{
       const mv=document.querySelector('[data-metric="'+L.layer+'"]');
       const ml=document.querySelector('[data-metric-label="'+L.layer+'"]');
       if(mv) mv.textContent = L.metric.value;
       if(ml) ml.textContent = L.metric.label;
+      const row=document.querySelector('.tcc-layer[data-layer="'+L.layer+'"]');
+      if(row){ row.classList.remove('ok','warn'); if(L.metric.status) row.classList.add(L.metric.status); }
     });
+    if(ct.trust_score && ct.trust_score.overall!=null) tccRing(ct.trust_score.overall|0);
     const au=document.getElementById('tcc-audit');
-    if(au) au.textContent = (d.counters && d.counters.audit_24h!=null)
-      ? (d.counters.audit_24h+' audit events in last 24h') : '—';
-    if(d.counters && d.counters.cost){
-      const cu=document.getElementById('tcc-cost-usd'); if(cu && d.counters.cost.usd_7d!=null) cu.textContent=Number(d.counters.cost.usd_7d).toFixed(4);
-      const cc=document.getElementById('tcc-cost-calls'); if(cc && d.counters.cost.calls_7d!=null) cc.textContent=d.counters.cost.calls_7d;
+    if(au) au.textContent = (ct.audit_24h!=null) ? (ct.audit_24h+' audit events in last 24h') : '—';
+    const ak=document.getElementById('tcc-kpi-audit'); if(ak && ct.audit_24h!=null) ak.textContent=ct.audit_24h;
+    if(ct.cost){
+      const cu=document.getElementById('tcc-kpi-cost'); if(cu && ct.cost.usd_7d!=null) cu.textContent=Number(ct.cost.usd_7d).toFixed(2);
+      const cc=document.getElementById('tcc-kpi-cost-calls'); if(cc && ct.cost.calls_7d!=null) cc.textContent=ct.cost.calls_7d;
     }
-    if(d.counters && d.counters.availability){
-      const ap=document.getElementById('tcc-avail-pct');
-      if(ap && d.counters.availability.overall_pct!=null) ap.textContent=d.counters.availability.overall_pct;
+    if(ct.availability){ const ap=document.getElementById('tcc-kpi-avail'); if(ap && ct.availability.overall_pct!=null) ap.textContent=ct.availability.overall_pct; }
+    if(ct.lexicon){
+      const lx=ct.lexicon, ok=(lx.blocking||0)===0;
+      const ls=document.getElementById('tcc-kpi-lex'); if(ls && lx.blocking!=null){ ls.textContent=ok?'CLEAN':'DRIFT'; ls.style.color=ok?'#2ecf78':'#ff5d6c'; }
+      const lt=document.getElementById('tcc-kpi-lex-terms'); if(lt && lx.term_count!=null) lt.textContent=lx.term_count;
+      const lv=document.getElementById('tcc-kpi-lex-viol'); if(lv && lx.violations!=null) lv.textContent=lx.violations;
     }
-    if(d.counters && d.counters.lexicon){
-      const lx=d.counters.lexicon;
-      const ls=document.getElementById('tcc-lex-status');
-      if(ls && lx.blocking!=null){ const ok=(lx.blocking||0)===0; ls.textContent=ok?'CLEAN':'DRIFT'; ls.style.color=ok?'var(--ok,#36d399)':'var(--bad,#f87272)'; }
-      const lt=document.getElementById('tcc-lex-terms'); if(lt && lx.term_count!=null) lt.textContent=lx.term_count;
-      const lv=document.getElementById('tcc-lex-viol'); if(lv && lx.violations!=null) lv.textContent=lx.violations;
-    }
-    if(d.counters && d.counters.trust_score){
-      const ts=d.counters.trust_score;
-      const so=document.getElementById('tcc-score-overall'); if(so && ts.overall!=null) so.textContent=ts.overall;
-      Object.entries(ts.pillars||{}).forEach(function(e){
-        const bar=document.querySelector('[data-pillar-bar="'+e[0]+'"]');
-        const val=document.querySelector('[data-pillar-val="'+e[0]+'"]');
-        if(bar){ bar.style.width=e[1]+'%'; bar.style.background=(e[1]>=80?'#1a7f37':(e[1]>=65?'#9a6700':'#cf222e')); }
-        if(val) val.textContent=e[1];
-      });
-    }
-    const cl=document.getElementById('tcc-clock');
-    if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();
+    const cl=document.getElementById('tcc-clock'); if(cl) cl.textContent='· updated '+new Date().toLocaleTimeString();
   }catch(e){}
 }
 tccPoll(); setInterval(tccPoll, 5000);
