@@ -347,7 +347,7 @@ def discover_projects(token: str) -> list[dict]:
 
 
 def _walk_project_todos(
-    proj: dict, token: str, bc_user_id: int,
+    proj: dict, token: str, bc_user_id: int, heartbeat=None,
 ) -> tuple[list[store.OpsTodo], set[int]]:
     """Pull every active + completed todo in one BC project that's relevant
     to the user.
@@ -458,6 +458,11 @@ def _walk_project_todos(
     lists = list(_paginate(
         f"/buckets/{bucket}/todosets/{ts_id}/todolists.json", token))
     for lst in lists:
+        # Heartbeat per todolist so a long walk (a 600-list project) keeps its
+        # coordinator slot alive instead of being pre-empted at the TTL into a
+        # wasteful parallel walk — the 2026-06-22 mega-project hardening.
+        if heartbeat:
+            heartbeat()
         lst_id = lst.get("id")
         lst_name = lst.get("name") or "?"
         if not lst_id:
@@ -568,9 +573,12 @@ def pull_todos_for_project(user_id: str, project_id: int) -> dict:
         try:
             # Bound the focused walk: a sustained 522 storm can't stretch it
             # past PROJECT_SYNC_BUDGET_SECONDS (it then fails fast and converges
-            # next view), so it can't outlive the coordinator lock TTL.
+            # next view), so it can't outlive the coordinator lock TTL. The
+            # heartbeat keeps the slot alive for a long-but-healthy walk (a
+            # 600-list project) so it isn't pre-empted into a parallel walk.
             with _walk_deadline(PROJECT_SYNC_BUDGET_SECONDS):
-                fresh_todos, seen_active_ids = _walk_project_todos(proj, token, bc_user_id)
+                fresh_todos, seen_active_ids = _walk_project_todos(
+                    proj, token, bc_user_id, heartbeat=lambda: coord.heartbeat(user_id))
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
             _record_error(user_id, f"project_walk:{project_id}", err)
@@ -824,6 +832,7 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
     # gracefully when SYNC_BUDGET_SECONDS is exceeded rather than
     # letting one runaway sync hold the coordinator slot for hours.
     sync_start = time.time()
+    coord = sync_coordinator.get_coordinator()  # for per-todolist heartbeats
     projects_walked = 0
     budget_exceeded = False
     # bucket -> set of todo ids BC returned as active, for buckets we walked
@@ -866,7 +875,8 @@ def _pull_todos_for_user_inner(user_id: str, ali_legacy_bucket: int | None) -> d
             # can't blow the whole sweep's budget or outlive the lock TTL.
             _remaining = SYNC_BUDGET_SECONDS - (time.time() - sync_start)
             with _walk_deadline(min(PROJECT_SYNC_BUDGET_SECONDS, max(5.0, _remaining))):
-                walked_todos, seen_active_ids = _walk_project_todos(proj, token, classify_id)
+                walked_todos, seen_active_ids = _walk_project_todos(
+                    proj, token, classify_id, heartbeat=lambda: coord.heartbeat(user_id))
             fresh_todos.extend(walked_todos)
             walked_active_by_bucket[bucket] = seen_active_ids
             projects_walked += 1

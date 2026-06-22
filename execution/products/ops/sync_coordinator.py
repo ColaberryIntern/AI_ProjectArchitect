@@ -49,11 +49,19 @@ LOCK_TTL_SECONDS_DEFAULT = float(os.environ.get("OPS_SYNC_LOCK_TTL_SECONDS", "30
 
 @dataclass
 class _SyncLock:
-    """One in-flight sync. `started_at` is wall-clock seconds (time.time())."""
+    """One in-flight sync. `started_at` is wall-clock seconds (time.time()).
+    `last_progress_at` is bumped by `heartbeat()` as the walk makes progress
+    (e.g. after each todolist of a 600-list project); the TTL is measured from
+    it — falling back to `started_at` before the first heartbeat — so a long-
+    but-PROGRESSING walk isn't pre-empted, while a stalled/crashed one still
+    expires. `started_at` is preserved so `in_flight_age_seconds` still reports
+    true wall-clock age for diagnostics."""
     started_at: float
+    last_progress_at: float = 0.0
 
     def is_expired(self, ttl: float) -> bool:
-        return (time.time() - self.started_at) > ttl
+        ref = self.last_progress_at or self.started_at
+        return (time.time() - ref) > ttl
 
 
 class SyncCoordinator:
@@ -93,6 +101,25 @@ class SyncCoordinator:
         block even if try_start_sync returned False (no-op in that case)."""
         with self._guard:
             self._locks.pop(user_email, None)
+
+    def heartbeat(self, user_email: str) -> bool:
+        """Renew the in-flight sync's TTL clock for a still-PROGRESSING walk.
+        Returns True iff this caller owns an active (non-expired) slot, which
+        is then reset to 'now'.
+
+        Lets a long-but-healthy walk hold its slot — a 600-todolist project, or
+        a walk retrying through a 522 burst — while a genuinely crashed walk
+        stops heart-beating and is reclaimed after the TTL. Without it the fixed
+        start-time TTL pre-empts a legitimate long walk into a wasteful parallel
+        walk: the 2026-06-22 mega-project finding, where a 624-list walk runs
+        well past the 300s TTL. The walk calls this after each todolist (see
+        sync._walk_project_todos)."""
+        with self._guard:
+            existing = self._locks.get(user_email)
+            if existing and not existing.is_expired(self._ttl):
+                existing.last_progress_at = time.time()
+                return True
+            return False
 
     # ── status query ────────────────────────────────────────────────
 

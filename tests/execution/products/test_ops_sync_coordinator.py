@@ -53,6 +53,47 @@ class TestTryStartSync:
         coord.finish_sync("a@x.com")
         coord.finish_sync("a@x.com")  # double-finish: also fine
 
+
+class TestHeartbeat:
+    """heartbeat() keeps a long-but-PROGRESSING walk's slot alive (the
+    2026-06-22 mega-project hardening) while a crashed walk still expires."""
+
+    def test_heartbeat_renews_progressing_walk(self):
+        c = sync_coordinator.SyncCoordinator(ttl_seconds=10)
+        assert c.try_start_sync("u@x.com") is True
+        lock = c._locks["u@x.com"]
+        lock.started_at = time.time() - 8       # 8s in, ttl 10 -> still alive
+        assert c.heartbeat("u@x.com") is True   # renews last_progress_at to now
+        # Simulate much more wall-time: started_at alone would say expired, but
+        # the fresh heartbeat keeps the slot in flight.
+        lock.started_at = time.time() - 100
+        assert c.is_sync_in_flight("u@x.com") is True
+        # in_flight_age still reports TRUE wall-clock age (from started_at).
+        assert c.in_flight_age_seconds("u@x.com") >= 99
+
+    def test_heartbeat_on_no_slot_returns_false(self):
+        c = sync_coordinator.SyncCoordinator(ttl_seconds=10)
+        assert c.heartbeat("nobody@x.com") is False
+
+    def test_heartbeat_on_already_expired_slot_returns_false(self):
+        """Can't resurrect an already-expired slot — only renew a live one."""
+        c = sync_coordinator.SyncCoordinator(ttl_seconds=10)
+        assert c.try_start_sync("u@x.com") is True
+        lock = c._locks["u@x.com"]
+        lock.started_at = time.time() - 100     # expired (no heartbeat yet)
+        assert c.heartbeat("u@x.com") is False
+
+    def test_crashed_walk_still_reclaimed(self):
+        """The safety property: a walk that STOPS heart-beating (crashed) still
+        expires after the TTL, so the slot is reclaimed by the next caller."""
+        c = sync_coordinator.SyncCoordinator(ttl_seconds=10)
+        c.try_start_sync("u@x.com")
+        lock = c._locks["u@x.com"]
+        lock.started_at = time.time() - 100
+        lock.last_progress_at = time.time() - 100   # last progress 100s ago > ttl
+        assert c.is_sync_in_flight("u@x.com") is False
+        assert c.try_start_sync("u@x.com") is True   # reclaimable
+
     def test_atomic_under_concurrent_callers(self, coord):
         """Spawn 50 threads that all try to claim the same user slot
         simultaneously. EXACTLY ONE must win. If try_start_sync's
