@@ -28,11 +28,21 @@ still-active, we leave it (next sweep retries). If BC returns 400/404
 (task or its list was deleted), we mark the row `archived` so it stops
 cluttering the queue without losing the audit row.
 
-Bounded by `OPS_PURGE_CAP_PER_USER` (default 50) per run so a user with
-many active rows can't dominate the per-cron budget. Rows are checked
-oldest-`bc_updated_at`-first (preserving M6's zombie-clearing priority);
-the unswept tail rolls over to the next sweep and converges over
-successive runs.
+  (c) Archived-list todos (2026-06-22) — when a todolist is ARCHIVED in
+      BC (not deleted), its todos keep `completed:false` but flip to
+      `status:"archived"`, and the list drops out of the active
+      `todolists.json` the walk reads. So the walk can't re-reach them and
+      `completed` still reads false — they linger as phantom `active` rows.
+      `reconcile_active_row` retires them (it checks `status != "active"`),
+      but only when it actually reaches the row.
+
+Bounded by a wall-clock budget `OPS_PURGE_BUDGET_SECONDS` (default 300s),
+with `OPS_PURGE_CAP_PER_USER` (default 1000) as a safety ceiling. Rows are
+checked oldest-`bc_updated_at`-first (preserving M6's zombie-clearing
+priority); the unswept tail rolls over to the next sweep and converges over
+successive runs. The old fixed 50/run cap was far too small for a heavy
+operator (Ali: ~785 active rows across 136 projects → ~16-day sweep cycle),
+which is why the (c) phantoms survived for weeks.
 
 Scheduler integration: invoked once per `OPS_PURGE_INTERVAL_HOURS`
 (default 24) per user with a vault token. State.last_purge_at gates
@@ -42,14 +52,28 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 from . import store, sync, tokens
 
 logger = logging.getLogger(__name__)
 
-CAP_PER_USER = int(os.environ.get("OPS_PURGE_CAP_PER_USER", "50"))
+# Per-run cap is now a high safety CEILING, not the primary bound — the
+# wall-clock budget below is. The old default (50) couldn't keep up with a
+# heavy operator: Ali carries ~785 active rows across 136 projects, so at
+# 50/day the sweep needed ~16 days to reconcile each row once, and an archived
+# Basecamp todolist's phantom rows lingered in My Day for WEEKS — the
+# 2026-06-22 Gov Contracts incident (21 phantom 'active' rows from a list that
+# was archived in BC; reconcile_active_row retires them correctly, it just
+# wasn't reaching them often enough).
+CAP_PER_USER = int(os.environ.get("OPS_PURGE_CAP_PER_USER", "1000"))
 PURGE_INTERVAL_HOURS = int(os.environ.get("OPS_PURGE_INTERVAL_HOURS", "24"))
+# Wall-clock budget per user per run — the PRIMARY bound now. At the BC throttle
+# (~0.22s/call) ~785 rows sweep in ~175s; 300s leaves margin for transient
+# retries while bounding a 522 storm. Rows beyond the budget roll to the next
+# run (oldest-bc_updated_at first, so the most-stale converge first).
+PURGE_BUDGET_SECONDS = float(os.environ.get("OPS_PURGE_BUDGET_SECONDS", "300"))
 
 
 def _parse_iso(s: str) -> datetime | None:
@@ -190,8 +214,17 @@ def purge_stale_active_rows(user_id: str) -> dict:
     archived_missing = 0
     archived_trashed = 0
     errors = 0
+    budget_hit = False
 
+    purge_start = time.time()
     for t in active_rows[:CAP_PER_USER]:
+        # Wall-clock budget is the primary bound: stop before a heavy operator
+        # (or a 522 storm stretching each reconcile) blows the cron budget. The
+        # unswept tail rolls to the next run; oldest-first ordering means the
+        # most-stale phantoms are reconciled first.
+        if time.time() - purge_start > PURGE_BUDGET_SECONDS:
+            budget_hit = True
+            break
         outcome = reconcile_active_row(user_id, t, token)
         if outcome == "error":
             errors += 1
@@ -220,6 +253,7 @@ def purge_stale_active_rows(user_id: str) -> dict:
         "archived_trashed": archived_trashed,
         "errors": errors,
         "capped": len(active_rows) > CAP_PER_USER,
+        "budget_hit": budget_hit,
     }
     logger.info("ops purge: user=%s %s", user_id, result)
     return result

@@ -313,6 +313,51 @@ class TestPurgeStaleActiveRows:
         assert result["capped"] is True
         assert len(bc_calls) == 3
 
+    def test_budget_stops_sweep(self, monkeypatch):
+        """The wall-clock budget is the primary bound (2026-06-22). With a
+        per-call cost that exceeds the budget after a few rows, the sweep stops
+        and reports budget_hit; the unswept tail rolls to the next run. Without
+        this, a heavy operator's ~785 rows (or a 522 storm) could blow the cron
+        budget on one user."""
+        import types
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        monkeypatch.setattr(purge, "PURGE_BUDGET_SECONDS", 5.0)
+        monkeypatch.setattr(purge, "CAP_PER_USER", 1000)
+        store.upsert_todos("u@x.com", [
+            _todo(i, bc_updated_at=_days_ago(60 + i)) for i in range(10)
+        ])
+        clock = [1000.0]
+        # Scope the fake clock to purge only (don't patch the global time module).
+        monkeypatch.setattr(purge, "time", types.SimpleNamespace(time=lambda: clock[0]))
+        def _bc(path, *a, **kw):
+            clock[0] += 3.0   # each reconcile "costs" 3s of wall clock
+            return {"id": 0, "completed": False, "status": "active"}
+        monkeypatch.setattr(sync, "_bc_get", _bc)
+
+        result = purge.purge_stale_active_rows("u@x.com")
+        # budget 5s: row0 @0s ok(->3), row1 @3s ok(->6), row2 @6s>5 -> stop
+        assert result["checked"] == 2
+        assert result["budget_hit"] is True
+        assert result["active_found"] == 10
+
+    def test_archived_list_phantom_row_retired(self, monkeypatch):
+        """A todo whose Basecamp TODOLIST was archived keeps completed:false but
+        flips to status:'archived' and drops out of the walk's active
+        todolists.json — so it lingers as a phantom 'active' row. The purge must
+        retire it. Regression lock for the 2026-06-22 Gov Contracts incident
+        (21 phantom rows from an archived 'Multifamily Management System' list)."""
+        monkeypatch.setattr(purge.tokens, "get_user_token",
+                            MagicMock(return_value=("tok", "vault-oauth")))
+        store.upsert_todos("u@x.com", [_todo(7, bc_updated_at=_days_ago(5))])
+        # BC returns the row with status archived but completed False (the trap).
+        monkeypatch.setattr(
+            sync, "_bc_get",
+            lambda path, *a, **kw: {"id": 7, "completed": False, "status": "archived"})
+        result = purge.purge_stale_active_rows("u@x.com")
+        assert result["archived_trashed"] == 1
+        assert store.get_todo("u@x.com", 7).status == "archived"
+
     def test_bc_exception_recorded_and_other_rows_continue(self, monkeypatch):
         """One row's BC fetch raising must not abort the whole sweep.
         Other stale rows still get checked, error captured in ring buffer."""
