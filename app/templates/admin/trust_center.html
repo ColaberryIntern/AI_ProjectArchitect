@@ -148,19 +148,20 @@
       </div>
     </div>
 
-    <div class="tcc-card">
-      <h3>🛡️ Trust posture</h3>
+    <div class="tcc-card tcc-link" onclick="tccScorecard()" title="How the trust score is computed">
+      <h3>🛡️ Trust posture <span class="tcc-muted">details →</span></h3>
       {% set ts = data.overview.trust_score %}
-      <div style="font-size:30px; font-weight:800;">{{ ts.overall }}<span style="font-size:14px;color:var(--fg-muted)">/100</span></div>
+      <div style="font-size:30px; font-weight:800;"><span id="tcc-score-overall">{{ ts.overall }}</span><span style="font-size:14px;color:var(--fg-muted)">/100</span></div>
+      <div class="tcc-muted" style="font-size:11px;margin:-2px 0 4px">{{ 'live composite' if ts.source == 'live' else ts.source|default('static') }} · weighted from the signals below</div>
       <table class="tcc-pillars" style="width:100%; margin-top:6px;">
         {% for k, v in ts.pillars.items() %}
         <tr><td style="width:38%">{{ k }}</td>
-          <td><div class="tcc-bar"><i style="width:{{ v }}%; background:{{ '#1a7f37' if v>=80 else ('#9a6700' if v>=65 else '#cf222e') }}"></i></div></td>
-          <td style="width:30px;text-align:right;font-weight:700">{{ v }}</td></tr>
+          <td><div class="tcc-bar"><i data-pillar-bar="{{ k }}" style="width:{{ v }}%; background:{{ '#1a7f37' if v>=80 else ('#9a6700' if v>=65 else '#cf222e') }}"></i></div></td>
+          <td data-pillar-val="{{ k }}" style="width:30px;text-align:right;font-weight:700">{{ v }}</td></tr>
         {% endfor %}
       </table>
       {% set c = data.overview.compliance %}
-      <div class="tcc-muted tcc-link" style="margin-top:8px;" onclick="tccCompliance()" title="All attestations">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
+      <div class="tcc-muted tcc-link" style="margin-top:8px;" onclick="event.stopPropagation();tccCompliance()" title="All attestations">TBI {{ c.framework_version }} · {{ c.counts.compliant }} compliant ·
         {{ c.counts.conditional }} conditional · {{ c.counts.non_compliant }} non-compliant · <b>details →</b></div>
     </div>
 
@@ -352,6 +353,24 @@ async function tccLexicon(){
   }catch(e){ tccShow('Lexicon', '<p class="tcc-muted">failed: '+e+'</p>'); }
 }
 
+async function tccScorecard(){
+  tccShow('Trust score', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/scorecard.json');
+    let h='<p><b style="font-size:20px">'+d.overall+'</b>/100 · <span class="tcc-muted">'+tccEsc(d.source)+(d.generated_at?(' · updated '+tccEsc(d.generated_at)):'')+'</span></p>';
+    const rows=Object.entries(d.pillars||{}).map(function(e){
+      return {pillar:e[0], score:e[1], weight:Math.round(((d.weights||{})[e[0]]||0)*100)+'%', basis:(d.components||{})[e[0]]||''};});
+    h+='<h4 style="margin:8px 0 6px">Live pillars (measured signals)</h4>'+tccTable(rows,[
+      {h:'pillar',k:'pillar'},{h:'score',k:'score'},{h:'weight',k:'weight'},{h:'basis',f:r=>tccEsc(r.basis)}]);
+    if(d.baseline){ const b=d.baseline;
+      const br=Object.entries(b.pillars||{}).map(function(e){return {pillar:e[0],score:e[1]};});
+      h+='<h4 style="margin:12px 0 6px">2026-06-20 audit baseline</h4>'
+        +'<p class="tcc-muted">overall '+b.overall+'/100 — the qualitative dimensions (security, privacy, business impact) remain a separate periodic human audit, not yet live-measured.</p>'
+        +tccTable(br,[{h:'pillar',k:'pillar'},{h:'audit score',k:'score'}]);
+    }
+    tccShow('Trust score — '+d.overall+'/100 ('+tccEsc(d.source)+')', h);
+  }catch(e){ tccShow('Trust score', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
 function tccAudit(){
   let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
     +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
@@ -436,6 +455,16 @@ async function tccPoll(){
       if(ls && lx.blocking!=null){ const ok=(lx.blocking||0)===0; ls.textContent=ok?'CLEAN':'DRIFT'; ls.style.color=ok?'var(--ok,#36d399)':'var(--bad,#f87272)'; }
       const lt=document.getElementById('tcc-lex-terms'); if(lt && lx.term_count!=null) lt.textContent=lx.term_count;
       const lv=document.getElementById('tcc-lex-viol'); if(lv && lx.violations!=null) lv.textContent=lx.violations;
+    }
+    if(d.counters && d.counters.trust_score){
+      const ts=d.counters.trust_score;
+      const so=document.getElementById('tcc-score-overall'); if(so && ts.overall!=null) so.textContent=ts.overall;
+      Object.entries(ts.pillars||{}).forEach(function(e){
+        const bar=document.querySelector('[data-pillar-bar="'+e[0]+'"]');
+        const val=document.querySelector('[data-pillar-val="'+e[0]+'"]');
+        if(bar){ bar.style.width=e[1]+'%'; bar.style.background=(e[1]>=80?'#1a7f37':(e[1]>=65?'#9a6700':'#cf222e')); }
+        if(val) val.textContent=e[1];
+      });
     }
     const cl=document.getElementById('tcc-clock');
     if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();

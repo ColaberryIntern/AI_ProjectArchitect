@@ -12,12 +12,32 @@ def test_snapshot_has_all_views_and_never_raises():
     assert set(snap) >= {"executive", "operations", "governance", "audit"}
 
 
-def test_overview_scorecard_and_cost_honesty():
+def test_overview_scorecard_is_live_composite():
     ov = tc.overview()
-    assert ov["trust_score"]["overall"] == 74
-    assert "governance" in ov["trust_score"]["pillars"]
-    # Cost is now instrumented (real ledger summary), not a placeholder.
+    ts = ov["trust_score"]
+    assert ts["source"] == "live"
+    assert 0 <= ts["overall"] <= 100
+    # Pillars are now the live-measurable dimensions.
+    assert {"compliance", "lexicon"} <= set(ts["pillars"])
+    # The 2026-06-20 audit snapshot is preserved as a baseline, not deleted.
+    assert ts["baseline"]["overall"] == 74
+    # Cost is instrumented (real ledger summary), not a placeholder.
     assert "usd_7d" in ov["cost_7d"]
+
+
+def test_trust_scorecard_shape_and_renormalizes():
+    sc = tc.trust_scorecard()
+    assert {"overall", "pillars", "source", "components", "weights", "baseline"} <= set(sc)
+    for v in sc["pillars"].values():
+        assert 0 <= v <= 100
+    # overall is the weighted mean of the present pillars (renormalized) -> in-range.
+    assert 0 <= sc["overall"] <= 100
+
+
+def test_scorecard_endpoint_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/scorecard.json" in paths
 
 
 def test_tbi_compliance_summary_scans_real_attestations():

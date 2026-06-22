@@ -115,7 +115,7 @@ def overview() -> dict:
     """Executive view."""
     return {
         "view": "executive",
-        "trust_score": _AUDIT_SCORECARD,
+        "trust_score": _safe(trust_scorecard, _AUDIT_SCORECARD),
         "compliance": _safe(tbi_compliance_summary, None),
         "runtime_agents": _safe(runtime_agents_summary, None),
         "audit_7d": _safe(lambda: _audit_stats(7), None),
@@ -363,6 +363,7 @@ def live() -> dict:
             "cost": _safe(cost_summary, {}),
             "availability": _safe(availability, {}),
             "lexicon": _safe(lexicon_summary, {}),
+            "trust_score": _safe(trust_scorecard, {}),
         },
     }
 
@@ -708,3 +709,89 @@ def runtime_trust(agent_id: str, name: str | None = None) -> dict:
     return {"agent_id": agent_id, "name": name, "trust_score": score, "band": band,
             "components": {k: round(v, 3) for k, v in comps.items()},
             "incidents_30d": incidents}
+
+
+# ── Live trust scorecard (headline number, computed from real signals) ──
+# Replaces the static 2026-06-20 audit snapshot (_AUDIT_SCORECARD, kept as the
+# `baseline` field). Pillars are the dimensions we can actually measure live; the
+# qualitative audit dims (security/privacy/business_impact) live on in `baseline`
+# and remain a separate periodic human audit.
+
+_SCORECARD_WEIGHTS = {"compliance": 0.25, "reliability": 0.25,
+                      "availability": 0.20, "lexicon": 0.15, "observability": 0.15}
+
+
+def _pillar_compliance() -> float | None:
+    s = _safe(tbi_compliance_summary, None) or {}
+    counts = s.get("counts") or {}
+    total = s.get("total") or sum(counts.values())
+    if not total:
+        return None
+    good = counts.get("compliant", 0) * 1.0 + counts.get("conditional", 0) * 0.9
+    return max(0.0, min(100.0, 100.0 * good / total))
+
+
+def _pillar_reliability() -> float | None:
+    agents = (_safe(runtime_agents_summary, {}) or {}).get("agents", []) or []
+    scores = [(_safe(lambda a=a: runtime_trust(a.get("id"), a.get("name")), {}) or {}).get("trust_score")
+              for a in agents]
+    scores = [s for s in scores if isinstance(s, (int, float))]
+    return round(sum(scores) / len(scores), 1) if scores else None
+
+
+def _pillar_availability() -> float | None:
+    pct = (_safe(availability, {}) or {}).get("overall_pct")
+    return float(pct) if isinstance(pct, (int, float)) else None
+
+
+def _pillar_lexicon() -> float | None:
+    s = _safe(lexicon_summary, None) or {}
+    if not s or s.get("term_count") is None:
+        return None
+    blocking = s.get("blocking", 0) or 0
+    if blocking:
+        return max(0.0, 100.0 - 25.0 * blocking)
+    return max(80.0, 100.0 - 5.0 * (s.get("drift", 0) or 0))
+
+
+def _pillar_observability() -> float | None:
+    sig = _safe(_signals, {}) or {}
+    monitored = (_safe(availability, {}) or {}).get("monitored", 0) or 0
+    recording = (sig.get("audit7_total", 0) or 0) > 0
+    if recording and monitored >= 1:
+        return 100.0
+    if recording or monitored >= 1:
+        return 80.0
+    return 60.0
+
+
+def trust_scorecard() -> dict:
+    """Live composite trust score from the real signals. Same {overall, pillars}
+    shape the template consumes, plus source/generated_at/components/baseline.
+    Pillars with no signal are omitted and the weights renormalize."""
+    from datetime import datetime, timezone
+    raw = {
+        "compliance": _safe(_pillar_compliance, None),
+        "reliability": _safe(_pillar_reliability, None),
+        "availability": _safe(_pillar_availability, None),
+        "lexicon": _safe(_pillar_lexicon, None),
+        "observability": _safe(_pillar_observability, None),
+    }
+    pillars = {k: round(v) for k, v in raw.items() if isinstance(v, (int, float))}
+    wsum = sum(_SCORECARD_WEIGHTS[k] for k in pillars)
+    overall = round(sum(pillars[k] * _SCORECARD_WEIGHTS[k] for k in pillars) / wsum) if wsum else _AUDIT_SCORECARD["overall"]
+    return {
+        "overall": overall,
+        "pillars": pillars,
+        "source": "live",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "components": {
+            "compliance": "compliant=1.0 + conditional=0.9 over all attestations (non_compliant=0)",
+            "reliability": "mean runtime_trust across declared runtime AI agents",
+            "availability": "availability().overall_pct (monitored agents healthy)",
+            "lexicon": "100 when 0 forbidden-term violations (minus drift), else penalized",
+            "observability": "audit recording active + at least one monitored agent",
+        },
+        "weights": dict(_SCORECARD_WEIGHTS),
+        "baseline": _AUDIT_SCORECARD,
+    }
