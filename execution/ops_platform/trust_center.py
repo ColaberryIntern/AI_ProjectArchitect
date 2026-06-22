@@ -477,6 +477,7 @@ def agent_detail(agent_id: str) -> dict:
         "global_paused": bool(state.get("global_paused")),
         "pause_meta": cell or None,
         "attestation": _safe(lambda: _agent_attestation(decl), None),
+        "trust": _safe(lambda: runtime_trust(agent_id, (decl or {}).get("name")), None),
         "heartbeat": _safe(lambda: _agent_heartbeat(agent_id), None),
         "recent_audit": _safe(lambda: _recent_audit(entity_id=agent_id, days=30, limit=20), []),
     }
@@ -635,3 +636,49 @@ def availability() -> dict:
     overall = round(100 * healthy / len(monitored)) if monitored else None
     return {"overall_pct": overall, "monitored": len(monitored), "healthy": healthy,
             "agents": agents, "app": _safe(_app_health_brief, {})}
+
+
+# ── Runtime trust score (reputation -> attestation wiring) ──
+# A per-runtime-agent trust score derived from REAL operational signals (the
+# runtime agents aren't ops_platform capabilities, so trust_engine/reputation_
+# scorer don't apply directly — this is the equivalent for them).
+
+_TRUST_WEIGHTS = {"availability": 0.30, "reliability": 0.30, "governance": 0.20, "compliance": 0.20}
+
+
+def runtime_trust(agent_id: str, name: str | None = None) -> dict:
+    from execution.ops_platform import audit_log, runtime_agents
+    decl = next((d for d in _safe(runtime_agents.load_declarations, []) if d.get("id") == agent_id), None)
+    name = name or (decl or {}).get("name") or agent_id
+    comps: dict = {}
+
+    # Availability (from the health signal)
+    st = (_safe(lambda: _agent_health(agent_id, name), {}) or {}).get("status")
+    comps["availability"] = {"healthy": 1.0, "stale": 0.5, "down": 0.0,
+                             "on_demand": 0.85, "disabled": 0.85, "unknown": 0.6}.get(st, 0.6)
+
+    # Reliability (from heartbeat success counts where available)
+    hb = _safe(lambda: _agent_heartbeat(agent_id), None) or {}
+    resp, fail = hb.get("total_responded"), hb.get("total_failed")
+    if isinstance(resp, (int, float)) or isinstance(fail, (int, float)):
+        tot = (resp or 0) + (fail or 0)
+        comps["reliability"] = ((resp or 0) / tot) if tot else 1.0
+    else:
+        comps["reliability"] = 1.0 if st in ("healthy", "on_demand", "disabled") else 0.6
+
+    # Governance (pauses / enforcement denials over 30d — fewer is better)
+    rows = _safe(lambda: audit_log.list_entries(entity_id=agent_id, days=30, limit=100), []) or []
+    incidents = sum(1 for r in rows
+                    if r.get("action") in ("runtime_agent.paused", "agent.paused", "enforcement.denied"))
+    comps["governance"] = max(0.0, 1.0 - 0.15 * incidents)
+
+    # Compliance (attestation verdict)
+    att = _safe(lambda: _agent_attestation(decl), None) or {}
+    comps["compliance"] = {"compliant": 1.0, "conditional": 0.8,
+                           "non_compliant": 0.2}.get(att.get("verdict"), 0.6)
+
+    score = round(100 * sum(comps[k] * _TRUST_WEIGHTS[k] for k in _TRUST_WEIGHTS), 1)
+    band = "STRONG" if score >= 85 else "GOOD" if score >= 70 else "FAIR" if score >= 50 else "WEAK"
+    return {"agent_id": agent_id, "name": name, "trust_score": score, "band": band,
+            "components": {k: round(v, 3) for k, v in comps.items()},
+            "incidents_30d": incidents}

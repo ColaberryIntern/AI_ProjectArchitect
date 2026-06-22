@@ -189,3 +189,18 @@ def test_availability_endpoint_wired():
     from app.main import app
     paths = {getattr(r, "path", "") for r in app.routes}
     assert "/admin/trust/availability.json" in paths
+
+
+# ── runtime trust (reputation -> attestation wiring) ──
+
+
+def test_runtime_trust_shape_and_band():
+    t = tc.runtime_trust("cb_mention_responder")
+    assert 0 <= t["trust_score"] <= 100
+    assert t["band"] in ("STRONG", "GOOD", "FAIR", "WEAK")
+    assert {"availability", "reliability", "governance", "compliance"} <= set(t["components"])
+
+
+def test_agent_detail_includes_runtime_trust():
+    d = tc.agent_detail("cb_mention_responder")
+    assert d.get("trust") and "trust_score" in d["trust"]

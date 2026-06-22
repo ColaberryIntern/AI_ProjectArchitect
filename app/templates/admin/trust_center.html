@@ -273,6 +273,7 @@ async function tccAgentDetail(id){
     if(d.pause_meta){ h+='<div class="k">Pause by</div><div>'+tccEsc(d.pause_meta.by)+' — '+tccEsc(d.pause_meta.reason)+' @ '+tccEsc(d.pause_meta.at)+'</div>'; }
     h+='<div class="k">Entrypoint</div><div><code>'+tccEsc(d.entrypoint)+'</code></div>';
     if(a.verdict){ h+='<div class="k">Attestation</div><div>'+tccEsc(a.verdict)+' · risk '+tccEsc(a.risk_level)+' · INPACT '+a.inpact_satisfied+'/6 · GOALS '+a.goals_satisfied+'/5</div>'; }
+    if(d.trust){ h+='<div class="k">Runtime trust</div><div><b>'+d.trust.trust_score+'/100</b> '+tccEsc(d.trust.band)+' — '+Object.entries(d.trust.components||{}).map(function(e){return e[0]+' '+Math.round(e[1]*100)+'%';}).join(' · ')+'</div>'; }
     if(Object.keys(hb).length){ h+='<div class="k">Last run</div><div>'+tccEsc(hb.status||hb.reason||'')+' '+tccEsc(hb.finished_at||hb.started_at||'')+(hb.total_responded!=null?(' · responded '+hb.total_responded):'')+'</div>'; }
     h+='<div class="k">Rollback</div><div class="tcc-muted">'+tccEsc(d.rollback_plan)+'</div></div>';
     h+='<h4 style="margin:6px 0">Recent audit for this agent</h4>'+tccTable(d.recent_audit, AUDIT_COLS, {onrow:'correlation_id', onclick:'tccReplay'});
