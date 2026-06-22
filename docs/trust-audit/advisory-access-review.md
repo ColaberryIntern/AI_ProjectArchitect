@@ -28,12 +28,12 @@ Read-only pages (landing, questions, results, gate, download-pdf, resume) have n
 3. **Downstream is signed/scoped** — enterprise webhook is HMAC-SHA256; calendar uses a scoped service account; the deliverable is lead-gated.
 4. **Observability** — advisory LLM cost is now in the cost ledger (Cost explorer); advisory attestation tracked (`recommendation_engine.py.tbi.json`, verdict compliant / risk HIGH).
 
-## Residual recommendations (not changed here)
+## Residuals
 
-- **`ENTERPRISE_WEBHOOK_SECRET` has a weak default** (`"colaberry-advisory-sync-2026"`, `enterprise_sync.py:22`). Recommend requiring it from env (no default). **Not changed in this pass** — removing the default could break the prod webhook if `.env.prod` doesn't set it; verify `.env.prod` first, then harden.
-- **No rate-limit / CAPTCHA** on the public funnel → abuse could burn LLM spend or spam BC. Recommend a per-IP rate limit on `/start` + `/generate` (the cost ledger now makes abuse visible as a spend spike).
-- Consider moving the BC project creation behind lead capture (today `/generate` creates it pre-lead).
+- ✅ **Weak webhook-secret default removed** — `ENTERPRISE_WEBHOOK_SECRET` is now read at call-time with **no default**; if unset, the webhook is **skipped** rather than signed with a guessable secret (`enterprise_sync.send_enterprise_event`). Verified prod `.env.prod` sets it, so the live webhook keeps working.
+- ✅ **Per-IP rate limit** on the public funnel (`/start` + `/generate`): `rate_limit_advisory` dependency, `OPS_ADVISORY_RATE_MAX` (default 40) per `OPS_ADVISORY_RATE_WINDOW_SEC` (default 600) → 429 over limit. Process-local (prod = 1 worker); `OPS_ADVISORY_RATE_MAX=0` disables. The cost ledger surfaces any abuse as a spend spike.
+- ⬜ Optional next: CAPTCHA if bot abuse appears; move BC project creation behind lead capture (today `/generate` creates it pre-lead).
 
 ## Verdict
 
-P1.5 **addressed**: the public endpoint now has a deploy kill-switch + a live pause, on top of the existing signing/gating. Remaining items (webhook secret default, rate-limiting) are tracked above as the next hardening step.
+P1.5 **closed**: the public endpoint now has (1) a deploy kill-switch, (2) a live pause, (3) a per-IP rate limit, and (4) fail-safe webhook signing — on top of the existing deliverable gating + scoped/signed downstream.

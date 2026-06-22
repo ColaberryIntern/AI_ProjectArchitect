@@ -79,7 +79,7 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 - [x] Attest all 9 declarative artifacts → gate green.
 - [x] **P0:** runtime declaration + attestations for the My Day auto-responder + auto-pickup (`config/tbi_runtime_agents.json`, gate-covered, `agent_registry` policy wired via `runtime_agents.upsert_runtime_agents()`). Deploy step: run the upsert so the registry reflects the declaration.
 - [x] **P1:** attest the advisory pipeline and productivity report generator (same runtime-declaration pattern).
-- [x] **P1.5 (HIGH, advisory hardening):** `OPS_ADVISORY_ENABLED` kill-switch on all 8 side-effecting advisory routes + live pause + access review ([advisory-access-review.md](../trust-audit/advisory-access-review.md)). Residual: weak default webhook secret + no rate-limit (tracked there).
+- [x] **P1.5 (HIGH, advisory hardening) — CLOSED:** `OPS_ADVISORY_ENABLED` kill-switch on all 8 side-effecting routes + live pause + **per-IP rate limit** (`/start`,`/generate`) + **fail-safe webhook signing** (no default secret). See [advisory-access-review.md](../trust-audit/advisory-access-review.md).
 - [x] **Cost observability (was the top gap, 40/100):** real per-call cost ledger (`execution/ops_platform/cost_ledger.py` + `config/model_prices.json`) instrumented at `llm_client.chat` + the 3 ops direct-client sites; Cost explorer live on `/admin/trust`. Forward-only (no backfill).
 - [ ] Close remaining systemic gaps (availability/SLO signal, enforced glossary, reputation→attestation wiring).
 - [ ] Re-confirm `persona:karun` / `persona:kes` attestations when their PRDs are ratified (Colaberry-approved).

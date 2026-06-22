@@ -19,10 +19,8 @@ ENTERPRISE_WEBHOOK_URL = os.getenv(
     "ENTERPRISE_WEBHOOK_URL",
     "https://enterprise.colaberry.ai/api/webhooks/advisory",
 )
-ENTERPRISE_WEBHOOK_SECRET = os.getenv(
-    "ENTERPRISE_WEBHOOK_SECRET",
-    "colaberry-advisory-sync-2026",
-)
+# ENTERPRISE_WEBHOOK_SECRET is read at CALL TIME with NO default (P1.5 hardening):
+# if it is unset we SKIP the webhook rather than sign with a guessable shared secret.
 
 
 def _sign_payload(payload: str, secret: str) -> str:
@@ -49,13 +47,21 @@ async def send_enterprise_event(event_type: str, data: dict) -> bool:
         logger.warning("[EnterpriseSync] httpx not installed, skipping webhook")
         return False
 
+    secret = os.getenv("ENTERPRISE_WEBHOOK_SECRET")
+    if not secret:
+        logger.warning(
+            "[EnterpriseSync] ENTERPRISE_WEBHOOK_SECRET not set; skipping %s "
+            "(refusing to sign with a default secret)", event_type,
+        )
+        return False
+
     try:
         payload = json.dumps({
             "event": event_type,
             "data": data,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        signature = _sign_payload(payload, ENTERPRISE_WEBHOOK_SECRET)
+        signature = _sign_payload(payload, secret)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(

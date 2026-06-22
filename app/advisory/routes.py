@@ -8,6 +8,7 @@ Integrates with lead management, campaign enrollment, and event tracking.
 
 import logging
 import os
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -49,6 +50,38 @@ def require_advisory_enabled():
         )
 
 
+# ─── Per-IP rate limit on the public funnel (P1.5 hardening) ─────────
+# Process-local sliding window (prod runs a single uvicorn worker). Caps abuse
+# of the unauthenticated funnel (LLM spend / BC spam). Tune via env; 0 disables.
+_ADV_RATE: dict[str, list[float]] = {}
+_ADV_RATE_MAX = int(os.environ.get("OPS_ADVISORY_RATE_MAX", "40"))
+_ADV_RATE_WINDOW = int(os.environ.get("OPS_ADVISORY_RATE_WINDOW_SEC", "600"))
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit_advisory(request: Request):
+    """Dependency: 429 when an IP exceeds OPS_ADVISORY_RATE_MAX requests per
+    OPS_ADVISORY_RATE_WINDOW_SEC on the gated funnel entrypoints."""
+    if _ADV_RATE_MAX <= 0:
+        return
+    ip = _client_ip(request)
+    now = time.time()
+    hits = [t for t in _ADV_RATE.get(ip, []) if t > now - _ADV_RATE_WINDOW]
+    hits.append(now)
+    _ADV_RATE[ip] = hits
+    if len(hits) > _ADV_RATE_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests — please slow down and try again shortly.",
+        )
+
+
 # ─── Landing & Session Start ────────────────────────────────────────
 
 @router.get("/")
@@ -70,7 +103,7 @@ async def demo_walkthrough(request: Request):
     })
 
 
-@router.post("/start", dependencies=[Depends(require_advisory_enabled)])
+@router.post("/start", dependencies=[Depends(require_advisory_enabled), Depends(rate_limit_advisory)])
 async def start_session(request: Request, business_idea: str = Form(...)):
     """Create a new advisory session and redirect to questions."""
     from execution.advisory.advisory_state_manager import advance_status, initialize_session
@@ -393,7 +426,7 @@ async def save_capabilities(request: Request, session_id: str):
 
 # ─── Generation ─────────────────────────────────────────────────────
 
-@router.get("/{session_id}/generate", dependencies=[Depends(require_advisory_enabled)])
+@router.get("/{session_id}/generate", dependencies=[Depends(require_advisory_enabled), Depends(rate_limit_advisory)])
 async def generate_results(request: Request, session_id: str):
     """Run all generation engines and redirect to results."""
     from execution.ops_platform import runtime_controls
