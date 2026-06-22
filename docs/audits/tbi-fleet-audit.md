@@ -63,15 +63,18 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 
 ## Systemic gaps (apply across the fleet)
 
-1. **Instant / Availability are unmeasured (🔴).** Legitimately `n_a` for design-time and
-   static artifacts, but for Tier 0 runtime systems they must become real signals.
-   *Remediation:* add a health/latency signal to `ops_platform` and feed it into
-   `trust_engine` so runtime attestations can set `trust_score_ref` and be gated on it.
+1. **Instant / Availability are unmeasured (🔴) — RESOLVED.** Was legitimately `n_a` for
+   design-time/static artifacts, but unmeasured for Tier 0 runtime systems. *Done:*
+   `trust_center.availability()` derives per-agent health/latency from heartbeats + the app
+   health brief (overall %, healthy/stale/down/on_demand); surfaced on `/admin/trust` and
+   folded into the runtime trust score's `availability` component.
 2. **Lexicon is partial (🟡).** Terminology is consistent per-artifact but there is no
    enforced canonical glossary. *Remediation:* add a glossary the semantic layer checks.
-3. **Adaptive is not measured per-artifact (🟡).** `reputation_scorer` exists but is not
-   wired to attestations. *Remediation:* for runtime capabilities, link `trust_score_ref`
-   to the reputation/trust profile so "Adaptive" is evidenced by real signal, not prose.
+   **(Only remaining systemic gap.)**
+3. **Adaptive is not measured per-artifact (🟡) — RESOLVED.** `reputation_scorer` existed but
+   was not wired to attestations. *Done:* `trust_center.runtime_trust(agent_id)` derives a
+   live 0-100 trust score (availability·reliability·governance·compliance) shown in the agent
+   drill-down, so "Adaptive" is evidenced by real signal, not prose.
 
 ## Remediation status & backlog
 
@@ -81,10 +84,13 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 - [x] **P1:** attest the advisory pipeline and productivity report generator (same runtime-declaration pattern).
 - [x] **P1.5 (HIGH, advisory hardening) — CLOSED:** `OPS_ADVISORY_ENABLED` kill-switch on all 8 side-effecting routes + live pause + **per-IP rate limit** (`/start`,`/generate`) + **fail-safe webhook signing** (no default secret). See [advisory-access-review.md](../trust-audit/advisory-access-review.md).
 - [x] **Cost observability (was the top gap, 40/100):** real per-call cost ledger (`execution/ops_platform/cost_ledger.py` + `config/model_prices.json`) instrumented at `llm_client.chat` + the 3 ops direct-client sites; Cost explorer live on `/admin/trust`. Forward-only (no backfill).
-- [ ] Close remaining systemic gaps (availability/SLO signal, enforced glossary, reputation→attestation wiring).
+- [x] **Availability/SLO signal:** `trust_center.availability()` (per-agent + app health, overall %), live on `/admin/trust`. Closes systemic gap #1.
+- [x] **Reputation→attestation wiring:** `trust_center.runtime_trust(agent_id)` derived live trust score in the agent drill-down (the Adaptive signal). Closes systemic gap #3.
+- [ ] **Enforced glossary (Lexicon):** the one remaining systemic gap (#2) — a canonical glossary the semantic layer checks.
 - [ ] Re-confirm `persona:karun` / `persona:kes` attestations when their PRDs are ratified (Colaberry-approved).
 
 > Each backlog item is its own approval-gated PR (CLAUDE.md). **Coverage now:** all gated
 > declarative artifacts + all four runtime AI agents (P0 + P1) are attested and pass the
-> gate. Remaining: the advisory HIGH-risk hardening (P1.5) and the systemic gaps. Do not
-> read this as "100% trusted" until P1.5 + the systemic gaps close.
+> gate; P1.5 advisory hardening CLOSED; cost, availability, and reputation→attestation
+> signals all live. **One systemic gap remains:** the enforced Lexicon glossary. Do not
+> read this as "100% trusted" until that closes.
