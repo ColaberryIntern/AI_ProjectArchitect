@@ -412,6 +412,26 @@ def _natural_flow_sync(user_email: str, state, project_filter_id: int | None) ->
     return False  # never reload state inline -- avoid the 30s freeze
 
 
+def _view_todos(user_email: str) -> list:
+    """Load the operator's todos for RENDERING, applying strict past-month
+    retention (2026-06-22): a row still `active` in Basecamp but quiet past the
+    freshness window (no recent activity, no future due date) is dropped, so My
+    Day is a true past-month-activity view rather than BC's full active
+    backlog. Completed/archived rows (needed for the timeline) and dismissed
+    rows pass through untouched.
+
+    Why a view filter and not a store mutation: the store is a faithful mirror
+    of Basecamp (active means active-in-BC), so stale-but-active rows must stay
+    in it; this projection just hides them in the view. It makes retention
+    consistent with the inclusion filter the walk already applies at sync time
+    (`sync._todo_is_relevant`), and a stale row that gets fresh BC activity
+    reappears automatically on the next walk. See `sync.row_is_recent`."""
+    return [
+        t for t in store.load_todos(user_email)
+        if t.status != "active" or t.is_dismissed or sync.row_is_recent(t)
+    ]
+
+
 @router.get("/")
 async def ops_home(request: Request):
     user = _require_user(request)
@@ -431,7 +451,7 @@ async def ops_home(request: Request):
     if inline_synced:
         # Reload state + todos so we see the freshly-upserted rows
         state = store.load_state(user.email)
-    todos = store.load_todos(user.email)
+    todos = _view_todos(user.email)  # past-month retention (drops stale-active)
     projects = store.load_projects(user.email)
 
     view = request.query_params.get("view", "briefing")
@@ -1226,7 +1246,7 @@ async def ops_decisions_report(request: Request):
     if _natural_flow_sync(user.email, state, project_filter_id):
         state = store.load_state(user.email)
 
-    todos = store.load_todos(user.email)
+    todos = _view_todos(user.email)  # past-month retention (drops stale-active)
     projects = store.load_projects(user.email)
 
     # Decisions report defaults to 'all' tier scope (not narrowed by tier)

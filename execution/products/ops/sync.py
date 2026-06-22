@@ -254,6 +254,33 @@ def _todo_is_relevant(todo: dict) -> bool:
     return False
 
 
+def row_is_recent(row) -> bool:
+    """Past-month relevance test for a STORED OpsTodo row — the retention
+    analogue of `_todo_is_relevant` (which tests a raw BC todo dict at
+    inclusion time). True iff the row had activity within FRESHNESS_DAYS OR has
+    a future due date.
+
+    The My Day view uses this to DROP a row that is still `active` in Basecamp
+    but has gone quiet past the freshness window (no recent activity, no future
+    due date), so the view is a true past-month-activity projection rather than
+    BC's full active backlog. This makes RETENTION consistent with INCLUSION:
+    the walk's `_emit` already refuses to add such a row at sync time
+    (`_todo_is_relevant` is false), so without this a row added while fresh
+    lingered as `active` forever once it aged out. The store itself is
+    unchanged — this is a pure view-layer filter — and a stale row that gets
+    fresh BC activity re-enters naturally on the next walk."""
+    if _is_fresh(getattr(row, "bc_updated_at", None)):
+        return True
+    due_on = getattr(row, "due_on", None)
+    if due_on:
+        try:
+            return (datetime.strptime(due_on, "%Y-%m-%d").date()
+                    >= datetime.now(timezone.utc).date())
+        except (ValueError, TypeError):
+            pass
+    return False
+
+
 def _has_future_due(todo: dict) -> bool:
     due_on = todo.get("due_on")
     if not due_on:
