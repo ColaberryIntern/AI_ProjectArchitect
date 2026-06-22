@@ -119,6 +119,12 @@ async def availability_json(request: Request):
     return JSONResponse(tc.availability())
 
 
+@router.get("/lexicon.json")
+async def lexicon_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.lexicon_detail())
+
+
 @router.get("/layers.json")
 async def layers_json(request: Request):
     _require_super_admin(request)

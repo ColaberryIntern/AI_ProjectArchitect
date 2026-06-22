@@ -362,6 +362,7 @@ def live() -> dict:
             "audit_24h": _signals()["audit1_total"],
             "cost": _safe(cost_summary, {}),
             "availability": _safe(availability, {}),
+            "lexicon": _safe(lexicon_summary, {}),
         },
     }
 
@@ -373,6 +374,7 @@ def page_data() -> dict:
         "layers": layers(),
         "controls": controls_state(),
         "availability": availability(),
+        "lexicon": _safe(lexicon_summary, {}),
     }
 
 
@@ -545,6 +547,30 @@ def cost_summary() -> dict:
 def cost_detail() -> dict:
     from execution.ops_platform import cost_ledger
     return cost_ledger.summary(30, recent=50)
+
+
+# ── Lexicon enforcement signal (GOALS-Lexicon) ──
+# Live drift/forbidden scan of the AI fleet against the canonical glossary
+# (config/lexicon.json). Makes "Lexicon: satisfied" a real signal, not prose.
+
+
+def lexicon_summary() -> dict:
+    """Glossary stats + a live forbidden/drift scan over the AI artifacts."""
+    from execution.ops_platform import lexicon
+    return lexicon.summary()
+
+
+def lexicon_detail() -> dict:
+    """Full glossary + every live violation, for the Lexicon drill-down."""
+    from execution.ops_platform import lexicon
+    scan = _safe(lexicon.scan_artifacts, {}) or {}
+    violations = [v for vs in scan.values() for v in vs]
+    return {
+        "summary": _safe(lexicon.summary, {}),
+        "terms": _safe(lexicon.canonical_terms, []),
+        "forbidden": _safe(lexicon.forbidden_terms, []),
+        "violations": violations,
+    }
 
 
 # ── Availability / health signal (GOALS-Availability, INPACT-Instant) ──

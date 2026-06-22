@@ -15,7 +15,7 @@
     "governance": { "status": "satisfied", "evidence": "Session state machine prevents re-generation; deliverable gated behind lead capture; per-subsystem degradation. See RESIDUAL note re: kill-switch." },
     "observability": { "status": "satisfied", "evidence": "Event log + session-state snapshots + INFO logs for each lifecycle stage (started/questions_completed/results_generated/lead_captured)." },
     "availability": { "status": "satisfied", "evidence": "Graceful degradation: LLM unavailable -> safe keyword-only defaults; calendar key absent -> static slots; webhook URL absent -> no-op. Atomic temp+rename writes." },
-    "lexicon": { "status": "satisfied", "evidence": "Consistent advisory vocabulary (Revenue/Operations/Customer Engine systems, capability catalog ids, 5 maturity dimensions)." },
+    "lexicon": { "status": "satisfied", "evidence": "Consistent advisory vocabulary (Revenue/Operations/Customer Engine systems, capability catalog ids, 5 maturity dimensions). Enforced fleet-wide by the canonical glossary (config/lexicon.json) via the deterministic checker execution/ops_platform/lexicon.py and the scripts/lexicon_check.py CI gate; this artifact passes with zero forbidden-term or drift violations." },
     "solid": { "status": "satisfied", "evidence": "LLM calls wrapped in try/except with fallbacks; lead upsert-by-email prevents duplicates; webhook is fire-and-forget non-blocking; atomic writes." }
   },
   "layers": [

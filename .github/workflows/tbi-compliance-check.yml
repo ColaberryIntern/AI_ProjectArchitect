@@ -22,6 +22,9 @@ on:
       - 'execution/ops_platform/tbi_compliance.py'
       - 'scripts/tbi_compliance_check.py'
       - 'config/schemas/ops/tbi_attestation.schema.json'
+      - 'config/lexicon.json'
+      - 'execution/ops_platform/lexicon.py'
+      - 'scripts/lexicon_check.py'
       - '.github/workflows/tbi-compliance-check.yml'
 
 permissions:
@@ -69,3 +72,20 @@ jobs:
       - name: No-op (no AI artifacts changed)
         if: steps.changed.outputs.files == ''
         run: echo "No AI artifacts in this PR — TBI gate not required."
+
+      - name: Find changed lexicon-scope files
+        id: lexchanged
+        run: |
+          set -e
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          LEXFILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
+            'agents/*.md' 'docs/personas/*.md' 'config/blueprints/*.json' \
+            'config/skill_registry.json' '**/*.tbi.json' | tr '\n' ' ')
+          echo "files=$LEXFILES" >> "$GITHUB_OUTPUT"
+          echo "Lexicon-scope files to gate: $LEXFILES"
+
+      - name: Run Lexicon gate (GOALS-Lexicon)
+        if: steps.lexchanged.outputs.files != ''
+        run: |
+          python scripts/lexicon_check.py ${{ steps.lexchanged.outputs.files }}

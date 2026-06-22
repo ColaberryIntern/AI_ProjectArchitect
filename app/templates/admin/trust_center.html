@@ -178,6 +178,16 @@
       <div class="tcc-muted">{% for a in av.agents %}{{ a.name|default(a.id) }}: <b>{{ a.status }}</b>{% if not loop.last %} · {% endif %}{% endfor %}</div>
     </div>
 
+    <div class="tcc-card tcc-link" onclick="tccLexicon()" title="Lexicon / canonical glossary">
+      {% set lx = data.lexicon %}
+      <h3>📖 Lexicon <span class="tcc-muted">details →</span></h3>
+      <div style="font-size:26px;font-weight:800;">
+        <span id="tcc-lex-status" style="color:{{ 'var(--ok,#36d399)' if (lx.blocking|default(0)) == 0 else 'var(--bad,#f87272)' }}">{{ 'CLEAN' if (lx.blocking|default(0)) == 0 else 'DRIFT' }}</span>
+        <span style="font-size:12px;color:var(--fg-muted)"> · GOALS-Lexicon</span>
+      </div>
+      <div class="tcc-muted"><span id="tcc-lex-terms">{{ lx.term_count|default(0) }}</span> canonical terms · {{ lx.forbidden_count|default(0) }} forbidden · <span id="tcc-lex-viol">{{ lx.violations|default(0) }}</span> violations across {{ lx.artifacts_scanned|default(0) }} artifacts</div>
+    </div>
+
     <div class="tcc-card">
       <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-muted"></span></h3>
       <div id="tcc-approvals">
@@ -319,6 +329,29 @@ async function tccAvailability(){
   }catch(e){ tccShow('Availability', '<p class="tcc-muted">failed: '+e+'</p>'); }
 }
 
+async function tccLexicon(){
+  tccShow('Lexicon', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/lexicon.json');
+    const s=d.summary||{};
+    const ok = (s.blocking||0)===0;
+    let h='<p><b style="font-size:18px;color:'+(ok?'#1a7f37':'#cf222e')+'">'+(ok?'CLEAN':'DRIFT')+'</b> · GOALS-Lexicon · glossary v'+tccEsc(s.version)+' ('+tccEsc(s.framework_ref)+') · '
+      +(s.term_count||0)+' canonical terms · '+(s.forbidden_count||0)+' forbidden · scanned '+(s.artifacts_scanned||0)+' artifacts</p>';
+    if((d.violations||[]).length){
+      h+='<h4 style="margin:10px 0 6px">Violations ('+d.violations.length+')</h4>'+tccTable(d.violations,[
+        {h:'severity',k:'severity'},{h:'kind',k:'kind'},{h:'term',k:'term'},
+        {h:'suggest',f:r=>r.suggestion||'—'},{h:'file',k:'source'},{h:'context',f:r=>tccEsc(r.excerpt||'')}]);
+    } else {
+      h+='<p class="tcc-muted">No terminology drift across the AI fleet — every artifact uses the canonical vocabulary.</p>';
+    }
+    h+='<h4 style="margin:12px 0 6px">Canonical glossary</h4>'+tccTable(d.terms,[
+      {h:'term',f:r=>r.term+(r.abbr?(' ('+tccEsc(r.abbr)+')'):'')},{h:'definition',f:r=>tccEsc(r.definition||'')},
+      {h:'aliases→drift',f:r=>(r.aliases||[]).join(', ')||'—'}]);
+    h+='<h4 style="margin:12px 0 6px">Forbidden terms</h4>'+tccTable(d.forbidden,[
+      {h:'term',k:'term'},{h:'why blocked',f:r=>tccEsc(r.reason||'')}]);
+    tccShow('Lexicon — '+(ok?'clean':((s.blocking||0)+' blocking')), h);
+  }catch(e){ tccShow('Lexicon', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
 function tccAudit(){
   let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
     +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
@@ -396,6 +429,13 @@ async function tccPoll(){
     if(d.counters && d.counters.availability){
       const ap=document.getElementById('tcc-avail-pct');
       if(ap && d.counters.availability.overall_pct!=null) ap.textContent=d.counters.availability.overall_pct;
+    }
+    if(d.counters && d.counters.lexicon){
+      const lx=d.counters.lexicon;
+      const ls=document.getElementById('tcc-lex-status');
+      if(ls && lx.blocking!=null){ const ok=(lx.blocking||0)===0; ls.textContent=ok?'CLEAN':'DRIFT'; ls.style.color=ok?'var(--ok,#36d399)':'var(--bad,#f87272)'; }
+      const lt=document.getElementById('tcc-lex-terms'); if(lt && lx.term_count!=null) lt.textContent=lx.term_count;
+      const lv=document.getElementById('tcc-lex-viol'); if(lv && lx.violations!=null) lv.textContent=lx.violations;
     }
     const cl=document.getElementById('tcc-clock');
     if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();

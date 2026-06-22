@@ -15,7 +15,7 @@
     "governance": { "status": "satisfied", "evidence": "Off-by-default delivery flag is the human approval gate; fixed recipient list; EXCLUDE_PROJECTS scoping; scheduler max_instances=1." },
     "observability": { "status": "satisfied", "evidence": "Per-day HTML + JSON artifacts under output/ops/_productivity/, a ReportResult return, and INFO logs." },
     "availability": { "status": "satisfied", "evidence": "Manual CLI fallback; scheduler job replace_existing; email failure is non-fatal (report still on disk); baseline caching." },
-    "lexicon": { "status": "satisfied", "evidence": "Standardized verdict vocabulary (GREEN/AMBER/RED/NODATA) and consistent metric names across report and sidecar." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized verdict vocabulary (GREEN/AMBER/RED/NODATA) and consistent metric names across report and sidecar. Enforced fleet-wide by the canonical glossary (config/lexicon.json) via the deterministic checker execution/ops_platform/lexicon.py and the scripts/lexicon_check.py CI gate; this artifact passes with zero forbidden-term or drift violations." },
     "solid": { "status": "satisfied", "evidence": "Fully deterministic (no LLM); dedupe by task id; baseline caching; low-confidence flagging; email non-fatal." }
   },
   "layers": [

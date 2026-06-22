@@ -1,0 +1,89 @@
+{
+  "version": "1.0.0",
+  "framework_ref": "TBI-2025.12.0",
+  "description": "Canonical shared vocabulary for the Colaberry Trust Before Intelligence program. Enforces GOALS-Lexicon: terminology must not drift across AI artifacts. Checked deterministically by execution/ops_platform/lexicon.py and gated in CI by scripts/lexicon_check.py. 'terms' are the preferred vocabulary (aliases flag non-canonical drift = warning); 'forbidden' are banned/deprecated terms (= blocking). 'allow_in' lists repo-relative paths where a literal mention is legitimate.",
+  "scan_globs": [
+    "agents/*.md",
+    "docs/personas/*.md",
+    "config/blueprints/*.json",
+    "config/skill_registry.json",
+    "**/*.tbi.json"
+  ],
+  "terms": [
+    {
+      "term": "Trust Before Intelligence",
+      "abbr": "TBI",
+      "definition": "The mandatory compliance framework: stand up the trust foundation BEFORE deploying intelligence. No AI artifact ships without a passing TBI attestation.",
+      "aliases": ["trust framework"]
+    },
+    {
+      "term": "attestation",
+      "definition": "The per-artifact sidecar (<artifact>.tbi.json) proving an AI artifact satisfies INPACT + GOALS + the 7-layer mapping; scored by the deterministic scorer and enforced by the CI gate.",
+      "aliases": ["compliance certificate", "trust certificate"]
+    },
+    {
+      "term": "INPACT",
+      "definition": "The six interaction dimensions every AI artifact must satisfy or justify n_a: Instant, Natural, Permitted, Adaptive, Contextual, Transparent."
+    },
+    {
+      "term": "GOALS",
+      "definition": "The five trust properties (v1.1 canonical wording): Governance, Observability, Availability, Lexicon, Solid."
+    },
+    {
+      "term": "7-Layer Architecture of Trust",
+      "definition": "The trust stack from L1 Multi-Modal Storage through L7; each artifact maps which layers it relies on.",
+      "aliases": ["seven-layer architecture of trust"]
+    },
+    {
+      "term": "directive",
+      "definition": "A human-readable SOP/runbook under /directives describing goals, inputs, outputs, edge cases, and how success is verified."
+    },
+    {
+      "term": "runtime AI agent",
+      "definition": "An autonomous code entrypoint that takes action on live data (Tier 0), declared in config/tbi_runtime_agents.json and gated by its own attestation."
+    },
+    {
+      "term": "kill-switch",
+      "definition": "An operator control (global or per-agent) that the live workers obey at call-time via runtime_controls to halt autonomy.",
+      "aliases": ["killswitch"]
+    },
+    {
+      "term": "compliant",
+      "definition": "TBI verdict: every INPACT/GOALS dimension satisfied (no blocking issues, no caveats)."
+    },
+    {
+      "term": "conditional",
+      "definition": "TBI verdict: passes the gate but carries justified n_a dimensions or a trust caution."
+    },
+    {
+      "term": "non_compliant",
+      "definition": "TBI verdict: a blocking issue is present; the CI gate fails the PR.",
+      "aliases": ["noncompliant"]
+    },
+    {
+      "term": "n_a",
+      "definition": "An INPACT/GOALS dimension marked not-applicable; allowed ONLY with written evidence justifying it, or the gate fails."
+    },
+    {
+      "term": "Trust Command Center",
+      "definition": "The super-admin dashboard at /admin/trust: live 7-layer diagram, autonomy controls (kill-switches), and the cost / availability / runtime-trust / lexicon signals.",
+      "aliases": ["trust dashboard"]
+    },
+    {
+      "term": "self-annealing loop",
+      "definition": "The mandatory failure response: find root cause, fix logic, add/extend tests, update the directive, confirm the system is stronger."
+    }
+  ],
+  "forbidden": [
+    {
+      "term": "Moltbot",
+      "reason": "This project does not use Moltbot; Claude Code is the build/validation agent, not the runtime executor (CLAUDE.md). Naming it in an AI artifact signals a stale mental model.",
+      "allow_in": ["CLAUDE.md", "config/lexicon.json", "directives/compliance/lexicon.md"]
+    },
+    {
+      "term": "+ai",
+      "reason": "The deprecated Basecamp '+ai' persona connect step (the Obi/Ram trap). Operators connect their HUMAN Basecamp account; AI personas follow the {name}-ai convention, not a '+ai' account.",
+      "allow_in": ["config/lexicon.json", "directives/compliance/lexicon.md"]
+    }
+  ]
+}

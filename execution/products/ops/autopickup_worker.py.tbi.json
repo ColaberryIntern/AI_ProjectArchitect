@@ -15,7 +15,7 @@
     "governance": { "status": "satisfied", "evidence": "Off by default + per-project allowlist with recorded approver + draft-only mode + per-bucket rate limit + TOP_N cap." },
     "observability": { "status": "satisfied", "evidence": "Per-scan + per-todo audit JSONL, heartbeat, and autopickup_id traceability from comment to log." },
     "availability": { "status": "satisfied", "evidence": "Best-effort disk writes, per-user/per-todo error isolation, seen-set cap (5000) prevents unbounded growth." },
-    "lexicon": { "status": "satisfied", "evidence": "Standardized 'Auto-pickup: proposed next step' shape + autopickup_id; explicit no-em-dash output lexicon in the system prompt." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized 'Auto-pickup: proposed next step' shape + autopickup_id; explicit no-em-dash output lexicon in the system prompt. Enforced fleet-wide by the canonical glossary (config/lexicon.json) via the deterministic checker execution/ops_platform/lexicon.py and the scripts/lexicon_check.py CI gate; this artifact passes with zero forbidden-term or drift violations." },
     "solid": { "status": "satisfied", "evidence": "Idempotent seen-set keyed on (todo_id, bc_updated_at); rate-limited; draft-only; confidence-gated; disabled by default." }
   },
   "layers": [

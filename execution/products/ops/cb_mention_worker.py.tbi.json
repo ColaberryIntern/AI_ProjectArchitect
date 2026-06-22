@@ -15,7 +15,7 @@
     "governance": { "status": "satisfied", "evidence": "Per-tick circuit breaker (MAX_RESPONSES_PER_TICK=12) bounds blast radius; OPS_CB_MENTION_POLLING_ENABLED=false halts; the posted comment proposes work that a human approves to execute." },
     "observability": { "status": "satisfied", "evidence": "Heartbeat + admin endpoint + structured per-user logging answer 'is CB alive, did it fail silently?'." },
     "availability": { "status": "satisfied", "evidence": "Per-bucket cursors + MAX_LOOKBACK cap + bucket rotation + best-effort disk writes keep the cron resilient; a single bucket/user failure is isolated." },
-    "lexicon": { "status": "satisfied", "evidence": "Standardized 'CB System: automated response' header and rubric-conformant response shape; loop guard keys on that lexicon." },
+    "lexicon": { "status": "satisfied", "evidence": "Standardized 'CB System: automated response' header and rubric-conformant response shape; loop guard keys on that lexicon. Enforced fleet-wide by the canonical glossary (config/lexicon.json) via the deterministic checker execution/ops_platform/lexicon.py and the scripts/lexicon_check.py CI gate; this artifact passes with zero forbidden-term or drift violations." },
     "solid": { "status": "satisfied", "evidence": "Idempotent via seen.json; sentinel fallback comment on failure; circuit breaker; bot/automated-card guards; errors isolated per mention." }
   },
   "layers": [

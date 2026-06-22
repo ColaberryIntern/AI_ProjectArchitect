@@ -204,3 +204,26 @@ def test_runtime_trust_shape_and_band():
 def test_agent_detail_includes_runtime_trust():
     d = tc.agent_detail("cb_mention_responder")
     assert d.get("trust") and "trust_score" in d["trust"]
+
+
+# ── lexicon (GOALS-Lexicon enforcement) ──
+
+
+def test_lexicon_summary_and_detail_shapes():
+    s = tc.lexicon_summary()
+    assert {"term_count", "forbidden_count", "violations", "blocking", "status"} <= set(s)
+    assert s["blocking"] == 0  # committed fleet is clean
+    d = tc.lexicon_detail()
+    assert {"summary", "terms", "forbidden", "violations"} <= set(d)
+    assert d["terms"] and d["forbidden"]
+
+
+def test_lexicon_wired_into_live_and_page_data():
+    assert "lexicon" in tc.live()["counters"]
+    assert "lexicon" in tc.page_data()
+
+
+def test_lexicon_endpoint_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/lexicon.json" in paths

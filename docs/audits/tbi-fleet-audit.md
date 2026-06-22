@@ -68,9 +68,12 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
    `trust_center.availability()` derives per-agent health/latency from heartbeats + the app
    health brief (overall %, healthy/stale/down/on_demand); surfaced on `/admin/trust` and
    folded into the runtime trust score's `availability` component.
-2. **Lexicon is partial (🟡).** Terminology is consistent per-artifact but there is no
-   enforced canonical glossary. *Remediation:* add a glossary the semantic layer checks.
-   **(Only remaining systemic gap.)**
+2. **Lexicon is partial (🟡) — RESOLVED.** Terminology was consistent per-artifact but
+   there was no enforced canonical glossary. *Done:* `config/lexicon.json` is the single
+   source of truth; the deterministic checker `execution/ops_platform/lexicon.py` (+ CI
+   gate `scripts/lexicon_check.py`) scans the AI fleet for forbidden terms (block) and
+   drift (warn); a live Lexicon panel is on `/admin/trust`. See
+   [lexicon.md](../../directives/compliance/lexicon.md).
 3. **Adaptive is not measured per-artifact (🟡) — RESOLVED.** `reputation_scorer` existed but
    was not wired to attestations. *Done:* `trust_center.runtime_trust(agent_id)` derives a
    live 0-100 trust score (availability·reliability·governance·compliance) shown in the agent
@@ -86,11 +89,12 @@ entrypoint requires a `<entrypoint>.tbi.json` attestation (the CI gate enforces 
 - [x] **Cost observability (was the top gap, 40/100):** real per-call cost ledger (`execution/ops_platform/cost_ledger.py` + `config/model_prices.json`) instrumented at `llm_client.chat` + the 3 ops direct-client sites; Cost explorer live on `/admin/trust`. Forward-only (no backfill).
 - [x] **Availability/SLO signal:** `trust_center.availability()` (per-agent + app health, overall %), live on `/admin/trust`. Closes systemic gap #1.
 - [x] **Reputation→attestation wiring:** `trust_center.runtime_trust(agent_id)` derived live trust score in the agent drill-down (the Adaptive signal). Closes systemic gap #3.
-- [ ] **Enforced glossary (Lexicon):** the one remaining systemic gap (#2) — a canonical glossary the semantic layer checks.
+- [x] **Enforced glossary (Lexicon):** `config/lexicon.json` + `execution/ops_platform/lexicon.py` + `scripts/lexicon_check.py` CI gate + live `/admin/trust` Lexicon panel; fleet scans 0 violations. Closes systemic gap #2. See [lexicon.md](../../directives/compliance/lexicon.md).
 - [ ] Re-confirm `persona:karun` / `persona:kes` attestations when their PRDs are ratified (Colaberry-approved).
 
 > Each backlog item is its own approval-gated PR (CLAUDE.md). **Coverage now:** all gated
 > declarative artifacts + all four runtime AI agents (P0 + P1) are attested and pass the
-> gate; P1.5 advisory hardening CLOSED; cost, availability, and reputation→attestation
-> signals all live. **One systemic gap remains:** the enforced Lexicon glossary. Do not
-> read this as "100% trusted" until that closes.
+> gate; P1.5 advisory hardening CLOSED; cost, availability, reputation→attestation, and
+> enforced-lexicon signals all live. **All three systemic gaps are now closed.** The only
+> open follow-up is re-confirming the two persona attestations once their PRDs are ratified
+> — read this as a hardened, fully-instrumented fleet, not as a frozen "done".
