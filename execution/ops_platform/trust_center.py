@@ -361,6 +361,7 @@ def live() -> dict:
             "compliance": counts,
             "audit_24h": _signals()["audit1_total"],
             "cost": _safe(cost_summary, {}),
+            "availability": _safe(availability, {}),
         },
     }
 
@@ -371,6 +372,7 @@ def page_data() -> dict:
         "overview": overview(),
         "layers": layers(),
         "controls": controls_state(),
+        "availability": availability(),
     }
 
 
@@ -542,3 +544,94 @@ def cost_summary() -> dict:
 def cost_detail() -> dict:
     from execution.ops_platform import cost_ledger
     return cost_ledger.summary(30, recent=50)
+
+
+# ── Availability / health signal (GOALS-Availability, INPACT-Instant) ──
+
+# Stale threshold per scheduled agent (generous multiple of its cadence).
+_EXPECTED_MAX_AGE_SEC = {
+    "cb_mention_responder": 25 * 60,    # 10-min poll
+    "autopickup_worker": 35 * 60,       # 15-min interval (when enabled)
+    "productivity_report": 36 * 3600,   # daily report
+}
+
+
+def _age_seconds(iso_ts):
+    if not iso_ts:
+        return None
+    from datetime import datetime, timezone
+    try:
+        ts = datetime.fromisoformat(str(iso_ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
+
+
+def _status_for(age, expected):
+    if age is None:
+        return "unknown"
+    if age <= expected:
+        return "healthy"
+    if age <= expected * 4:
+        return "stale"
+    return "down"
+
+
+def _productivity_last_age():
+    import time
+    d = PROJECT_ROOT / "output" / "ops" / "_productivity"
+    files = list(d.glob("*.json")) if d.exists() else []
+    if not files:
+        return None
+    return max(0.0, time.time() - max(f.stat().st_mtime for f in files))
+
+
+def _agent_health(agent_id: str, name: str | None) -> dict:
+    import os
+    name = name or agent_id
+    if agent_id == "autopickup_worker" and \
+            os.environ.get("OPS_AUTOPICKUP_ENABLED", "false").strip().lower() != "true":
+        return {"id": agent_id, "name": name, "status": "disabled",
+                "detail": "OPS_AUTOPICKUP_ENABLED not set"}
+    if agent_id == "advisory_pipeline":
+        return {"id": agent_id, "name": name, "status": "on_demand",
+                "detail": "request-driven; no heartbeat"}
+    expected = _EXPECTED_MAX_AGE_SEC.get(agent_id, 30 * 60)
+    last = None
+    if agent_id == "productivity_report":
+        age = _safe(_productivity_last_age, None)
+    else:
+        hb = _safe(lambda: _agent_heartbeat(agent_id), None) or {}
+        last = hb.get("finished_at") or hb.get("started_at")
+        age = _age_seconds(last)
+    status = _status_for(age, expected)
+    return {"id": agent_id, "name": name, "status": status,
+            "age_seconds": round(age) if age is not None else None,
+            "expected_max_age_seconds": expected, "last_run": last,
+            "detail": "up to date" if status == "healthy"
+                      else ("never run yet" if status == "unknown" else "overdue")}
+
+
+def _app_health_brief() -> dict:
+    from execution.ops_platform import telemetry
+    h = telemetry.health_summary().to_dict()
+    return {"runs_24h": h.get("total_runs_24h"),
+            "failure_rate_24h_pct": h.get("failure_rate_24h_pct"),
+            "generated_at": h.get("generated_at")}
+
+
+def availability() -> dict:
+    """Per-agent health from heartbeats + app health → an overall availability %.
+    Monitored = agents with a heartbeat-based status (excludes disabled/on_demand/
+    not-yet-run). Addresses the GOALS-Availability / INPACT-Instant gap."""
+    meta = (_safe(runtime_agents_summary, {}) or {}).get("agents", [])
+    agents = [_safe(lambda a=a: _agent_health(a.get("id"), a.get("name")),
+                    {"id": a.get("id"), "name": a.get("name"), "status": "unknown"})
+              for a in meta]
+    monitored = [a for a in agents if a.get("status") in ("healthy", "stale", "down")]
+    healthy = sum(1 for a in monitored if a.get("status") == "healthy")
+    overall = round(100 * healthy / len(monitored)) if monitored else None
+    return {"overall_pct": overall, "monitored": len(monitored), "healthy": healthy,
+            "agents": agents, "app": _safe(_app_health_brief, {})}

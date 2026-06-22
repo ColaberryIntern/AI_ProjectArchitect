@@ -165,3 +165,27 @@ def test_cost_endpoint_wired():
     from app.main import app
     paths = {getattr(r, "path", "") for r in app.routes}
     assert "/admin/trust/cost.json" in paths
+
+
+# ── availability / SLO ──
+
+
+def test_status_for_thresholds():
+    assert tc._status_for(None, 100) == "unknown"
+    assert tc._status_for(50, 100) == "healthy"
+    assert tc._status_for(250, 100) == "stale"
+    assert tc._status_for(500, 100) == "down"
+
+
+def test_availability_shape_and_classification():
+    a = tc.availability()
+    assert {"overall_pct", "agents", "app", "monitored", "healthy"} <= set(a)
+    by = {x.get("id"): x for x in a["agents"]}
+    assert {"cb_mention_responder", "advisory_pipeline", "productivity_report"} <= set(by)
+    assert by["advisory_pipeline"]["status"] == "on_demand"   # request-driven
+
+
+def test_availability_endpoint_wired():
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/admin/trust/availability.json" in paths

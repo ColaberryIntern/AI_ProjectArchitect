@@ -113,6 +113,12 @@ async def cost_json(request: Request):
     return JSONResponse(tc.cost_detail())
 
 
+@router.get("/availability.json")
+async def availability_json(request: Request):
+    _require_super_admin(request)
+    return JSONResponse(tc.availability())
+
+
 @router.get("/layers.json")
 async def layers_json(request: Request):
     _require_super_admin(request)

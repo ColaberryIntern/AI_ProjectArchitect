@@ -171,6 +171,13 @@
       <div class="tcc-muted"><span id="tcc-cost-calls">{{ cost.calls_7d|default(0) }}</span> LLM calls · ${{ '%.4f'|format(cost.usd_24h|default(0)|float) }} last 24h · instrumented {{ cost.instrumented_since|default('—') }}</div>
     </div>
 
+    <div class="tcc-card tcc-link" onclick="tccAvailability()" title="Availability / health detail">
+      <h3>🟢 Availability <span class="tcc-muted">details →</span></h3>
+      {% set av = data.availability %}
+      <div style="font-size:26px;font-weight:800;"><span id="tcc-avail-pct">{{ av.overall_pct if av.overall_pct is not none else '—' }}</span><span style="font-size:12px;color:var(--fg-muted)">% live agents healthy</span></div>
+      <div class="tcc-muted">{% for a in av.agents %}{{ a.name|default(a.id) }}: <b>{{ a.status }}</b>{% if not loop.last %} · {% endif %}{% endfor %}</div>
+    </div>
+
     <div class="tcc-card">
       <h3>✅ Approval queue <span id="tcc-appr-n" class="tcc-muted"></span></h3>
       <div id="tcc-approvals">
@@ -298,6 +305,19 @@ async function tccCost(){
   }catch(e){ tccShow('AI cost', '<p class="tcc-muted">failed: '+e+'</p>'); }
 }
 
+async function tccAvailability(){
+  tccShow('Availability', 'loading…');
+  try{ const d=await tccJSON('/admin/trust/availability.json');
+    const pct = d.overall_pct==null ? '—' : d.overall_pct+'%';
+    let h='<p><b style="font-size:18px">'+pct+'</b> of '+d.monitored+' monitored agents healthy';
+    if(d.app) h+=' · app runs 24h '+(d.app.runs_24h||0)+' · fail '+(d.app.failure_rate_24h_pct||0)+'%';
+    h+='</p>'+tccTable(d.agents,[{h:'agent',f:r=>r.name||r.id},{h:'status',k:'status'},
+      {h:'age',f:r=>r.age_seconds==null?'—':Math.round(r.age_seconds/60)+'m'},
+      {h:'last run',k:'last_run'},{h:'detail',k:'detail'}]);
+    tccShow('Availability — '+pct, h);
+  }catch(e){ tccShow('Availability', '<p class="tcc-muted">failed: '+e+'</p>'); }
+}
+
 function tccAudit(){
   let h='<div class="tcc-row" style="margin-bottom:10px;gap:8px">'
     +'<input id="aud-action" class="tcc-input sm" placeholder="action">'
@@ -371,6 +391,10 @@ async function tccPoll(){
     if(d.counters && d.counters.cost){
       const cu=document.getElementById('tcc-cost-usd'); if(cu && d.counters.cost.usd_7d!=null) cu.textContent=Number(d.counters.cost.usd_7d).toFixed(4);
       const cc=document.getElementById('tcc-cost-calls'); if(cc && d.counters.cost.calls_7d!=null) cc.textContent=d.counters.cost.calls_7d;
+    }
+    if(d.counters && d.counters.availability){
+      const ap=document.getElementById('tcc-avail-pct');
+      if(ap && d.counters.availability.overall_pct!=null) ap.textContent=d.counters.availability.overall_pct;
     }
     const cl=document.getElementById('tcc-clock');
     if(cl) cl.textContent = '· updated '+new Date().toLocaleTimeString();
