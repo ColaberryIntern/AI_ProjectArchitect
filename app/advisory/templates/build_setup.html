@@ -54,6 +54,23 @@
         </div>
       </div>
 
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+          <label class="form-label fw-semibold">🧭 Build style</label>
+          <p class="form-text mt-0">How the AI organization should run the work.</p>
+          <div class="d-flex flex-column gap-2">
+            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
+              <input type="radio" name="blueprint" value="standard" class="form-check-input mt-1" checked>
+              <span><strong>Standard</strong> — human-in-the-loop project with AI assistance. <span class="text-success">Recommended</span></span>
+            </label>
+            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
+              <input type="radio" name="blueprint" value="autonomous" class="form-check-input mt-1">
+              <span><strong>Autonomous</strong> — agent-run system with autonomy, approval gates, and escalation.</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div class="d-grid">
         <button type="submit" class="btn btn-primary btn-lg">🚀 Design &amp; build my project</button>
       </div>

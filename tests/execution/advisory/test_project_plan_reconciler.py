@@ -137,6 +137,18 @@ def test_removed_node_is_archived(bc):
     assert any("status/archived.json" in c[1] for c in bc.calls if c[0] == "PUT")
 
 
+def test_name_prefix_applied_to_todolist_names(bc):
+    plan = _plan()
+    rec.reconcile(plan, "demo", _user(), 1, creator_id=42, start_date="2026-06-24",
+                  name_prefix="[TEST1] ")
+    list_posts = [c for c in bc.calls if c[0] == "POST" and c[1].endswith("/todolists.json")]
+    assert list_posts, "expected a todolist POST"
+    assert list_posts[0][2]["name"].startswith("[TEST1] ")
+    # the plan id is derived from the unprefixed title (prefix doesn't pollute ids)
+    assert any(e for e in bc_manifest.load_manifest("demo")["entries"]
+               if e.startswith("INIT.ch04-functional-requirements"))
+
+
 def test_proposed_nodes_are_skipped(bc):
     plan = _plan()
     plan["initiatives"][0]["lists"][0]["todos"][0]["status"] = "proposed"

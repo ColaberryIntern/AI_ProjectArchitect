@@ -187,8 +187,12 @@ def _adopt_by_breadcrumb(user, bucket, todoset, plan, manifest):
 # ── the reconcile ───────────────────────────────────────────────────
 
 def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | None = None,
-              start_date: str | None = None) -> dict:
+              start_date: str | None = None, name_prefix: str = "") -> dict:
     """Create/update/retire Basecamp objects to match the plan. Idempotent.
+
+    ``name_prefix`` is prepended to each initiative's Basecamp **todolist name**
+    only (not its plan title/id) — used to label/segregate test builds so they
+    stay identifiable and archivable without polluting deterministic ids.
 
     Returns a summary {created, updated, skipped, retired, errors}.
     """
@@ -218,8 +222,9 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
         init_hash = project_plan.content_hash(init)
         m = bc_manifest.get_entry(manifest, init["id"])
         try:
+            list_name = f"{name_prefix}{init['title']}"
             if not m or not m.get("bcId"):
-                lid = _create_todolist(user, bucket, todoset, init["title"], init.get("charter", ""))
+                lid = _create_todolist(user, bucket, todoset, list_name, init.get("charter", ""))
                 bc_manifest.upsert_entry(manifest, init["id"], bc_type="todolist", bc_id=lid,
                                          content_hash=init_hash, status=init.get("status", "active"))
                 summary["created"] += 1
@@ -227,7 +232,7 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
                 lid = m["bcId"]
                 if m.get("contentHash") != init_hash:
                     mcp_tools._bc_request("PUT", f"{_base(bucket)}/todolists/{lid}.json",
-                                          payload={"name": init["title"], "description": init.get("charter", "")}, user=user)
+                                          payload={"name": list_name, "description": init.get("charter", "")}, user=user)
                     m["contentHash"] = init_hash
                     summary["updated"] += 1
                 else:

@@ -40,8 +40,13 @@ def _locate_build_guide(slug: str) -> str | None:
 
 
 def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
-              slug: str, idea_text: str) -> None:
-    """Run phases b → verify → c → d. Writes status at each step; never raises."""
+              slug: str, idea_text: str, *, blueprint: str | None = None,
+              name_prefix: str = "") -> None:
+    """Run phases b → verify → c → d. Writes status at each step; never raises.
+
+    ``blueprint`` (standard|autonomous) selects the Build Guide blueprint;
+    ``name_prefix`` labels the Basecamp todolists (used to segregate test builds).
+    """
     try:
         bc_project_id = int(bc_project_id)
     except (TypeError, ValueError):
@@ -66,7 +71,7 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
         state = load_state(slug)
         project_name = (state.get("project") or {}).get("name") or slug
         raw_idea = state.get("advisory_prefill") or idea_text or project_name
-        run_full_pipeline_sync(project_name, raw_idea, depth_mode="professional")
+        run_full_pipeline_sync(project_name, raw_idea, depth_mode="professional", blueprint=blueprint)
 
         guide_path = _locate_build_guide(slug)
         if not guide_path:
@@ -97,7 +102,7 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
         )
         creator_id = basecamp_build_writer.resolve_operator_bc_person_id(user, bc_project_id)
         summary = project_plan_reconciler.reconcile(
-            plan, slug, user, bc_project_id, creator_id=creator_id,
+            plan, slug, user, bc_project_id, creator_id=creator_id, name_prefix=name_prefix,
         )
 
         # ── Phase d: resync so My Day reflects the new lists ────────
@@ -122,11 +127,13 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
 
 
 def kick_build(session_id: str, bc_project_id, pace: str, operator_email: str,
-               slug: str, idea_text: str) -> None:
+               slug: str, idea_text: str, *, blueprint: str | None = None,
+               name_prefix: str = "") -> None:
     """Spawn run_build in a daemon thread (mirrors my_day._kick_bg_full_sync)."""
     threading.Thread(
         target=run_build,
         args=(session_id, bc_project_id, pace, operator_email, slug, idea_text),
+        kwargs={"blueprint": blueprint, "name_prefix": name_prefix},
         daemon=True,
         name=f"myday-build-{slug}",
     ).start()

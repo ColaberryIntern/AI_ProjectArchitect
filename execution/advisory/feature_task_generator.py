@@ -95,6 +95,10 @@ def generate_features(chapter_title: str, chapter_body: str, max_features: int =
                 messages=[{"role": "user", "content": _USER_TMPL.format(
                     title=chapter_title, body=(chapter_body or "")[:6000])}],
                 temperature=0.4,
+                # Generous budget: a chapter can yield several features, each with
+                # multiple BUILD/BREAK/HARDEN todos + acceptance. 1024 (the default)
+                # truncates the JSON → parse failure → generic fallback.
+                max_tokens=4000,
                 response_format={"type": "json_object"},
             )
             data = json.loads(resp.content)
