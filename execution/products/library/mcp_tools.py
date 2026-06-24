@@ -85,8 +85,12 @@ def _bc_token(user=None) -> str:
          by the user's AI persona, not by CB System.
       2. Legacy bare-token vault entry (admin paste-form era, no refresh).
          Returned as-is; will 401 once the 14-day TTL elapses.
-      3. Shared CB System token from BASECAMP_ACCESS_TOKEN env (fallback
-         until every operator has their own per-user AI persona).
+      3. Shared CB System identity: a self-refreshing OAuth grant (preferred,
+         via basecamp_oauth_token.get_shared_cb_system_token) falling back to
+         the static BASECAMP_ACCESS_TOKEN env var. The self-refresh path
+         retires the recurring 14-day expiry incident; the env var is only the
+         last-resort safety net until the one-time CB System consent is stored.
+         See directives/basecamp-token-health.md.
     """
     if user is not None and getattr(user, "user_id", None):
         try:
@@ -115,9 +119,23 @@ def _bc_token(user=None) -> str:
                     continue
         except Exception:
             pass
+    # Tier 3a: shared CB System self-refresh grant (preferred).
+    try:
+        from . import basecamp_oauth_token
+        shared = basecamp_oauth_token.get_shared_cb_system_token()
+        if shared:
+            return shared
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    # Tier 3b: static env token (last-resort fallback; 401s every ~14 days).
     tok = os.environ.get("BASECAMP_ACCESS_TOKEN", "")
     if not tok:
-        raise RuntimeError("no BC token available (no per-user AI token, no BASECAMP_ACCESS_TOKEN env)")
+        raise RuntimeError(
+            "no BC token available (no per-user AI token, no shared CB System "
+            "self-refresh grant, no BASECAMP_ACCESS_TOKEN env)"
+        )
     return tok
 
 
@@ -152,13 +170,34 @@ def _account_id_as_bucket_error(bc_project_id) -> dict | None:
     return None
 
 
+def _invalidate_bc_token_caches(user=None) -> None:
+    """Drop any cached BC access token so the next resolve forces a refresh.
+    Called on a 401 self-heal. Covers both the per-operator grant (if a user
+    is in context) and the shared CB System grant."""
+    try:
+        from . import basecamp_oauth_token
+        if user is not None and getattr(user, "user_id", None):
+            basecamp_oauth_token.invalidate_access_token_cache(user)
+        basecamp_oauth_token.invalidate_access_token_cache(
+            basecamp_oauth_token.shared_cb_system_principal()
+        )
+    except Exception:
+        pass
+
+
 def _bc_request(method: str, url: str, payload: dict | None = None, user=None,
-                       *, _retries_left: int = 3) -> Any:
+                       *, _retries_left: int = 3, _auth_retried: bool = False) -> Any:
     """BC API caller for MCP tools. Auto-retries 429 / 503 using
     Retry-After when BC sends it, else linear backoff. Without this
     every Claude session that ran into a brief rate limit would surface
     the raw HTTP error to the user; with it, transient throttles are
-    invisible to humans."""
+    invisible to humans.
+
+    Self-heals a single 401: a token can expire mid-session (the 14-day BC
+    TTL, or a refresh that landed a new access_token elsewhere). On the first
+    401 we drop the cached token, force a fresh resolve, and retry once. A
+    second 401 means the refresh_token itself is dead -> surface it so the
+    operator re-consents (see directives/basecamp-token-health.md)."""
     import time as _t
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
@@ -188,7 +227,14 @@ def _bc_request(method: str, url: str, payload: dict | None = None, user=None,
             wait_s = max(wait_s, attempt * 5)
             _t.sleep(wait_s)
             return _bc_request(method, url, payload, user,
-                                              _retries_left=_retries_left - 1)
+                                              _retries_left=_retries_left - 1,
+                                              _auth_retried=_auth_retried)
+        if e.code == 401 and not _auth_retried:
+            # Token went stale mid-flight. Force a fresh resolve and retry once.
+            _invalidate_bc_token_caches(user)
+            return _bc_request(method, url, payload, user,
+                                              _retries_left=_retries_left,
+                                              _auth_retried=True)
         msg = ""
         try:
             msg = e.read().decode("utf-8", errors="replace")[:300]
