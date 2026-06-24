@@ -21,6 +21,61 @@
 {% endblock %}
 
 {% block content %}
+{% if myday_build %}
+<!-- My-Day build: live background-progress banner -->
+<div id="mdBuildBanner" class="alert alert-info d-flex align-items-center gap-3 shadow-sm"
+     data-session="{{ session.session_id }}" data-bcproject="{{ build_bc_project_id or '' }}"
+     {% if not building %}style="display:none"{% endif %}>
+  <div class="spinner-border spinner-border-sm" role="status" id="mdBuildSpinner"></div>
+  <div class="flex-grow-1">
+    <strong id="mdBuildMsg">Building your project in the background…</strong>
+    <div class="progress mt-2" style="height:6px;">
+      <div id="mdBuildBar" class="progress-bar" role="progressbar" style="width:5%"></div>
+    </div>
+    <small class="text-muted">You can keep exploring this page or navigate away — it keeps building.</small>
+  </div>
+  <a id="mdBuildCta" href="#" class="btn btn-success btn-sm" style="display:none">View in My Day →</a>
+</div>
+<script>
+(function(){
+  var banner = document.getElementById('mdBuildBanner');
+  if(!banner) return;
+  var sid = banner.getAttribute('data-session');
+  var bcProject = banner.getAttribute('data-bcproject');
+  var msg = document.getElementById('mdBuildMsg');
+  var bar = document.getElementById('mdBuildBar');
+  var cta = document.getElementById('mdBuildCta');
+  var spinner = document.getElementById('mdBuildSpinner');
+  function poll(){
+    fetch('/advisory/'+sid+'/build-status.json', {cache:'no-store', credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        banner.style.display = '';
+        if(d.message) msg.textContent = d.message;
+        if(typeof d.percent === 'number') bar.style.width = Math.max(5, d.percent) + '%';
+        if(d.phase === 'done'){
+          spinner.style.display = 'none';
+          bar.classList.add('bg-success'); bar.style.width = '100%';
+          msg.textContent = (d.tasks_created || 0) + ' tasks created in Basecamp.';
+          banner.classList.remove('alert-info'); banner.classList.add('alert-success');
+          cta.style.display = '';
+          cta.href = '/my-day/?' + (bcProject ? ('project='+bcProject+'&') : '') + 'tier=ai';
+          return;
+        }
+        if(d.phase === 'error'){
+          spinner.style.display = 'none';
+          banner.classList.remove('alert-info'); banner.classList.add('alert-danger');
+          msg.textContent = 'Build failed: ' + (d.error || 'unknown error');
+          return;
+        }
+        setTimeout(poll, 3000);
+      })
+      .catch(function(){ setTimeout(poll, 5000); });
+  }
+  poll();
+})();
+</script>
+{% endif %}
 <!-- Header -->
 <div class="text-center mb-4">
     <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2"><i class="bi bi-cpu me-1"></i>AI Operating System</span>

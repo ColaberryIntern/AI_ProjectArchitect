@@ -205,6 +205,9 @@
 <div class="card border-0 shadow mx-auto mb-5" style="max-width: 760px;" id="input-card">
     <div class="card-body p-4 p-md-5">
         <form action="/advisory/start" method="POST" id="advisoryForm">
+            {% if request.query_params.get('myday_build') %}
+            <input type="hidden" name="myday_build" value="1">
+            {% endif %}
             <!-- Label -->
             <div class="mb-2">
                 <label for="business_idea" class="form-label fw-bold fs-5" id="input-label">

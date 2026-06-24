@@ -47,6 +47,16 @@ def _session_user(request: Request):
     return None
 
 
+def _active_builds_for(user):
+    """In-progress 'Create a new project' builds for this operator (for the
+    My Day 'building in the background' banner). Best-effort; never raises."""
+    try:
+        from execution.advisory import build_status
+        return build_status.active_builds_for_operator(getattr(user, "email", ""))
+    except Exception:
+        return []
+
+
 def _require_user(request: Request):
     user = _session_user(request)
     if not user:
@@ -842,6 +852,7 @@ async def ops_home(request: Request):
              total_open=status.open_count,
              my_day_total_open=status.open_count,
              library_suggestions=library_suggestions,
+             myday_active_builds=_active_builds_for(user),
              show_welcome_banner=(
                  request.query_params.get("welcome") == "1"
              )),

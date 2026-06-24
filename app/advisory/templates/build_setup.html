@@ -1,0 +1,67 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Build Setup | AI Project Architect{% endblock %}
+
+{% block content %}
+<div class="text-center mb-4">
+  <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">Final step before we build</span>
+  <h2 class="fw-bold">Where should we build this, and how fast?</h2>
+  <p class="text-muted">We'll design your AI organization, then generate a full build plan and
+    create the tasks in Basecamp automatically. Pick the project and pace below.</p>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <form action="/advisory/{{ session_id }}/start-build" method="POST">
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+          <label class="form-label fw-semibold">📁 Basecamp project</label>
+          {% if projects %}
+          <select name="bc_project_id" class="form-select form-select-lg" required>
+            {% for p in projects %}
+            <option value="{{ p.bc_id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">The build tasks will be created as new lists in this project.</div>
+          {% else %}
+          <input type="number" name="bc_project_id" class="form-control form-control-lg"
+                 placeholder="Basecamp project (bucket) id" required>
+          <div class="form-text">We couldn't list your Basecamp projects automatically —
+            paste the project (bucket) id from its URL.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+          <label class="form-label fw-semibold">⏱️ How fast do you want to build it?</label>
+          <p class="form-text mt-0">Sets the due dates — every task gets one, spread across the window in build order.</p>
+          <div class="d-flex flex-column gap-2">
+            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
+              <input type="radio" name="pace" value="sprint" class="form-check-input mt-1">
+              <span><strong>Sprint</strong> · about 1 week — heads-down, ship fast.</span>
+            </label>
+            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
+              <input type="radio" name="pace" value="standard" class="form-check-input mt-1" checked>
+              <span><strong>Standard</strong> · about 1 month — steady, balanced pace. <span class="text-success">Recommended</span></span>
+            </label>
+            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
+              <input type="radio" name="pace" value="relaxed" class="form-check-input mt-1">
+              <span><strong>Relaxed</strong> · about 3 months — alongside other work.</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-grid">
+        <button type="submit" class="btn btn-primary btn-lg">🚀 Design &amp; build my project</button>
+      </div>
+      <p class="text-muted text-center small mt-3">
+        You'll be taken to your AI organization page while the build runs in the background —
+        you can navigate away and check back anytime.
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}

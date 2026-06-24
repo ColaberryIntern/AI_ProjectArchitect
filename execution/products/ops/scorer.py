@@ -34,6 +34,25 @@ DECIDE_RE = re.compile(r"\b(REVIEW|APPROVE|DECIDE|SIGN[- ]?OFF|CONFIRM)\b", re.I
 # escalation band. This is the runtime backstop for the 8-day false escalation.
 ARTIFACT_PENDING_RE = re.compile(r"Artifact:\s*(?:</strong>)?\s*PENDING\b", re.IGNORECASE)
 
+# AI-vs-human task kind, encoded in the Basecamp todo by the My-Day "create a
+# new project" build (execution.advisory.basecamp_build_writer): a leading
+# 🤖/🧑 in the title plus an [AI]/[Human] tag in the description. Parsed here so
+# the My Day tier=human/tier=ai split (app/routers/my_day.py) works by design,
+# regardless of the numeric urgency — an AI build task is never forced into the
+# human tier, and a human build task always lands in it.
+_AI_KIND_RE = re.compile(r"(^\s*🤖)|(\[AI\])")
+_HUMAN_KIND_RE = re.compile(r"(^\s*🧑)|(\[Human\])", re.IGNORECASE)
+
+
+def task_kind(todo: OpsTodo) -> str:
+    """Return the explicit task kind: "ai", "human", or "" if unmarked."""
+    text = f"{todo.title}\n{todo.description}"
+    if _HUMAN_KIND_RE.search(text):
+        return "human"
+    if _AI_KIND_RE.search(text):
+        return "ai"
+    return ""
+
 
 def _days_until(due_on: str | None) -> int | None:
     if not due_on:
@@ -132,6 +151,17 @@ def score_todo(todo: OpsTodo, project_weight: float = 1.0) -> dict[str, Any]:
     if artifact_gated:
         category = "waiting_dependency"
 
+    # Explicit AI/human kind (My-Day build tasks) overrides the derived tier so
+    # the task lands in the right My Day tier regardless of its numeric urgency:
+    # a human task (always assigned) is escalated to human_required; an AI task
+    # is never forced into the human tier. Artifact-gated tasks keep their gate.
+    kind = task_kind(todo)
+    if not artifact_gated and kind:
+        if kind == "human" and todo.assignee_ids:
+            category = "human_required"
+        elif kind == "ai" and category == "human_required":
+            category = "unscored"
+
     return {
         "urgency": weighted,
         "category": category,
@@ -139,6 +169,7 @@ def score_todo(todo: OpsTodo, project_weight: float = 1.0) -> dict[str, Any]:
             "due_days": due_days,
             "stale_days": stale_days,
             "keyword_tier": kw_tier,
+            "kind": kind,
             "artifact_gated": artifact_gated,
             "components": {
                 "due": due_pts,
