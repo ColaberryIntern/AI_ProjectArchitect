@@ -34,6 +34,19 @@ def _extract_utm(request: Request) -> dict:
     return params
 
 
+def _session_user(request: Request):
+    """Resolve the logged-in operator (My-Day build routes only). Mirrors
+    app/routers/my_day.py._session_user: cookie JWT, dev fallback to Ali."""
+    from execution.products.library import auth_google, tenancy
+    cookie = request.cookies.get(auth_google.SESSION_COOKIE_NAME)
+    user = auth_google.current_user_from_cookie(cookie)
+    if user:
+        return user
+    if not auth_google.is_enabled():
+        return tenancy.get_user("ali@colaberry.com")
+    return None
+
+
 def _advisory_enabled() -> bool:
     """Call-time kill-switch (P1.5 hardening). Default ON; set
     OPS_ADVISORY_ENABLED=false to disable the public advisory funnel."""
@@ -104,13 +117,22 @@ async def demo_walkthrough(request: Request):
 
 
 @router.post("/start", dependencies=[Depends(require_advisory_enabled), Depends(rate_limit_advisory)])
-async def start_session(request: Request, business_idea: str = Form(...)):
+async def start_session(request: Request, business_idea: str = Form(...),
+                        myday_build: str = Form("")):
     """Create a new advisory session and redirect to questions."""
-    from execution.advisory.advisory_state_manager import advance_status, initialize_session
+    from execution.advisory.advisory_state_manager import advance_status, initialize_session, save_session
     from execution.advisory.event_tracker import track_event
 
     session = initialize_session(business_idea)
     advance_status(session, "questioning")
+
+    # My-Day-initiated "Create a new project" build: flag the session so that
+    # after capabilities we divert to the build-setup step (target BC project +
+    # pace) instead of the public results page. The anonymous funnel never sets
+    # this, so it is unaffected.
+    if str(myday_build).strip() in ("1", "true", "True", "on", "yes"):
+        session["myday_build"] = True
+        save_session(session)
 
     track_event(
         event_name="advisory_session_started",
@@ -418,10 +440,107 @@ async def save_capabilities(request: Request, session_id: str):
         properties={"count": len(selected_ids)},
     )
 
+    # My-Day build: collect target BC project + pace before generating.
+    if session.get("myday_build"):
+        return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
+
     return RedirectResponse(
         url=f"/advisory/{session_id}/generate",
         status_code=303,
     )
+
+
+# ─── My-Day "Create a new project" build (target project + pace → background) ──
+
+@router.get("/{session_id}/build-setup")
+async def build_setup(request: Request, session_id: str):
+    """Collect the target Basecamp project + build pace before generating."""
+    from execution.advisory.advisory_state_manager import load_session
+
+    user = _session_user(request)
+    if not user:
+        return RedirectResponse(url=f"/auth/login?next=/advisory/{session_id}/build-setup", status_code=303)
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        return RedirectResponse(url="/advisory/", status_code=303)
+
+    # The operator's Basecamp projects for the dropdown (cached; no BC call).
+    projects = []
+    try:
+        from execution.products.ops import store
+        projects = [{"bc_id": p.bc_id, "name": p.name} for p in store.load_projects(user.email)]
+    except Exception:
+        logger.warning("could not load operator BC projects for build-setup", exc_info=True)
+
+    return templates.TemplateResponse("build_setup.html", {
+        "request": request,
+        "session": session,
+        "session_id": session_id,
+        "projects": projects,
+    })
+
+
+@router.post("/{session_id}/start-build")
+async def start_build(request: Request, session_id: str,
+                      bc_project_id: str = Form(...), pace: str = Form("standard")):
+    """Run advisory generation synchronously (so the org page renders + the
+    project slug exists), then kick the requirements+Basecamp build in the
+    background and send the user to the buildout page."""
+    from execution.advisory.advisory_generation import generate_advisory_outputs
+    from execution.advisory import build_status, myday_build_orchestrator
+
+    user = _session_user(request)
+    if not user:
+        return RedirectResponse(url=f"/auth/login?next=/advisory/{session_id}/build-setup", status_code=303)
+    try:
+        bucket = int(bc_project_id)
+    except (TypeError, ValueError):
+        return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
+    pace = pace if pace in ("sprint", "standard", "relaxed") else "standard"
+
+    # Phase a: advisory generation + project creation (synchronous → slug).
+    try:
+        result = generate_advisory_outputs(session_id)
+    except FileNotFoundError:
+        return RedirectResponse(url="/advisory/", status_code=303)
+    slug = result.get("slug")
+    if not slug:
+        return RedirectResponse(url=f"/advisory/{session_id}/results", status_code=303)
+
+    # Seed the build status, then kick phases b-d in the background.
+    from execution.advisory.advisory_state_manager import load_session, save_session
+    session = load_session(session_id)
+    idea_text = session.get("business_idea", "")
+    session["myday_build_target"] = {"bc_project_id": bucket, "pace": pace, "slug": slug}
+    save_session(session)
+
+    build_status.write_status(
+        slug, phase="advisory", message="Designing your AI organization…",
+        session_id=session_id, bc_project_id=bucket, pace=pace,
+        operator_email=user.email, project_name=(session.get("business_idea") or "")[:80],
+    )
+    myday_build_orchestrator.kick_build(session_id, bucket, pace, user.email, slug, idea_text)
+
+    return RedirectResponse(url=f"/advisory/{session_id}/results?building=1", status_code=303)
+
+
+@router.get("/{session_id}/build-status.json")
+async def build_status_json(request: Request, session_id: str):
+    """Polling endpoint for the buildout page's progress banner."""
+    from fastapi.responses import JSONResponse
+    from execution.advisory import build_status
+    from execution.advisory.advisory_state_manager import load_session
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        return JSONResponse({"phase": "unknown"}, headers={"Cache-Control": "no-store"})
+    slug = (session.get("myday_build_target") or {}).get("slug") or session.get("linked_project_slug")
+    if not slug:
+        return JSONResponse({"phase": "starting", "percent": 0}, headers={"Cache-Control": "no-store"})
+    status = build_status.read_status(slug) or {"phase": "starting", "percent": 0}
+    return JSONResponse(status, headers={"Cache-Control": "no-store"})
 
 
 # ─── Generation ─────────────────────────────────────────────────────
@@ -437,116 +556,20 @@ async def generate_results(request: Request, session_id: str):
             "<p>The AI advisory is paused by an administrator. Please check back shortly.</p>",
             status_code=503,
         )
-    from execution.advisory.advisory_state_manager import (
-        advance_status,
-        load_session,
-        set_capability_map,
-        set_impact_model,
-        set_maturity_score,
-        set_org_structure,
-    )
-    from execution.advisory.business_interpreter import interpret_answers
+    from execution.advisory.advisory_generation import generate_advisory_outputs
     from execution.advisory.event_tracker import track_event
-    from execution.advisory.impact_calculator import calculate_impact
-    from execution.advisory.maturity_scorer import score_maturity
-    from execution.advisory.org_builder import build_org_structure
 
     try:
-        session = load_session(session_id)
+        result = generate_advisory_outputs(session_id)
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
 
-    # Skip regeneration if already complete
-    if session.get("capability_map") is not None and session.get("org_structure") is not None:
-        return RedirectResponse(
-            url=f"/advisory/{session_id}/results",
-            status_code=303,
+    if not result.get("already_complete"):
+        track_event(
+            event_name="advisory_results_generated",
+            session_id=session_id,
+            email=result.get("email", ""),
         )
-
-    # Generate all outputs
-    answers = session.get("answers", [])
-    business_idea = session.get("business_idea", "")
-    selected_caps = session.get("selected_capabilities", [])
-
-    # ── Industry Detection (taxonomy registry: seed → cache → sync LLM) ──
-    from execution.advisory.taxonomy_registry import lookup_taxonomy
-    answer_text = " ".join(a.get("answer_text", "") for a in answers)
-    industry_text = business_idea
-    if answers:
-        industry_text = f"{business_idea}\n\n{answers[0].get('answer_text', '')}"
-    try:
-        industry_profile = lookup_taxonomy(industry_text.strip(), business_idea + " " + answer_text)
-    except Exception:
-        industry_profile = None
-
-    if industry_profile:
-        meta = industry_profile.get("_meta", {})
-        industry_id = meta.get("industry_key") or ""
-        industry_confidence = {"seed": 0.85, "registry": 0.80, "generated": 0.60}.get(meta.get("source"), 0.5)
-        industry_label = industry_profile.get("label", industry_id)
-    else:
-        industry_id, industry_confidence, industry_label = "", 0.0, ""
-
-    session["industry"] = {
-        "id": industry_id,
-        "label": industry_label,
-        "confidence": industry_confidence,
-        "source": (industry_profile or {}).get("_meta", {}).get("source"),
-    }
-    from execution.advisory.advisory_state_manager import save_session as _save
-    _save(session)
-
-    capability_map = interpret_answers(answers, business_idea, selected_capability_ids=selected_caps)
-    set_capability_map(session, capability_map)
-
-    maturity = score_maturity(answers, capability_map)
-    set_maturity_score(session, maturity)
-
-    # Analyze primary problem for weighted architecture
-    from execution.advisory.problem_analyzer import analyze_problems
-    problem_analysis = analyze_problems(session)
-
-    # Generate problem-weighted agent architecture with industry context
-    from execution.advisory.advisory_state_manager import set_agents
-    from execution.advisory.agent_generator import generate_agents
-    from execution.advisory.capability_mapper import should_include_cory
-
-    include_cory = should_include_cory(session)
-    agents = generate_agents(selected_caps, include_cory=include_cory, problem_analysis=problem_analysis, industry_profile=industry_profile)
-    set_agents(session, agents)
-
-    # Store problem analysis on session for results page
-    from execution.advisory.advisory_state_manager import save_session
-    session["problem_analysis"] = problem_analysis
-    save_session(session)
-
-    org_nodes = build_org_structure(capability_map, maturity, business_idea)
-    set_org_structure(session, org_nodes)
-
-    impact = calculate_impact(capability_map, maturity, answers, business_idea, industry_profile=industry_profile)
-    set_impact_model(session, impact)
-
-    # Build structured architecture (engines, dependencies, flows)
-    from execution.advisory.architecture_builder import build_architecture
-    architecture = build_architecture(selected_caps, include_coo=include_cory)
-    session["architecture"] = architecture
-    from execution.advisory.advisory_state_manager import save_session
-    save_session(session)
-
-    advance_status(session, "complete")
-
-    track_event(
-        event_name="advisory_results_generated",
-        session_id=session_id,
-        email=session.get("email", ""),
-    )
-
-    # Auto-create Project Builder project (non-blocking)
-    try:
-        from execution.advisory.advisory_to_project_mapper import create_project_from_advisory
-        create_project_from_advisory(session_id)
-    except Exception:
-        logger.warning("Advisory-to-project creation failed (non-blocking)", exc_info=True)
 
     return RedirectResponse(
         url=f"/advisory/{session_id}/results",
@@ -638,6 +661,10 @@ async def show_results(request: Request, session_id: str):
         "optimization_suggestions": optimization_suggestions,
         "get_dimension_label": get_dimension_label,
         "format_currency": format_currency,
+        # My-Day build: drive the background-progress banner + poller.
+        "myday_build": bool(session.get("myday_build")),
+        "building": request.query_params.get("building") == "1",
+        "build_bc_project_id": (session.get("myday_build_target") or {}).get("bc_project_id"),
     })
 
 

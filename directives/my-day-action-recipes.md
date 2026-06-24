@@ -162,6 +162,31 @@ guidance under it changes. To add a persona, append to `PERSONAS` — no other c
 change. Tests: `test_personas.py`, the persona cases in `test_ops_suggestions.py`,
 and the selector/endpoint cases in `test_my_day_workspace_copy_prompt.py`.
 
+**"Create a new project" — idea → AI org → Basecamp build plan, in the background.**
+Entry points: a "🚀 New project" item in the top "+ Add" menu and a button on the
+My Day briefing, both linking `/advisory/?myday_build=1`. The flow reuses the full
+advisory discovery (idea → 10 questions → design → capabilities), then diverts at a
+**build-setup** step (`GET/POST /advisory/{sid}/build-setup` → `start-build`) that
+collects the **target Basecamp project** (dropdown from `store.load_projects`) and a
+**pace** (Sprint ≈1wk / Standard ≈1mo / Relaxed ≈3mo). `start-build` runs the 9-stage
+advisory generation synchronously (so the org page renders + the project slug exists),
+then kicks a background daemon (`myday_build_orchestrator.kick_build`) and redirects to
+the AI-organization page with a live progress banner (polls
+`/advisory/{sid}/build-status.json`). The background sequence is **joined and automatic**:
+generate the full **Build Guide** (`full_pipeline`) → parse its chapter spine
+(`build_guide_parser`) + generate BUILD/BREAK/HARDEN tasks per feature
+(`feature_task_generator`) into a desired-state **`project-plan.json`**
+(`plan_builder`, schema `cb-project-plan/v1`) → **verify** it against the fail-loud
+validation gate (`project_plan.validate_plan`) → **reconcile** it into Basecamp
+(`project_plan_reconciler`: initiative→todolist, feature→group, todo→todo; every todo
+assigned to the creator + due-dated by pace; idempotent via `bc_manifest`) → resync My
+Day. AI-vs-human tasks are encoded in the todo (🤖/🧑 + `[AI]`/`[Human]`) and read by
+`scorer.task_kind` so they land in the right `tier=human`/`tier=ai` split. Doc edits are
+applied as a bounded delta (`project_plan_reparse`: added→`proposed`, removed→`retired`,
+unchanged→verbatim). Design specs: `docs/specs/myday-project-build-*.md`. Tests under
+`tests/execution/advisory/test_project_plan*.py`, `test_plan_builder.py`,
+`test_bc_manifest.py`, `test_build_status.py`, and `tests/app/test_myday_build_routes.py`.
+
 **The CONTEXT block links the list and project, not just names them.**
 `generate_prompt` emits the **task URL, the list URL, and the project URL** in
 the `## Task details` block, derived from the todo's own app URL via

@@ -45,6 +45,10 @@
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day</h1>
   <div style="display: flex; gap: 8px; align-items: center;">
+    <a href="/advisory/?myday_build=1" class="md-btn md-btn-primary" style="font-size: 12px;"
+       title="Describe an idea → AI designs the org, generates the build plan, and creates the Basecamp tasks">
+      🚀 New project
+    </a>
     <a href="/my-day/decisions-report{% if project_filter %}?project={{ project_filter }}{% endif %}"
        class="md-btn md-btn-quiet" style="font-size: 12px;"
        title="Email-style decisions report — printable, with Mark Done + Copy Prompt baked in">
@@ -68,6 +72,23 @@
     </form>
   </div>
 </div>
+
+{# ── Project(s) building in the background ───────────────── #}
+{% if myday_active_builds %}
+{% for b in myday_active_builds %}
+<div style="background: #ddf4ff; border: 1px solid #c6e2ff; border-radius: 10px;
+            padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">
+  <div class="md-spinner"></div>
+  <div style="flex: 1;">
+    <strong style="font-size: 13px;">Building “{{ b.project_name or b.slug }}” in the background</strong>
+    <span style="color: #57606a; font-size: 12px;"> · {{ b.message or b.phase }}</span>
+  </div>
+  {% if b.session_id %}
+  <a href="/advisory/{{ b.session_id }}/results?building=1" class="md-btn md-btn-quiet" style="font-size: 12px;">View progress →</a>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
 
 
 {# ── Grand score banner ─────────────────────────────────── #}
