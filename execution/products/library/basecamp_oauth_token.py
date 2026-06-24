@@ -284,6 +284,72 @@ def store_oauth_grant(user, *, access_token: str, refresh_token: str,
     invalidate_access_token_cache(user)
 
 
+# ── Shared CB System identity (Tier 3 self-refresh) ──────────────────
+#
+# The MCP server's _bc_token() falls back to the shared CB System bearer
+# when an operator has no per-user AI grant. Historically that bearer was a
+# STATIC env var (BASECAMP_ACCESS_TOKEN) mirrored from CCPP, which 401s every
+# ~14 days. Storing CB System's own OAuth grant under this synthetic principal
+# routes the shared identity through the same refresh_token machinery as
+# per-operator grants, so it self-refreshes and the static env var becomes a
+# last-resort fallback only. See directives/basecamp-token-health.md.
+
+SHARED_CB_SYSTEM_USER_ID = "cb-system"
+
+
+class _SyntheticPrincipal:
+    """Minimal stand-in for a tenancy.User. The token functions only ever
+    touch `.user_id`, so a namespace with that one attribute is sufficient
+    to reuse the entire grant/refresh/cache pipeline for a non-tenant
+    identity like CB System."""
+    __slots__ = ("user_id",)
+
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+
+
+def shared_cb_system_principal() -> _SyntheticPrincipal:
+    return _SyntheticPrincipal(SHARED_CB_SYSTEM_USER_ID)
+
+
+def get_shared_cb_system_token() -> str:
+    """Return a fresh CB System access token via the stored self-refresh
+    grant, or "" if no grant is on file / refresh failed.
+
+    Returns "" (never raises) so the caller can cleanly fall through to the
+    static BASECAMP_ACCESS_TOKEN env var. A failure here is logged but must
+    not break the BC call path — the env fallback is the safety net until the
+    one-time CB System consent is done.
+    """
+    try:
+        return get_access_token_for_operator(shared_cb_system_principal())
+    except OAuthError as e:
+        logger.info("shared CB System token unavailable (%s); "
+                    "falling back to static env token", e.code)
+        return ""
+    except Exception:  # noqa: BLE001 — never let this break the BC call
+        logger.warning("shared CB System token resolution raised unexpectedly; "
+                       "falling back to static env token", exc_info=True)
+        return ""
+
+
+def store_shared_cb_system_grant(*, access_token: str, refresh_token: str,
+                                 bc_user_id: int, bc_user_email: str,
+                                 access_token_expires_at: float,
+                                 actor_id: str = "cb_system_one_time_consent") -> None:
+    """One-time: persist CB System's OAuth grant so Tier 3 self-refreshes.
+
+    Run once after completing the BC OAuth consent as CB System
+    (vishnu@colaberry.com). See directives/basecamp-token-health.md.
+    """
+    store_oauth_grant(
+        shared_cb_system_principal(),
+        access_token=access_token, refresh_token=refresh_token,
+        bc_user_id=bc_user_id, bc_user_email=bc_user_email,
+        access_token_expires_at=access_token_expires_at, actor_id=actor_id,
+    )
+
+
 def get_grant_metadata(user) -> Optional[dict]:
     """Public-safe view of the stored grant: identity + expiry only.
     Tokens are NOT returned. Used by the /profile/connect-basecamp-ai

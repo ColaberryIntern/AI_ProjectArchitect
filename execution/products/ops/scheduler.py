@@ -33,6 +33,9 @@ RESUBSCRIBE_CRON_HOUR = int(os.environ.get("OPS_CB_WEBHOOK_RESUBSCRIBE_HOUR", "4
 RESUBSCRIBE_CRON_TIMEZONE = os.environ.get(
     "OPS_CB_WEBHOOK_RESUBSCRIBE_TZ", "America/New_York",
 )
+TOKEN_HEALTH_CRON_HOUR = int(os.environ.get("BC_TOKEN_HEALTH_CRON_HOUR", "8"))
+TOKEN_HEALTH_TIMEZONE = os.environ.get("BC_TOKEN_HEALTH_TZ", "America/New_York")
+TOKEN_HEALTH_ENABLED = os.environ.get("BC_TOKEN_HEALTH_ENABLED", "1") == "1"
 # Default: polling ON. Flip to "false" (case-insensitive) once webhooks
 # have been verified via webhook_events.jsonl and /admin/cb-mentions.json
 # to retire the 10-min poll. Reversible by toggling the env back.
@@ -44,6 +47,7 @@ APPROVE_JOB_ID = "ops_autopickup_approve_all_users"
 PURGE_JOB_ID = "ops_purge_all_users"
 SMOKE_JOB_ID = "ops_cb_smoke_nightly"
 RESUBSCRIBE_JOB_ID = "ops_cb_webhook_resubscribe_daily"
+TOKEN_HEALTH_JOB_ID = "ops_bc_token_health_daily"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -199,6 +203,18 @@ def _run_cb_smoke() -> None:
         logger.warning("ops_cb_smoke: run() threw", exc_info=True)
 
 
+def _run_bc_token_health() -> None:
+    """Daily Basecamp token-health preflight: probe every BC identity and
+    email Ali + Kes if any is near expiry / unmanaged / failing. No-op send
+    when nothing needs attention. See bc_token_health.run()."""
+    from . import bc_token_health
+    try:
+        result = bc_token_health.run()
+        logger.info("ops_bc_token_health: %s", result)
+    except Exception:
+        logger.warning("ops_bc_token_health: run() threw", exc_info=True)
+
+
 def start_scheduler() -> None:
     """Add jobs to the background scheduler. Idempotent."""
     global _scheduler
@@ -291,16 +307,31 @@ def start_scheduler() -> None:
         )
     else:
         resubscribe_status = "disabled (OPS_CB_WEBHOOK_SECRET unset)"
+    if TOKEN_HEALTH_ENABLED:
+        _scheduler.add_job(
+            _run_bc_token_health,
+            trigger=CronTrigger(hour=TOKEN_HEALTH_CRON_HOUR, minute=0,
+                                timezone=TOKEN_HEALTH_TIMEZONE),
+            id=TOKEN_HEALTH_JOB_ID,
+            name=f"Basecamp token-health preflight (daily {TOKEN_HEALTH_TIMEZONE} "
+                 f"{TOKEN_HEALTH_CRON_HOUR:02d}:00)",
+            replace_existing=True,
+        )
+    token_health_status = (
+        f"daily at {TOKEN_HEALTH_CRON_HOUR:02d}:00 {TOKEN_HEALTH_TIMEZONE}"
+        if TOKEN_HEALTH_ENABLED else "disabled (BC_TOKEN_HEALTH_ENABLED!=1)"
+    )
     _scheduler.start()
     smoke_status = "enabled" if cb_smoke.is_configured() else "disabled (env unset)"
     logger.info(
         "ops schedulers started: sync every %d min, mentions %s, "
         "autopickup every %d min, approve-scan every %d min, "
-        "purge cron every %d min, cb_smoke %s, cb_webhook_resubscribe %s",
+        "purge cron every %d min, cb_smoke %s, cb_webhook_resubscribe %s, "
+        "bc_token_health %s",
         INTERVAL_MINUTES,
         f"every {MENTION_INTERVAL_MINUTES} min" if POLLING_ENABLED else "disabled",
         AUTOPICKUP_INTERVAL_MINUTES, APPROVE_INTERVAL_MINUTES,
-        PURGE_CRON_MINUTES, smoke_status, resubscribe_status,
+        PURGE_CRON_MINUTES, smoke_status, resubscribe_status, token_health_status,
     )
 
 
