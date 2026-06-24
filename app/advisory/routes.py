@@ -483,7 +483,8 @@ async def build_setup(request: Request, session_id: str):
 
 @router.post("/{session_id}/start-build")
 async def start_build(request: Request, session_id: str,
-                      bc_project_id: str = Form(...), pace: str = Form("standard")):
+                      bc_project_id: str = Form(...), pace: str = Form("standard"),
+                      blueprint: str = Form("standard")):
     """Run advisory generation synchronously (so the org page renders + the
     project slug exists), then kick the requirements+Basecamp build in the
     background and send the user to the buildout page."""
@@ -498,6 +499,7 @@ async def start_build(request: Request, session_id: str,
     except (TypeError, ValueError):
         return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
     pace = pace if pace in ("sprint", "standard", "relaxed") else "standard"
+    blueprint = blueprint if blueprint in ("standard", "autonomous") else "standard"
 
     # Phase a: advisory generation + project creation (synchronous → slug).
     try:
@@ -512,15 +514,15 @@ async def start_build(request: Request, session_id: str,
     from execution.advisory.advisory_state_manager import load_session, save_session
     session = load_session(session_id)
     idea_text = session.get("business_idea", "")
-    session["myday_build_target"] = {"bc_project_id": bucket, "pace": pace, "slug": slug}
+    session["myday_build_target"] = {"bc_project_id": bucket, "pace": pace, "slug": slug, "blueprint": blueprint}
     save_session(session)
 
     build_status.write_status(
         slug, phase="advisory", message="Designing your AI organization…",
-        session_id=session_id, bc_project_id=bucket, pace=pace,
+        session_id=session_id, bc_project_id=bucket, pace=pace, blueprint=blueprint,
         operator_email=user.email, project_name=(session.get("business_idea") or "")[:80],
     )
-    myday_build_orchestrator.kick_build(session_id, bucket, pace, user.email, slug, idea_text)
+    myday_build_orchestrator.kick_build(session_id, bucket, pace, user.email, slug, idea_text, blueprint=blueprint)
 
     return RedirectResponse(url=f"/advisory/{session_id}/results?building=1", status_code=303)
 
