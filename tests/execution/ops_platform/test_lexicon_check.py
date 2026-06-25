@@ -59,3 +59,25 @@ def test_drift_only_passes(artifact):
 def test_out_of_scope_paths_ignored():
     # README is not in scan_globs -> nothing to gate -> pass.
     assert _load_gate().main(["README.md"]) == 0
+
+
+def test_gate_runs_on_bare_runner():
+    """The Lexicon gate must import without config.settings (and thus without
+    python-dotenv), so it runs on the dependency-light CI runner that only has
+    `jsonschema` installed. Regression guard for the gate import chain.
+    """
+    import subprocess
+    import sys
+
+    src = (
+        "import importlib, sys; "
+        "importlib.import_module('execution.ops_platform.lexicon'); "
+        "sys.exit(0 if 'config.settings' not in sys.modules else 1)"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", src], cwd=str(PROJECT_ROOT), capture_output=True, text=True
+    )
+    assert proc.returncode == 0, (
+        "execution.ops_platform.lexicon pulled in config.settings "
+        f"(drags in python-dotenv); stderr:\n{proc.stderr}"
+    )
