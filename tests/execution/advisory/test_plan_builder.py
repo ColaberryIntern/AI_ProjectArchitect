@@ -40,36 +40,35 @@ def test_source_sha_is_stable():
     assert parser.source_sha256(SAMPLE_GUIDE) == parser.source_sha256(SAMPLE_GUIDE)
 
 
-# ── workstream generator (fallback) ─────────────────────────────────
+# ── business-process generator (fallback) ───────────────────────────
 
-def test_generate_workstreams_fallback_has_build_and_break():
-    ws = gen.generate_workstreams("an app", ["Role Management", "Reporting"])
-    assert 1 <= len(ws) <= 9
-    for w in ws:
-        phases = {t["phase"] for t in w["tasks"]}
+def test_generate_process_plan_fallback_has_build_and_break():
+    plan = gen.generate_process_plan("an app", ["Role Management", "Reporting"])
+    assert 7 <= len(plan) <= 10            # 7-10 business processes
+    for proc in plan:
+        assert proc["title"]
+        phases = {t["phase"] for t in proc["tasks"]}
         assert "BUILD" in phases and "BREAK" in phases
-        for t in w["tasks"]:
+        for t in proc["tasks"]:
             assert t["acceptance"] and t["kind"] in ("ai", "human")
 
 
-# ── build_plan: one initiative → workstreams → tasks ────────────────
+# ── build_plan: one list grouped by business processes ──────────────
 
-def test_build_plan_is_one_list_of_workstreams_and_valid():
+def test_build_plan_is_one_list_of_business_processes_and_valid():
     plan = plan_builder.build_plan("acme", SAMPLE_GUIDE, "an app for roles + reporting",
                                    project_name="Acme", pace="standard")
-    # ONE initiative (the single project list) with workstream feature-groups
+    # ONE initiative (the single project list) grouped by business processes
     assert len(plan["initiatives"]) == 1
     lists = [n for lvl, n, _ in project_plan.iter_nodes(plan) if lvl == "list"]
     todos = [n for lvl, n, _ in project_plan.iter_nodes(plan) if lvl == "todo"]
-    assert len(lists) >= 2            # workstreams (not per-chapter explosion)
-    assert len(lists) <= 9            # capped — not overwhelming
+    assert 7 <= len(lists) <= 10       # 7-10 understandable process groups
     assert todos
-    # each todo has acceptance, kind, phase, due offset, and (build) steps
     for t in todos:
         assert t["acceptance"] and t["kind"] in ("ai", "human")
         assert t["phase"] in ("BUILD", "BREAK", "HARDEN")
         assert 1 <= t["dueOffsetDays"] <= 30
-    # the whole plan passes the validation gate (Failure-First per workstream)
+    # the whole plan passes the validation gate (Failure-First per process)
     assert project_plan.validate_plan(plan) == []
 
 
