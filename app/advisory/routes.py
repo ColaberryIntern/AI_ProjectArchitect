@@ -134,6 +134,17 @@ async def start_session(request: Request, business_idea: str = Form(...),
     session = initialize_session(business_idea)
     advance_status(session, "questioning")
 
+    # Personalize the intake questions to the idea the user just described, so
+    # the example chips (and the opening question) relate to THEIR business
+    # instead of generic logistics/SaaS/healthcare filler. Generated once here
+    # and cached on the session; fallback-safe (returns {} when the LLM is off).
+    try:
+        from execution.advisory.question_tailor import tailor_questions
+        session["tailored_questions"] = tailor_questions(business_idea)
+    except Exception:
+        session["tailored_questions"] = {}
+    save_session(session)
+
     # My-Day-initiated "Create a new project" build: flag the session so that
     # after capabilities we divert to the build-setup step (target BC project +
     # pace) instead of the public results page. The anonymous funnel never sets
@@ -178,7 +189,8 @@ async def question_flow(request: Request, session_id: str):
             status_code=303,
         )
 
-    question = get_next_question(session)
+    from execution.advisory.question_tailor import apply_tailoring
+    question = apply_tailoring(get_next_question(session), session.get("tailored_questions"))
     progress = get_progress(session)
 
     # Show soft email capture after question 5 (mid-Phase 1)
@@ -237,6 +249,11 @@ async def submit_answer(
     question = get_next_question(session)
     if not question or not answer_text:
         return RedirectResponse(url=f"/advisory/{session_id}/questions", status_code=303)
+
+    # Use the same idea-tailored question the user actually saw — so validation
+    # judges against the personalized prompt and the recorded history matches.
+    from execution.advisory.question_tailor import apply_tailoring
+    question = apply_tailoring(question, session.get("tailored_questions"))
 
     # ═══ LLM VALIDATION ═══════════════════════════════════════════
     try:
