@@ -105,6 +105,46 @@ class TestQuestionFlow:
         # The generic static examples must no longer appear for Q1.
         assert "Healthcare staffing agency" not in response.text
 
+    def test_start_sets_tailoring_status(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        response = client.post(
+            "/advisory/start",
+            data={"business_idea": "A booking app for my salon"},
+            follow_redirects=False,
+        )
+        sid = response.headers["location"].split("/advisory/")[1].split("/")[0]
+        session = asm.load_session(sid)
+        # Generation runs in the background; status is set either way.
+        assert session.get("tailoring_status") in ("pending", "done")
+
+    def test_tailoring_json_reports_pending_then_ready(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+
+        session = asm.initialize_session("A booking app for my salon")
+        session["tailoring_status"] = "pending"
+        asm.save_session(session)
+        sid = session["session_id"]
+
+        r1 = client.get(f"/advisory/{sid}/tailoring.json")
+        assert r1.status_code == 200
+        assert r1.json() == {"ready": False, "tailored": {}}
+        assert r1.headers["cache-control"] == "no-store"
+
+        session["tailoring_status"] = "done"
+        session["tailored_questions"] = {
+            "q1_business_overview": {"text": "Tell us about your salon", "examples": ["a"]}
+        }
+        asm.save_session(session)
+
+        body = client.get(f"/advisory/{sid}/tailoring.json").json()
+        assert body["ready"] is True
+        assert body["tailored"]["q1_business_overview"]["text"] == "Tell us about your salon"
+
+    def test_tailoring_json_missing_session_is_ready_empty(self, client, advisory_output_dir):
+        r = client.get("/advisory/does-not-exist/tailoring.json")
+        assert r.status_code == 200
+        assert r.json() == {"ready": True, "tailored": {}}
+
     def test_submit_answer_advances(self, client, advisory_output_dir):
         session_id = self._create_session(client)
         response = client.post(

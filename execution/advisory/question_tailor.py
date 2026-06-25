@@ -15,6 +15,7 @@ the static examples (current behavior). ``apply_tailoring`` is a pure overlay.
 
 import json
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,45 @@ def _sanitize(raw) -> dict:
         if entry:
             out[qid] = entry
     return out
+
+
+def is_tailorable(question_id: str | None) -> bool:
+    """True when a question receives idea-specific tailoring."""
+    return question_id in _TAILOR_IDS
+
+
+def _run_tailoring(session_id: str, business_idea: str) -> None:
+    """Generate tailoring, then merge it into the session and flip the status.
+
+    Generation (the slow part) happens first; the session is (re)loaded only
+    immediately before writing, so a concurrent answer-save is never clobbered.
+    Always marks the status "done" — even on failure — so the page's poller
+    stops and falls back to the static questions.
+    """
+    result: dict = {}
+    try:
+        result = tailor_questions(business_idea)
+    except Exception as e:  # pragma: no cover - defensive; tailor_questions is already guarded
+        logger.warning(f"[QuestionTailor] background generation failed: {e}")
+
+    try:
+        from execution.advisory.advisory_state_manager import load_session, save_session
+        session = load_session(session_id)
+        session["tailored_questions"] = result
+        session["tailoring_status"] = "done"
+        save_session(session)
+    except Exception as e:  # pragma: no cover - session may be gone (e.g. test teardown)
+        logger.warning(f"[QuestionTailor] could not persist tailoring for {session_id}: {e}")
+
+
+def kick_tailoring(session_id: str, business_idea: str) -> None:
+    """Run ``_run_tailoring`` in a daemon thread so the request returns instantly."""
+    threading.Thread(
+        target=_run_tailoring,
+        args=(session_id, business_idea),
+        name=f"tailor-{session_id[:8]}",
+        daemon=True,
+    ).start()
 
 
 def apply_tailoring(question: dict | None, tailored: dict | None) -> dict | None:

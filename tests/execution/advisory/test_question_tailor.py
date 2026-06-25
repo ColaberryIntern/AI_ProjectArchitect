@@ -133,3 +133,91 @@ def test_apply_tailoring_handles_none():
     q = {"id": "q1_business_overview", "text": "t"}
     assert apply_tailoring(q, None) is q
     assert apply_tailoring(None, {"q1_business_overview": {"text": "t"}}) is None
+
+
+# ─── is_tailorable ──────────────────────────────────────────────────
+
+def test_is_tailorable():
+    from execution.advisory.question_tailor import is_tailorable
+    assert is_tailorable("q1_business_overview")
+    assert is_tailorable("q4_bottlenecks")
+    assert not is_tailorable("q2_company_size")   # fixed-option question
+    assert not is_tailorable(None)
+
+
+# ─── background worker (_run_tailoring) ─────────────────────────────
+
+def test_run_tailoring_persists_result_and_flips_status(monkeypatch, tmp_path):
+    import execution.advisory.advisory_state_manager as asm
+    import execution.llm_client as llm
+    from execution.advisory.question_tailor import _run_tailoring
+
+    monkeypatch.setattr(asm, "ADVISORY_OUTPUT_DIR", tmp_path)
+
+    session = asm.initialize_session("A booking app for my salon")
+    session["tailoring_status"] = "pending"
+    asm.save_session(session)
+    sid = session["session_id"]
+
+    canned = json.dumps({"q1_business_overview": {"text": "Tell us about your salon", "examples": ["a", "b", "c"]}})
+    monkeypatch.setattr(llm, "is_available", lambda: True)
+    monkeypatch.setattr(llm, "chat", lambda **_kw: types.SimpleNamespace(content=canned))
+
+    _run_tailoring(sid, "A booking app for my salon")
+
+    reloaded = asm.load_session(sid)
+    assert reloaded["tailoring_status"] == "done"
+    assert reloaded["tailored_questions"]["q1_business_overview"]["text"] == "Tell us about your salon"
+
+
+def test_run_tailoring_marks_done_even_when_llm_off(monkeypatch, tmp_path):
+    import execution.advisory.advisory_state_manager as asm
+    import execution.llm_client as llm
+    from execution.advisory.question_tailor import _run_tailoring
+
+    monkeypatch.setattr(asm, "ADVISORY_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(llm, "is_available", lambda: False)
+
+    session = asm.initialize_session("A booking app for my salon")
+    session["tailoring_status"] = "pending"
+    asm.save_session(session)
+    sid = session["session_id"]
+
+    _run_tailoring(sid, "A booking app for my salon")
+
+    reloaded = asm.load_session(sid)
+    assert reloaded["tailoring_status"] == "done"
+    assert reloaded["tailored_questions"] == {}
+
+
+def test_run_tailoring_preserves_concurrent_session_writes(monkeypatch, tmp_path):
+    """The worker reloads right before writing, so it never clobbers fields
+    saved (e.g. an answer) while generation was running."""
+    import execution.advisory.advisory_state_manager as asm
+    import execution.llm_client as llm
+    from execution.advisory.question_tailor import _run_tailoring
+
+    monkeypatch.setattr(asm, "ADVISORY_OUTPUT_DIR", tmp_path)
+
+    session = asm.initialize_session("A booking app for my salon")
+    session["tailoring_status"] = "pending"
+    asm.save_session(session)
+    sid = session["session_id"]
+
+    # Simulate an answer being recorded during generation by mutating the file
+    # from "another request" right before the worker persists its result.
+    def chat_then_write(**_kw):
+        live = asm.load_session(sid)
+        live["myday_build"] = True
+        asm.save_session(live)
+        return types.SimpleNamespace(content=json.dumps({"q4_bottlenecks": {"examples": ["No-shows"]}}))
+
+    monkeypatch.setattr(llm, "is_available", lambda: True)
+    monkeypatch.setattr(llm, "chat", chat_then_write)
+
+    _run_tailoring(sid, "A booking app for my salon")
+
+    reloaded = asm.load_session(sid)
+    assert reloaded["myday_build"] is True                       # concurrent write survived
+    assert reloaded["tailored_questions"]["q4_bottlenecks"]["examples"] == ["No-shows"]
+    assert reloaded["tailoring_status"] == "done"

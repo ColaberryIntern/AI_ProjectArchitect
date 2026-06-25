@@ -66,9 +66,15 @@
         <div class="msg msg-bot" id="currentQuestion">
             <div class="msg-avatar bg-primary-subtle text-primary"><i class="bi bi-cpu"></i></div>
             <div class="bubble">
-                <strong>{{ question.text }}</strong>
+                <strong id="qText">{{ question.text }}</strong>
                 {% if question.help_text %}
-                <div class="text-muted small mt-1">{{ question.help_text }}</div>
+                <div class="text-muted small mt-1" id="qHelp">{{ question.help_text }}</div>
+                {% endif %}
+                {% if tailoring_pending %}
+                <div class="text-muted small mt-1 fst-italic" id="qPersonalizing">
+                    <span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;border-width:.12em;"></span>
+                    Personalizing to your idea&hellip;
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -95,7 +101,7 @@
         {% if question and not session.pending_follow_up and question.get('examples') %}
         <div class="ms-5 mb-2">
             <small class="text-muted d-block mb-1"><i class="bi bi-lightbulb me-1"></i>Or choose an example:</small>
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2" id="exampleChips">
                 {% for ex in question.examples %}
                 <button type="button" class="btn btn-sm btn-light border rounded-3 text-start example-chip" onclick="useExample(this)" style="font-size: 0.78rem; max-width: 320px;">
                     {{ ex }}
@@ -219,5 +225,53 @@ function useExample(btn) {
     btn.classList.add('border-primary', 'bg-primary-subtle');
     input.focus();
 }
+
+// --- Idea-tailoring: questions personalize in the background. Poll and swap
+//     the current question's text + example chips in place when ready. ---
+(function() {
+    var pending = {{ 'true' if tailoring_pending else 'false' }};
+    var sid = "{{ session.session_id }}";
+    var qid = "{{ question.id if question else '' }}";
+    if (!pending || !sid || !qid) return;
+
+    var tries = 0, MAX = 14;
+
+    function stopHint() { var p = document.getElementById('qPersonalizing'); if (p) p.remove(); }
+
+    function swap(o) {
+        if (!o) return;
+        if (o.text) { var t = document.getElementById('qText'); if (t) t.textContent = o.text; }
+        if (o.help_text) { var h = document.getElementById('qHelp'); if (h) h.textContent = o.help_text; }
+        if (o.examples && o.examples.length) {
+            var c = document.getElementById('exampleChips');
+            if (c) {
+                c.innerHTML = '';
+                o.examples.forEach(function(ex) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn btn-sm btn-light border rounded-3 text-start example-chip';
+                    b.style.fontSize = '0.78rem';
+                    b.style.maxWidth = '320px';
+                    b.textContent = ex;
+                    b.addEventListener('click', function() { useExample(b); });
+                    c.appendChild(b);
+                });
+            }
+        }
+    }
+
+    function poll() {
+        tries++;
+        fetch('/advisory/' + sid + '/tailoring.json', { cache: 'no-store' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d && d.ready) { swap((d.tailored || {})[qid]); stopHint(); return; }
+                if (tries < MAX) { setTimeout(poll, 1200); } else { stopHint(); }
+            })
+            .catch(function() { if (tries < MAX) { setTimeout(poll, 1500); } else { stopHint(); } });
+    }
+
+    setTimeout(poll, 800);
+})();
 </script>
 {% endblock %}
