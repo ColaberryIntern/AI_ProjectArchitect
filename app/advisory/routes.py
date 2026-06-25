@@ -863,6 +863,7 @@ async def simulation_page(request: Request, session_id: str):
         "session": session,
         "agent_stats": agent_stats,
         "agents_json": json.dumps(agents),
+        "myday_build": bool(session.get("myday_build")),
     })
 
 
@@ -918,6 +919,7 @@ async def gate_page(request: Request, session_id: str):
     return templates.TemplateResponse("gate_page.html", {
         "request": request,
         "session": session,
+        "myday_build": bool(session.get("myday_build")),
     })
 
 
@@ -1190,6 +1192,7 @@ async def booking_page(request: Request, session_id: str):
     return templates.TemplateResponse("booking.html", {
         "request": request,
         "session": session,
+        "myday_build": bool(session.get("myday_build")),
     })
 
 
