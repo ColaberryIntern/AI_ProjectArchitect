@@ -650,17 +650,25 @@ async def submit_discovery_answer(request: Request, session_id: str):
     disc = session.get("discovery") or {"i": 0, "answers": [], "current": None}
     form_data = await request.form()
     letter = str(form_data.get("choice", "")).strip().upper()
+    custom = str(form_data.get("custom_answer", "")).strip()
     skipped = str(form_data.get("skip", "")).strip() != ""
 
     current = disc.get("current") or {}
-    if not skipped and letter in ("A", "B", "C"):
-        opt = next((o for o in current.get("options", []) if o.get("letter") == letter), None)
-        if opt:
+    if not skipped:
+        choice = None
+        if custom:
+            # The user typed their own answer instead of picking an option.
+            choice = {"letter": "custom", "label": "Your answer", "description": custom[:400]}
+        elif letter in ("A", "B", "C"):
+            opt = next((o for o in current.get("options", []) if o.get("letter") == letter), None)
+            if opt:
+                choice = {"letter": letter, "label": opt["label"], "description": opt["description"]}
+        if choice:
             disc.setdefault("answers", []).append({
                 "phase": current.get("phase"),
                 "label": current.get("label"),
                 "question": current.get("question"),
-                "choice": {"letter": letter, "label": opt["label"], "description": opt["description"]},
+                "choice": choice,
             })
 
     next_index = disc.get("i", 0) + 1

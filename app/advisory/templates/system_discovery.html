@@ -18,10 +18,10 @@
       <div class="text-center mb-4">
         <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">{{ question.label }}</span>
         <h3 class="fw-bold">{{ question.question }}</h3>
-        <p class="text-muted">Pick the version you want — each adds more capability. Your choice shapes the next question.</p>
+        <p class="text-muted">Pick the version you want — each adds more capability — or type your own answer below. Your choice shapes the next question.</p>
       </div>
 
-      <div class="d-flex flex-column gap-2 mb-4">
+      <div class="d-flex flex-column gap-2 mb-3">
         {% for opt in question.options %}
         <label class="card border shadow-sm disc-opt" style="cursor:pointer">
           <div class="card-body d-flex align-items-start gap-3 py-3">
@@ -32,8 +32,14 @@
         {% endfor %}
       </div>
 
+      <div class="mb-4">
+        <label for="customAnswer" class="form-label small text-muted">Or describe it in your own words:</label>
+        <textarea id="customAnswer" name="custom_answer" class="form-control" rows="2"
+                  placeholder="e.g. I want it to text clients the night before and let them reply YES to confirm or NO to cancel"></textarea>
+      </div>
+
       <div class="d-flex align-items-center justify-content-between">
-        <button type="submit" name="skip" value="1" class="btn btn-link text-muted p-0">Skip this one</button>
+        <button type="submit" name="skip" value="1" class="btn btn-link text-muted p-0" id="discSkip">Skip this one</button>
         <button type="submit" class="btn btn-primary btn-lg" id="discNext" disabled>
           {% if index + 1 >= total %}Finish &amp; build &rarr;{% else %}Next &rarr;{% endif %}
         </button>
@@ -52,26 +58,53 @@
   (function () {
     var form = document.getElementById('discForm');
     var next = document.getElementById('discNext');
+    var skip = document.getElementById('discSkip');
+    var custom = document.getElementById('customAnswer');
+    var lastFinish = {{ 'true' if index + 1 >= total else 'false' }};
+
     function refresh() {
       var checked = form.querySelector('input[name="choice"]:checked');
-      next.disabled = !checked;
+      var typed = custom.value.trim().length > 0;
+      next.disabled = !(checked || typed);
       form.querySelectorAll('.disc-opt').forEach(function (c) {
         var r = c.querySelector('input[name="choice"]');
         c.classList.toggle('disc-selected', r && r.checked);
       });
     }
+
     form.querySelectorAll('input[name="choice"]').forEach(function (r) {
-      r.addEventListener('change', refresh);
+      r.addEventListener('change', function () { custom.value = ''; refresh(); });
     });
     // Clicking a card selects its radio.
     form.querySelectorAll('.disc-opt').forEach(function (card) {
       card.addEventListener('click', function (e) {
         if (e.target.tagName !== 'INPUT') {
           var r = card.querySelector('input[name="choice"]');
-          if (r) { r.checked = true; refresh(); }
+          if (r) { r.checked = true; custom.value = ''; refresh(); }
         }
       });
     });
+    // Typing clears any selected option (the two are mutually exclusive).
+    custom.addEventListener('input', function () {
+      if (custom.value.trim()) {
+        form.querySelectorAll('input[name="choice"]').forEach(function (r) { r.checked = false; });
+        form.querySelectorAll('.disc-opt').forEach(function (c) { c.classList.remove('disc-selected'); });
+      }
+      refresh();
+    });
+
+    // Loading feedback on submit so the button never looks frozen during the
+    // (synchronous) next-question / build generation. Disabling happens inside
+    // the submit event, after submission has already started, so it's safe.
+    form.addEventListener('submit', function (e) {
+      var btn = e.submitter || next;
+      var label = (btn === skip) ? 'Skipping…' : (lastFinish ? 'Building your plan…' : 'Thinking…');
+      window.setTimeout(function () {
+        form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>' + label;
+      }, 0);
+    });
+
     refresh();
   })();
 </script>
