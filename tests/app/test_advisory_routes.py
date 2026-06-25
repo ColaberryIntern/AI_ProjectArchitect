@@ -312,3 +312,104 @@ class TestSaveLead:
         from execution.advisory.advisory_state_manager import load_session
         session = load_session(session_id)
         assert session["lead"]["email"] == "alice@example.com"
+
+
+class TestSystemDiscovery:
+    """The My-Day build flow uses the 9-phase AI System Discovery (multiple-choice)."""
+
+    def _myday_session(self, idea="A booking and payments app for my hair salon"):
+        import execution.advisory.advisory_state_manager as asm
+        from execution.advisory.system_discovery import _coerce_questions
+        session = asm.initialize_session(idea)
+        session["myday_build"] = True
+        session["discovery_questions"] = _coerce_questions(None, idea)
+        session["discovery_status"] = "ready"
+        asm.save_session(session)
+        return session
+
+    def test_start_myday_sets_discovery_status(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        r = client.post(
+            "/advisory/start",
+            data={"business_idea": "A booking and payments app for my hair salon", "myday_build": "1"},
+            follow_redirects=False,
+        )
+        sid = r.headers["location"].split("/advisory/")[1].split("/")[0]
+        session = asm.load_session(sid)
+        assert session.get("myday_build") is True
+        assert session.get("discovery_status") in ("pending", "ready")
+
+    def test_questions_route_renders_discovery_cards(self, client, advisory_output_dir):
+        session = self._myday_session()
+        r = client.get(f"/advisory/{session['session_id']}/questions")
+        assert r.status_code == 200
+        assert "Control Model" in r.text          # a phase category card rendered
+        assert "Continue" in r.text
+
+    def test_questions_route_shows_loader_while_pending(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = asm.initialize_session("A booking and payments app for my hair salon")
+        session["myday_build"] = True
+        session["discovery_status"] = "pending"   # no questions yet
+        asm.save_session(session)
+        r = client.get(f"/advisory/{session['session_id']}/questions")
+        assert r.status_code == 200
+        assert "Designing your discovery questions" in r.text
+
+    def test_questions_route_redirects_when_already_answered(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = self._myday_session()
+        session["discovery_answers"] = {"control": "B", "data": "A", "execution": "C", "agents": "B", "strategy": "A"}
+        asm.save_session(session)
+        r = client.get(f"/advisory/{session['session_id']}/questions", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].endswith("/build-setup")
+
+    def test_discovery_json_pending_then_ready(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = asm.initialize_session("A booking and payments app for my hair salon")
+        session["myday_build"] = True
+        session["discovery_status"] = "pending"
+        asm.save_session(session)
+        sid = session["session_id"]
+
+        body = client.get(f"/advisory/{sid}/discovery.json").json()
+        assert body == {"ready": False, "questions": []}
+
+        from execution.advisory.system_discovery import _coerce_questions
+        session["discovery_questions"] = _coerce_questions(None, "A booking app for my hair salon")
+        session["discovery_status"] = "ready"
+        asm.save_session(session)
+
+        body = client.get(f"/advisory/{sid}/discovery.json").json()
+        assert body["ready"] is True
+        assert len(body["questions"]) == 9
+
+    def test_post_discovery_requires_five(self, client, advisory_output_dir):
+        session = self._myday_session()
+        r = client.post(
+            f"/advisory/{session['session_id']}/discovery",
+            data={"control": "A", "data": "B"},   # only 2
+            follow_redirects=False,
+        )
+        assert r.status_code == 200                # re-rendered, not redirected
+        assert "at least 5" in r.text
+
+    def test_post_discovery_stores_refined_idea_and_advances(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = self._myday_session()
+        sid = session["session_id"]
+        r = client.post(
+            f"/advisory/{sid}/discovery",
+            data={"control": "B", "intelligence": "B", "data": "A", "execution": "C", "agents": "B"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"].endswith("/build-setup")
+
+        reloaded = asm.load_session(sid)
+        assert reloaded["discovery_answers"] == {
+            "control": "B", "intelligence": "B", "data": "A", "execution": "C", "agents": "B",
+        }
+        assert reloaded["refined_idea"].startswith("Original idea:")
+        assert "Control Model" in reloaded["refined_idea"]

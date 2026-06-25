@@ -134,36 +134,40 @@ async def start_session(request: Request, business_idea: str = Form(...),
     session = initialize_session(business_idea)
     advance_status(session, "questioning")
 
-    # My-Day-initiated "Create a new project" build: flag the session so that
-    # after capabilities we divert to the build-setup step (target BC project +
-    # pace) instead of the public results page. The anonymous funnel never sets
-    # this, so it is unaffected. Set BEFORE persisting/kicking background work.
-    if str(myday_build).strip() in ("1", "true", "True", "on", "yes"):
+    # My-Day-initiated "Create a new project" build uses the 9-phase AI System
+    # Discovery (control → intelligence → … → moat) instead of the public
+    # company-profiling intake. Flag set BEFORE persisting/kicking background work.
+    is_myday = str(myday_build).strip() in ("1", "true", "True", "on", "yes")
+    if is_myday:
         session["myday_build"] = True
 
-    # Personalize the intake questions to the idea the user just described, so
-    # the example chips (and the opening question) relate to THEIR business
-    # instead of generic logistics/SaaS/healthcare filler. Generated in the
-    # BACKGROUND so the first question loads instantly — the questions page
-    # polls /tailoring.json and swaps in the personalized version when ready.
-    # Fallback-safe: the static questions remain if the LLM is off or fails.
-    idea = (business_idea or "").strip()
-    if len(idea) >= 3:
-        session["tailoring_status"] = "pending"
-    else:
-        session["tailored_questions"] = {}
-        session["tailoring_status"] = "done"
-
-    # Persist the full session ONCE (myday flag + tailoring state) before any
-    # background thread starts, so the worker reloads a complete session.
-    save_session(session)
-
-    if session.get("tailoring_status") == "pending":
+    if is_myday:
+        # Generate the 9 domain-tailored multiple-choice questions in the
+        # BACKGROUND so the page loads instantly; it polls /discovery.json and
+        # reveals the questions when ready. Fallback-safe (always 9 questions).
+        session["discovery_status"] = "pending"
+        save_session(session)
         try:
-            from execution.advisory.question_tailor import kick_tailoring
-            kick_tailoring(session["session_id"], business_idea)
+            from execution.advisory.system_discovery import kick_discovery
+            kick_discovery(session["session_id"], business_idea)
         except Exception:
             pass
+    else:
+        # Public funnel: personalize the 10-question intake's example chips to
+        # the idea, generated in the background (poll /tailoring.json + swap).
+        idea = (business_idea or "").strip()
+        if len(idea) >= 3:
+            session["tailoring_status"] = "pending"
+        else:
+            session["tailored_questions"] = {}
+            session["tailoring_status"] = "done"
+        save_session(session)
+        if session.get("tailoring_status") == "pending":
+            try:
+                from execution.advisory.question_tailor import kick_tailoring
+                kick_tailoring(session["session_id"], business_idea)
+            except Exception:
+                pass
 
     track_event(
         event_name="advisory_session_started",
@@ -194,6 +198,22 @@ async def question_flow(request: Request, session_id: str):
         session = load_session(session_id)
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
+
+    # My-Day build path: the 9-phase AI System Discovery (multiple-choice),
+    # not the public 10-question intake.
+    if session.get("myday_build"):
+        if session.get("discovery_answers"):
+            # Already answered — proceed to target project + pace.
+            return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
+        questions = session.get("discovery_questions") or []
+        return templates.TemplateResponse("system_discovery.html", {
+            "request": request,
+            "session": session,
+            "session_id": session_id,
+            "questions": questions,
+            "phase_keys": [q.get("phase") for q in questions],
+            "myday_build": True,
+        })
 
     if is_complete(session):
         return RedirectResponse(
@@ -567,7 +587,9 @@ async def start_build(request: Request, session_id: str,
     # Seed the build status, then kick phases b-d in the background.
     from execution.advisory.advisory_state_manager import load_session, save_session
     session = load_session(session_id)
-    idea_text = session.get("business_idea", "")
+    # Prefer the refined idea (original idea + chosen AI-system profile) so the
+    # build reflects the 9-phase discovery; falls back to the raw idea.
+    idea_text = session.get("refined_idea") or session.get("business_idea", "")
     session["myday_build_target"] = {"bc_project_id": bucket, "pace": pace, "slug": slug, "blueprint": blueprint}
     save_session(session)
 
@@ -598,6 +620,72 @@ async def tailoring_json(request: Request, session_id: str):
         {"ready": ready, "tailored": session.get("tailored_questions") or {}},
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/{session_id}/discovery.json")
+async def discovery_json(request: Request, session_id: str):
+    """Polling endpoint for the 9-phase discovery page — returns the generated
+    questions once the background generation finishes."""
+    from execution.advisory.advisory_state_manager import load_session
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        return JSONResponse({"ready": True, "questions": []}, headers={"Cache-Control": "no-store"})
+
+    ready = session.get("discovery_status") == "ready"
+    return JSONResponse(
+        {"ready": ready, "questions": session.get("discovery_questions") or []},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/{session_id}/discovery", dependencies=[Depends(require_advisory_enabled)])
+async def submit_discovery(request: Request, session_id: str):
+    """Record the 9-phase choices (≥5 required), fold them into a refined idea,
+    then proceed to build-setup. Re-renders with an error if fewer than 5."""
+    from execution.advisory.advisory_state_manager import load_session, save_session
+    from execution.advisory.event_tracker import track_event
+    from execution.advisory.system_discovery import MIN_ANSWERS, PHASE_KEYS, refine_idea
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        return RedirectResponse(url="/advisory/", status_code=303)
+
+    form_data = await request.form()
+    answers = {}
+    for phase in PHASE_KEYS:
+        letter = str(form_data.get(phase, "")).strip().upper()
+        if letter in ("A", "B", "C"):
+            answers[phase] = letter
+
+    questions = session.get("discovery_questions") or []
+
+    if len(answers) < MIN_ANSWERS:
+        return templates.TemplateResponse("system_discovery.html", {
+            "request": request,
+            "session": session,
+            "session_id": session_id,
+            "questions": questions,
+            "phase_keys": [q.get("phase") for q in questions],
+            "selected": answers,
+            "error": f"Please answer at least {MIN_ANSWERS} of the 9 to continue.",
+            "myday_build": True,
+        })
+
+    session["discovery_answers"] = answers
+    session["refined_idea"] = refine_idea(session.get("business_idea", ""), answers, questions)
+    save_session(session)
+
+    track_event(
+        event_name="advisory_discovery_completed",
+        session_id=session_id,
+        email=session.get("email", ""),
+        properties={"answered": len(answers)},
+    )
+
+    return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
 
 
 @router.get("/{session_id}/build-status.json")

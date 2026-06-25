@@ -62,7 +62,9 @@ def generate_advisory_outputs(session_id: str) -> dict:
         }
 
     answers = session.get("answers", [])
-    business_idea = session.get("business_idea", "")
+    # Prefer the refined idea from the 9-phase discovery (My-Day build flow);
+    # the public funnel never sets it, so it falls back to the raw idea.
+    business_idea = session.get("refined_idea") or session.get("business_idea", "")
     selected_caps = session.get("selected_capabilities", [])
 
     # ── Industry Detection (taxonomy registry: seed → cache → sync LLM) ──
