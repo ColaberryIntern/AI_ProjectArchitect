@@ -315,19 +315,22 @@ class TestSaveLead:
 
 
 class TestSystemDiscovery:
-    """The My-Day build flow uses the 9-phase AI System Discovery (multiple-choice)."""
+    """The My-Day build flow walks the AI System Discovery one question at a time."""
 
-    def _myday_session(self, idea="A booking and payments app for my hair salon"):
+    def _myday_session(self, idea="A booking and payments app for my hair salon", i=0, answers=None):
         import execution.advisory.advisory_state_manager as asm
-        from execution.advisory.system_discovery import _coerce_questions
+        from execution.advisory.system_discovery import PHASES, _fallback_question
         session = asm.initialize_session(idea)
         session["myday_build"] = True
-        session["discovery_questions"] = _coerce_questions(None, idea)
-        session["discovery_status"] = "ready"
+        session["discovery"] = {
+            "i": i,
+            "answers": answers or [],
+            "current": _fallback_question(PHASES[i]),
+        }
         asm.save_session(session)
         return session
 
-    def test_start_myday_sets_discovery_status(self, client, advisory_output_dir):
+    def test_start_myday_generates_first_question(self, client, advisory_output_dir):
         import execution.advisory.advisory_state_manager as asm
         r = client.post(
             "/advisory/start",
@@ -337,79 +340,67 @@ class TestSystemDiscovery:
         sid = r.headers["location"].split("/advisory/")[1].split("/")[0]
         session = asm.load_session(sid)
         assert session.get("myday_build") is True
-        assert session.get("discovery_status") in ("pending", "ready")
+        disc = session.get("discovery") or {}
+        assert disc.get("i") == 0
+        assert disc["current"]["phase"] == "control"
+        assert len(disc["current"]["options"]) == 3
 
-    def test_questions_route_renders_discovery_cards(self, client, advisory_output_dir):
+    def test_questions_route_renders_one_question(self, client, advisory_output_dir):
         session = self._myday_session()
         r = client.get(f"/advisory/{session['session_id']}/questions")
         assert r.status_code == 200
-        assert "Control Model" in r.text          # a phase category card rendered
-        assert "Continue" in r.text
+        assert "Question 1 of 9" in r.text
+        assert "Control &amp; autonomy" in r.text or "Control & autonomy" in r.text
+        assert "discNext" in r.text                # the Next button
+        assert "Skip this one" in r.text
 
-    def test_questions_route_shows_loader_while_pending(self, client, advisory_output_dir):
-        import execution.advisory.advisory_state_manager as asm
-        session = asm.initialize_session("A booking and payments app for my hair salon")
-        session["myday_build"] = True
-        session["discovery_status"] = "pending"   # no questions yet
-        asm.save_session(session)
-        r = client.get(f"/advisory/{session['session_id']}/questions")
-        assert r.status_code == 200
-        assert "Designing your discovery questions" in r.text
-
-    def test_questions_route_redirects_when_already_answered(self, client, advisory_output_dir):
+    def test_questions_route_redirects_when_done(self, client, advisory_output_dir):
         import execution.advisory.advisory_state_manager as asm
         session = self._myday_session()
-        session["discovery_answers"] = {"control": "B", "data": "A", "execution": "C", "agents": "B", "strategy": "A"}
+        session["discovery_answers"] = {"control": "B"}
         asm.save_session(session)
         r = client.get(f"/advisory/{session['session_id']}/questions", follow_redirects=False)
         assert r.status_code == 303
         assert r.headers["location"].endswith("/build-setup")
 
-    def test_discovery_json_pending_then_ready(self, client, advisory_output_dir):
+    def test_answer_records_and_advances_to_next_question(self, client, advisory_output_dir):
         import execution.advisory.advisory_state_manager as asm
-        session = asm.initialize_session("A booking and payments app for my hair salon")
-        session["myday_build"] = True
-        session["discovery_status"] = "pending"
-        asm.save_session(session)
+        session = self._myday_session(i=0)
+        sid = session["session_id"]
+        r = client.post(f"/advisory/{sid}/discovery-answer", data={"choice": "B"}, follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].endswith("/questions")
+
+        disc = asm.load_session(sid)["discovery"]
+        assert disc["i"] == 1
+        assert len(disc["answers"]) == 1
+        assert disc["answers"][0]["phase"] == "control"
+        assert disc["answers"][0]["choice"]["letter"] == "B"
+        assert disc["current"]["phase"] == "intelligence"   # next dimension
+
+    def test_skip_advances_without_recording(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = self._myday_session(i=0)
+        sid = session["session_id"]
+        client.post(f"/advisory/{sid}/discovery-answer", data={"skip": "1"}, follow_redirects=False)
+        disc = asm.load_session(sid)["discovery"]
+        assert disc["i"] == 1
+        assert disc["answers"] == []
+
+    def test_last_answer_stores_refined_idea_and_advances_to_build(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        # Start on the final dimension with eight already answered.
+        prior = [{"phase": "control", "label": "Control & autonomy",
+                  "question": "?", "choice": {"letter": "B", "label": "Act with guardrails", "description": "d"}}]
+        session = self._myday_session(i=8, answers=prior)
         sid = session["session_id"]
 
-        body = client.get(f"/advisory/{sid}/discovery.json").json()
-        assert body == {"ready": False, "questions": []}
-
-        from execution.advisory.system_discovery import _coerce_questions
-        session["discovery_questions"] = _coerce_questions(None, "A booking app for my hair salon")
-        session["discovery_status"] = "ready"
-        asm.save_session(session)
-
-        body = client.get(f"/advisory/{sid}/discovery.json").json()
-        assert body["ready"] is True
-        assert len(body["questions"]) == 9
-
-    def test_post_discovery_requires_five(self, client, advisory_output_dir):
-        session = self._myday_session()
-        r = client.post(
-            f"/advisory/{session['session_id']}/discovery",
-            data={"control": "A", "data": "B"},   # only 2
-            follow_redirects=False,
-        )
-        assert r.status_code == 200                # re-rendered, not redirected
-        assert "at least 5" in r.text
-
-    def test_post_discovery_stores_refined_idea_and_advances(self, client, advisory_output_dir):
-        import execution.advisory.advisory_state_manager as asm
-        session = self._myday_session()
-        sid = session["session_id"]
-        r = client.post(
-            f"/advisory/{sid}/discovery",
-            data={"control": "B", "intelligence": "B", "data": "A", "execution": "C", "agents": "B"},
-            follow_redirects=False,
-        )
+        r = client.post(f"/advisory/{sid}/discovery-answer", data={"choice": "C"}, follow_redirects=False)
         assert r.status_code == 303
         assert r.headers["location"].endswith("/build-setup")
 
         reloaded = asm.load_session(sid)
-        assert reloaded["discovery_answers"] == {
-            "control": "B", "intelligence": "B", "data": "A", "execution": "C", "agents": "B",
-        }
+        assert "control" in reloaded["discovery_answers"]
+        assert "differentiators" in reloaded["discovery_answers"]
         assert reloaded["refined_idea"].startswith("Original idea:")
-        assert "Control Model" in reloaded["refined_idea"]
+        assert "Control & autonomy" in reloaded["refined_idea"]

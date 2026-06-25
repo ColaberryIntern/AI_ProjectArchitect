@@ -1,91 +1,78 @@
 {% extends "advisory_base.html" %}
 
-{% block title %}Shape your AI system | Colaberry{% endblock %}
+{% block title %}Shape your product | Colaberry{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-9">
-    <div class="text-center mb-4">
-      <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">New project</span>
-      <h2 class="fw-bold">Let's shape how your AI system should work</h2>
-      <p class="text-muted">Nine quick choices profile your system — from who makes the decisions to what
-        gives you an edge. Pick the level that fits each one. Answer at least 5; skip any you're unsure about.</p>
+  <div class="col-lg-8">
+    <!-- Progress -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <small class="text-muted">Question {{ index + 1 }} of {{ total }}</small>
+      <small class="text-muted">{{ ((index) / total * 100) | round }}%</small>
+    </div>
+    <div class="progress mb-4" style="height: 4px;">
+      <div class="progress-bar" style="width: {{ (index / total * 100) | round }}%; transition: width .4s;"></div>
     </div>
 
-    {% if not questions %}
-    <!-- Questions are being designed for this specific idea -->
-    <div class="text-center py-5" id="discoveryLoader">
-      <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden">Loading…</span></div>
-      <h5 class="fw-semibold">Designing your discovery questions&hellip;</h5>
-      <p class="text-muted">Tailoring all nine to your idea. This takes a few seconds.</p>
-    </div>
-    <script>
-      (function () {
-        var sid = "{{ session.session_id }}";
-        var tries = 0, MAX = 24;
-        function poll() {
-          tries++;
-          fetch('/advisory/' + sid + '/discovery.json', { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-              if (d && d.ready) { window.location.reload(); return; }
-              if (tries < MAX) setTimeout(poll, 1200);
-            })
-            .catch(function () { if (tries < MAX) setTimeout(poll, 1500); });
-        }
-        setTimeout(poll, 1000);
-      })();
-    </script>
-    {% else %}
-    <form action="/advisory/{{ session_id }}/discovery" method="POST" id="discoveryForm">
-      {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
-
-      {% for q in questions %}
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body">
-          <div class="small text-muted text-uppercase fw-semibold mb-1" style="letter-spacing:.04em;">
-            {{ loop.index }}. {{ q.category }}
-          </div>
-          <div class="fw-semibold mb-3">{{ q.question }}</div>
-          <div class="d-flex flex-column gap-2">
-            {% for opt in q.options %}
-            <label class="border rounded p-3 d-flex align-items-start gap-2" style="cursor:pointer">
-              <input type="radio" name="{{ q.phase }}" value="{{ opt.letter }}" class="form-check-input mt-1"
-                     {% if selected and selected.get(q.phase) == opt.letter %}checked{% endif %}>
-              <span><strong>{{ opt.label }}</strong><span class="text-muted"> — {{ opt.description }}</span></span>
-            </label>
-            {% endfor %}
-          </div>
-        </div>
+    <form action="/advisory/{{ session_id }}/discovery-answer" method="POST" id="discForm">
+      <div class="text-center mb-4">
+        <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">{{ question.label }}</span>
+        <h3 class="fw-bold">{{ question.question }}</h3>
+        <p class="text-muted">Pick the version you want — each adds more capability. Your choice shapes the next question.</p>
       </div>
-      {% endfor %}
 
-      <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
-        <div class="text-muted small" id="discCount">0 of 9 chosen &middot; need at least 5</div>
-        <button type="submit" class="btn btn-primary btn-lg" id="discContinue" disabled>Continue &rarr;</button>
+      <div class="d-flex flex-column gap-2 mb-4">
+        {% for opt in question.options %}
+        <label class="card border shadow-sm disc-opt" style="cursor:pointer">
+          <div class="card-body d-flex align-items-start gap-3 py-3">
+            <input type="radio" name="choice" value="{{ opt.letter }}" class="form-check-input mt-1 flex-shrink-0">
+            <span><strong>{{ opt.label }}</strong><span class="text-muted"> — {{ opt.description }}</span></span>
+          </div>
+        </label>
+        {% endfor %}
       </div>
-      <p class="text-muted small">Your choices shape the build plan we generate next.</p>
+
+      <div class="d-flex align-items-center justify-content-between">
+        <button type="submit" name="skip" value="1" class="btn btn-link text-muted p-0">Skip this one</button>
+        <button type="submit" class="btn btn-primary btn-lg" id="discNext" disabled>
+          {% if index + 1 >= total %}Finish &amp; build &rarr;{% else %}Next &rarr;{% endif %}
+        </button>
+      </div>
     </form>
-
-    <script>
-      (function () {
-        var form = document.getElementById('discoveryForm');
-        var btn = document.getElementById('discContinue');
-        var count = document.getElementById('discCount');
-        var phases = {{ phase_keys|tojson }};
-        function update() {
-          var n = 0;
-          phases.forEach(function (p) {
-            if (form.querySelector('input[name="' + p + '"]:checked')) n++;
-          });
-          count.textContent = n + ' of 9 chosen · need at least 5';
-          btn.disabled = n < 5;
-        }
-        form.addEventListener('change', update);
-        update();
-      })();
-    </script>
-    {% endif %}
   </div>
 </div>
+
+<style>
+  .disc-opt { transition: border-color .15s, box-shadow .15s; }
+  .disc-opt:hover { border-color: var(--brand-accent, #FB2832) !important; }
+  .disc-opt.disc-selected { border-color: var(--brand-accent, #FB2832) !important; box-shadow: 0 0 0 2px rgba(251,40,50,.15); }
+</style>
+
+<script>
+  (function () {
+    var form = document.getElementById('discForm');
+    var next = document.getElementById('discNext');
+    function refresh() {
+      var checked = form.querySelector('input[name="choice"]:checked');
+      next.disabled = !checked;
+      form.querySelectorAll('.disc-opt').forEach(function (c) {
+        var r = c.querySelector('input[name="choice"]');
+        c.classList.toggle('disc-selected', r && r.checked);
+      });
+    }
+    form.querySelectorAll('input[name="choice"]').forEach(function (r) {
+      r.addEventListener('change', refresh);
+    });
+    // Clicking a card selects its radio.
+    form.querySelectorAll('.disc-opt').forEach(function (card) {
+      card.addEventListener('click', function (e) {
+        if (e.target.tagName !== 'INPUT') {
+          var r = card.querySelector('input[name="choice"]');
+          if (r) { r.checked = true; refresh(); }
+        }
+      });
+    });
+    refresh();
+  })();
+</script>
 {% endblock %}
