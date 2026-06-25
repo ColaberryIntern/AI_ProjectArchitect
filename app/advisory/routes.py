@@ -142,16 +142,16 @@ async def start_session(request: Request, business_idea: str = Form(...),
         session["myday_build"] = True
 
     if is_myday:
-        # Generate the 9 domain-tailored multiple-choice questions in the
-        # BACKGROUND so the page loads instantly; it polls /discovery.json and
-        # reveals the questions when ready. Fallback-safe (always 9 questions).
-        session["discovery_status"] = "pending"
-        save_session(session)
+        # Sequential, adaptive discovery: generate the FIRST question now (one
+        # bounded call) and walk the user through the rest one at a time, each
+        # built from their prior answers. Fallback-safe (always a question).
         try:
-            from execution.advisory.system_discovery import kick_discovery
-            kick_discovery(session["session_id"], business_idea)
+            from execution.advisory.system_discovery import PHASES, generate_question
+            first = generate_question(business_idea, PHASES[0], [])
         except Exception:
-            pass
+            first = None
+        session["discovery"] = {"i": 0, "answers": [], "current": first}
+        save_session(session)
     else:
         # Public funnel: personalize the 10-question intake's example chips to
         # the idea, generated in the background (poll /tailoring.json + swap).
@@ -199,19 +199,30 @@ async def question_flow(request: Request, session_id: str):
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
 
-    # My-Day build path: the 9-phase AI System Discovery (multiple-choice),
-    # not the public 10-question intake.
+    # My-Day build path: the sequential, adaptive AI System Discovery — one
+    # product-specific multiple-choice question at a time.
     if session.get("myday_build"):
         if session.get("discovery_answers"):
-            # Already answered — proceed to target project + pace.
+            # All questions done — proceed to target project + pace.
             return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
-        questions = session.get("discovery_questions") or []
+
+        from execution.advisory.system_discovery import PHASES, TOTAL_QUESTIONS, generate_question
+        disc = session.get("discovery") or {"i": 0, "answers": [], "current": None}
+        if not disc.get("current"):
+            # Recover a missing/failed question (e.g. first-question gen failed).
+            idx = disc.get("i", 0)
+            disc["current"] = generate_question(session.get("business_idea", ""), PHASES[idx], disc.get("answers", []))
+            session["discovery"] = disc
+            save_session(session)
+
         return templates.TemplateResponse("system_discovery.html", {
             "request": request,
             "session": session,
             "session_id": session_id,
-            "questions": questions,
-            "phase_keys": [q.get("phase") for q in questions],
+            "question": disc["current"],
+            "index": disc.get("i", 0),
+            "total": TOTAL_QUESTIONS,
+            "answered": len(disc.get("answers", [])),
             "myday_build": True,
         })
 
@@ -622,70 +633,57 @@ async def tailoring_json(request: Request, session_id: str):
     )
 
 
-@router.get("/{session_id}/discovery.json")
-async def discovery_json(request: Request, session_id: str):
-    """Polling endpoint for the 9-phase discovery page — returns the generated
-    questions once the background generation finishes."""
-    from execution.advisory.advisory_state_manager import load_session
-
-    try:
-        session = load_session(session_id)
-    except FileNotFoundError:
-        return JSONResponse({"ready": True, "questions": []}, headers={"Cache-Control": "no-store"})
-
-    ready = session.get("discovery_status") == "ready"
-    return JSONResponse(
-        {"ready": ready, "questions": session.get("discovery_questions") or []},
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@router.post("/{session_id}/discovery", dependencies=[Depends(require_advisory_enabled)])
-async def submit_discovery(request: Request, session_id: str):
-    """Record the 9-phase choices (≥5 required), fold them into a refined idea,
-    then proceed to build-setup. Re-renders with an error if fewer than 5."""
+@router.post("/{session_id}/discovery-answer", dependencies=[Depends(require_advisory_enabled)])
+async def submit_discovery_answer(request: Request, session_id: str):
+    """Record the choice for the current discovery question, then generate the
+    next one (adaptive on prior answers) — or, after the last, fold the choices
+    into a refined idea and proceed to build-setup."""
     from execution.advisory.advisory_state_manager import load_session, save_session
     from execution.advisory.event_tracker import track_event
-    from execution.advisory.system_discovery import MIN_ANSWERS, PHASE_KEYS, refine_idea
+    from execution.advisory.system_discovery import PHASES, TOTAL_QUESTIONS, generate_question, refine_idea
 
     try:
         session = load_session(session_id)
     except FileNotFoundError:
         return RedirectResponse(url="/advisory/", status_code=303)
 
+    disc = session.get("discovery") or {"i": 0, "answers": [], "current": None}
     form_data = await request.form()
-    answers = {}
-    for phase in PHASE_KEYS:
-        letter = str(form_data.get(phase, "")).strip().upper()
-        if letter in ("A", "B", "C"):
-            answers[phase] = letter
+    letter = str(form_data.get("choice", "")).strip().upper()
+    skipped = str(form_data.get("skip", "")).strip() != ""
 
-    questions = session.get("discovery_questions") or []
+    current = disc.get("current") or {}
+    if not skipped and letter in ("A", "B", "C"):
+        opt = next((o for o in current.get("options", []) if o.get("letter") == letter), None)
+        if opt:
+            disc.setdefault("answers", []).append({
+                "phase": current.get("phase"),
+                "label": current.get("label"),
+                "question": current.get("question"),
+                "choice": {"letter": letter, "label": opt["label"], "description": opt["description"]},
+            })
 
-    if len(answers) < MIN_ANSWERS:
-        return templates.TemplateResponse("system_discovery.html", {
-            "request": request,
-            "session": session,
-            "session_id": session_id,
-            "questions": questions,
-            "phase_keys": [q.get("phase") for q in questions],
-            "selected": answers,
-            "error": f"Please answer at least {MIN_ANSWERS} of the 9 to continue.",
-            "myday_build": True,
-        })
+    next_index = disc.get("i", 0) + 1
 
-    session["discovery_answers"] = answers
-    session["refined_idea"] = refine_idea(session.get("business_idea", ""), answers, questions)
+    if next_index >= TOTAL_QUESTIONS:
+        # Done — fold the chosen capabilities into the refined idea and advance.
+        session["discovery"] = disc
+        session["discovery_answers"] = {a["phase"]: a["choice"]["letter"] for a in disc.get("answers", [])}
+        session["refined_idea"] = refine_idea(session.get("business_idea", ""), disc.get("answers", []))
+        save_session(session)
+        track_event(
+            event_name="advisory_discovery_completed",
+            session_id=session_id,
+            email=session.get("email", ""),
+            properties={"answered": len(disc.get("answers", []))},
+        )
+        return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
+
+    disc["i"] = next_index
+    disc["current"] = generate_question(session.get("business_idea", ""), PHASES[next_index], disc.get("answers", []))
+    session["discovery"] = disc
     save_session(session)
-
-    track_event(
-        event_name="advisory_discovery_completed",
-        session_id=session_id,
-        email=session.get("email", ""),
-        properties={"answered": len(answers)},
-    )
-
-    return RedirectResponse(url=f"/advisory/{session_id}/build-setup", status_code=303)
+    return RedirectResponse(url=f"/advisory/{session_id}/questions", status_code=303)
 
 
 @router.get("/{session_id}/build-status.json")
