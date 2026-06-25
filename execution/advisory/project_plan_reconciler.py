@@ -68,6 +68,10 @@ def _todo_description(node: dict) -> str:
     acc = (node.get("acceptance") or "").strip()
     if acc:
         parts.append(f"<p><strong>Acceptance:</strong> {html.escape(acc)}</p>")
+    steps = node.get("steps") or []
+    if steps:
+        items = "".join(f"<li>{html.escape(str(s))}</li>" for s in steps)
+        parts.append(f"<p><strong>Steps:</strong></p><ul>{items}</ul>")
     parts.append(f"<p>Phase: {html.escape((node.get('phase') or 'BUILD').upper())} &middot; {tag}</p>")
     return "".join(parts)
 
@@ -153,46 +157,32 @@ def _archive(user, bucket, bc_id):
     mcp_tools._bc_request("PUT", f"{_base(bucket)}/recordings/{bc_id}/status/archived.json", user=user)
 
 
-# ── breadcrumb adoption (first / interrupted run) ───────────────────
+# ── project list adoption (first / interrupted run) ─────────────────
 
-def _adopt_by_breadcrumb(user, bucket, todoset, plan, manifest):
-    """Populate the manifest from existing BC items by matching title within
-    parent, so an interrupted first run never double-creates."""
-    existing_lists = {_norm_title(l.get("name") or l.get("title")): l.get("id")
-                      for l in _paginate(user, f"{_base(bucket)}/todosets/{todoset}/todolists.json")}
-    for init in plan.get("initiatives") or []:
-        lid = existing_lists.get(_norm_title(init.get("title")))
-        if not lid:
-            continue
-        bc_manifest.upsert_entry(manifest, init["id"], bc_type="todolist", bc_id=lid,
-                                 content_hash="", status=init.get("status", "active"))
-        existing_groups = {_norm_title(g.get("name") or g.get("title")): g.get("id")
-                           for g in _paginate(user, f"{_base(bucket)}/todolists/{lid}/groups.json")}
-        for feat in init.get("lists") or []:
-            gid = existing_groups.get(_norm_title(feat.get("title")))
-            if not gid:
-                continue
-            bc_manifest.upsert_entry(manifest, feat["id"], bc_type="group", bc_id=gid,
-                                     content_hash="", parent_bc_id=lid, status=feat.get("status", "active"))
-            existing_todos = {_norm_title(t.get("title") or t.get("content")): t.get("id")
-                              for t in _paginate(user, f"{_base(bucket)}/todolists/{gid}/todos.json")}
-            for todo in feat.get("todos") or []:
-                tid = existing_todos.get(_norm_title(_todo_content(todo))) or \
-                    existing_todos.get(_norm_title(todo.get("title")))
-                if tid:
-                    bc_manifest.upsert_entry(manifest, todo["id"], bc_type="todo", bc_id=tid,
-                                             content_hash="", parent_bc_id=gid, status=todo.get("status", "active"))
+def _adopt_or_create_project_list(user, bucket, todoset, name, description=""):
+    """Return the bc id of the project's single todolist — adopt an existing one
+    with this name (interrupted-run safety), else create it."""
+    norm = _norm_title(name)
+    for lst in _paginate(user, f"{_base(bucket)}/todosets/{todoset}/todolists.json"):
+        if _norm_title(lst.get("name") or lst.get("title")) == norm:
+            return lst.get("id")
+    return _create_todolist(user, bucket, todoset, name, description)
 
 
 # ── the reconcile ───────────────────────────────────────────────────
 
 def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | None = None,
-              start_date: str | None = None, name_prefix: str = "") -> dict:
-    """Create/update/retire Basecamp objects to match the plan. Idempotent.
+              start_date: str | None = None, name_prefix: str = "",
+              project_list_name: str | None = None) -> dict:
+    """Reconcile the plan into Basecamp as ONE to-do list per project, structured
+    task → subtask: the project is a single todolist; each **feature** is a
+    to-do **group** ("task"); each BUILD/BREAK/HARDEN item is a to-do
+    ("subtask") under that group. Basecamp has no deeper nesting, so one list
+    with feature-groups is the manageable task/subtask shape (initiatives are
+    not materialized as separate lists — their order labels the groups).
 
-    ``name_prefix`` is prepended to each initiative's Basecamp **todolist name**
-    only (not its plan title/id) — used to label/segregate test builds so they
-    stay identifiable and archivable without polluting deterministic ids.
+    Idempotent (content-hash gated). ``name_prefix`` labels the single list name;
+    ``project_list_name`` is the project's display name for that list.
 
     Returns a summary {created, updated, skipped, retired, errors}.
     """
@@ -205,60 +195,48 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
         bc_manifest.save_manifest(slug, manifest)
     start = manifest.get("startDate")
 
-    if not manifest.get("entries"):
-        try:
-            _adopt_by_breadcrumb(user, bucket, todoset, plan, manifest)
-            bc_manifest.save_manifest(slug, manifest)
-        except Exception:
-            logger.warning("breadcrumb adoption failed (continuing to create)", exc_info=True)
-
     summary = {"created": 0, "updated": 0, "skipped": 0, "retired": 0, "errors": []}
     plan_ids: set[str] = set()
 
+    # 1. Ensure the single project to-do list.
+    base_name = project_list_name or plan.get("projectName") or plan.get("projectSlug") or slug
+    list_name = f"{name_prefix}{base_name}"
+    project_list_id = manifest.get("projectTodolistId")
+    if not project_list_id:
+        try:
+            project_list_id = _adopt_or_create_project_list(
+                user, bucket, todoset, list_name,
+                "AI Project Architect build plan — one task group per feature.")
+        except Exception as e:
+            summary["errors"].append(f"project list: {e}")
+            return summary
+        manifest["projectTodolistId"] = project_list_id
+        bc_manifest.save_manifest(slug, manifest)
+
+    # 2. Features → groups ("tasks"); their BUILD/BREAK/HARDEN → todos ("subtasks").
     for init in plan.get("initiatives") or []:
         if init.get("status") == "proposed":
             continue
-        plan_ids.add(init["id"])
-        init_hash = project_plan.content_hash(init)
-        m = bc_manifest.get_entry(manifest, init["id"])
-        try:
-            list_name = f"{name_prefix}{init['title']}"
-            if not m or not m.get("bcId"):
-                lid = _create_todolist(user, bucket, todoset, list_name, init.get("charter", ""))
-                bc_manifest.upsert_entry(manifest, init["id"], bc_type="todolist", bc_id=lid,
-                                         content_hash=init_hash, status=init.get("status", "active"))
-                summary["created"] += 1
-            else:
-                lid = m["bcId"]
-                if m.get("contentHash") != init_hash:
-                    mcp_tools._bc_request("PUT", f"{_base(bucket)}/todolists/{lid}.json",
-                                          payload={"name": list_name, "description": init.get("charter", "")}, user=user)
-                    m["contentHash"] = init_hash
-                    summary["updated"] += 1
-                else:
-                    summary["skipped"] += 1
-            bc_manifest.save_manifest(slug, manifest)
-        except Exception as e:
-            summary["errors"].append(f"initiative {init['id']}: {e}")
-            continue
-
         for feat in init.get("lists") or []:
             if feat.get("status") == "proposed":
                 continue
             plan_ids.add(feat["id"])
+            # workstream number keeps ordering + context inside the one list
+            group_name = f"{feat.get('order')}. {feat['title']}"
             feat_hash = project_plan.content_hash(feat)
             fm = bc_manifest.get_entry(manifest, feat["id"])
             try:
                 if not fm or not fm.get("bcId"):
-                    gid = _create_group(user, bucket, lid, feat["title"])
+                    gid = _create_group(user, bucket, project_list_id, group_name)
                     bc_manifest.upsert_entry(manifest, feat["id"], bc_type="group", bc_id=gid,
-                                             content_hash=feat_hash, parent_bc_id=lid, status=feat.get("status", "active"))
+                                             content_hash=feat_hash, parent_bc_id=project_list_id,
+                                             status=feat.get("status", "active"))
                     summary["created"] += 1
                 else:
                     gid = fm["bcId"]
                     if fm.get("contentHash") != feat_hash:
                         mcp_tools._bc_request("PUT", f"{_base(bucket)}/todolists/groups/{gid}.json",
-                                              payload={"name": feat["title"]}, user=user)
+                                              payload={"name": group_name}, user=user)
                         fm["contentHash"] = feat_hash
                         summary["updated"] += 1
                     else:
@@ -298,7 +276,7 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
                 except Exception as e:
                     summary["errors"].append(f"todo {todo['id']}: {e}")
 
-    # Retire manifest entries no longer in the plan (or now retired).
+    # 3. Retire manifest entries no longer in the plan (the project list stays).
     retired_in_plan = {n.get("id") for _, n, _ in project_plan.iter_nodes(plan)
                        if n.get("status") == "retired"}
     for node_id, entry in list((manifest.get("entries") or {}).items()):
@@ -313,6 +291,6 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
             except Exception as e:
                 summary["errors"].append(f"retire {node_id}: {e}")
 
-    manifest["last_reconciled_at"] = bc_manifest.datetime.now(bc_manifest.timezone.utc).isoformat()
+    manifest["last_reconciled_at"] = datetime.now(timezone.utc).isoformat()
     bc_manifest.save_manifest(slug, manifest)
     return summary

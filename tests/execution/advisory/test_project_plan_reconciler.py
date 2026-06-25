@@ -75,20 +75,23 @@ def _user():
     return SimpleNamespace(email="ali@colaberry.com", user_id="ali@colaberry.com", bc_user_id=42)
 
 
-def test_first_run_creates_list_group_todos_and_manifest(bc):
+def test_first_run_creates_one_list_group_todos_and_manifest(bc):
     plan = _plan()
     summary = rec.reconcile(plan, "demo", _user(), 1, creator_id=42, start_date="2026-06-24")
-    # 1 todolist + 1 group + 2 todos
-    assert summary["created"] == 4
+    # ONE project to-do list (tracked via manifest.projectTodolistId), plus
+    # 1 feature group ("task") + 2 todos ("subtasks") counted in created.
+    assert summary["created"] == 3
     assert summary["errors"] == []
-    # todos assigned to creator + due-dated
+    list_posts = [c for c in bc.calls if c[0] == "POST" and c[1].endswith("/todolists.json")]
+    assert len(list_posts) == 1  # exactly one list for the whole project
     for payload in bc.todos.values():
         assert payload["assignee_ids"] == [42]
         assert payload["due_on"]
         assert payload["content"].startswith("[BUILD]") or payload["content"].startswith("[BREAK]")
-    # manifest populated
     m = bc_manifest.load_manifest("demo")
+    assert m.get("projectTodolistId")
     assert len([e for e in m["entries"].values() if e["bcType"] == "todo"]) == 2
+    assert len([e for e in m["entries"].values() if e["bcType"] == "group"]) == 1
 
 
 def test_due_on_is_startdate_plus_offset(bc):
@@ -108,7 +111,7 @@ def test_rerun_is_idempotent_no_writes(bc):
     assert writes_before > 0
     assert writes_after == 0          # hash gate → zero write calls
     assert summary["created"] == 0
-    assert summary["skipped"] >= 4
+    assert summary["skipped"] >= 3
 
 
 def test_content_change_updates_in_place(bc):
@@ -137,16 +140,16 @@ def test_removed_node_is_archived(bc):
     assert any("status/archived.json" in c[1] for c in bc.calls if c[0] == "PUT")
 
 
-def test_name_prefix_applied_to_todolist_names(bc):
+def test_name_prefix_applied_to_project_list_name(bc):
     plan = _plan()
     rec.reconcile(plan, "demo", _user(), 1, creator_id=42, start_date="2026-06-24",
-                  name_prefix="[TEST1] ")
+                  name_prefix="[TEST1] ", project_list_name="ShipWise")
     list_posts = [c for c in bc.calls if c[0] == "POST" and c[1].endswith("/todolists.json")]
-    assert list_posts, "expected a todolist POST"
-    assert list_posts[0][2]["name"].startswith("[TEST1] ")
-    # the plan id is derived from the unprefixed title (prefix doesn't pollute ids)
-    assert any(e for e in bc_manifest.load_manifest("demo")["entries"]
-               if e.startswith("INIT.ch04-functional-requirements"))
+    assert len(list_posts) == 1
+    assert list_posts[0][2]["name"] == "[TEST1] ShipWise"
+    # feature id derived from the unprefixed title (prefix doesn't pollute ids)
+    assert any(e.startswith("LIST.ch04.role-management")
+               for e in bc_manifest.load_manifest("demo")["entries"])
 
 
 def test_proposed_nodes_are_skipped(bc):

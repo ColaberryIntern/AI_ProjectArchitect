@@ -82,6 +82,110 @@ def _fallback_features(chapter_title: str) -> list[dict]:
     return [{"title": feat, "todos": [_build_todo(feat), _break_todo(feat)]}]
 
 
+_WS_SYSTEM = (
+    "You produce a concise, executable software build plan for ONE project. Return STRICT "
+    "JSON only. Create 6 to 9 WORKSTREAMS — major feature areas or build phases, NOT document "
+    "sections. Each workstream has 4 to 7 SUBSTANTIAL tasks (quality over quantity; no trivial "
+    "one-line steps as their own task). Every workstream MUST include at least one task with "
+    "phase 'BUILD' and at least one with phase 'BREAK' (the failure / edge / negative path). Use "
+    "'HARDEN' for security, performance, or observability work where it fits. For each task give: "
+    "a clear imperative title; phase BUILD|BREAK|HARDEN; kind 'ai' if Claude Code can build it "
+    "autonomously or 'human' if it needs a person's decision/approval/credentials; an "
+    "'acceptance' line stating the happy-path result AND the failure/edge behavior; and 'steps' = "
+    "2 to 5 concrete sub-steps."
+)
+
+_WS_USER = (
+    "Project idea:\n{idea}\n\n"
+    "Key areas from the design doc (context, not a required structure):\n{areas}\n\n"
+    'Return JSON exactly: {{"workstreams": [{{"title": "<workstream>", "tasks": ['
+    '{{"title": "<task>", "phase": "BUILD|BREAK|HARDEN", "kind": "ai|human", '
+    '"acceptance": "<happy + failure>", "steps": ["<step>", "..."]}}]}}]}}'
+)
+
+_MAX_WORKSTREAMS = 9
+_MAX_TASKS = 7
+
+
+def _norm_ws_task(t: dict) -> dict | None:
+    title = (t.get("title") or "").strip()
+    if not title:
+        return None
+    phase = (t.get("phase") or "BUILD").upper()
+    if phase not in _VALID_PHASES:
+        phase = "BUILD"
+    kind = "human" if (t.get("kind") or "").lower() == "human" else "ai"
+    acceptance = (t.get("acceptance") or "").strip() or f"{title} works and handles its failure path."
+    steps = [str(s).strip() for s in (t.get("steps") or []) if str(s).strip()][:6]
+    return {"title": title, "phase": phase, "kind": kind, "acceptance": acceptance, "steps": steps}
+
+
+def _ensure_ws_build_break(workstreams: list[dict]) -> list[dict]:
+    for ws in workstreams:
+        phases = {t["phase"] for t in ws["tasks"]}
+        name = ws["title"]
+        if "BUILD" not in phases:
+            ws["tasks"].insert(0, {"title": f"Build {name}", "phase": "BUILD", "kind": "ai",
+                                   "acceptance": f"{name} works end to end.",
+                                   "steps": ["Design", "Implement", "Test"]})
+        if "BREAK" not in phases:
+            ws["tasks"].append({"title": f"Harden the failure path for {name}", "phase": "BREAK",
+                                "kind": "ai",
+                                "acceptance": f"Invalid input, limits, and errors in {name} are handled gracefully.",
+                                "steps": ["Enumerate edge cases", "Add validation + error handling", "Test failures"]})
+    return workstreams
+
+
+def _fallback_workstreams(idea: str, areas: list[str]) -> list[dict]:
+    """Deterministic ~6 workstreams when the LLM is unavailable."""
+    titles = [a for a in (areas or []) if a][:6] or [
+        "Foundations & Data Model", "Core Features", "Integrations",
+        "Workflow & Automation", "Reliability & Security", "Launch & Handoff"]
+    out = []
+    for t in titles:
+        out.append({"title": t, "tasks": [
+            {"title": f"Build {t}", "phase": "BUILD", "kind": "ai",
+             "acceptance": f"{t} works end to end per the design.",
+             "steps": ["Design", "Implement", "Test"]},
+            {"title": f"Handle failures and edge cases for {t}", "phase": "BREAK", "kind": "ai",
+             "acceptance": f"Invalid input, limits, and errors in {t} are handled gracefully.",
+             "steps": ["Enumerate edge cases", "Add validation + error handling", "Test failures"]},
+        ]})
+    return out
+
+
+def generate_workstreams(idea: str, areas: list[str] | None = None) -> list[dict]:
+    """Return a tight, robust build plan: ~6-9 workstreams, each with ~4-7 tasks
+    (BUILD/BREAK/HARDEN, kind, acceptance covering happy+failure, sub-steps).
+    Always returns ≥1 workstream, each guaranteed a BUILD and a BREAK task."""
+    workstreams: list[dict] = []
+    if is_available() and (idea or areas):
+        try:
+            resp = chat(
+                system_prompt=_WS_SYSTEM,
+                messages=[{"role": "user", "content": _WS_USER.format(
+                    idea=(idea or "")[:3000],
+                    areas="\n".join(f"- {a}" for a in (areas or [])[:25]) or "(none)")}],
+                temperature=0.4,
+                max_tokens=6000,
+                response_format={"type": "json_object"},
+            )
+            data = json.loads(resp.content)
+            for ws in (data.get("workstreams") or [])[:_MAX_WORKSTREAMS]:
+                wtitle = (ws.get("title") or "").strip()
+                tasks = [nt for nt in (_norm_ws_task(t) for t in (ws.get("tasks") or [])) if nt][:_MAX_TASKS]
+                if wtitle and tasks:
+                    workstreams.append({"title": wtitle, "tasks": tasks})
+        except (LLMUnavailableError, LLMClientError, json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+            logger.warning("workstream generation LLM call failed: %s", e)
+        except Exception:  # noqa: BLE001
+            logger.warning("workstream generation unexpected error", exc_info=True)
+
+    if not workstreams:
+        workstreams = _fallback_workstreams(idea, areas or [])
+    return _ensure_ws_build_break(workstreams)
+
+
 def generate_features(chapter_title: str, chapter_body: str, max_features: int = 6) -> list[dict]:
     """Return ``[{title, todos:[{title, phase, kind, acceptance}]}]`` for a chapter.
 

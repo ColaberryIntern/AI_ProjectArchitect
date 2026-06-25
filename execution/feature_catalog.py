@@ -187,6 +187,9 @@ def generate_catalog(idea: str) -> list[dict]:
             system_prompt=CATALOG_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
+            # A 50-75 feature catalog overflows the 1024-token default and the
+            # JSON truncates → "Failed to parse catalog JSON" → generic fallback.
+            max_tokens=8000,
             response_format={"type": "json_object"},
         )
         return _parse_catalog_response(response.content)
@@ -304,6 +307,9 @@ def generate_catalog_from_profile(profile: dict) -> list[dict]:
             system_prompt=CATALOG_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
+            # A 50-75 feature catalog overflows the 1024-token default and the
+            # JSON truncates → "Failed to parse catalog JSON" → generic fallback.
+            max_tokens=8000,
             response_format={"type": "json_object"},
         )
         return _parse_catalog_response(response.content)
