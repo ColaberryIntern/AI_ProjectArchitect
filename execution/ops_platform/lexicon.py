@@ -27,7 +27,11 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from config.settings import PROJECT_ROOT
+# Repo root derived locally (this file is execution/ops_platform/lexicon.py) so the
+# Lexicon gate stays dependency-light and runs on a bare CI runner — importing
+# config.settings would drag in python-dotenv + env/LLM config a static glossary
+# scanner does not need. Mirrors the stdlib-only design of tbi_compliance.py.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 logger = logging.getLogger(__name__)
 
