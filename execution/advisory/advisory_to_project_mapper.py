@@ -101,6 +101,28 @@ def map_advisory_to_project_text(session: dict) -> str:
     """
     sections = []
 
+    # 0. Product idea + the capabilities chosen in the My-Day discovery. These
+    # lead the prefill so the build (which consumes this text) reflects what the
+    # user actually asked for — the raw idea and their explicit functionality
+    # choices — not just the derived agent roster.
+    business_idea = session.get("business_idea", "")
+    if business_idea:
+        sections.append(f"PRODUCT IDEA\n{business_idea}".strip())
+
+    disc_answers = (session.get("discovery") or {}).get("answers") or []
+    if disc_answers:
+        cap_text = "CHOSEN CAPABILITIES (selected by the user)\n"
+        for a in disc_answers:
+            choice = a.get("choice") or {}
+            label = choice.get("label")
+            if not label:
+                continue
+            line = f"- {a.get('label', '')}: {label}"
+            if choice.get("description"):
+                line += f" — {choice['description']}"
+            cap_text += line + "\n"
+        sections.append(cap_text.strip())
+
     # 1. Company Overview
     q1 = _extract_answer(session, "q1_business_overview")
     q2 = _extract_answer(session, "q2_company_size")

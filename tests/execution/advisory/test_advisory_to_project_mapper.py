@@ -113,7 +113,27 @@ class TestMapAdvisoryToProjectText:
             "answers": [],
         }
         text = map_advisory_to_project_text(session)
-        assert text == "Simple AI idea"
+        assert "Simple AI idea" in text          # now under a PRODUCT IDEA header
+
+    def test_includes_discovery_choices(self):
+        """My-Day discovery choices must reach the build input (advisory_prefill)."""
+        session = {
+            "session_id": "disc",
+            "business_idea": "A scheduling app for my salon",
+            "answers": [],
+            "discovery": {"answers": [
+                {"label": "Automation & actions",
+                 "choice": {"label": "Full auto-booking", "description": "Books and rebooks no-shows automatically."}},
+                {"label": "Control & autonomy",
+                 "choice": {"label": "Run autonomously", "description": "Acts on its own within limits."}},
+            ]},
+        }
+        text = map_advisory_to_project_text(session)
+        assert text.startswith("PRODUCT IDEA")
+        assert "A scheduling app for my salon" in text
+        assert "CHOSEN CAPABILITIES" in text
+        assert "Full auto-booking" in text
+        assert "Automation & actions" in text
 
     def test_handles_empty_session(self):
         session = {"session_id": "empty", "business_idea": "", "answers": []}
