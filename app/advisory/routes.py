@@ -103,6 +103,13 @@ async def advisory_landing(request: Request):
     return templates.TemplateResponse("advisory_landing.html", {"request": request})
 
 
+@router.get("/new")
+async def advisory_new_project(request: Request):
+    """Focused 'Create a new project' start page for the My-Day build flow —
+    a clean idea box that posts straight into the process (no marketing)."""
+    return templates.TemplateResponse("advisory_new_project.html", {"request": request})
+
+
 @router.get("/demo/walkthrough")
 async def demo_walkthrough(request: Request):
     """Render the guided demo walkthrough page with optional industry scenario."""
