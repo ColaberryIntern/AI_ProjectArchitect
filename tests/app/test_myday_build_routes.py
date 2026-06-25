@@ -47,6 +47,10 @@ class TestEntryAndFlag:
         assert 'name="myday_build"' in r.text            # flag carried into the flow
         assert 'action="/advisory/start"' in r.text
         assert "AI Operating System" not in r.text       # not the marketing landing
+        # app-consistent chrome, not the public marketing nav/footer
+        assert "Back to My Day" in r.text
+        assert "Participant Login" not in r.text
+        assert "Design AI Org" not in r.text
 
     def test_landing_forwards_myday_build_flag(self, client, advisory_output_dir):
         r = client.get("/advisory/?myday_build=1")

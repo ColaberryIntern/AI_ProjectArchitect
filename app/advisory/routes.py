@@ -107,7 +107,8 @@ async def advisory_landing(request: Request):
 async def advisory_new_project(request: Request):
     """Focused 'Create a new project' start page for the My-Day build flow —
     a clean idea box that posts straight into the process (no marketing)."""
-    return templates.TemplateResponse("advisory_new_project.html", {"request": request})
+    return templates.TemplateResponse("advisory_new_project.html",
+                                      {"request": request, "myday_build": True})
 
 
 @router.get("/demo/walkthrough")
@@ -190,6 +191,7 @@ async def question_flow(request: Request, session_id: str):
         "progress": progress,
         "system_options": SYSTEM_INTEGRATION_OPTIONS,
         "show_email_capture": show_email_capture,
+        "myday_build": session.get("myday_build", False),
     })
 
 
@@ -328,6 +330,7 @@ async def design_studio(request: Request, session_id: str):
         "systems": AI_SYSTEMS,
         "rec_outcomes": recs["recommended_outcomes"],
         "rec_systems": recs["recommended_systems"],
+        "myday_build": session.get("myday_build", False),
     })
 
 
@@ -418,6 +421,7 @@ async def capability_selector(request: Request, session_id: str):
         "confidence": confidence,
         "exclusion_reasons": exclusion_reasons,
         "primary_label": primary_label,
+        "myday_build": session.get("myday_build", False),
     })
 
 
@@ -485,6 +489,7 @@ async def build_setup(request: Request, session_id: str):
         "session": session,
         "session_id": session_id,
         "projects": projects,
+        "myday_build": True,
     })
 
 
