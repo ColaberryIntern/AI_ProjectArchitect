@@ -1,0 +1,42 @@
+{% extends "advisory_base.html" %}
+
+{% block title %}Create a New Project | Colaberry{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-4">
+      <span class="badge bg-primary-subtle text-primary mb-2 px-3 py-2">🚀 New project</span>
+      <h2 class="fw-bold">Let's create your project</h2>
+      <p class="text-muted">Describe your idea in a sentence or two. We'll ask a few quick
+        questions, design the AI organization, then build your full plan as tasks in Basecamp —
+        grouped into plain-language business steps you can follow.</p>
+    </div>
+
+    <form action="/advisory/start" method="POST">
+      <input type="hidden" name="myday_build" value="1">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <label for="business_idea" class="form-label fw-semibold">What do you want to build?</label>
+          <textarea id="business_idea" name="business_idea" class="form-control form-control-lg"
+                    rows="4" required autofocus
+                    placeholder="e.g. A scheduling and reminder system for my dental practice that confirms insurance and cuts no-shows."></textarea>
+          <div class="form-text">Plain language is perfect — no technical detail needed.</div>
+        </div>
+      </div>
+
+      <div class="mb-3 small text-muted">
+        Examples:
+        <span class="badge bg-light text-dark border me-1">A booking + payments app for my salon</span>
+        <span class="badge bg-light text-dark border me-1">A tool that tracks my deliveries and flags delays</span>
+        <span class="badge bg-light text-dark border">An assistant that follows up with leads from my website</span>
+      </div>
+
+      <div class="d-grid">
+        <button type="submit" class="btn btn-primary btn-lg">Start &rarr;</button>
+      </div>
+      <p class="text-muted text-center small mt-3">Takes a few minutes. You can step away while it builds.</p>
+    </form>
+  </div>
+</div>
+{% endblock %}

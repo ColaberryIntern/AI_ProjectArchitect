@@ -39,6 +39,15 @@ def _fake_operator(monkeypatch):
 
 
 class TestEntryAndFlag:
+    def test_new_project_page_is_focused_start(self, client, advisory_output_dir):
+        # "🚀 New project" lands here — a focused idea box, not the marketing page.
+        r = client.get("/advisory/new")
+        assert r.status_code == 200
+        assert 'name="business_idea"' in r.text
+        assert 'name="myday_build"' in r.text            # flag carried into the flow
+        assert 'action="/advisory/start"' in r.text
+        assert "AI Operating System" not in r.text       # not the marketing landing
+
     def test_landing_forwards_myday_build_flag(self, client, advisory_output_dir):
         r = client.get("/advisory/?myday_build=1")
         assert r.status_code == 200
