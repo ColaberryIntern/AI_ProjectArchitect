@@ -11,9 +11,15 @@ body.cb-newproject {
 .cb-newproject h1, .cb-newproject h2, .cb-newproject h3,
 .cb-newproject h4, .cb-newproject .fw-bold, .cb-newproject .fw-semibold {
   font-family: var(--font-display);
-  color: var(--text-strong);
+  /* No forced color — headings inherit, so they stay dark on light surfaces
+     and white on dark panels (e.g. the simulation CTA). */
 }
 .cb-newproject .text-muted { color: var(--text-muted) !important; }
+/* Keep white text on dark panels readable regardless of brand overrides. */
+.cb-newproject .text-white,
+.cb-newproject .text-white h1, .cb-newproject .text-white h2,
+.cb-newproject .text-white h3, .cb-newproject .text-white h4,
+.cb-newproject .text-white .fw-bold, .cb-newproject .text-white .fw-semibold { color: #fff !important; }
 .cb-newproject a { color: var(--text-link); }
 .cb-newproject a:hover { color: var(--text-link-hover); }
 

@@ -378,6 +378,22 @@ class TestSystemDiscovery:
         assert disc["answers"][0]["choice"]["letter"] == "B"
         assert disc["current"]["phase"] == "intelligence"   # next dimension
 
+    def test_answer_accepts_custom_text(self, client, advisory_output_dir):
+        import execution.advisory.advisory_state_manager as asm
+        session = self._myday_session(i=0)
+        sid = session["session_id"]
+        client.post(
+            f"/advisory/{sid}/discovery-answer",
+            data={"custom_answer": "Text clients the night before to confirm or cancel"},
+            follow_redirects=False,
+        )
+        disc = asm.load_session(sid)["discovery"]
+        assert disc["i"] == 1
+        assert len(disc["answers"]) == 1
+        choice = disc["answers"][0]["choice"]
+        assert choice["letter"] == "custom"
+        assert "night before" in choice["description"]
+
     def test_skip_advances_without_recording(self, client, advisory_output_dir):
         import execution.advisory.advisory_state_manager as asm
         session = self._myday_session(i=0)

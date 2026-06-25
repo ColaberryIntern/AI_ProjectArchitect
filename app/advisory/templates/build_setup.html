@@ -72,7 +72,7 @@
       </div>
 
       <div class="d-grid">
-        <button type="submit" class="btn btn-primary btn-lg">Design &amp; build my project</button>
+        <button type="submit" class="btn btn-primary btn-lg" id="buildBtn">Design &amp; build my project</button>
       </div>
       <p class="text-muted text-center small mt-3">
         You'll be taken to your AI organization page while the build runs in the background —
@@ -81,4 +81,20 @@
     </form>
   </div>
 </div>
+
+<script>
+  (function () {
+    var form = document.querySelector('form[action$="/start-build"]');
+    var btn = document.getElementById('buildBtn');
+    if (!form || !btn) return;
+    // Designing the AI organization runs synchronously (~10-15s); show progress
+    // so the button never looks frozen.
+    form.addEventListener('submit', function () {
+      window.setTimeout(function () {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Designing your AI organization…';
+      }, 0);
+    });
+  })();
+</script>
 {% endblock %}
