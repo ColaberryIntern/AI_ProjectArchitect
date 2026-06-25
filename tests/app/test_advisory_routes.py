@@ -80,6 +80,31 @@ class TestQuestionFlow:
         assert response.status_code == 200
         assert "of 10" in response.text
 
+    def test_question_flow_renders_tailored_examples(self, client, advisory_output_dir):
+        """Idea-tailored question text + example chips overlay the static ones."""
+        import execution.advisory.advisory_state_manager as asm
+
+        session_id = self._create_session(client)
+        session = asm.load_session(session_id)
+        session["tailored_questions"] = {
+            "q1_business_overview": {
+                "text": "Tell us about your salon and how booking works today",
+                "examples": [
+                    "We run a 3-chair hair salon",
+                    "We take walk-ins and online bookings",
+                    "Nail & lash studio, mostly regulars",
+                ],
+            }
+        }
+        asm.save_session(session)
+
+        response = client.get(f"/advisory/{session_id}/questions")
+        assert response.status_code == 200
+        assert "Tell us about your salon and how booking works today" in response.text
+        assert "We run a 3-chair hair salon" in response.text
+        # The generic static examples must no longer appear for Q1.
+        assert "Healthcare staffing agency" not in response.text
+
     def test_submit_answer_advances(self, client, advisory_output_dir):
         session_id = self._create_session(client)
         response = client.post(
