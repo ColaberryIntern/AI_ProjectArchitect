@@ -1,0 +1,116 @@
+/* Colaberry base layer — element defaults built on the tokens.
+   Optional for consumers, but makes cards/components render
+   consistently out of the box. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--body-font);
+  font-size: var(--fs-body);
+  line-height: var(--body-leading);
+  font-weight: var(--fw-regular);
+  color: var(--text-body);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Wrap long words / URLs instead of overflowing the container. */
+  overflow-wrap: break-word;
+}
+
+/* Media never overflows its container. */
+img, svg, video, canvas, picture { max-width: 100%; }
+img, video { height: auto; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--heading-font);
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-ls);
+  line-height: var(--lh-heading);
+  color: var(--text-strong);
+  margin: 0 0 0.5em;
+  text-wrap: balance;        /* even line lengths on short headings */
+  overflow-wrap: break-word; /* never let a long word overflow */
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+h4 { font-size: var(--fs-h4); }
+h5 { font-size: var(--fs-h5); }
+
+p  { margin: 0 0 1em; text-wrap: pretty; }   /* avoids orphans / ragged last line */
+li { text-wrap: pretty; }
+
+a { color: var(--text-link); text-decoration: none; }
+a:hover { color: var(--text-link-hover); text-decoration: underline; }
+
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-xs);
+}
+
+::selection { background: var(--red-200); color: var(--neutral-900); }
+
+/* ----------------------------------------------------------------
+   Text-wrapping utilities (opt-in helper classes)
+   ---------------------------------------------------------------- */
+.cb-balance  { text-wrap: balance; }           /* short headlines */
+.cb-pretty   { text-wrap: pretty; }            /* body copy */
+.cb-nowrap   { white-space: nowrap; }          /* keep on one line */
+.cb-break    { overflow-wrap: anywhere; word-break: break-word; } /* force-break long strings */
+.cb-truncate {                                 /* single-line ellipsis */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.cb-clamp-2, .cb-clamp-3 {                      /* multi-line ellipsis */
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cb-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
+.cb-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
+
+/* Flex/grid children can shrink so their text wraps instead of overflowing. */
+.cb-min0 { min-width: 0; }
+
+/* ----------------------------------------------------------------
+   ICONS — canonical, always-centered icon primitive.
+   Standard set: RemixIcon (webfont). Use:
+     <span class="cb-i"><i class="ri-rocket-line"></i></span>
+   The .cb-i box guarantees a centered 1em glyph with no baseline gap;
+   size via font-size on .cb-i, color via currentColor. SVG icon sets
+   (e.g. Lucide <i data-lucide>) are also supported by the same wrapper.
+   ---------------------------------------------------------------- */
+.cb-i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1em; height: 1em; line-height: 0; flex: none; vertical-align: middle;
+}
+.cb-i svg, .cb-i img {
+  display: block; width: 1em; height: 1em;
+  stroke-width: 2; /* matches the brand's soft line style for SVG sets */
+}
+.cb-i [class^="ri-"], .cb-i [class*=" ri-"] {
+  display: block; font-size: 1em; line-height: 1;
+}
+
+/* Icon tile — a colored square/round container with a centered icon.
+   <span class="cb-icon-tile"><span class="cb-i">…</span></span>
+   Center the GLYPH via grid, and the .cb-i 1em box makes it pixel-perfect.
+   Set --tile to resize, font-size controls the glyph. */
+.cb-icon-tile {
+  display: grid; place-items: center; flex: none;
+  width: var(--tile, 44px); height: var(--tile, 44px);
+  border-radius: var(--radius-md); color: #fff;
+  font-size: calc(var(--tile, 44px) * 0.48); line-height: 0;
+}
+.cb-icon-tile.cb-icon-tile--round { border-radius: 50%; }
+
+/* When an icon sits inline before text in a flex row, this keeps it
+   optically aligned with the FIRST line of text rather than centered
+   on the whole block. */
+.cb-i--lead { align-self: flex-start; margin-top: 0.12em; }

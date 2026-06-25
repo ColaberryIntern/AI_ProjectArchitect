@@ -1,0 +1,102 @@
+/* ============================================================
+   Colaberry — Spacing, radius, shadow, motion tokens
+   4px base grid. Rounded/friendly shape language to echo the
+   round cherry mark and the soft wordmark.
+   ============================================================ */
+:root {
+  /* Spacing (4px base) */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* Radius — rounded & friendly */
+  --radius-xs:   4px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-2xl:  32px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* Border widths */
+  --border-1: 1px;
+  --border-2: 2px;
+  --border-3: 3px;
+
+  /* Shadows — soft, low-spread, neutral (friendly, not harsh) */
+  --shadow-xs: 0 1px 2px rgba(26,26,26,0.04);
+  --shadow-sm: 0 1px 2px rgba(26,26,26,0.05), 0 1px 1px rgba(26,26,26,0.04);
+  --shadow-md: 0 3px 8px rgba(26,26,26,0.06), 0 1px 3px rgba(26,26,26,0.04);
+  --shadow-lg: 0 8px 20px rgba(26,26,26,0.07), 0 3px 6px rgba(26,26,26,0.04);
+  --shadow-xl: 0 16px 38px rgba(26,26,26,0.09), 0 5px 12px rgba(26,26,26,0.05);
+  /* Cherry-tinted lift for primary CTAs / featured cards */
+  --shadow-brand: 0 6px 18px color-mix(in srgb, var(--red-500) 20%, transparent);
+
+  /* Layout */
+  --container-sm:  640px;
+  --container-md:  860px;
+  --container-lg:  1080px;
+  --container-xl:  1280px;
+  --container-max: 1400px;
+  --gutter: var(--space-6);
+
+  /* Responsive breakpoints (min-width) — reference in @media or JS.
+     xs <640 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 */
+  --bp-sm:  640px;  /* @kind other */
+  --bp-md:  768px;  /* @kind other */
+  --bp-lg:  1024px; /* @kind other */
+  --bp-xl:  1280px; /* @kind other */
+  --bp-2xl: 1536px; /* @kind other */
+
+  /* Layout grid */
+  --grid-columns: 12;       /* @kind other */
+  --grid-gutter:  var(--space-6);
+  --grid-margin:  var(--space-6);
+
+  /* Touch target minimum (WCAG 2.2 AA = 24px; we target 44px) */
+  --target-min: 44px;       /* @kind other */
+
+  /* Z-index */
+  --z-base: 0;     /* @kind other */
+  --z-sticky: 100; /* @kind other */
+  --z-overlay: 1000; /* @kind other */
+  --z-modal: 1100;   /* @kind other */
+  --z-toast: 1200;   /* @kind other */
+
+  /* ============================================================
+     MOTION — a named, professional easing scale.
+     Most UI uses ease-out (enter) / ease-in (exit). "Emphasized"
+     is for hero moments; "spring" only for affirmations.
+     ============================================================ */
+  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);    /* @kind other */ /* enter, hover, expand */
+  --ease-in:         cubic-bezier(0.55, 0, 1, 0.45);    /* @kind other */ /* exits — accelerate away */
+  --ease-in-out:     cubic-bezier(0.65, 0, 0.35, 1);    /* @kind other */ /* move-and-return */
+  --ease-standard:   cubic-bezier(0.2, 0, 0, 1);        /* @kind other */ /* Material-style standard */
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);     /* @kind other */ /* hero entrances */
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */ /* affirmations */
+
+  /* Durations — scaled to travel distance */
+  --dur-instant: 90ms;  /* @kind other */
+  --dur-fast:    140ms; /* @kind other */
+  --dur-base:    220ms; /* @kind other */
+  --dur-slow:    360ms; /* @kind other */
+  --dur-slower:  560ms; /* @kind other */
+
+  /* Choreography — entrance distance + stagger rhythm */
+  --motion-rise:    14px;  /* @kind spacing */
+  --motion-rise-lg: 28px;  /* @kind spacing */
+  --stagger:        70ms;  /* @kind other */
+  --stagger-tight:  45ms;  /* @kind other */
+}

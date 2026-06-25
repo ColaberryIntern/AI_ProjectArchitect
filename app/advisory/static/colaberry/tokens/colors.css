@@ -1,0 +1,204 @@
+/* ============================================================
+   Colaberry — Color tokens
+   Built from the Colaberry School Style Guide:
+     Cherry Red  #FB2832   Leaf Green #77BB4A
+     Berry Blue  #367895   White      #FFFFFF
+     Black #000000  Gray #4A4A4A  Light Gray #D8D8D8
+   Base ramps + semantic aliases. OKLCH noted for reference.
+   ============================================================ */
+:root {
+  /* ---- Cherry Red (primary) ---- */
+  --red-50:  #FFF0F1;
+  --red-100: #FFDBDD;
+  --red-200: #FFB8BC;
+  --red-300: #FE8A90;
+  --red-400: #FD5760;
+  --red-500: #FB2832;  /* brand cherry — oklch(.63 .236 23) */
+  --red-600: #E5121D;
+  --red-700: #C20E1E;  /* logo core shadow */
+  --red-800: #9B0E18;
+  --red-900: #7A1016;
+
+  /* ---- Leaf Green (secondary) ---- */
+  --green-50:  #F1F9EA;
+  --green-100: #DEF0CC;
+  --green-200: #C2E3A1;
+  --green-300: #A2D375;
+  --green-400: #8AC759;
+  --green-500: #77BB4A;  /* brand leaf — oklch(.75 .153 132) */
+  --green-600: #5BA63C;  /* logo leaf mid */
+  --green-700: #468A2E;
+  --green-800: #356A24;
+  --green-900: #2A521E;
+
+  /* ---- Berry Blue (tertiary / wordmark) ---- */
+  --blue-50:  #EAF2F6;
+  --blue-100: #CFE0E9;
+  --blue-200: #A6C5D5;
+  --blue-300: #6F9DB6;
+  --blue-400: #4A86A2;
+  --blue-500: #367895;  /* brand berry — oklch(.55 .074 232) */
+  --blue-600: #2E6A86;
+  --blue-700: #265A72;
+  --blue-800: #20485C;
+  --blue-900: #1A3947;
+
+  /* ---- Neutrals (brand: #000 / #4A4A4A / #D8D8D8) ---- */
+  --neutral-0:    #FFFFFF;
+  --neutral-50:   #F8F8F7;
+  --neutral-100:  #F1F1F0;
+  --neutral-200:  #E4E4E3;
+  --neutral-300:  #D8D8D8;  /* brand light gray */
+  --neutral-400:  #B4B4B4;
+  --neutral-500:  #8C8C8C;
+  --neutral-600:  #6B6B6B;
+  --neutral-700:  #4A4A4A;  /* brand gray */
+  --neutral-800:  #2B2B2B;
+  --neutral-900:  #1A1A1A;
+  --neutral-950:  #0F0F0F;
+  --neutral-1000: #000000;  /* brand black */
+
+  /* ---- Functional only (NOT brand palette) ---- */
+  --amber-500: #E8920C;   /* warning — UI feedback only */
+  --amber-50:  #FCF1DD;
+  --purple-500: #7A5AF0;  /* data-viz extension only */
+  --teal-500:   #2BA39A;  /* data-viz extension only */
+
+  /* ============================================================
+     DATA VISUALIZATION palette
+     For a data-science school: chart colors built from the brand
+     hues + a few extensions, ordered for max adjacent separation
+     and color-blind safety. Use --chart-N in order. Never use raw
+     brand ramps for series — these are tuned for charts.
+     ============================================================ */
+  --chart-1: #367895;  /* berry blue */
+  --chart-2: #FB2832;  /* cherry red */
+  --chart-3: #5BA63C;  /* leaf green */
+  --chart-4: #E8920C;  /* amber */
+  --chart-5: #7A5AF0;  /* violet */
+  --chart-6: #2BA39A;  /* teal */
+  --chart-7: #C2185B;  /* magenta */
+  --chart-8: #6B6B6B;  /* neutral */
+
+  /* Sequential (single-hue, low→high) — berry blue */
+  --seq-1: #EAF2F6; --seq-2: #C2DAE6; --seq-3: #8FBBCF;
+  --seq-4: #5A97B4; --seq-5: #367895; --seq-6: #244F62;
+
+  /* Diverging (negative ↔ neutral ↔ positive) — cherry → leaf */
+  --div-neg-2: #C20E1E; --div-neg-1: #FD5760; --div-mid: #F1F1F0;
+  --div-pos-1: #8AC759; --div-pos-2: #468A2E;
+
+  /* ============================================================
+     SEMANTIC ALIASES — light theme (default)
+     Reference these in product code, never the raw ramps.
+     ============================================================ */
+
+  /* Brand */
+  --brand-primary:   var(--red-500);
+  --brand-secondary: var(--green-500);
+  --brand-tertiary:  var(--blue-500);
+  --brand-accent:    var(--red-500);   /* the fixed accent */
+
+  /* Surfaces */
+  --surface-page:    var(--neutral-0);
+  --surface-subtle:  var(--neutral-50);
+  --surface-card:    var(--neutral-0);
+  --surface-sunken:  var(--neutral-100);
+  --surface-inverse: var(--neutral-900);
+  --surface-brand:   var(--red-500);
+  --surface-brand-subtle: var(--red-50);
+  --surface-green-subtle: var(--green-50);
+  --surface-blue-subtle:  var(--blue-50);
+
+  /* Text */
+  --text-strong:    var(--neutral-900);
+  --text-body:      var(--neutral-800);
+  --text-muted:     var(--neutral-600);
+  --text-subtle:    var(--neutral-500);
+  --text-on-accent: var(--neutral-0);
+  --text-on-inverse:var(--neutral-0);
+  --text-link:      var(--blue-600);
+  --text-link-hover:var(--blue-700);
+
+  /* Borders */
+  --border-subtle:  var(--neutral-200);
+  --border-default: var(--neutral-300);
+  --border-strong:  var(--neutral-400);
+  --border-brand:   var(--red-500);
+  --border-focus:   var(--blue-500);
+
+  /* Interactive — primary (cherry) */
+  --action-bg:        var(--red-500);
+  --action-bg-hover:  var(--red-600);
+  --action-bg-press:  var(--red-700);
+  --action-fg:        var(--neutral-0);
+
+  /* Interactive — secondary (leaf). green-600 fill keeps white button
+     text at >=3:1 for large/bold labels (green-500 would fail). */
+  --action-green-bg:       var(--green-600);
+  --action-green-bg-hover: var(--green-700);
+  --action-green-fg:       var(--neutral-0);
+
+  /* Status */
+  --status-success:    var(--green-600);
+  --status-success-bg: var(--green-50);
+  --status-danger:     var(--red-600);
+  --status-danger-bg:  var(--red-50);
+  --status-info:       var(--blue-500);
+  --status-info-bg:    var(--blue-50);
+  --status-warning:    var(--amber-500);
+  --status-warning-bg: var(--amber-50);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--blue-500) 45%, transparent);
+}
+
+/* ============================================================
+   DARK THEME
+   Foreground inverts with background; the cherry accent stays
+   constant. Green & blue are nudged lighter for contrast.
+   ============================================================ */
+[data-theme="dark"] {
+  --surface-page:    var(--neutral-950);
+  --surface-subtle:  #161616;
+  --surface-card:    var(--neutral-900);
+  --surface-sunken:  var(--neutral-1000);
+  --surface-inverse: var(--neutral-50);
+  --surface-brand:   var(--red-500);
+  --surface-brand-subtle: color-mix(in srgb, var(--red-500) 16%, var(--neutral-950));
+  --surface-green-subtle: color-mix(in srgb, var(--green-500) 14%, var(--neutral-950));
+  --surface-blue-subtle:  color-mix(in srgb, var(--blue-400) 16%, var(--neutral-950));
+
+  --text-strong:    var(--neutral-0);
+  --text-body:      var(--neutral-200);
+  --text-muted:     var(--neutral-400);
+  --text-subtle:    var(--neutral-500);
+  --text-on-accent: var(--neutral-0);
+  --text-on-inverse:var(--neutral-0);
+  --text-link:      var(--blue-300);
+  --text-link-hover:var(--blue-200);
+
+  --border-subtle:  rgba(255,255,255,0.08);
+  --border-default: rgba(255,255,255,0.14);
+  --border-strong:  rgba(255,255,255,0.24);
+
+  --action-bg:        var(--red-500);
+  --action-bg-hover:  var(--red-400);
+  --action-bg-press:  var(--red-600);
+
+  --action-green-bg:       var(--green-500);
+  --action-green-bg-hover: var(--green-400);
+
+  --status-success:    var(--green-400);
+  --status-danger:     var(--red-400);
+  --status-info:       var(--blue-300);
+  --status-warning:    var(--amber-500);
+
+  /* Data-viz — brighter series for dark surfaces */
+  --chart-1: #5AA8C4; --chart-2: #FF6B72; --chart-3: #8AC759; --chart-4: #F0A93A;
+  --chart-5: #9B83F5; --chart-6: #44C0B6; --chart-7: #E85C92; --chart-8: #B4B4B4;
+  --seq-1: #1A3947; --seq-2: #244F62; --seq-3: #367895;
+  --seq-4: #5A97B4; --seq-5: #8FBBCF; --seq-6: #C2DAE6;
+
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--blue-300) 50%, transparent);
+}
