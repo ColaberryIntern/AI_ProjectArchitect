@@ -134,24 +134,36 @@ async def start_session(request: Request, business_idea: str = Form(...),
     session = initialize_session(business_idea)
     advance_status(session, "questioning")
 
-    # Personalize the intake questions to the idea the user just described, so
-    # the example chips (and the opening question) relate to THEIR business
-    # instead of generic logistics/SaaS/healthcare filler. Generated once here
-    # and cached on the session; fallback-safe (returns {} when the LLM is off).
-    try:
-        from execution.advisory.question_tailor import tailor_questions
-        session["tailored_questions"] = tailor_questions(business_idea)
-    except Exception:
-        session["tailored_questions"] = {}
-    save_session(session)
-
     # My-Day-initiated "Create a new project" build: flag the session so that
     # after capabilities we divert to the build-setup step (target BC project +
     # pace) instead of the public results page. The anonymous funnel never sets
-    # this, so it is unaffected.
+    # this, so it is unaffected. Set BEFORE persisting/kicking background work.
     if str(myday_build).strip() in ("1", "true", "True", "on", "yes"):
         session["myday_build"] = True
-        save_session(session)
+
+    # Personalize the intake questions to the idea the user just described, so
+    # the example chips (and the opening question) relate to THEIR business
+    # instead of generic logistics/SaaS/healthcare filler. Generated in the
+    # BACKGROUND so the first question loads instantly — the questions page
+    # polls /tailoring.json and swaps in the personalized version when ready.
+    # Fallback-safe: the static questions remain if the LLM is off or fails.
+    idea = (business_idea or "").strip()
+    if len(idea) >= 3:
+        session["tailoring_status"] = "pending"
+    else:
+        session["tailored_questions"] = {}
+        session["tailoring_status"] = "done"
+
+    # Persist the full session ONCE (myday flag + tailoring state) before any
+    # background thread starts, so the worker reloads a complete session.
+    save_session(session)
+
+    if session.get("tailoring_status") == "pending":
+        try:
+            from execution.advisory.question_tailor import kick_tailoring
+            kick_tailoring(session["session_id"], business_idea)
+        except Exception:
+            pass
 
     track_event(
         event_name="advisory_session_started",
@@ -189,9 +201,21 @@ async def question_flow(request: Request, session_id: str):
             status_code=303,
         )
 
-    from execution.advisory.question_tailor import apply_tailoring
-    question = apply_tailoring(get_next_question(session), session.get("tailored_questions"))
+    from execution.advisory.question_tailor import apply_tailoring, is_tailorable
+    next_q = get_next_question(session)
+    question = apply_tailoring(next_q, session.get("tailored_questions"))
     progress = get_progress(session)
+
+    # The idea-tailoring runs in the background. Show the "personalizing…" hint
+    # and start the client-side poller only while it is still being generated,
+    # the current question can be tailored, and it hasn't been overlaid yet.
+    tailored_map = session.get("tailored_questions") or {}
+    tailoring_pending = (
+        session.get("tailoring_status") == "pending"
+        and bool(next_q)
+        and is_tailorable(next_q.get("id"))
+        and next_q.get("id") not in tailored_map
+    )
 
     # Show soft email capture after question 5 (mid-Phase 1)
     show_email_capture = (progress["current_index"] == 5 and not session.get("email"))
@@ -204,6 +228,7 @@ async def question_flow(request: Request, session_id: str):
         "system_options": SYSTEM_INTEGRATION_OPTIONS,
         "show_email_capture": show_email_capture,
         "myday_build": session.get("myday_build", False),
+        "tailoring_pending": tailoring_pending,
     })
 
 
@@ -554,6 +579,25 @@ async def start_build(request: Request, session_id: str,
     myday_build_orchestrator.kick_build(session_id, bucket, pace, user.email, slug, idea_text, blueprint=blueprint)
 
     return RedirectResponse(url=f"/advisory/{session_id}/results?building=1", status_code=303)
+
+
+@router.get("/{session_id}/tailoring.json")
+async def tailoring_json(request: Request, session_id: str):
+    """Polling endpoint for the questions page — returns idea-tailored question
+    overrides once the background generation finishes. The page swaps the
+    current question's text + example chips in place when `ready` is true."""
+    from execution.advisory.advisory_state_manager import load_session
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        return JSONResponse({"ready": True, "tailored": {}}, headers={"Cache-Control": "no-store"})
+
+    ready = session.get("tailoring_status") != "pending"
+    return JSONResponse(
+        {"ready": ready, "tailored": session.get("tailored_questions") or {}},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/{session_id}/build-status.json")
