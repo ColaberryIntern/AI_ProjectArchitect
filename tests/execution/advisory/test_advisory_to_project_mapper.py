@@ -84,6 +84,21 @@ class TestGenerateProjectName:
         name = generate_project_name(session)
         assert "Operations Engine" in name  # from selected_outcomes
 
+    def test_handles_none_primary_problem_and_no_company(self):
+        """My-Day discovery flow: null primary_problem + no lead/Q1 must not crash
+        and should name the project from the idea."""
+        session = {
+            "session_id": "d",
+            "business_idea": "A booking and payments app for my hair salon that cuts no-shows",
+            "answers": [],
+            "lead": {},
+            "problem_analysis": {"primary_problem": None},
+        }
+        name = generate_project_name(session)
+        assert name  # no AttributeError
+        assert "hair salon" in name.lower()
+        assert "AI" in name
+
 
 class TestMapAdvisoryToProjectText:
     def test_includes_all_sections(self):

@@ -36,12 +36,21 @@ def _extract_company_name(session: dict) -> str:
     q1 = _extract_answer(session, "q1_business_overview")
     if q1:
         return q1[:60]
+    # My-Day discovery flow has no lead/Q1 — name from the idea itself.
+    idea = (session.get("business_idea") or "").strip()
+    if idea:
+        short = idea[:50]
+        if len(idea) > 50:
+            short = short.rsplit(" ", 1)[0]  # trim to a word boundary
+        return short
     return "Organization"
 
 
 def _extract_primary_system(session: dict) -> str:
     """Determine the primary AI system from session data."""
-    problem = (session.get("problem_analysis") or {}).get("primary_problem", "")
+    # ``primary_problem`` can be explicitly None (no answers in the My-Day
+    # discovery flow) — coerce to a string before .lower().
+    problem = (session.get("problem_analysis") or {}).get("primary_problem") or ""
     system_map = {
         "sales": "Sales Engine",
         "operations": "Operations Engine",
