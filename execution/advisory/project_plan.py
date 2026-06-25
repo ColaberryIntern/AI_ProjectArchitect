@@ -137,7 +137,7 @@ def iter_nodes(plan: dict):
 # ``kind`` (ai|human) is included so a re-classification re-syncs the rendered
 # [AI]/[Human] marker that drives the My Day tier split.
 _HASH_FIELDS = (
-    "title", "charter", "successMetric", "acceptance", "phase", "kind",
+    "title", "charter", "successMetric", "acceptance", "phase", "kind", "steps",
     "dueOffsetDays", "assignee", "order", "status", "designs", "deps",
 )
 

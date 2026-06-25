@@ -80,7 +80,8 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
             return
         with open(guide_path, encoding="utf-8") as f:
             md = f.read()
-        plan = plan_builder.build_plan(slug, md, pace=pace, source_doc=guide_path)
+        plan = plan_builder.build_plan(slug, md, raw_idea, project_name=project_name,
+                                       pace=pace, source_doc=guide_path)
         plan_builder.save_plan(slug, plan)
 
         # ── Verify gate: the plan must validate before any BC write ──
@@ -103,6 +104,7 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
         creator_id = basecamp_build_writer.resolve_operator_bc_person_id(user, bc_project_id)
         summary = project_plan_reconciler.reconcile(
             plan, slug, user, bc_project_id, creator_id=creator_id, name_prefix=name_prefix,
+            project_list_name=project_name,
         )
 
         # ── Phase d: resync so My Day reflects the new lists ────────

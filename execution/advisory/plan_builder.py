@@ -62,45 +62,51 @@ def _spread_due_offsets(plan: dict, pace: str) -> None:
         t["dueOffsetDays"] = window if n <= 1 else max(1, round((i + 1) / n * window))
 
 
-def build_plan(slug: str, md: str, *, pace: str = "standard", source_doc: str = "") -> dict:
-    """Build (and assign IDs to) a project-plan from a Build Guide markdown.
+def build_plan(slug: str, md: str, idea: str = "", *, project_name: str = "",
+               pace: str = "standard", source_doc: str = "") -> dict:
+    """Build (and assign IDs to) a workstream-shaped project-plan.
 
-    Does NOT validate or persist — the caller validates (the verify gate) and
-    saves. Returns the plan dict.
+    The Build Guide's chapter titles are context; the plan itself is a tight set
+    of WORKSTREAMS (one initiative → workstreams as feature-groups → robust
+    tasks as todos), so Basecamp gets ONE list with ~6-9 task groups instead of
+    a per-chapter explosion. Does NOT validate or persist — the caller does.
     """
     chapters = build_guide_parser.parse_build_guide(md)
-    initiatives: list[dict] = []
-    for ch in chapters:
-        features = feature_task_generator.generate_features(ch["title"], ch["body"])
-        lists: list[dict] = []
-        for fi, feat in enumerate(features, 1):
-            todos = [{
-                "title": t["title"], "phase": t["phase"], "kind": t.get("kind", "ai"),
-                "acceptance": t["acceptance"], "order": ti, "status": "active", "deps": [],
-            } for ti, t in enumerate(feat["todos"], 1)]
-            lists.append({
-                "title": feat["title"], "order": fi, "status": "active",
-                "designs": [], "todos": todos,
-            })
-        initiatives.append({
-            "title": ch["title"], "order": ch["order"], "status": "active",
-            "charter": build_guide_parser.first_sentence(ch["body"]),
-            "docAnchor": ch["anchor"], "lists": lists,
-            # metadata (not part of content_hash): lets re-parse detect which
-            # chapters changed so it only regenerates those.
-            "sourceBodyHash": build_guide_parser.source_sha256(ch["body"]),
+    area_titles = [c["title"] for c in chapters]
+    workstreams = feature_task_generator.generate_workstreams(idea, area_titles)
+
+    lists: list[dict] = []
+    for wi, ws in enumerate(workstreams, 1):
+        todos = [{
+            "title": t["title"], "phase": t["phase"], "kind": t.get("kind", "ai"),
+            "acceptance": t["acceptance"], "steps": t.get("steps", []),
+            "order": ti, "status": "active", "deps": [],
+        } for ti, t in enumerate(ws["tasks"], 1)]
+        lists.append({
+            "title": ws["title"], "order": wi, "status": "active",
+            "designs": [], "todos": todos,
         })
+
+    # One initiative wraps the workstreams (reconciler renders them as the
+    # groups of a single project list).
+    initiative = {
+        "title": (project_name or slug) + " — Build Plan", "order": 1, "status": "active",
+        "charter": build_guide_parser.first_sentence(md) or "Build plan.",
+        "lists": lists,
+        "sourceBodyHash": build_guide_parser.source_sha256(md),
+    }
 
     plan = {
         "$schema": project_plan.SCHEMA,
         "projectSlug": slug,
+        "projectName": project_name or slug,
         "sourceDoc": source_doc,
         "sourceDocVersion": "v1",
         "sourceDocSha256": build_guide_parser.source_sha256(md),
         "planRevision": 1,
         "peopleMap": {},
         "designs": [],
-        "initiatives": initiatives,
+        "initiatives": [initiative],
     }
     _spread_due_offsets(plan, pace)
     project_plan.assign_ids(plan)
