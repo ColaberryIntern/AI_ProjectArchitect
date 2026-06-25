@@ -1,0 +1,57 @@
+/* ============================================================
+   Colaberry — Typography tokens
+   Roboto (display + body), Roboto Mono (code/data),
+   Quicksand (logotype only). Scale anchored to the style guide:
+   H1 48 / H2 36 / H3 28 / H4 20 / Body 18 / Caption 14.
+   ============================================================ */
+:root {
+  /* Families */
+  --font-display: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body:    'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-logo:    'Quicksand', 'Trebuchet MS', sans-serif;
+
+  /* Weights */
+  --fw-regular: 400; /* @kind font */
+  --fw-medium:  500; /* @kind font */
+  --fw-bold:    700; /* @kind font */
+  --fw-black:   900; /* @kind font */
+
+  /* Type scale (px) */
+  --fs-display: 60px;  /* hero */
+  --fs-h1:      48px;
+  --fs-h2:      36px;
+  --fs-h3:      28px;
+  --fs-h4:      22px;
+  --fs-h5:      20px;  /* small heading / label */
+  --fs-body-lg: 20px;
+  --fs-body:    18px;  /* default body */
+  --fs-body-sm: 16px;
+  --fs-caption: 14px;  /* copyright / meta */
+  --fs-overline:12px;
+
+  /* Fluid hero (optional) */
+  --fs-hero-fluid: clamp(40px, 6vw, 72px); /* @kind font */
+
+  /* Line heights */
+  --lh-tight:   1.1;  /* @kind font */
+  --lh-snug:    1.25; /* @kind font */
+  --lh-heading: 1.2;  /* @kind font */
+  --lh-normal:  1.5;  /* @kind font */
+  --lh-relaxed: 1.65; /* @kind font */
+
+  /* Letter spacing */
+  --ls-tighter: -0.02em; /* @kind font */
+  --ls-tight:   -0.01em; /* @kind font */
+  --ls-normal:  0;        /* @kind font */
+  --ls-wide:    0.02em;   /* @kind font */
+  --ls-overline:0.08em;   /* @kind font */
+
+  /* Semantic roles */
+  --heading-font:   var(--font-display);
+  --heading-weight: var(--fw-bold);
+  --heading-ls:     var(--ls-tight);
+  --body-font:      var(--font-body);
+  --body-weight:    var(--fw-regular);
+  --body-leading:   var(--lh-relaxed);
+}

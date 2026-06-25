@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,17 +7,22 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/advisory/static/css/advisory.css" rel="stylesheet">
+    {% if myday_build %}
+    <!-- Colaberry design system (tokens + fonts) + brand overrides for this flow -->
+    <link href="/advisory/static/colaberry/styles.css" rel="stylesheet">
+    <link href="/advisory/static/css/colaberry-newproject.css" rel="stylesheet">
+    {% endif %}
     {% block head %}{% endblock %}
 </head>
-<body class="advisory-body">
+<body class="advisory-body {% if myday_build %}cb-newproject{% endif %}">
     {% if myday_build %}
-    <!-- App-consistent header for the My Day "Create a new project" flow -->
-    <nav class="navbar bg-white border-bottom sticky-top">
+    <!-- Colaberry-branded header for the My Day "Create a new project" flow -->
+    <nav class="navbar cb-ds-header sticky-top">
         <div class="container">
-            <a class="navbar-brand fw-bold d-flex align-items-center" href="/my-day/" style="color:#0b1f3a;">
-                <span style="font-size:18px;" class="me-2">✸</span> Colaberry · New Project
+            <a class="navbar-brand d-flex align-items-center" href="/my-day/">
+                <img src="/advisory/static/colaberry/logo/colaberry-horizontal.png" alt="Colaberry" class="cb-logo">
             </a>
-            <a class="btn btn-sm btn-outline-secondary" href="/my-day/">&larr; Back to My Day</a>
+            <a class="btn btn-sm btn-outline-secondary" href="/my-day/">Back to My Day</a>
         </div>
     </nav>
     {% else %}

@@ -1,0 +1,108 @@
+/* Colaberry design system applied to the My-Day "Create a new project" flow.
+   Loaded only on those pages (body.cb-newproject) so the public advisory funnel
+   is untouched. Uses the DS semantic tokens from colaberry/styles.css. */
+
+body.cb-newproject {
+  font-family: var(--font-body);
+  background: var(--surface-subtle);
+  color: var(--text-body);
+}
+
+.cb-newproject h1, .cb-newproject h2, .cb-newproject h3,
+.cb-newproject h4, .cb-newproject .fw-bold, .cb-newproject .fw-semibold {
+  font-family: var(--font-display);
+  color: var(--text-strong);
+}
+.cb-newproject .text-muted { color: var(--text-muted) !important; }
+.cb-newproject a { color: var(--text-link); }
+.cb-newproject a:hover { color: var(--text-link-hover); }
+
+/* Primary CTA -> cherry pill */
+.cb-newproject .btn-primary {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: var(--text-on-accent);
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  box-shadow: var(--shadow-brand);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.cb-newproject .btn-primary:hover,
+.cb-newproject .btn-primary:focus { background: var(--red-600); border-color: var(--red-600); }
+.cb-newproject .btn-lg { padding: 14px 28px; font-size: 1.05rem; }
+
+.cb-newproject .btn-outline-secondary {
+  border-radius: var(--radius-pill);
+  border-color: var(--border-default);
+  color: var(--text-body);
+}
+.cb-newproject .btn-outline-secondary:hover {
+  background: var(--surface-sunken); color: var(--text-strong); border-color: var(--border-strong);
+}
+
+/* Cards / panels */
+.cb-newproject .card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+/* Inputs */
+.cb-newproject .form-control, .cb-newproject .form-select, .cb-newproject textarea {
+  border-radius: var(--radius-lg);
+  border-color: var(--border-default);
+  color: var(--text-body);
+  font-family: var(--font-body);
+}
+.cb-newproject .form-control:focus, .cb-newproject .form-select:focus, .cb-newproject textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+.cb-newproject .form-check-input:checked {
+  background-color: var(--brand-accent);
+  border-color: var(--brand-accent);
+}
+
+/* Badges / chips / accents */
+.cb-newproject .badge.bg-primary-subtle { background: var(--surface-brand-subtle) !important; color: var(--red-700) !important; }
+.cb-newproject .text-primary { color: var(--red-700) !important; }
+.cb-newproject .text-success { color: var(--green-700) !important; }
+.cb-newproject .badge.bg-light {
+  background: var(--surface-sunken) !important;
+  color: var(--text-body) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+/* The build-setup radio "cards" */
+.cb-newproject .border.rounded {
+  border-radius: var(--radius-lg) !important;
+  border-color: var(--border-subtle) !important;
+}
+.cb-newproject .border.rounded:hover { border-color: var(--border-default) !important; }
+
+/* Branded app header */
+.cb-ds-header {
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cb-ds-header .cb-logo { height: 30px; width: auto; }
+
+/* Progress banner on the org/results page */
+.cb-newproject .alert-info {
+  background: var(--surface-blue-subtle);
+  border-color: var(--blue-200);
+  color: var(--text-body);
+  border-radius: var(--radius-lg);
+}
+.cb-newproject .alert-success {
+  background: var(--status-success-bg);
+  border-color: var(--green-200);
+  color: var(--green-800);
+  border-radius: var(--radius-lg);
+}
+.cb-newproject .progress-bar { background-color: var(--brand-accent); }
+.cb-newproject .btn-success {
+  background: var(--green-600); border-color: var(--green-600);
+  border-radius: var(--radius-pill); font-weight: 600;
+}

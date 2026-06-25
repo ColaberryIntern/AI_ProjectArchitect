@@ -1,0 +1,23 @@
+/* ============================================================
+   Colaberry — Fonts
+   Brand spec: Roboto (display + body). Roboto Mono added for
+   code / data figures (fitting a data-analytics school).
+   Quicksand is used ONLY for the "olaberry" logotype.
+
+   NOTE ON HOSTING: these are loaded from the Google Fonts CDN.
+   For a fully self-hosted bundle, drop the .woff2 files into
+   assets/fonts/ and replace the @import below with local
+   @font-face rules. Roboto & Roboto Mono are Apache-2.0;
+   Quicksand is OFL-1.1 (see assets/fonts/LICENSES.md).
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;0,900;1,400&family=Roboto+Mono:wght@400;500;700&family=Quicksand:wght@500;600;700&display=swap');
+
+/* ============================================================
+   ICON FONT — RemixIcon (Apache-2.0, ~3,000 icons).
+   The brand's standard icon set. Loaded here so every page that
+   links styles.css gets it automatically. Use:
+     <span class="cb-i"><i class="ri-rocket-line"></i></span>
+   Names: ri-{name}-line (default, matches our soft 2px style) or
+   ri-{name}-fill. Browse at remixicon.com.
+   ============================================================ */
+@import url('https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css');
