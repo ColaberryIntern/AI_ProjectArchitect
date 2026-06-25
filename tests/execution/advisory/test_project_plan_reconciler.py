@@ -87,7 +87,8 @@ def test_first_run_creates_one_list_group_todos_and_manifest(bc):
     for payload in bc.todos.values():
         assert payload["assignee_ids"] == [42]
         assert payload["due_on"]
-        assert payload["content"].startswith("[BUILD]") or payload["content"].startswith("[BREAK]")
+        # user-friendly title: who-emoji + plain title, no [BUILD] jargon
+        assert payload["content"].startswith(rec.AI_EMOJI) or payload["content"].startswith(rec.HUMAN_EMOJI)
     m = bc_manifest.load_manifest("demo")
     assert m.get("projectTodolistId")
     assert len([e for e in m["entries"].values() if e["bcType"] == "todo"]) == 2

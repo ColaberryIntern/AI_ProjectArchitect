@@ -56,23 +56,36 @@ def _strip_render(title: str) -> str:
     return project_plan.strip_phase_tag(title or "")
 
 
+# Plain-language labels for a non-technical audience (the BUILD/BREAK/HARDEN
+# phase stays in the plan + drives Failure-First, but users see plain words).
+_PHASE_LABEL = {
+    "BUILD": "Build it",
+    "BREAK": "Handle mistakes & problems",
+    "HARDEN": "Make it safe & reliable",
+}
+_WHO_LABEL = {"ai": "🤖 The AI assistant can do this", "human": "🧑 You / your team handle this"}
+
+
 def _todo_content(node: dict) -> str:
-    phase = (node.get("phase") or "BUILD").upper()
+    # User-friendly title: a who-emoji + the plain task title. No [BUILD] jargon.
     emoji = HUMAN_EMOJI if node.get("kind") == "human" else AI_EMOJI
-    return f"[{phase}] {emoji} {_strip_render(node.get('title', ''))}"
+    return f"{emoji} {_strip_render(node.get('title', ''))}"
 
 
 def _todo_description(node: dict) -> str:
-    tag = "[Human]" if node.get("kind") == "human" else "[AI]"
+    kind = "human" if node.get("kind") == "human" else "ai"
+    tag = "[Human]" if kind == "human" else "[AI]"  # machine marker for the My Day tier split
+    phase_label = _PHASE_LABEL.get((node.get("phase") or "BUILD").upper(), "Build it")
     parts: list[str] = []
+    parts.append(f"<p><strong>Type:</strong> {phase_label} &middot; {_WHO_LABEL[kind]}</p>")
     acc = (node.get("acceptance") or "").strip()
     if acc:
-        parts.append(f"<p><strong>Acceptance:</strong> {html.escape(acc)}</p>")
+        parts.append(f"<p><strong>Done when:</strong> {html.escape(acc)}</p>")
     steps = node.get("steps") or []
     if steps:
         items = "".join(f"<li>{html.escape(str(s))}</li>" for s in steps)
         parts.append(f"<p><strong>Steps:</strong></p><ul>{items}</ul>")
-    parts.append(f"<p>Phase: {html.escape((node.get('phase') or 'BUILD').upper())} &middot; {tag}</p>")
+    parts.append(f"<p style=\"color:#9aa0a6;font-size:11px\">{tag}</p>")
     return "".join(parts)
 
 
@@ -204,9 +217,10 @@ def reconcile(plan: dict, slug: str, user, bucket: int, *, creator_id: int | Non
     project_list_id = manifest.get("projectTodolistId")
     if not project_list_id:
         try:
+            overview = plan.get("overview") or "AI Project Architect build plan."
             project_list_id = _adopt_or_create_project_list(
                 user, bucket, todoset, list_name,
-                "AI Project Architect build plan — one task group per feature.")
+                f"<div>{html.escape(overview)}</div>")
         except Exception as e:
             summary["errors"].append(f"project list: {e}")
             return summary

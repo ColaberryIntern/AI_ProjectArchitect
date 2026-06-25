@@ -64,26 +64,27 @@ def _spread_due_offsets(plan: dict, pace: str) -> None:
 
 def build_plan(slug: str, md: str, idea: str = "", *, project_name: str = "",
                pace: str = "standard", source_doc: str = "") -> dict:
-    """Build (and assign IDs to) a workstream-shaped project-plan.
+    """Build (and assign IDs to) a plain-language, business-process project-plan.
 
-    The Build Guide's chapter titles are context; the plan itself is a tight set
-    of WORKSTREAMS (one initiative → workstreams as feature-groups → robust
-    tasks as todos), so Basecamp gets ONE list with ~6-9 task groups instead of
-    a per-chapter explosion. Does NOT validate or persist — the caller does.
+    The Build Guide's chapter titles are context; the plan itself is organized
+    into 7-10 BUSINESS PROCESSES a non-technical person understands (one
+    initiative → processes as feature-groups → detailed plain-language tasks as
+    todos). Basecamp gets ONE list grouped by understandable processes. Does NOT
+    validate or persist — the caller does.
     """
     chapters = build_guide_parser.parse_build_guide(md)
     area_titles = [c["title"] for c in chapters]
-    workstreams = feature_task_generator.generate_workstreams(idea, area_titles)
+    processes = feature_task_generator.generate_process_plan(idea, area_titles)
 
     lists: list[dict] = []
-    for wi, ws in enumerate(workstreams, 1):
+    for pi, proc in enumerate(processes, 1):
         todos = [{
             "title": t["title"], "phase": t["phase"], "kind": t.get("kind", "ai"),
             "acceptance": t["acceptance"], "steps": t.get("steps", []),
             "order": ti, "status": "active", "deps": [],
-        } for ti, t in enumerate(ws["tasks"], 1)]
+        } for ti, t in enumerate(proc["tasks"], 1)]
         lists.append({
-            "title": ws["title"], "order": wi, "status": "active",
+            "title": proc["title"], "order": pi, "status": "active",
             "designs": [], "todos": todos,
         })
 
@@ -96,10 +97,20 @@ def build_plan(slug: str, md: str, idea: str = "", *, project_name: str = "",
         "sourceBodyHash": build_guide_parser.source_sha256(md),
     }
 
+    process_names = [l["title"] for l in lists]
+    overview = (
+        f"This is your build plan for {project_name or slug}. The work is grouped into "
+        f"{len(lists)} business processes: {'; '.join(process_names)}. "
+        "Each to-do is marked 🤖 (the AI assistant builds it for you) or 🧑 (you or your team do "
+        "it), shows whether it's to Build it / Handle problems / Make it safe, and has a plain "
+        "“Done when” you can check. Work top to bottom — finish one process before the next."
+    )
+
     plan = {
         "$schema": project_plan.SCHEMA,
         "projectSlug": slug,
         "projectName": project_name or slug,
+        "overview": overview,
         "sourceDoc": source_doc,
         "sourceDocVersion": "v1",
         "sourceDocSha256": build_guide_parser.source_sha256(md),
