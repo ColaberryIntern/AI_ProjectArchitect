@@ -1,24 +1,23 @@
 """Comment-level AI attribution — the basis for the AI Share metric.
 
-AI Share answers: of the comments a person *authors*, how many are AI-paired work (written
-through Claude Code) vs typed by hand? This is the honest measure of who is actually using
-the AI-paired system. Validated against real BC threads (2026-06-26).
+AI Share answers: of the comments posted under a person's Basecamp account, how many were
+AI-posted vs genuinely typed by hand?
 
-A comment falls into one of THREE classes:
+Key finding (live probe, 2026-06-26): Basecamp has NO dedicated AI account for comments and
+exposes no integration/bot flag on a comment. Every comment is attributed to a human User.
+The AI/automation posts THROUGH human accounts (via their OAuth tokens) — e.g. auto-pickup
+cards reading "CB System: automated response" appear under whichever operator is assigned.
+So the only way to tell an AI-posted comment from a hand-typed one is the content: the
+self-labelling `via <name>'s Claude Code` line, the stable CB-System automation templates
+(dashboards, backlog snapshots, overdue nudges, auto-pickup status), and bare file/attachment
+dumps. Everything the system posts is AI; the residual is genuinely typed prose.
 
-  - AI  — the person doing work through AI: the `via <name>'s Claude Code` attribution line,
-          an AI-actor account ("CB System"), or an operating-doctrine work card
-          (`per operating doctrine` / `Auto-attached by sendWithBcAttach`, Op-3 `<!-- step:`).
-  - AMBIENT — work-agnostic system housekeeping posted via the operator's token (daily
-          dashboards, backlog snapshots, overdue reminders/escalations, auto-pickup status
-          cards). It is neither the person choosing AI nor the person typing, so it is
-          EXCLUDED from the ratio — counting it would over-credit whoever the bot posts as
-          (validated: it pushed pure manual workers to a false ~38%).
-  - HUMAN — genuinely hand-typed prose.
+  AI Share = AI-posted / (AI-posted + hand-typed).
 
-AI Share = AI / (AI + HUMAN). Validated on live data: builders who work through Claude Code
-score high (Swati 89%, Kes 77%), pure manual workers score ~0% (Ram 3%, Narendra 0%), and
-ambient automation no longer distorts the picture.
+The hand-typed residual is an UPPER BOUND on human: an AI comment posted by a path that does
+not self-label (a one-off script, a raw API post) can still look typed. The exact fix is a
+posted-comment ledger (record every comment id the system creates); auto-pickup and @CB
+already log theirs. Validated live: Ali 86%, Swati 82%, Kes 76%, pure manual workers ~0%.
 
 Pure + deterministic; no I/O. The runner gathers raw comments (BC API) and feeds them here.
 """
@@ -28,20 +27,24 @@ import re
 
 AI = "ai"
 HUMAN = "human"
-AMBIENT = "ambient"
 
-# The person actively working THROUGH the AI system.
 _VIA_CLAUDE = re.compile(r"via\s+.{0,40}?claude\s*code", re.IGNORECASE)
-_AI_WORK_MARKERS = (
+_WORDS = re.compile(r"[a-zA-Z]{3,}")
+_FILE = re.compile(r"\.(mp4|m4a|pdf|html|js|png|jpg|jpeg|csv|md|docx|zip|mov|wav|pptx|xlsx)\b",
+                   re.IGNORECASE)
+
+# Stable templates the CB System automation posts through operators' accounts. These are
+# system-generated (not typed), so they are AI. Each was observed verbatim in live threads.
+_AI_TEMPLATES = (
     "per operating doctrine",
     "auto-attached by sendwithbcattach",
     "<!-- step:",
-)
-
-# Work-agnostic system housekeeping posted via an operator's token. Excluded from the ratio.
-# These are stable templates emitted by the CB System automation (My Day scheduler, overdue
-# escalation, auto-pickup status, daily dashboards) — not a person's authored comment.
-_AMBIENT_MARKERS = (
+    "cb system: automated response",
+    "anticipated goal:",
+    "cb system first-pass deliverable",
+    "cb system is starting this task now",
+    "first-pass deliverable for",
+    "[draft - ali reviews",
     "backlog snapshot at",
     "launch readiness dashboard",
     "daily dashboard snapshot",
@@ -52,38 +55,36 @@ _AMBIENT_MARKERS = (
     "executive email until",
     "quick status check: where are we",
     "reminder - this was due",
-    "cb system first-pass deliverable",
-    "cb system is starting this task now",
-    "first-pass deliverable for",
-    "[draft - ali reviews",
 )
 
 
 def classify_comment(author: str, body: str, ai_actors: set | None = None) -> str:
-    """Return "ai", "human", or "ambient" for one comment.
-
-    `author` is the BC comment creator name; `body` is its text or HTML. `ai_actors` are bot
-    account names whose own comments are AI by definition (default {"CB System"})."""
+    """Return "ai" or "human" for one comment. AI = posted by the system (a dedicated AI
+    account, a `via … Claude Code` self-label, a CB automation template, or a bare
+    file/attachment dump). Human = genuinely typed prose."""
     actors = ai_actors if ai_actors is not None else {"CB System"}
-    text = (body or "").lower()
-    # AI-work signals win first (a doctrine/Claude card may also mention dashboard words).
     if (author or "").strip() in actors:
         return AI
     if _VIA_CLAUDE.search(body or ""):
         return AI
-    if any(m in text for m in _AI_WORK_MARKERS):
+    text = (body or "").lower()
+    if any(m in text for m in _AI_TEMPLATES):
         return AI
-    if any(m in text for m in _AMBIENT_MARKERS):
-        return AMBIENT
+    # A bare file/attachment dump (filenames, little surrounding prose) is a kit/system post,
+    # not typing. Strip the filename tokens first so an underscored filename is not miscounted
+    # as prose, then require real prose around it.
+    if _FILE.search(body or ""):
+        prose = re.sub(r"\S+\.(?:mp4|m4a|pdf|html|js|png|jpg|jpeg|csv|md|docx|zip|mov|wav|pptx|xlsx)\b",
+                       " ", body or "", flags=re.IGNORECASE)
+        if len(_WORDS.findall(prose)) < 6:
+            return AI
     return HUMAN
 
 
 def tally_comments(comments: list, ai_actors: set | None = None) -> dict:
-    """Aggregate comments into per-person {ai, human, ambient, total, ai_share}.
-
-    `total` and `ai_share` exclude ambient automation: ai_share = ai / (ai + human).
-    Each comment exposes `author`/`creator` and `content`/`content_text`/`content_html`/`body`.
-    """
+    """Aggregate comments into per-person {ai, human, total, ai_share}.
+    ai_share = ai / (ai + human). Each comment exposes `author`/`creator` and
+    `content`/`content_text`/`content_html`/`body`."""
     out: dict = {}
     for c in comments:
         author = _get(c, "author", "creator")
@@ -91,12 +92,12 @@ def tally_comments(comments: list, ai_actors: set | None = None) -> dict:
         if not author:
             continue
         bucket = classify_comment(author, body, ai_actors)
-        row = out.setdefault(author, {"ai": 0, "human": 0, "ambient": 0})
+        row = out.setdefault(author, {"ai": 0, "human": 0})
         row[bucket] += 1
     for row in out.values():
-        authored = row["ai"] + row["human"]
-        row["total"] = authored
-        row["ai_share"] = round(row["ai"] / authored, 3) if authored else None
+        total = row["ai"] + row["human"]
+        row["total"] = total
+        row["ai_share"] = round(row["ai"] / total, 3) if total else None
     return out
 
 

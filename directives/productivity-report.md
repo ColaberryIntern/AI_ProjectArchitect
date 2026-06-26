@@ -37,24 +37,30 @@ Recipients/branding: `config/report_recipients.json`.
 
 ## AI Share = comment authorship (the primary metric)
 
-The headline **AI Share** is comment-based: of the comments a person *authors* on Basecamp,
-how many are AI-paired work vs typed by hand. This is the honest measure of who is using the
-AI-paired system (completions read everyone at ~0% because Claude-Code work closes under the
-person's own name). `comment_attribution.classify_comment` sorts every comment into:
+The headline **AI Share** is comment-based: of the comments posted under a person's Basecamp
+account, how many were AI-posted vs genuinely typed by hand (completions read everyone at ~0%
+because Claude-Code work closes under the person's own name).
 
-- **AI-work** (counts) - `via [name]'s Claude Code`, the `CB System` account, or a doctrine
-  work card (`per operating doctrine` / `Auto-attached by sendWithBcAttach`, Op-3 `<!-- step:`).
-- **Hand-typed** (counts) - a person typed it (no markers).
-- **Ambient automation** (EXCLUDED) - work-agnostic system housekeeping posted via the
-  operator's token (daily dashboards, backlog snapshots, overdue reminders/escalations,
-  auto-pickup status cards). Counting it as AI falsely inflated pure manual workers
-  (validated: it pushed a manual worker to ~38%), so it is excluded from the ratio.
+**Why content markers, not the account.** A 2026-06-26 raw-API probe found Basecamp has **no
+dedicated AI account for comments** and exposes **no bot/integration flag** on a comment - the
+creator is always a human `User`. The AI/automation posts **through** human accounts via their
+OAuth tokens (e.g. auto-pickup `CB System: automated response` cards appear under whichever
+operator is assigned, dashboards/escalations under the operator's token). So the only way to
+tell an AI post from a typed one is the text.
 
-`AI Share = AI-work / (AI-work + hand-typed)`. Team AI Share = team-wide comment ratio
-(`AI-work comments / authored comments`), which mirrors the per-person metric and is not
-owned by one mega-closer. Validated live (2026-06-26, 672 comments): builders who work
-through Claude Code score high (Swati 89%, Kes 77%), Ali 57% (he also hand-types many quick
-directives), pure manual workers ~0% (Ram 3%, Narendra 0%).
+`comment_attribution.classify_comment` returns **AI** when the body carries the
+`via [name]'s Claude Code` self-label, is from an AI-actor account, matches a stable CB
+automation template (dashboards, backlog snapshots, overdue nudges, auto-pickup status,
+doctrine email cards, Op-3 `<!-- step:`), or is a bare file/attachment dump; otherwise
+**human** (genuinely typed prose). `AI Share = AI / (AI + human)`. Team AI Share = team-wide
+comment ratio, which mirrors the per-person metric and is not owned by one mega-closer.
+Validated live (673 comments): Ali 86%, Swati 82%, Kes 76%, pure manual workers ~0%
+(Narendra 0%); team 63%.
+
+**Honest limit:** the hand-typed residual is an UPPER BOUND on human - an AI comment posted by
+a path that does not self-label (a one-off script, a raw API post) can still look typed. The
+exact fix is a posted-comment ledger (record every comment id the system creates; auto-pickup
+and the @CB responder already log theirs).
 
 `comment_scan.py` is the data path: `build_comment_stats()` pages the Basecamp per-project
 Comment recordings (read-only, shared CB System token) and persists

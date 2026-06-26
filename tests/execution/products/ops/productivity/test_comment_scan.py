@@ -33,16 +33,16 @@ def test_actor_excluded_from_rows():
     assert t["Sohail Syed"]["ai_share"] == 0.0
 
 
-def test_mixed_authorship_share_excludes_ambient():
+def test_mixed_authorship_share():
     comments = [
-        _c("Ali Muwwakkil", "via Ali Muwwakkil's Claude Code  x", "2026-06-25T10:00:00Z"),
-        _c("Ali Muwwakkil", "Outbound email attached per operating doctrine", "2026-06-25T11:00:00Z"),
-        _c("Ali Muwwakkil", "hand typed note to the team", "2026-06-25T12:00:00Z"),
-        _c("Ali Muwwakkil", "Ali backlog snapshot at 2026-06-25T12:00 UTC", "2026-06-25T12:30:00Z"),
+        _c("Ali Muwwakkil", "via Ali Muwwakkil's Claude Code  x", "2026-06-25T10:00:00Z"),       # ai
+        _c("Ali Muwwakkil", "Outbound email attached per operating doctrine", "2026-06-25T11:00:00Z"),  # ai
+        _c("Ali Muwwakkil", "Ali backlog snapshot at 2026-06-25T12:00 UTC", "2026-06-25T12:30:00Z"),    # ai (automation)
+        _c("Ali Muwwakkil", "hand typed note to the whole team about the plan", "2026-06-25T12:00:00Z"),  # human
     ]
     row = tally_threads(comments, since=SINCE)["Ali Muwwakkil"]
-    assert (row["ai"], row["human"], row["ambient"]) == (2, 1, 1)
-    assert row["total"] == 3 and row["ai_share"] == round(2 / 3, 3)  # ambient excluded
+    assert (row["ai"], row["human"]) == (3, 1)
+    assert row["total"] == 4 and row["ai_share"] == 0.75
 
 
 def test_empty_is_empty():

@@ -71,12 +71,12 @@ def tally_threads(comments: list, *, ai_actors: set | None = None,
         if since is not None and cdt is not None and cdt < since:
             continue
         bucket = classify_comment(author, _body(c), actors)
-        row = out.setdefault(author, {"ai": 0, "human": 0, "ambient": 0})
+        row = out.setdefault(author, {"ai": 0, "human": 0})
         row[bucket] += 1
     for row in out.values():
-        authored = row["ai"] + row["human"]   # ambient automation excluded from the ratio
-        row["total"] = authored
-        row["ai_share"] = round(row["ai"] / authored, 3) if authored else None
+        total = row["ai"] + row["human"]
+        row["total"] = total
+        row["ai_share"] = round(row["ai"] / total, 3) if total else None
     return out
 
 

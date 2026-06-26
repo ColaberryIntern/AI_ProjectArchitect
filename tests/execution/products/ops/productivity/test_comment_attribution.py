@@ -1,9 +1,9 @@
-"""Comment classifier: AI-work vs human-typed vs ambient automation, and per-person tally.
-Specimens are the real marker patterns observed in live BC threads (2026-06-26)."""
+"""Comment classifier: AI-posted (markers/automation/attachments) vs genuinely hand-typed.
+Specimens are the real patterns observed in live BC threads (2026-06-26)."""
 from __future__ import annotations
 
 from execution.products.ops.productivity.comment_attribution import (
-    AI, AMBIENT, HUMAN, classify_comment, tally_comments)
+    AI, HUMAN, classify_comment, tally_comments)
 
 
 def test_via_claude_code_prefix_is_ai():
@@ -21,16 +21,22 @@ def test_doctrine_work_cards_are_ai():
     assert classify_comment("Ali Muwwakkil", "<!-- step:progress:abc123 --> update") == AI
 
 
-def test_ambient_automation_is_excluded():
-    # System housekeeping posted via the operator's token — not authored, excluded from ratio.
-    for body in (
-        "Ali backlog snapshot at 2026-06-26T16:00 UTC. Counts: 71 total open.",
-        "CRITICAL RISK - this task is 7 days overdue. Marking on Launch Readiness Dashboard.",
-        "Reminder - this was due 2026-06-23 (1 day overdue). Quick status check: where are we on this?",
-        "CB System is starting this task now. Drafting a first-pass deliverable for Ali to review.",
-        "Friday, June 26, 2026 - daily dashboard snapshot",
+def test_automation_posted_under_human_accounts_is_ai():
+    # The system posts these THROUGH operators' accounts (no AI account exists for comments).
+    for author, body in (
+        ("Ali Muwwakkil", "Ali backlog snapshot at 2026-06-26T16:00 UTC. Counts: 71 total open."),
+        ("Ali Muwwakkil", "CRITICAL RISK - this task is 7 days overdue. Marking on Launch Readiness Dashboard."),
+        ("Ali Muwwakkil", "Reminder - this was due 2026-06-23. Quick status check: where are we on this?"),
+        ("Ram Katamaraja", "CB System: automated response Anticipated goal: a refined email draft."),
+        ("Ram Katamaraja", "CB System is starting this task now. Drafting a first-pass deliverable for Ali."),
+        ("Ali Muwwakkil", "Friday, June 26, 2026 - daily dashboard snapshot"),
     ):
-        assert classify_comment("Ali Muwwakkil", body) == AMBIENT
+        assert classify_comment(author, body) == AI
+
+
+def test_bare_attachment_dump_is_ai():
+    assert classify_comment("Ali Muwwakkil", "design-e-colaberry-ds-LATEST-2026-06-24.html") == AI
+    assert classify_comment("Ali Muwwakkil", "PROJECT_BUILDER_FLOW_MOCKUP.html  WEEK1_BRIEF.pdf") == AI
 
 
 def test_hand_typed_comments_are_human():
@@ -38,7 +44,9 @@ def test_hand_typed_comments_are_human():
     assert classify_comment("Ali Muwwakkil", "Aleem Can we get this done today.") == HUMAN
     assert classify_comment("Ram Katamaraja", "Ali - Is there any action item for me?") == HUMAN
     assert classify_comment("Sohail Syed", "https://colaberry.online/p/x posted for today") == HUMAN
-    # human prose with links/citations is NOT AI (no marker)
+    # prose that mentions a file but is clearly typed (>=8 words) stays human
+    assert classify_comment("Ali Muwwakkil",
+                            "PROJECT_BUILDER_FLOW_MOCKUP.html uses Aleem's design and I am approving it now") == HUMAN
     assert classify_comment("Vinay Shankar", "The EDI option in SAM.gov is usually No [1][2]") == HUMAN
 
 
@@ -47,25 +55,19 @@ def test_custom_ai_actor_set():
     assert classify_comment("CB System", "hi", ai_actors={"MyBot"}) == HUMAN
 
 
-def test_tally_excludes_ambient_from_share():
-    # Ali: 2 AI-work, 1 hand-typed, 3 ambient -> share = 2/(2+1), ambient ignored.
+def test_tally_per_person_ai_share():
     comments = [
         {"author": "Ali Muwwakkil", "content_text": "via Ali Muwwakkil's Claude Code  a"},
-        {"author": "Ali Muwwakkil", "content_text": "via Ali Muwwakkil's Claude Code  b"},
-        {"author": "Ali Muwwakkil", "content_text": "Kes can you take a look"},          # human
-        {"author": "Ali Muwwakkil", "content_text": "Ali backlog snapshot at 2026-06-26"},  # ambient
-        {"author": "Ali Muwwakkil", "content_text": "Reminder - this was due 2026-06-23"},   # ambient
-        {"author": "Ali Muwwakkil", "content_text": "daily dashboard snapshot"},             # ambient
+        {"author": "Ali Muwwakkil", "content_text": "CB System: automated response Anticipated goal: x"},
+        {"author": "Ali Muwwakkil", "content_text": "Kes can you take a look at this please"},  # human
     ]
-    t = tally_comments(comments)
-    row = t["Ali Muwwakkil"]
-    assert row["ai"] == 2 and row["human"] == 1 and row["ambient"] == 3
-    assert row["total"] == 3                       # ambient excluded
+    row = tally_comments(comments)["Ali Muwwakkil"]
+    assert row["ai"] == 2 and row["human"] == 1 and row["total"] == 3
     assert row["ai_share"] == round(2 / 3, 3)
 
 
 def test_pure_manual_worker_is_zero():
-    comments = [{"author": "Ram", "content_text": "Pls add this info"} for _ in range(5)]
+    comments = [{"author": "Ram", "content_text": "Pls add this info to the form"} for _ in range(5)]
     assert tally_comments(comments)["Ram"]["ai_share"] == 0.0
 
 
