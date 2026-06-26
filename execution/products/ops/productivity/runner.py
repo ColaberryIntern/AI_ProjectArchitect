@@ -56,25 +56,6 @@ def _discover_operators() -> list[str]:
     return out
 
 
-def _managed_project_ids(user_ids: list[str]) -> list[int]:
-    """Distinct in-scope managed BC project ids across all operators (for the comment scan).
-    Excludes the same projects the report excludes (Power BI / Center of Excellence / RMG)."""
-    from execution.products.ops import store
-
-    ex = aggregate.EXCLUDE_PROJECTS
-    ids: dict[int, None] = {}
-    for uid in user_ids:
-        for p in store.load_projects(uid):
-            if not getattr(p, "is_managed", True):
-                continue
-            name = (getattr(p, "name", "") or "").lower()
-            if any(term in name for term in ex):
-                continue
-            if getattr(p, "bc_id", None):
-                ids[int(p.bc_id)] = None
-    return list(ids)
-
-
 def _gather_todos(user_ids: list[str]) -> list:
     """Union every operator's mirror into one list. aggregate dedupes by task id
     and attributes completions by completed_by, so cross-mirror duplicates of a
@@ -245,11 +226,9 @@ def run(*, now: datetime | None = None, rebuild_baseline: bool = False) -> Repor
         if os.environ.get("PRODUCTIVITY_COMMENT_SCAN", "1") == "1":
             try:
                 from . import comment_scan
-                pids = _managed_project_ids(user_ids)
-                if pids:
-                    stats = comment_scan.build_comment_stats(pids, now=run_now)
-                    logger.info("comment scan: %d projects, %d people",
-                                len(pids), len(stats.get("per_person", {})))
+                stats = comment_scan.build_comment_stats(now=run_now)
+                logger.info("comment scan: %d comments, %d people",
+                            stats.get("scanned", 0), len(stats.get("per_person", {})))
             except Exception:
                 logger.warning("comment scan skipped", exc_info=True)
 

@@ -80,16 +80,22 @@ def tally_threads(comments: list, *, ai_actors: set | None = None,
     return out
 
 
-def fetch_project_comments(project_id: int, *, since: datetime, max_pages: int = 50) -> list:
-    """Best-effort: page a project's Comment recordings via the shared BC token.
-    Returns [] on any error (missing client/token/network) so callers degrade gracefully."""
+def fetch_recent_comments(*, since: datetime, exclude_project_terms: list | None = None,
+                          max_pages: int = 80) -> list:
+    """Best-effort: one paginated pass over the account-wide Comment recordings (newest first)
+    via the shared BC token, stopping at the window boundary. Drops comments in excluded
+    buckets (Power BI / Center of Excellence / RMG by name). Returns [] on any error so
+    callers degrade gracefully (the report then falls back to completion-based attribution)."""
     try:
         from execution.products.library.mcp_tools import _bc_account, _bc_request, _html_to_text
     except Exception:  # pragma: no cover - library/token not available in this context
         return []
+    ex = [t.lower() for t in (exclude_project_terms or [])]
     out: list = []
     try:
-        base = f"https://3.basecampapi.com/{_bc_account()}/buckets/{project_id}/recordings.json"
+        # Basecamp 3 lists comments via the GLOBAL recordings endpoint (the per-bucket
+        # /buckets/<id>/recordings.json path 404s). One pass covers every project at once.
+        base = f"https://3.basecampapi.com/{_bc_account()}/projects/recordings.json"
         url = f"{base}?type=Comment&sort=created_at&direction=desc"
         page = 1
         while page <= max_pages:
@@ -103,32 +109,36 @@ def fetch_project_comments(project_id: int, *, since: datetime, max_pages: int =
                 if cdt is not None and cdt < since:
                     stop = True
                     break
-                html = c.get("content") or ""
+                bucket_name = ((c.get("bucket") or {}).get("name", "") or "").lower()
+                if any(term in bucket_name for term in ex):
+                    continue
                 out.append({
                     "author": (c.get("creator") or {}).get("name", ""),
                     "created_at": c.get("created_at"),
-                    "content_text": _html_to_text(html),
+                    "content_text": _html_to_text(c.get("content") or ""),
                 })
             if stop:
                 break
             page += 1
     except Exception as e:  # pragma: no cover - network/auth guard
-        logger.warning("comment scan failed for project %s: %s", project_id, e)
+        logger.warning("comment scan failed: %s", e)
     return out
 
 
-def build_comment_stats(project_ids: list, *, now: datetime | None = None,
-                        window_days: int = WINDOW_DAYS, ai_actors: set | None = None,
-                        write: bool = True) -> dict:
-    """Scan the given BC projects and persist {person: {ai, human}} for the window."""
+def build_comment_stats(*, now: datetime | None = None, window_days: int = WINDOW_DAYS,
+                        exclude_project_terms: list | None = None,
+                        ai_actors: set | None = None, write: bool = True) -> dict:
+    """Scan account-wide Comment recordings for the window and persist {person: {ai, human}}."""
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=window_days)
     actors = ai_actors if ai_actors is not None else {"CB System"}
-    comments: list = []
-    for pid in project_ids:
-        comments.extend(fetch_project_comments(int(pid), since=since))
+    if exclude_project_terms is None:
+        from .aggregate import EXCLUDE_PROJECTS
+        exclude_project_terms = EXCLUDE_PROJECTS
+    comments = fetch_recent_comments(since=since, exclude_project_terms=exclude_project_terms)
     counts = tally_threads(comments, ai_actors=actors, since=since, exclude=actors)
-    payload = {"built_at": now.isoformat(), "window_days": window_days, "per_person": counts}
+    payload = {"built_at": now.isoformat(), "window_days": window_days,
+               "scanned": len(comments), "per_person": counts}
     if write:
         STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
