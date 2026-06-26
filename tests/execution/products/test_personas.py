@@ -88,6 +88,28 @@ def test_visual_persona_is_professional_and_pre_decides():
     assert "pre-fill" in block
 
 
+def test_visual_persona_tells_a_data_story_with_charts():
+    """The 2026-06-26 upgrade (BC Reference Kit): on top of the decision sheet,
+    Visual-first now builds a data-storytelling dashboard — it picks the visual
+    from the SHAPE of the data (KPI cards, Chart.js, Mermaid, conditional-color
+    heatmaps) and renders everything from one embedded source of truth. Locks
+    these in so a future edit can't quietly drop the charts back to plain prose."""
+    block = P.working_block("visual").lower()
+    # Visual vocabulary chosen by data shape, not a fixed template.
+    assert "shape of the data" in block
+    assert "kpi" in block            # headline numbers → KPI cards
+    assert "chart.js" in block       # category / before-after charts
+    assert "heatmap" in block        # coverage / matrix
+    # Conditional color encodes meaning; every chart earns a 'so what'.
+    assert "conditional" in block
+    assert "so what" in block
+    # Single source of truth: charts and tables read the same embedded object.
+    assert "embedded" in block
+    # The round-trip and browser auto-open survive the upgrade (merge, not swap).
+    assert "copy claude code prompt" in block
+    assert "browser" in block
+
+
 def test_checklist_persona_tags_decisions():
     assert "[DECISION]" in P.working_block("checklist")
 
