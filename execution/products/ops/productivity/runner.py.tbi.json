@@ -6,9 +6,9 @@
   "inpact": {
     "instant": { "status": "n_a", "evidence": "Scheduled daily batch report (weekday cron); not a latency-bound interactive surface." },
     "natural": { "status": "n_a", "evidence": "Deterministic data report (HTML scorecard + JSON), not a natural-language conversational surface; no NL generation." },
-    "permitted": { "status": "satisfied", "evidence": "Email delivery gated by PRODUCTIVITY_REPORT_DELIVERY=1 (off by default) to a fixed recipient list (config/report_recipients.json), always BCC ali@colaberry.com; reads from local todo mirrors only." },
+    "permitted": { "status": "satisfied", "evidence": "Email delivery gated by PRODUCTIVITY_REPORT_DELIVERY=1 (off by default) to a fixed recipient list (config/report_recipients.json), always BCC ali@colaberry.com. Reads local sources (todo mirrors, .claude/session-state.json, the _cb_mentions cursor, optional ai_signals.json, comment_stats.json) plus a read-only `git log` and read-only Basecamp Comment GETs via the shared CB System token to compute the comment-based AI Share. All reads are non-mutating; the only write to Basecamp is the gated email path. Every signal source is optional." },
     "adaptive": { "status": "n_a", "evidence": "Deterministic heuristic scorer; thresholds are config (env), not learned. Baseline is computed once and cached." },
-    "contextual": { "status": "satisfied", "evidence": "Grounds every verdict in real Basecamp completion data: post-launch 7-day window vs a pre-launch baseline, deduped by task id, with AI-actor attribution." },
+    "contextual": { "status": "satisfied", "evidence": "Grounds every verdict in real Basecamp completion data: post-launch 7-day window vs a pre-launch baseline, deduped by task id. Completions are classified ai_assisted / human_only / attribution_unknown from local AI signals, and the verdict is gated on attribution_confidence so a measurement gap is never rendered as a behavioural verdict." },
     "transparent": { "status": "satisfied", "evidence": "Writes an HTML report + JSON sidecar per run, surfaces assumptions and low-confidence baseline flags, and logs operators/verdict/delivery/path." }
   },
   "goals": {
@@ -28,6 +28,6 @@
   "risk_level": "MODERATE",
   "verdict": "conditional",
   "approver": { "name": "Ali Muwwakkil", "email": "ali@colaberry.com" },
-  "verified_at": "2026-06-20T00:00:00Z",
-  "notes": "Deterministic, no LLM. Autonomous email send is gated off-by-default (PRODUCTIVITY_REPORT_DELIVERY) to a fixed internal recipient list — the env flag is the approval gate."
+  "verified_at": "2026-06-26T00:00:00Z",
+  "notes": "Deterministic, no LLM. Autonomous email send is gated off-by-default (PRODUCTIVITY_REPORT_DELIVERY) to a fixed internal recipient list - the env flag is the approval gate. 2026-06-26 (CC-20260626-PROD): attribution reworked - AI Share is now comment authorship (AI-posted vs hand-typed comments, classified from text since Basecamp has no AI comment account / no bot flag), with the completion three-bucket confidence-gated model as fallback; adds read-only signal harvesting (session-state, _cb_mentions, git provenance) and read-only Basecamp Comment GETs via the shared CB System token. Trust posture unchanged: still deterministic, no LLM, delivery still gated off, only non-mutating reads plus the gated email. Re-confirmed by Ali Muwwakkil 2026-06-26."
 }

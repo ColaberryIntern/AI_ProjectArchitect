@@ -35,46 +35,112 @@ Output: `output/ops/_productivity/{YYYY-MM-DD}.html` (+ `.json` sidecar).
 Baseline: `output/ops/_productivity/baseline.json`.
 Recipients/branding: `config/report_recipients.json`.
 
-## Inputs + attribution (all already on disk; no extra instrumentation needed)
+## AI Share = comment authorship (the primary metric)
+
+The headline **AI Share** is comment-based: of the comments posted under a person's Basecamp
+account, how many were AI-posted vs genuinely typed by hand (completions read everyone at ~0%
+because Claude-Code work closes under the person's own name).
+
+**Why content markers, not the account.** A 2026-06-26 raw-API probe found Basecamp has **no
+dedicated AI account for comments** and exposes **no bot/integration flag** on a comment - the
+creator is always a human `User`. The AI/automation posts **through** human accounts via their
+OAuth tokens (e.g. auto-pickup `CB System: automated response` cards appear under whichever
+operator is assigned, dashboards/escalations under the operator's token). So the only way to
+tell an AI post from a typed one is the text.
+
+`comment_attribution.classify_comment` returns **AI** when the body carries the
+`via [name]'s Claude Code` self-label, is from an AI-actor account, matches a stable CB
+automation template (dashboards, backlog snapshots, overdue nudges, auto-pickup status,
+doctrine email cards, Op-3 `<!-- step:`), or is a bare file/attachment dump; otherwise
+**human** (genuinely typed prose). `AI Share = AI / (AI + human)`. Team AI Share = team-wide
+comment ratio, which mirrors the per-person metric and is not owned by one mega-closer.
+Validated live (673 comments): Ali 86%, Swati 82%, Kes 76%, pure manual workers ~0%
+(Narendra 0%); team 63%.
+
+**Honest limit:** the hand-typed residual is an UPPER BOUND on human - an AI comment posted by
+a path that does not self-label (a one-off script, a raw API post) can still look typed. The
+exact fix is a posted-comment ledger (record every comment id the system creates; auto-pickup
+and the @CB responder already log theirs).
+
+`comment_scan.py` is the data path: `build_comment_stats()` pages the Basecamp per-project
+Comment recordings (read-only, shared CB System token) and persists
+`output/ops/_productivity/comment_stats.json` = `{person: {ai, human, ambient}}`; the runner
+loads it into `AiSignals.comment_counts`. Every source is optional - with no comment data the
+report falls back to the completion three-bucket model below.
+
+## Inputs + attribution (the completion three-bucket fallback)
 
 Per operator under `output/ops/<email>/todos.json`: completions (`completed_at`,
 `completed_by_name`, `cycle_seconds`), open/overdue/stale, `category`, `assignee_names`,
 `bc_created_at`.
 
-Attribution model (the key correctness rule):
+Attribution model (the key correctness rule). The earlier version counted a completion as
+AI-assisted **only** when `completed_by_name == "CB System"`. That scored the heaviest AI
+users at 0% / "Low AI use", because when someone works through Claude Code the todo is
+completed under their **own** identity. The fix:
+
 - Todos are **deduped by `bc_id`** first - the same Basecamp task appears in every
   operator's mirror for a shared project, so per-mirror counting multi-counts.
-- A completion is attributed to **whoever actually closed it** (`completed_by_name`),
-  not to everyone who mirrors the project.
-- **AI signal = `completed_by_name == "CB System"`** (the bot account; override via
-  `PRODUCTIVITY_AI_ACTORS`). This is the real, already-stored "AI did this" marker - no
-  log-harvesting or new instrumentation. Per person: throughput = tasks they personally
-  closed; AI leverage = of their assigned tasks completed this week, the share the AI closed.
-  Team headline AI leverage = AI completions / all completions.
+- A completion is attributed to **whoever actually closed it** (`completed_by_name`).
+- Every completion lands in exactly **one of three buckets** (`aggregate._classify`):
+  - **`ai_assisted`** - any AI signal present:
+    - *actor close* - `completed_by_name` is an AI actor (default `CB System`; override
+      `PRODUCTIVITY_AI_ACTORS`);
+    - *session join* - the task's `bc_id` was a Claude Code session `active_ticket`
+      (`.claude/session-state.json`, the design-doc Pillar-1 signal);
+    - *task AI marker* - a `[via … Claude Code]` progress prefix / `@CB` answer /
+      auto-pickup / `ai_signals.json` entry for that `bc_id`.
+  - **`human_only`** - positive evidence of an unaided manual close (a human-authored
+    progress post / manual close with no AI signal anywhere near it).
+  - **`attribution_unknown`** - no signal either way. A measurement gap, **not** a verdict.
+- **`attribution_confidence`** per operator = `(ai_assisted + human_only) / completions`.
+- AI share is reported as a point share (`ai_assisted / completions`), an "of attributable
+  work" share (`ai_assisted / (ai_assisted + human_only)`), and an upper bound that folds in
+  the unknown slice - never collapsed to a single confident number when confidence is low.
+- A person is **`ai_active`** if they have AI sessions/commits/`@CB` answers in the window
+  (person-level prior). An `ai_active` operator's `attribution_unknown` work is **never**
+  silently counted as human.
+- The runner's I/O edge (`runner.gather_ai_signals`) harvests these signals from disk
+  (`.claude/session-state.json`, the `_cb_mentions` cursor, git `Co-Authored-By: Claude` /
+  Session-ID provenance, optional `output/ops/_productivity/ai_signals.json`) and injects
+  them as a pure `AiSignals` object; the math stays I/O-free and unit-tested. Every source
+  is optional - a missing source yields more `attribution_unknown`, shown honestly.
 
 ## The KPI catalog (5 pillars)
 
 1. **Adoption** - syncs, active days.
 2. **Throughput** - completed today / 7d / prior 7d, open, overdue, stale, net flow.
-3. **AI leverage** - team: AI share of all completions (`CB System` completions / total);
-   per person: AI share of their assigned tasks completed this week; delegatable vs
-   human-required mix; estimated $ saved from AI-completed tasks.
-4. **Speed** - median cycle time, AI cohort vs human cohort, cycle vs pre-launch baseline.
+3. **AI leverage** - per person: AI share over the three buckets (point / attributable /
+   upper), the AI / human / unknown split, delegatable vs human-required mix, estimated $
+   saved. **Team headline = MEDIAN of per-operator shares** (with p25-p75), not the
+   completion-weighted ratio, so one heavy operator cannot own the number; the old
+   volume-weighted figure is kept as a secondary read.
+4. **Speed** - median **new-work** cycle time (long-dormant backlog cleanup is split out as
+   a separate `backlog_cycle_days`, so clearing old todos does not read as "slower"),
+   cycle vs pre-launch baseline.
 5. **Quality** - overdue rate, stale rate (the productivity-paradox guard).
 
-## Verdict rubric (`aggregate._verdict`) - coloured by AI adoption
+## Verdict rubric (`aggregate._verdict`) - gated on attribution confidence
 
-The report's question is WHO is using the AI-paired system and whether it produces more
-than before. So the colour is driven by **AI Share** (how much of a person's completed
-work the AI closed), and the reason reads it against their pre-launch baseline:
-- **GREEN "Heavy AI use"** - AI Share >= `PRODUCTIVITY_AI_HIGH` (default 50%).
-- **AMBER "Partial AI use"** - AI Share >= `PRODUCTIVITY_AI_LOW` (default 20%).
-- **RED "Low AI use"** - below that; they are not really using the new system.
+The colour is driven by **AI Share**, but only once the work is **attributable**. A
+measurement gap must never be rendered as a behavioural verdict:
+- **UNKNOWN "Attribution incomplete"** - `attribution_confidence < PRODUCTIVITY_ATTRIB_CONF_MIN`
+  (default 50%). Reads "baseline-building", and when the operator is `ai_active` it says so
+  explicitly ("not a low-use call"). This is the case the old report mislabelled as red.
+- **GREEN "Heavy AI use"** - confident AND attributed AI share >= `PRODUCTIVITY_AI_HIGH` (50%).
+- **AMBER "Partial AI use"** - confident AND attributed share >= `PRODUCTIVITY_AI_LOW` (20%).
+- **RED "Low AI use"** - confident AND genuinely low attributed share (real `human_only`
+  work dominates). Reached **only** with high confidence, never from unknowns.
 - **NODATA** - no completed work in scope this week.
 
 The reason line appends the productivity read vs before: "producing more / about the same /
 less than before" (throughput vs baseline, or faster cycle; +/-10% `TREND_BAND` to count).
-Overdue/quality is shown (red badges, conditional formatting) but does NOT set the colour.
+**Outlier-robust math:** "vs before" is **winsorized** to +/-`PRODUCTIVITY_TREND_CAP`%
+(default 300) and the baseline is **floored** - a baseline under `PRODUCTIVITY_MIN_BASELINE_SAMPLE`
+completions renders "n/a, baseline too small" instead of a runaway percentage (kills the
++30775% artifact). Operators are bucketed into volume tiers (heavy / core / occasional) and
+anyone closing >= `PRODUCTIVITY_OUTLIER_SHARE` of all completions is flagged an **outlier**.
+Overdue/quality is shown (red badges) but does NOT set the colour.
 
 ## How to run
 
@@ -96,9 +162,14 @@ Recipients default to `ali@colaberry.com` only; widen via `config/report_recipie
 
 ## Tunable assumptions (env)
 
+`PRODUCTIVITY_AI_ACTORS` (`CB System`), `PRODUCTIVITY_AI_HIGH` (0.50),
+`PRODUCTIVITY_AI_LOW` (0.20), `PRODUCTIVITY_ATTRIB_CONF_MIN` (0.50 - the verdict gate),
+`PRODUCTIVITY_TREND_CAP` (300 - winsorize cap %), `PRODUCTIVITY_MIN_BASELINE_SAMPLE` (3 -
+baseline floor), `PRODUCTIVITY_DORMANT_DAYS` (30 - new-work vs backlog cycle split),
+`PRODUCTIVITY_OUTLIER_SHARE` (0.40 - outlier flag), `PRODUCTIVITY_SIGNAL_WINDOW_DAYS` (7),
 `PRODUCTIVITY_MIN_SAVED_PER_TASK` (15 min), `PRODUCTIVITY_DOLLARS_PER_HOUR` ($60),
-`PRODUCTIVITY_MIN_SAMPLE` (3), `PRODUCTIVITY_OVERDUE_RED` (0.30),
-`PRODUCTIVITY_BASELINE_WEEKS` (8). All assumptions are printed in the report footer.
+`PRODUCTIVITY_MIN_SAMPLE` (3), `PRODUCTIVITY_BASELINE_WEEKS` (8). The key assumptions are
+printed in the report footer.
 
 ## Verification
 
@@ -112,9 +183,15 @@ Recipients default to `ali@colaberry.com` only; widen via `config/report_recipie
 
 - **Thin "after" window.** For ~2-3 weeks post-launch the sample is small; verdicts stay
   in BASELINE / low-confidence rather than over-claiming a trend.
-- **AI attribution is estimated.** Workflow runs do not store `user_id`; AI-touched is
-  inferred from auto-pickup + @CB-mention signals (and the optional `ai_signals.json`).
-  The report labels this explicitly. Activity-based ratio shows `n/a` until instrumented.
+- **AI attribution is a measurement, with an explicit unknown bucket.** Signals are
+  inferred from session-state joins, git provenance, the `@CB` cursor, and the optional
+  `ai_signals.json`. Where no signal fires the work is `attribution_unknown` and shown as
+  such - the report never fabricates AI credit, and never reads an unknown as "Low AI use".
+  Accuracy over flattery: an honest "we could not attribute this" beats a confident wrong
+  verdict. To firm up attribution in prod, populate
+  `output/ops/_productivity/ai_signals.json` (`session_ticket_ids`, `ai_marked_task_ids`,
+  `human_marked_task_ids`, `ai_active_operators`) or ensure operator workspaces keep their
+  `.claude/session-state.json`.
 - **Baseline depth.** The local mirror retains recently-completed todos; a deeper walk of
   full Basecamp completion history is a Phase-3 enrichment behind `baseline.compute_baseline`.
 
