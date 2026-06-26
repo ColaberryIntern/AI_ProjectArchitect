@@ -60,54 +60,46 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
             build_status.write_status(slug, phase="error", error=f"unknown operator {operator_email}")
             return
 
-        # ── Phase b: full Build Guide → project-plan.json ───────────
+        # ── Phase b: deep plan (maker/checker loop) → docs + tickets ──
         build_status.write_status(
-            slug, phase="tasks", message="Generating your Build Guide and build plan…",
+            slug, phase="tasks", message="Designing your deep build plan (maker/checker loop on a strong model)…",
             session_id=session_id, bc_project_id=bc_project_id,
             pace=pace, operator_email=operator_email,
         )
-        from execution.full_pipeline import run_full_pipeline_sync
         from execution.state_manager import load_state
+        from execution.advisory.advisory_state_manager import load_session
+        from execution.advisory import deep_plan, deep_plan_publisher
+        from config.settings import COHORT_START_MONDAY
+
         state = load_state(slug)
         project_name = (state.get("project") or {}).get("name") or slug
         raw_idea = state.get("advisory_prefill") or idea_text or project_name
-        run_full_pipeline_sync(project_name, raw_idea, depth_mode="professional", blueprint=blueprint)
 
-        guide_path = _locate_build_guide(slug)
-        if not guide_path:
-            build_status.write_status(slug, phase="error",
-                                      error="Build Guide generation produced no document")
-            return
-        with open(guide_path, encoding="utf-8") as f:
-            md = f.read()
-        plan = plan_builder.build_plan(slug, md, raw_idea, project_name=project_name,
-                                       pace=pace, source_doc=guide_path)
-        plan_builder.save_plan(slug, plan)
+        # The discovery choices that shape this product (My-Day discovery flow).
+        try:
+            answers = (load_session(session_id).get("discovery") or {}).get("answers") or []
+        except Exception:
+            answers = []
+        choices = "\n".join(
+            f"- {a.get('label', '')}: {(a.get('choice') or {}).get('label', '')} — {(a.get('choice') or {}).get('description', '')}".rstrip(" —")
+            for a in answers if (a.get("choice") or {}).get("label")
+        ) or "(discovery choices not recorded)"
 
-        # ── Verify gate: the plan must validate before any BC write ──
-        errors = project_plan.validate_plan(plan, doc_anchors=build_guide_parser.doc_anchors(md))
-        if errors:
-            build_status.write_status(
-                slug, phase="error",
-                message="Build plan failed verification.",
-                error="; ".join(errors[:5]),
-                violations=errors,
-            )
-            return
+        # Generate (heavy) → store to files first, so a heavy run never strands us.
+        plan = deep_plan.generate_deep_plan(raw_idea, choices, project_name)
+        deep_plan.store_deep_plan(slug, plan)
 
-        # ── Phase c: reconcile the plan into Basecamp ───────────────
-        n_todos = sum(1 for lvl, _n, _p in project_plan.iter_nodes(plan) if lvl == "todo")
+        # ── Phase c: publish docs + due-dated tickets to Basecamp ────
         build_status.write_status(
             slug, phase="basecamp",
-            message=f"Creating {n_todos} tasks across the project plan in Basecamp…",
+            message=f"Publishing {plan['ticket_count']} tickets + 3 documents to Basecamp…",
         )
-        creator_id = basecamp_build_writer.resolve_operator_bc_person_id(user, bc_project_id)
-        summary = project_plan_reconciler.reconcile(
-            plan, slug, user, bc_project_id, creator_id=creator_id, name_prefix=name_prefix,
-            project_list_name=project_name,
-        )
+        anchor = deep_plan_publisher.anchor_from_cohort_start(COHORT_START_MONDAY)
+        list_name = f"{name_prefix}{project_name} - Sprint Build Plan"
+        summary = deep_plan_publisher.publish_deep_plan(
+            plan, user, bc_project_id, anchor, list_name, project_name=project_name)
 
-        # ── Phase d: resync so My Day reflects the new lists ────────
+        # ── Phase d: resync so My Day reflects the new list ─────────
         try:
             from execution.products.ops import scorer, sync
             sync.pull_todos_for_project(operator_email, bc_project_id)
@@ -117,10 +109,9 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
 
         build_status.write_status(
             slug, phase="done",
-            message=f"Created {summary['created']} tasks in Basecamp.",
+            message=f"Created {summary['created']} tasks + {len(summary.get('docs', []))} documents in Basecamp.",
             tasks_created=summary["created"],
-            updated=summary.get("updated", 0),
-            reconcile_errors=summary.get("errors", []),
+            docs=len(summary.get("docs", [])),
             bc_project_id=bc_project_id,
         )
     except Exception as e:  # noqa: BLE001 — background job: record, don't crash

@@ -14,6 +14,23 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 ADVISORY_OUTPUT_DIR = OUTPUT_DIR / "advisory"
 TMP_DIR = PROJECT_ROOT / "tmp"
 
+# Cohort start = the program's week-1 Monday. The deep-plan build schedules every
+# project across program weeks 3-11 (9 weeks; week 12 = presentations), with the
+# first due date on the Monday of week 3 (≈ "week 2.5"). Override per cohort via
+# COHORT_START_MONDAY env (YYYY-MM-DD). Default = 2026-07-27 → first due Aug 10.
+from datetime import date as _date  # noqa: E402
+
+
+def _parse_cohort_start(val: str):
+    try:
+        y, m, d = (int(x) for x in val.split("-"))
+        return _date(y, m, d)
+    except Exception:
+        return _date(2026, 7, 27)
+
+
+COHORT_START_MONDAY = _parse_cohort_start(os.getenv("COHORT_START_MONDAY", "2026-07-27"))
+
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
