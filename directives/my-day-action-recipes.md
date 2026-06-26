@@ -130,11 +130,17 @@ keeps the deterministic ownership note, resources, and HTML-clean description.
 **Delivery personas — the operator picks how information reaches them.** The
 `## How I want you to work` block is not fixed: each operator chooses one of six
 personas (`personas.py`) — Co-pilot (paced, the default), Just the answer (BLUF),
-Visual-first (builds a **professional interactive decision sheet**: a
+Visual-first (builds a **professional data-storytelling decision sheet**: a
 self-contained HTML page auto-opened in the browser, styled like a clean
-business one-pager — navy/slate executive palette, light background, Segoe UI,
-one restrained accent, minimal emoji; explicitly *not* the old colorful/neon
-look. It leads with a plain-English brief — **What this is** / **What you need
+business one-pager — slate executive palette, white panels, Segoe UI,
+one restrained accent (teal), minimal emoji; explicitly *not* the old colorful/neon
+look. As of the 2026-06-26 BC Reference-Kit merge it also **tells the story in
+the data**: it models the task into one embedded source-of-truth object and picks
+visuals from the *shape* of that data — KPI cards for headline numbers, Chart.js
+bar/doughnut/grouped-bar/line for counts and trends, Mermaid gantt/flowchart/
+sequence for time and process, and a conditional-color heatmap table for
+coverage/matrix — each with a one-line "so what" caption, drilling from headline
+to detail. It leads with a plain-English brief — **What this is** / **What you need
 to do** — plus a facts row (project / list / due / urgency / owner). It surfaces
 only the **few** decisions that change the outcome, each with the recommended
 answer pre-selected *and* an "Other" write-your-own text box, and states the rest
