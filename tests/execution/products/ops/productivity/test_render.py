@@ -73,6 +73,35 @@ def test_low_confidence_banner_when_baseline_missing():
     assert "went live" in html
 
 
+def test_unknown_slice_and_attribution_incomplete_shown():
+    # Alice's self-closed task carries no AI signal -> the row shows the unknown slice and
+    # the verdict reads "Attribution incomplete", never "Low AI use".
+    html = render_html(_scorecard())
+    assert "unknown" in html.lower()
+    assert "Attribution incomplete" in html
+    assert "Low AI use" not in html
+
+
+def test_high_ai_operator_renders_heavy_use():
+    from execution.products.ops.productivity.aggregate import AiSignals
+    todos = [
+        _todo(1, status="completed", completed_at="2026-06-18T10:00:00Z",
+              completed_by_name="Alice", cycle_seconds=2 * DAY, assignee_names=["Alice"]),
+        _todo(2, status="completed", completed_at="2026-06-19T10:00:00Z",
+              completed_by_name="Alice", cycle_seconds=1 * DAY, assignee_names=["Alice"]),
+    ]
+    sc = build_scorecard(todos, baseline={}, now=NOW,
+                         ai_signals=AiSignals(session_ticket_ids={1, 2}))
+    html = render_html(sc)
+    assert "Heavy AI use" in html
+    assert "—" not in html and "&mdash;" not in html
+
+
+def test_team_headline_is_median_labelled():
+    html = render_html(_scorecard())
+    assert "median" in html.lower()          # headline framed as a median, not a raw avg
+
+
 def test_operator_table_capped_with_overflow_note(monkeypatch):
     todos = [_todo(i, status="completed", completed_at="2026-06-18T10:00:00Z",
                    completed_by_name=n, cycle_seconds=DAY, assignee_names=[n])

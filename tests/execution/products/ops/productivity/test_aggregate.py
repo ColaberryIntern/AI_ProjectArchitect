@@ -46,9 +46,19 @@ def _todos():
     ]
 
 
-def _build():
+def _sig(**kw):
+    return aggregate.AiSignals(
+        ai_actor_names=set(kw.get("ai_actor_names", {"CB System"})),
+        session_ticket_ids=set(kw.get("session_ticket_ids", set())),
+        ai_marked_task_ids=set(kw.get("ai_marked_task_ids", set())),
+        human_marked_task_ids=set(kw.get("human_marked_task_ids", set())),
+        ai_active_operators=set(kw.get("ai_active_operators", set())),
+    )
+
+
+def _build(ai_signals=None):
     baseline = {"Alice": {"median_cycle_days": 5.0, "weekly_throughput": 1.5}}
-    return build_scorecard(_todos(), baseline=baseline, now=NOW)
+    return build_scorecard(_todos(), baseline=baseline, now=NOW, ai_signals=ai_signals)
 
 
 def _alice(sc):
@@ -63,12 +73,40 @@ def test_throughput_attributed_by_completed_by():
     assert a.active_days_7d == 3
 
 
-def test_ai_leverage_from_cb_system_completions():
+def test_unattributed_human_work_is_unknown_not_zero_ai():
+    # With only the default actor-close signal, Alice's three self-closed completions
+    # (1,2,3) carry no AI marker -> they are attribution_unknown, NOT a measured 0% AI.
+    # This is the core bug: a measurement gap must not read as "does not use AI".
     a = _alice(_build())
-    # of Alice-assigned tasks completed this week (1,2,5,6) the AI closed 5,6
-    assert a.assigned_completed_7d == 4
-    assert a.ai_assisted_count == 2
-    assert a.ai_touched_share == 0.5
+    assert a.ai_assisted_count == 0
+    assert a.human_only_count == 0
+    assert a.attribution_unknown_count == 3
+    assert a.attribution_confidence == 0.0     # nothing definitively attributed
+    assert a.ai_touched_share == 0.0           # point share, shown with the unknown slice
+    assert a.delegated_ai_count == 2           # tasks 5,6 the bot closed for her
+    assert a.verdict == "UNKNOWN"              # never "RED / Low AI use"
+
+
+def test_each_ai_signal_independently_flips_a_completion():
+    # Session join on task 1, per-task marker on task 2, leave task 3 unknown.
+    sc = _build(ai_signals=_sig(session_ticket_ids={1}, ai_marked_task_ids={2}))
+    a = _alice(sc)
+    assert a.ai_assisted_count == 2            # tasks 1 (session) + 2 (marker)
+    assert a.attribution_unknown_count == 1    # task 3
+    assert a.ai_signal_tally.get("session") == 1
+    assert a.ai_signal_tally.get("marker") == 1
+    assert a.attribution_confidence == round(2 / 3, 3)
+    assert a.ai_touched_share == round(2 / 3, 3)
+    assert a.ai_share_attributable == 1.0      # of attributable work, all AI
+
+
+def test_full_ai_attribution_makes_top_tier():
+    # All three of Alice's completions join a Claude Code session -> high, confident AI share.
+    a = _alice(_build(ai_signals=_sig(session_ticket_ids={1, 2, 3})))
+    assert a.ai_assisted_count == 3
+    assert a.attribution_confidence == 1.0
+    assert a.ai_touched_share == 1.0
+    assert a.verdict == "GREEN"
 
 
 def test_backlog_and_quality_from_assigned_open():
@@ -96,12 +134,21 @@ def test_savings_from_ai_completed_tasks():
 
 
 def test_verdict_coloured_by_ai_share_not_overdue():
-    # Alice has 50% AI share -> GREEN (heavy AI use), even though half her backlog
-    # is overdue. Colour tracks adoption, not ticket hygiene.
-    a = _alice(_build())
+    # With her completions attributed to AI sessions, Alice is GREEN (heavy AI use) even
+    # though half her backlog is overdue. Colour tracks adoption, not ticket hygiene.
+    a = _alice(_build(ai_signals=_sig(session_ticket_ids={1, 2, 3})))
     assert a.overdue_rate == 0.5
     assert a.verdict == "GREEN"
     assert "ai system" in a.verdict_reason.lower()
+
+
+def test_ai_active_operator_unknown_work_is_not_called_low_use():
+    # An operator flagged AI-active (commits/sessions in the window) whose tasks carry no
+    # per-task marker stays "attribution incomplete", never "Low AI use".
+    a = _alice(_build(ai_signals=_sig(ai_active_operators={"Alice"})))
+    assert a.ai_active is True
+    assert a.verdict == "UNKNOWN"
+    assert "low" not in a.verdict_reason.lower() or "not a low-use" in a.verdict_reason.lower()
 
 
 def test_spark_series_has_one_bucket_per_day():
@@ -117,12 +164,17 @@ def test_ai_actor_excluded_from_operator_list():
     assert {"Alice", "Bob"} <= names
 
 
-def test_team_ai_share_is_real():
+def test_team_buckets_and_median_headline():
     t = _build().team
     assert t.completed_7d == 5             # tasks 1,2,3,5,6 (4 is prior)
-    assert t.ai_completions_7d == 2        # 5,6
-    assert t.human_completions_7d == 3     # 1,2,3
-    assert t.ai_touched_share == 0.4       # 2 of 5
+    assert t.ai_completions_7d == 2        # 5,6 closed by CB System (actor signal)
+    assert t.human_completions_7d == 0     # no positive human marker present
+    assert t.unknown_completions_7d == 3   # 1,2,3 unattributed
+    assert t.ai_share_weighted == 0.4      # old completion-weighted number, kept as secondary
+    # Outlier-robust headline = median of per-operator point shares (only Alice has
+    # personal completions, share 0.0) -> 0.0, NOT the volume-weighted 0.4.
+    assert t.ai_touched_share == 0.0
+    assert t.attribution_confidence == 0.4  # (2 ai + 0 human) / 5
 
 
 def test_dedupe_collapses_shared_mirror_rows():
