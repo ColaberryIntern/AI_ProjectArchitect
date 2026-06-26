@@ -2,10 +2,10 @@
 from execution.products.ops import personas as P
 
 
-def test_six_personas_each_complete():
-    assert len(P.PERSONAS) == 6
+def test_personas_each_complete():
+    assert len(P.PERSONAS) == 8
     ids = [p["id"] for p in P.PERSONAS]
-    assert len(set(ids)) == 6  # unique
+    assert len(set(ids)) == 8  # unique
     for p in P.PERSONAS:
         for k in ("id", "label", "emoji", "blurb", "working_block"):
             assert p.get(k), f"persona {p.get('id')} missing {k}"
@@ -90,6 +90,34 @@ def test_visual_persona_is_professional_and_pre_decides():
 
 def test_checklist_persona_tags_decisions():
     assert "[DECISION]" in P.working_block("checklist")
+
+
+def test_social_persona_drafts_only_and_is_channel_aware():
+    """The Social Media delivery persona produces a publishable content package
+    but never posts on its own, and refuses to fabricate claims."""
+    assert P.is_valid("social")
+    block = P.working_block("social").lower()
+    # Draft-only safety: never auto-publish, never invent claims.
+    assert "draft only" in block
+    assert "never actually post" in block
+    assert "[needs approval]" in block
+    # Real content: per-channel copy with hooks, hashtags, and a calendar.
+    assert "hook" in block
+    assert "hashtag" in block
+    assert "calendar" in block
+
+
+def test_design_persona_delivers_a_spec_not_code():
+    """The UI/UX Designer delivery persona returns a design spec — flows,
+    wireframe descriptions, components, and an accessibility checklist — rather
+    than finished code or claimed pixels."""
+    assert P.is_valid("design")
+    block = P.working_block("design").lower()
+    assert "design spec" in block
+    assert "not" in block and "code" in block  # explicitly not finished code
+    assert "wireframe" in block
+    assert "user flow" in block
+    assert "accessibility" in block
 
 
 def test_plain_persona_is_nontechnical_and_conversational():
