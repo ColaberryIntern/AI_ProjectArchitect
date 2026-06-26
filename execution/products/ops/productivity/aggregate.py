@@ -89,6 +89,9 @@ class AiSignals:
     ai_marked_task_ids: set = field(default_factory=set)    # bc_ids with a per-task AI marker
     human_marked_task_ids: set = field(default_factory=set)  # bc_ids with positive human evidence
     ai_active_operators: set = field(default_factory=set)    # operators AI-active in the window
+    # Per-person comment authorship in the window: {name: {"ai": n, "human": n}}. This is
+    # the PRIMARY AI Share signal — of a person's BC comments, how many were AI-authored.
+    comment_counts: dict = field(default_factory=dict)
 
     @classmethod
     def coerce(cls, value, *, ai_actors: set) -> "AiSignals":
@@ -101,6 +104,7 @@ class AiSignals:
                 ai_marked_task_ids={_sid(x) for x in value.get("ai_marked_task_ids", [])},
                 human_marked_task_ids={_sid(x) for x in value.get("human_marked_task_ids", [])},
                 ai_active_operators=set(value.get("ai_active_operators", set())),
+                comment_counts=dict(value.get("comment_counts", {})),
             )
         else:
             sig = cls()
@@ -124,6 +128,12 @@ class OperatorScorecard:
     stale_count: int
     net_flow_7d: int
     assigned_completed_7d: int
+    # Comment-based AI Share (PRIMARY): of this person's BC comments in the window, the
+    # fraction that were AI-authored (Claude Code / system) vs typed by hand.
+    comment_ai_count: int
+    comment_human_count: int
+    comment_ai_share: float | None
+    ai_share_source: str                     # comments | completions | none
     # Three-bucket attribution over the operator's own completions this week.
     ai_assisted_count: int
     human_only_count: int
@@ -163,6 +173,8 @@ class TeamRollup:
     ai_completions_7d: int
     human_completions_7d: int
     unknown_completions_7d: int
+    comment_ai_count: int                    # team comment authorship (AI vs human)
+    comment_human_count: int
     ai_touched_share: float | None           # outlier-robust headline: MEDIAN of per-op shares
     ai_share_weighted: float | None          # old completion-weighted ratio, kept as secondary
     ai_share_p25: float | None
@@ -357,7 +369,8 @@ def _productivity_phrase(throughput_vs_base: float | None, cycle_vs_base: float 
 
 def _verdict(*, ai_share: float | None, attribution_confidence: float | None,
             ai_active: bool, throughput_vs_base: float | None,
-            cycle_vs_base: float | None, has_activity: bool) -> tuple[str, str]:
+            cycle_vs_base: float | None, has_activity: bool,
+            source: str = "completions") -> tuple[str, str]:
     """Colour by AI adoption, but ONLY after the work is attributable. When too much of
     the week's completions carry no AI/human signal we refuse to call it "low AI use" —
     that would render a measurement gap as a behavioural verdict (the core bug). Instead
@@ -379,11 +392,12 @@ def _verdict(*, ai_share: float | None, attribution_confidence: float | None,
         return ("NODATA", "No completed work in scope this week to assess.")
     prod = _productivity_phrase(throughput_vs_base, cycle_vs_base)
     pct = round(ai_share * 100)
+    basis = "comments" if source == "comments" else "attributed work"
     if ai_share >= AI_HIGH_THRESHOLD:
-        return ("GREEN", f"Heavy use of the AI system ({pct}% of attributed work), {prod}.")
+        return ("GREEN", f"Heavy use of the AI system ({pct}% of {basis}), {prod}.")
     if ai_share >= AI_LOW_THRESHOLD:
-        return ("AMBER", f"Partial use of the AI system ({pct}% of attributed work), {prod}.")
-    return ("RED", f"Low use of the AI system ({pct}% of attributed work), {prod}.")
+        return ("AMBER", f"Partial use of the AI system ({pct}% of {basis}), {prod}.")
+    return ("RED", f"Low use of the AI system ({pct}% of {basis}), {prod}.")
 
 
 # ── per-person scoring ──────────────────────────────────────────────
@@ -428,11 +442,34 @@ def _score_person(todos: list, person: str, baseline_entry: dict | None,
     total = len(personal_completed_7d)
     ai_n, human_n, unknown_n = buckets[AI_ASSISTED], buckets[HUMAN_ONLY], buckets[UNKNOWN]
     attributable = ai_n + human_n
-    attribution_confidence = round(attributable / total, 3) if total else None
-    ai_share_point = round(ai_n / total, 3) if total else None
-    ai_share_attributable = round(ai_n / attributable, 3) if attributable else None
+    completion_confidence = round(attributable / total, 3) if total else None
     ai_share_upper = round((ai_n + unknown_n) / total, 3) if total else None
-    ai_active = (person in sig.ai_active_operators) or ai_n > 0
+
+    # PRIMARY AI Share = comment authorship (AI comments vs human comments). When comment
+    # data exists for this person it is direct evidence and drives the headline + verdict;
+    # completions stay as supporting throughput. Falls back to the completion attribution
+    # only when we have no comment data for the person.
+    cc = sig.comment_counts.get(person) or {}
+    c_ai, c_human = int(cc.get("ai", 0)), int(cc.get("human", 0))
+    c_total = c_ai + c_human
+    comment_ai_share = round(c_ai / c_total, 3) if c_total else None
+    if c_total:
+        ai_share_source = "comments"
+        ai_share_point = comment_ai_share
+        ai_share_attributable = comment_ai_share
+        attribution_confidence = 1.0          # comments are direct authorship evidence
+    elif total:
+        ai_share_source = "completions"
+        ai_share_point = round(ai_n / total, 3)
+        ai_share_attributable = round(ai_n / attributable, 3) if attributable else None
+        attribution_confidence = completion_confidence
+    else:
+        ai_share_source = "none"
+        ai_share_point = None
+        ai_share_attributable = None
+        attribution_confidence = None
+    ai_active = (person in sig.ai_active_operators) or ai_n > 0 or c_ai > 0
+    has_activity = bool(personal_completed_7d) or c_total > 0
 
     assigned_open, assigned_completed_7d, delegated_ai = [], [], 0
     created_7d = 0
@@ -491,7 +528,7 @@ def _score_person(todos: list, person: str, baseline_entry: dict | None,
     verdict, reason = _verdict(
         ai_share=ai_share_attributable, attribution_confidence=attribution_confidence,
         ai_active=ai_active, throughput_vs_base=throughput_vs_base,
-        cycle_vs_base=cycle_vs_base, has_activity=bool(personal_completed_7d))
+        cycle_vs_base=cycle_vs_base, has_activity=has_activity, source=ai_share_source)
 
     return OperatorScorecard(
         display_name=person,
@@ -504,6 +541,10 @@ def _score_person(todos: list, person: str, baseline_entry: dict | None,
         stale_count=len(stale),
         net_flow_7d=total - created_7d,
         assigned_completed_7d=len(assigned_completed_7d),
+        comment_ai_count=c_ai,
+        comment_human_count=c_human,
+        comment_ai_share=comment_ai_share,
+        ai_share_source=ai_share_source,
         ai_assisted_count=ai_n,
         human_only_count=human_n,
         attribution_unknown_count=unknown_n,
@@ -536,8 +577,8 @@ def _score_person(todos: list, person: str, baseline_entry: dict | None,
 # ── team rollup + public entry ──────────────────────────────────────
 
 
-def _people(todos: list, ai_actors: set) -> list[str]:
-    names: set[str] = set()
+def _people(todos: list, ai_actors: set, extra: set | None = None) -> list[str]:
+    names: set[str] = set(extra or set())
     for t in todos:
         cb = _completed_by(t)
         if cb:
@@ -606,11 +647,18 @@ def _team_rollup(todos: list, cards: list, now: datetime, sig: AiSignals) -> Tea
     team_confidence = round(attributable / n, 3) if n else None
 
     # Outlier-robust headline: MEDIAN of per-operator shares, not the completion-weighted
-    # ratio one mega-operator would own. Show the spread (p25-p75) too.
+    # ratio one mega-operator would own. Show the spread (p25-p75) too. Only operators with
+    # a RELIABLE share count — comment-authored, or completions with real attribution — so a
+    # long tail of unattributed (unknown) 0s does not falsely drag the median to zero.
+    def _reliable(c):
+        return c.ai_share_source == "comments" or (
+            c.attribution_confidence is not None and c.attribution_confidence >= ATTRIB_CONF_MIN)
     point_shares = [c.ai_touched_share for c in cards
-                    if c.completed_7d > 0 and c.ai_touched_share is not None]
+                    if c.ai_touched_share is not None and _reliable(c)]
     attr_shares = [c.ai_share_attributable for c in cards
-                   if c.completed_7d > 0 and c.ai_share_attributable is not None]
+                   if c.ai_share_attributable is not None and _reliable(c)]
+    team_comment_ai = sum(c.comment_ai_count for c in cards)
+    team_comment_human = sum(c.comment_human_count for c in cards)
     ai_share_median = _quantile(point_shares, 0.5)
     ai_share_p25 = _quantile(point_shares, 0.25)
     ai_share_p75 = _quantile(point_shares, 0.75)
@@ -628,22 +676,40 @@ def _team_rollup(todos: list, cards: list, now: datetime, sig: AiSignals) -> Tea
     # median is undefined — fall back to the team's own attributable share so the banner
     # still reflects that AI did the work, instead of spuriously reading NODATA.
     team_attr_share = round(ai_n / attributable, 3) if attributable else None
-    verdict_share = median_attr_share if median_attr_share is not None else team_attr_share
+    # Headline: when comment authorship exists, the team AI Share is the team-wide comment
+    # ratio (AI comments / authored comments) — it mirrors the per-person metric and, unlike
+    # completions, is not owned by one mega-closer. Falls back to the outlier-robust median
+    # of per-operator completion shares when there is no comment data.
+    has_comments = (team_comment_ai + team_comment_human) > 0
+    team_comment_share = round(team_comment_ai / (team_comment_ai + team_comment_human), 3) \
+        if has_comments else None
+    if has_comments:
+        headline_share = team_comment_share
+    else:
+        # Outlier-robust median of reliable per-operator POINT shares; fall back to the team
+        # attributable share only when no single operator is reliably attributed.
+        headline_share = ai_share_median if ai_share_median is not None else team_attr_share
+    verdict_share = headline_share
+    team_source = "comments" if has_comments else "completions"
+    team_verdict_conf = 1.0 if has_comments else team_confidence
     verdict, reason = _verdict(
-        ai_share=verdict_share, attribution_confidence=team_confidence,
+        ai_share=verdict_share, attribution_confidence=team_verdict_conf,
         ai_active=any(c.ai_active for c in cards), throughput_vs_base=throughput_vs_base,
-        cycle_vs_base=None, has_activity=bool(completed_7d))
+        cycle_vs_base=None, has_activity=bool(completed_7d) or has_comments, source=team_source)
 
     return TeamRollup(
         people=len(cards),
-        active_operators_7d=sum(1 for c in cards if c.completed_7d > 0),
+        active_operators_7d=sum(1 for c in cards if c.completed_7d > 0 or
+                                (c.comment_ai_count + c.comment_human_count) > 0),
         completed_today=today_n,
         completed_7d=n,
         completed_prior_7d=prior_7d,
         ai_completions_7d=ai_n,
         human_completions_7d=human_n,
         unknown_completions_7d=unknown_n,
-        ai_touched_share=ai_share_median,
+        comment_ai_count=team_comment_ai,
+        comment_human_count=team_comment_human,
+        ai_touched_share=headline_share,
         ai_share_weighted=ai_share_weighted,
         ai_share_p25=ai_share_p25,
         ai_share_p75=ai_share_p75,
@@ -681,7 +747,8 @@ def build_scorecard(todos: list, *, baseline: dict | None = None, now: datetime 
     todos = _dedupe(todos)
     if exclude_projects is not None:
         todos = filter_scope(todos, exclude_projects)
-    people = _people(todos, sig.ai_actor_names)
+    comment_people = {p for p in sig.comment_counts if p not in sig.ai_actor_names}
+    people = _people(todos, sig.ai_actor_names, extra=comment_people)
     cards = [_score_person(todos, p, baseline.get(p), now, sig) for p in people]
     _assign_tiers(cards)
     # Rank by AI adoption (the report's headline), then by throughput.
@@ -713,8 +780,9 @@ def build_scorecard(todos: list, *, baseline: dict | None = None, now: datetime 
             "minutes_saved_per_ai_task": MINUTES_SAVED_PER_AI_TASK,
             "dollars_per_hour": DOLLARS_PER_HOUR,
             "spark_days": SPARK_DAYS,
-            "attribution": ("completions deduped by task id, attributed by completed_by, "
-                            "classified ai_assisted/human_only/attribution_unknown from AI signals; "
+            "attribution": ("AI Share = AI-authored comments / all comments per person "
+                            "(via-Claude-Code / CB System / doctrine markers); completions "
+                            "deduped by task id and three-bucket classified as the fallback; "
                             "team AI share is the median of per-operator shares"),
         },
     )

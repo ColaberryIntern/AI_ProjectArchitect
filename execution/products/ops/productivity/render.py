@@ -166,13 +166,21 @@ def _hero_tile(t: TeamRollup) -> str:
     if t.ai_share_weighted is not None:
         weighted = (f'<div style="font-size:11px;color:{fg};">volume-weighted {_pct(t.ai_share_weighted)} '
                     f'&middot; attribution {_pct(t.attribution_confidence)}</div>')
+    # Prefer the comment-authorship basis (the AI Share metric) when present.
+    if (t.comment_ai_count + t.comment_human_count) > 0:
+        label = "Team AI leverage (comments)"
+        basis = f'{t.comment_ai_count} of {t.comment_ai_count + t.comment_human_count} authored comments are AI-paired'
+        bar = _split_bar(t.comment_ai_count, t.comment_human_count, 0)
+    else:
+        label = "Team AI leverage (median)"
+        basis = f'median operator, across {t.completed_7d} completions'
+        bar = _split_bar(t.ai_completions_7d, t.human_completions_7d, t.unknown_completions_7d)
     return (
         f'<td style="border:1px solid #d0d7de;border-radius:10px;padding:14px 16px;vertical-align:top;width:34%;background:{bg};">'
-        f'<div style="font-size:11px;letter-spacing:0.5px;color:{fg};text-transform:uppercase;font-weight:700;">Team AI leverage (median)</div>'
+        f'<div style="font-size:11px;letter-spacing:0.5px;color:{fg};text-transform:uppercase;font-weight:700;">{label}</div>'
         f'<div style="font-size:34px;font-weight:800;color:{fg};line-height:1.1;margin-top:2px;">{_pct(t.ai_touched_share)}</div>'
-        f'<div style="font-size:11px;color:{fg};">median operator, across {t.completed_7d} completions</div>'
-        f'{spread}{weighted}'
-        f'{_split_bar(t.ai_completions_7d, t.human_completions_7d, t.unknown_completions_7d)}</td>'
+        f'<div style="font-size:11px;color:{fg};">{basis}</div>'
+        f'{spread}{weighted}{bar}</td>'
     )
 
 
@@ -189,11 +197,13 @@ def _tile(label: str, value: str, sub: str = "", spark: str = "") -> str:
 
 def _operator_row(c: OperatorScorecard) -> str:
     bg, fg = _ai_cell_colors(c)
-    if c.completed_7d:
+    if c.ai_share_source == "comments":
+        ai_sub = (f'{c.comment_ai_count} AI &middot; {c.comment_human_count} human comments')
+    elif c.completed_7d:
         ai_sub = (f'{c.ai_assisted_count} AI &middot; {c.human_only_count} human &middot; '
-                  f'{c.attribution_unknown_count} unknown')
+                  f'{c.attribution_unknown_count} unknown (by task)')
     else:
-        ai_sub = "no completions"
+        ai_sub = "no activity"
     spark = _sparkline(c.spark_completed)
     return (
         '<tr>'
@@ -236,7 +246,8 @@ def render_html(sc: ProductivityScorecard) -> str:
             'until enough post-launch history accrues. AI-adoption numbers are real now.</div>'
         )
 
-    people_using = sum(1 for c in sc.operators if c.ai_active and c.completed_7d)
+    people_using = sum(1 for c in sc.operators if c.ai_active and
+                       (c.completed_7d or (c.comment_ai_count + c.comment_human_count)))
     tiles = (
         "<table role='presentation' cellpadding='0' cellspacing='0' style='border-collapse:separate;border-spacing:8px;width:100%;margin-bottom:8px;'><tr>"
         + _hero_tile(t)
@@ -248,7 +259,8 @@ def render_html(sc: ProductivityScorecard) -> str:
         + "</tr></table>"
     )
 
-    active = [c for c in sc.operators if c.completed_7d or c.open_count]
+    active = [c for c in sc.operators if c.completed_7d or c.open_count
+              or (c.comment_ai_count + c.comment_human_count)]
     shown = active[:MAX_OPERATOR_ROWS]
     rows = "\n".join(_operator_row(c) for c in shown) or (
         '<tr><td colspan="7" style="text-align:center;color:#57606a;padding:20px;">No operators in scope.</td></tr>')

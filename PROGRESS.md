@@ -15,6 +15,24 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Productivity report: AI Share is now comment-authorship (AI comments vs human comments) (2026-06-26)
+- [x] Per Ali, made AI Share = AI-authored comments / (AI-authored + hand-typed), validated on live BC data, wired into the report.
+  - Date: 2026-06-26
+  - Session: CC-20260626-PROD
+  - What changed: NEW `comment_attribution.py` (pure 3-way classifier: AI-work / hand-typed / ambient-automation; markers = `via [name]'s Claude Code`, CB System author, doctrine cards, and the CB automation templates for dashboards/backlog/overdue-nudges/auto-pickup). NEW `comment_scan.py` (read-only Basecamp Comment-recordings scan via the shared CB System token -> `comment_stats.json`; pure `tally_threads`). **aggregate.py** - `AiSignals.comment_counts`; per-operator AI Share is comment-based when available (direct evidence, confidence 1.0) else falls back to the completion three-bucket model; team headline = team-wide comment ratio (mirrors per-person, not owned by one closer); team median now excludes unreliable (unknown) 0s. **render.py** - AI cell + hero show the comment split; ambient excluded. **runner.py** loads `comment_stats.json`.
+  - Key finding (the "try a few things" investigation): completions scored everyone 0%; the naive `via Claude Code` marker scored Ali only 19% because ~227 of his comments are CB **ambient automation** posted via his token (daily dashboards, backlog snapshots, "CRITICAL RISK ... overdue", "Reminder ... Quick status check", auto-pickup "CB System first-pass deliverable") that lacked the marker. Treating ambient as AI falsely inflated manual workers (Ram -> 38%); excluding it is the honest "who is *using* AI" measure.
+  - Verification: `pytest tests/execution/products/ops/productivity/ -v` -> **73 passed**. New `test_comment_attribution.py` (3-way classify + tally excludes ambient), `test_comment_scan.py` (window filter, actor exclusion, ambient exclusion); `test_aggregate` comment-share-drives-headline + comment-only-operator. **Live (read-only) on prod store + a read-only BC comment scan of 10 projects / 672 comments**: Swati 89%, Kes 77%, **Ali 57%** (63 Claude-Code-work vs 47 hand-typed quick directives; 227 ambient excluded), Aleem 42%, Ram 3%, Narendra 0%; team 38% (152/398 authored comments AI-paired). Posted the findings + recommendation + the broad-vs-exclude decision to BC todo 10028907149 (comment 10039797217). No deploy; prod untouched (read-only).
+  - Notes: Honest result surfaced rather than flattered - Ali is high but not top because he hand-types many quick directives; Swati/Kes post almost everything through Claude Code. Open decision left for Ali: counting ambient automation as AI would put Ali at 86% (one-line change). TBI attestation evidence updated (now makes read-only BC Comment GETs); re-confirmation still pending Ali.
+
+| File | Change |
+|---|---|
+| `execution/products/ops/productivity/comment_attribution.py` | NEW - pure 3-way comment classifier (AI-work / hand-typed / ambient). (2026-06-26) |
+| `execution/products/ops/productivity/comment_scan.py` | NEW - read-only BC comment scan -> comment_stats.json; pure tally_threads. (2026-06-26) |
+| `execution/products/ops/productivity/aggregate.py` | EDIT - comment-based AI Share primary; team comment-ratio headline; reliable-only median. (2026-06-26) |
+| `execution/products/ops/productivity/render.py` | EDIT - comment split in AI cell + hero. (2026-06-26) |
+| `execution/products/ops/productivity/runner.py` | EDIT - load comment_stats.json into AiSignals. (2026-06-26) |
+| `tests/.../test_comment_attribution.py`, `test_comment_scan.py` | NEW - classifier + scan tests. (2026-06-26) |
+
 ### Productivity report: fixed AI attribution that scored heavy AI users as 0% / "Low AI use" (2026-06-26)
 - [x] Replaced the `completed_by == "CB System"` AI test with a three-bucket attribution model, gated the verdict on attribution confidence, and made the team math outlier-robust.
   - Date: 2026-06-26

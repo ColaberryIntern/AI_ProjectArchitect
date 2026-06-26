@@ -35,7 +35,34 @@ Output: `output/ops/_productivity/{YYYY-MM-DD}.html` (+ `.json` sidecar).
 Baseline: `output/ops/_productivity/baseline.json`.
 Recipients/branding: `config/report_recipients.json`.
 
-## Inputs + attribution (the three-bucket model)
+## AI Share = comment authorship (the primary metric)
+
+The headline **AI Share** is comment-based: of the comments a person *authors* on Basecamp,
+how many are AI-paired work vs typed by hand. This is the honest measure of who is using the
+AI-paired system (completions read everyone at ~0% because Claude-Code work closes under the
+person's own name). `comment_attribution.classify_comment` sorts every comment into:
+
+- **AI-work** (counts) - `via [name]'s Claude Code`, the `CB System` account, or a doctrine
+  work card (`per operating doctrine` / `Auto-attached by sendWithBcAttach`, Op-3 `<!-- step:`).
+- **Hand-typed** (counts) - a person typed it (no markers).
+- **Ambient automation** (EXCLUDED) - work-agnostic system housekeeping posted via the
+  operator's token (daily dashboards, backlog snapshots, overdue reminders/escalations,
+  auto-pickup status cards). Counting it as AI falsely inflated pure manual workers
+  (validated: it pushed a manual worker to ~38%), so it is excluded from the ratio.
+
+`AI Share = AI-work / (AI-work + hand-typed)`. Team AI Share = team-wide comment ratio
+(`AI-work comments / authored comments`), which mirrors the per-person metric and is not
+owned by one mega-closer. Validated live (2026-06-26, 672 comments): builders who work
+through Claude Code score high (Swati 89%, Kes 77%), Ali 57% (he also hand-types many quick
+directives), pure manual workers ~0% (Ram 3%, Narendra 0%).
+
+`comment_scan.py` is the data path: `build_comment_stats()` pages the Basecamp per-project
+Comment recordings (read-only, shared CB System token) and persists
+`output/ops/_productivity/comment_stats.json` = `{person: {ai, human, ambient}}`; the runner
+loads it into `AiSignals.comment_counts`. Every source is optional - with no comment data the
+report falls back to the completion three-bucket model below.
+
+## Inputs + attribution (the completion three-bucket fallback)
 
 Per operator under `output/ops/<email>/todos.json`: completions (`completed_at`,
 `completed_by_name`, `cycle_seconds`), open/overdue/stale, `category`, `assignee_names`,

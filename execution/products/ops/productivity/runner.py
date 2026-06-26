@@ -188,12 +188,18 @@ def gather_ai_signals(user_ids: list[str], *, now: datetime) -> AiSignals:
     ai_active |= _cb_active_operators(window_start)
     ai_active |= _git_ai_active(window_start)
 
+    # Comment authorship (the PRIMARY AI Share signal) from the comment-scan sidecar.
+    from . import comment_scan
+    comment_counts = comment_scan.load_comment_counts()
+    comment_counts.update(curated.get("comment_counts", {}))
+
     return AiSignals(
         ai_actor_names=set(AI_ACTORS),
         session_ticket_ids=session_ids,
         ai_marked_task_ids=ai_marked,
         human_marked_task_ids=human_marked,
         ai_active_operators=ai_active,
+        comment_counts=comment_counts,
     )
 
 

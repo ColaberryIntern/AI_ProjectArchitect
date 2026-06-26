@@ -142,6 +142,32 @@ def test_verdict_coloured_by_ai_share_not_overdue():
     assert "ai system" in a.verdict_reason.lower()
 
 
+def test_comment_authorship_drives_ai_share():
+    # AI Share = AI comments / all comments. Alice posts 9 AI + 1 human comment -> 90%,
+    # which overrides the completion-based attribution and reads GREEN with full confidence.
+    sig = _sig()
+    sig.comment_counts = {"Alice": {"ai": 9, "human": 1}}
+    a = _alice(_build(ai_signals=sig))
+    assert a.ai_share_source == "comments"
+    assert a.comment_ai_count == 9 and a.comment_human_count == 1
+    assert a.ai_touched_share == 0.9
+    assert a.attribution_confidence == 1.0
+    assert a.verdict == "GREEN"
+    assert "comments" in a.verdict_reason.lower()
+
+
+def test_comment_only_operator_is_scored():
+    # Someone who only comments (no completions/assignments) still gets an AI Share.
+    sig = _sig()
+    sig.comment_counts = {"Zoe": {"ai": 4, "human": 0}}
+    sc = build_scorecard(_todos(), baseline={}, now=NOW, ai_signals=sig)
+    zoe = next(c for c in sc.operators if c.display_name == "Zoe")
+    assert zoe.completed_7d == 0
+    assert zoe.ai_touched_share == 1.0
+    assert zoe.ai_share_source == "comments"
+    assert zoe.verdict == "GREEN"
+
+
 def test_ai_active_operator_unknown_work_is_not_called_low_use():
     # An operator flagged AI-active (commits/sessions in the window) whose tasks carry no
     # per-task marker stays "attribution incomplete", never "Low AI use".
@@ -164,17 +190,20 @@ def test_ai_actor_excluded_from_operator_list():
     assert {"Alice", "Bob"} <= names
 
 
-def test_team_buckets_and_median_headline():
+def test_team_buckets_and_completion_fallback_headline():
     t = _build().team
     assert t.completed_7d == 5             # tasks 1,2,3,5,6 (4 is prior)
     assert t.ai_completions_7d == 2        # 5,6 closed by CB System (actor signal)
     assert t.human_completions_7d == 0     # no positive human marker present
     assert t.unknown_completions_7d == 3   # 1,2,3 unattributed
-    assert t.ai_share_weighted == 0.4      # old completion-weighted number, kept as secondary
-    # Outlier-robust headline = median of per-operator point shares (only Alice has
-    # personal completions, share 0.0) -> 0.0, NOT the volume-weighted 0.4.
-    assert t.ai_touched_share == 0.0
+    assert t.ai_share_weighted == 0.4      # completion-weighted number, kept as secondary
     assert t.attribution_confidence == 0.4  # (2 ai + 0 human) / 5
+    # No comment data -> completion fallback. Alice's own completions are all unknown
+    # (unreliable), so she is excluded from the median; the headline falls back to the team
+    # attributable share (the only attributed completions were AI) = 1.0, but the verdict is
+    # gated UNKNOWN because confidence 0.4 < the 0.5 floor.
+    assert t.ai_touched_share == 1.0
+    assert t.verdict == "UNKNOWN"
 
 
 def test_dedupe_collapses_shared_mirror_rows():
