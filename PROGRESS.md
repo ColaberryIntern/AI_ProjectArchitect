@@ -15,6 +15,26 @@ Designing the **per-operator experience layer** on top of the existing multi-ten
 
 ## Completed Work
 
+### Story-driven build plans: requirements → traceable user stories (the canonical My-Day build path) (2026-06-28)
+- [x] Replaced the parallel ticket generator with a **sequential maker/checker chain** so every story coordinates the requirements document. Branch `feat/story-driven-build-plans`; **PR open, NOT merged or deployed** (Ali to review).
+  - Date: 2026-06-28
+  - Why: generated plans drifted "shorter and shorter" (14 → 6 tickets), weren't detailed, and didn't coordinate the requirements doc — confirmed at code level (tickets were generated in 3 parallel threads BLIND to the generated requirements; a "story" was a string field; the ≥12-ticket floor was never enforced). Fix is structural, not cosmetic.
+  - What changed: **deep_plan.py** rewritten into 6 sequential stages — requirements (REQ-### ids + per-req acceptance) → agent map (bounded contexts) → per-capability-cluster stories that cite `fulfills:[REQ-###]` with Gherkin acceptance (incl. a trust scenario) → dynamic releases (walking-skeleton-first) → build guide → deterministic traceability gate. NEW **deep_plan_trace.py** (pure, LLM-free; fail-closed on an orphan `must`, warns on `should`, renders the RTM). **deep_plan_publisher.py** now creates dynamic release groups with per-release due dates + operator assignee, `Fulfills:`+Gherkin+doc-links in every todo, and four docs incl. the RTM. **mcp_tools.py** `colaberry_create_ticket` gained `due_on` + `assign_to_me`/`assignee_ids`. Generator declared a governed runtime entrypoint in `config/tbi_runtime_agents.json` with a **COMPLIANT** TBI attestation (the Tier-0 runtime-AI coverage that was previously missing).
+  - Decisions (locked with Ali 2026-06-26): per-capability-cluster slicing; ≥12 stories, no cap; walking skeleton always; fully-dynamic release names; trace gate fail-closed on `must`, warn on `should`.
+  - Verification: `pytest tests/execution/advisory tests/execution/products/test_mcp_create_ticket_assignment.py` → green (trace 9, deep_plan 7, publisher 6, mcp-assign 5). TBI gate: `python scripts/tbi_compliance_check.py execution/advisory/deep_plan.py` → `OK — compliant` (6/6 INPACT, 5/5 GOALS); runtime-agents + attestation schema-validated. No deploy; the My-Day orchestrator already routes through `deep_plan` + `deep_plan_publisher`, so the new process becomes canonical on merge.
+  - Spec: `docs/specs/myday-project-build-story-decomposition.md`. Worked exemplar published live to Ali's Basecamp (`[STORY-DRIVEN] Hair Salon Booking & Payments`, list 10039836054) for review.
+
+| File | Change |
+|---|---|
+| `execution/advisory/deep_plan.py` | REWRITE — sequential 6-stage maker/checker chain + DOC & STORY rubrics; structured reqs/agents/stories/releases/RTM output. (2026-06-28) |
+| `execution/advisory/deep_plan_trace.py` | NEW — deterministic, fail-closed traceability gate + RTM render. (2026-06-28) |
+| `execution/advisory/deep_plan_publisher.py` | REWRITE — dynamic release groups, per-release due dates + assignee, Fulfills/Gherkin/doc-links, 4 docs incl. RTM. (2026-06-28) |
+| `execution/products/library/mcp_tools.py` | EDIT — `create_ticket` gains `due_on` + `assign_to_me`/`assignee_ids`. (2026-06-28) |
+| `config/tbi_runtime_agents.json` | EDIT — declare `deep_plan_generator` runtime entrypoint (recommend_only). (2026-06-28) |
+| `execution/advisory/deep_plan.py.tbi.json` | NEW — COMPLIANT TBI attestation for the generator. (2026-06-28) |
+| `tests/execution/advisory/test_deep_plan{,_trace,_publisher}.py` | NEW/REWRITE — chain, gate, publisher tests. (2026-06-28) |
+| `tests/execution/products/test_mcp_create_ticket_assignment.py` | NEW — due/assignee fields. (2026-06-28) |
+
 ### Productivity report: AI Share is now comment-authorship (AI comments vs human comments) (2026-06-26)
 - [x] Per Ali, made AI Share = AI-authored comments / (AI-authored + hand-typed), validated on live BC data, wired into the report. **SHIPPED + DEPLOYED to prod (Ali-approved).**
   - Date: 2026-06-26

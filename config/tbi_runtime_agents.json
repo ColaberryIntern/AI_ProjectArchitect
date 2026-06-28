@@ -57,6 +57,20 @@
       "status": "live_prod",
       "live_since": "2026-06-17",
       "notes": "Fully deterministic (no LLM): aggregates real BC completions, compares post-launch vs pre-launch baseline, renders an HTML/JSON scorecard. Email is autonomous on schedule but OFF BY DEFAULT (PRODUCTIVITY_REPORT_DELIVERY) and to a fixed recipient list — the env flag is the human approval gate."
+    },
+    {
+      "id": "deep_plan_generator",
+      "name": "Story-driven deep build-plan generator",
+      "entrypoint": "execution/advisory/deep_plan.py",
+      "autonomy_policy": "recommend_only",
+      "confidence_threshold": 0.85,
+      "permitted_actions": ["advisory.buildplan.generate", "bc.todolist.create", "bc.todo.create", "bc.document.create"],
+      "rollback_required": false,
+      "rollback_plan": "Unset OPENAI_API_KEY and generate_deep_plan raises LLM-unavailable (no plan produced); the deterministic trace gate (execution/advisory/deep_plan_trace.py) fails closed on an orphan must-have requirement; store-first writes docs + deep_plan.json to output/{slug}/ BEFORE any Basecamp publish so a failed run strands nothing; published BC todolists are archivable by the operator who owns the project.",
+      "scope": { "system": "my_day_build_orchestrator", "identity": "operator-initiated 'create a new project' build; publishes only to the operator's own Basecamp via operator-scoped OAuth", "buckets": "the operator's chosen project", "loop_guards": "maker/checker separation (the maker never grades itself), MAX_REFINE cap, deterministic fail-closed trace gate" },
+      "status": "pending_deploy",
+      "live_since": "",
+      "notes": "Sequential maker/checker chain turning a requirements document into TRACEABLE user stories: requirements (REQ-### ids) → agent map → per-cluster stories citing fulfills:[REQ-###] with Gherkin acceptance → dynamic releases → deterministic traceability gate. The build plan is a recommendation the operator builds; the only side effects are assigned/due-dated todos + documents in the operator's own Basecamp. Replaces the prior parallel ticket generator; see docs/specs/myday-project-build-story-decomposition.md."
     }
   ]
 }
