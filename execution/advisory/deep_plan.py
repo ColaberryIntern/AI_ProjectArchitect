@@ -26,7 +26,7 @@ import json
 import logging
 
 from config.settings import OUTPUT_DIR
-from execution.advisory import deep_plan_trace
+from execution.advisory import deep_plan_trace, tbi_primer
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,8 @@ def _context(project: str, idea: str, choices: str) -> str:
         "Derive the real users/personas and core entities from the IDEA.\n"
         "NON-NEGOTIABLES: (1) MINIMAL CODE — favor external no-code/low-code + AI tools over bespoke code. "
         "(2) It MUST be a multi-agent system (specialist AI assistants + a coordinator). "
-        "(3) Trust-Before-Intelligence woven throughout — audit log, approval gates, escalation, a trust dashboard, "
-        "and a governance score (INPACT + GOALS, 7 layers of trust)."
+        "(3) Trust-Before-Intelligence woven throughout, GROUNDED IN THE CANONICAL FRAMEWORK BELOW.\n\n"
+        + tbi_primer.prompt_primer()
     )
 
 
@@ -364,6 +364,7 @@ def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
         "releases": releases,
         "build_guide": guide,
         "rtm": rtm,
+        "tbi_primer": tbi_primer.primer_markdown(project),
         "trace": trace,
         "story_count": len(stories),
         "ticket_count": len(stories),       # back-compat for status messages
@@ -436,11 +437,13 @@ def store_deep_plan(slug: str, plan: dict) -> dict:
         "architecture": docs / "ARCHITECTURE.md",
         "build_guide": docs / "BUILD_GUIDE.md",
         "rtm": docs / "TRACEABILITY.md",
+        "tbi_primer": docs / "TBI_PRIMER.md",
         "plan": base / "deep_plan.json",
     }
     paths["requirements"].write_text(plan.get("requirements", ""), encoding="utf-8")
     paths["architecture"].write_text(plan.get("architecture", ""), encoding="utf-8")
     paths["build_guide"].write_text(plan.get("build_guide", ""), encoding="utf-8")
     paths["rtm"].write_text(plan.get("rtm", ""), encoding="utf-8")
+    paths["tbi_primer"].write_text(plan.get("tbi_primer", ""), encoding="utf-8")
     paths["plan"].write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
     return {k: str(v) for k, v in paths.items()}

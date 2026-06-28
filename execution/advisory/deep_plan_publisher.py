@@ -115,7 +115,8 @@ def _publish_docs(plan, user, bc_project_id, name):
         if not vault:
             return out
         for title, key in (("Requirements", "requirements"), ("Architecture & Agent Map", "architecture"),
-                            ("Build Guide", "build_guide"), ("Traceability Matrix", "rtm")):
+                            ("Trust (TBI) Primer", "tbi_primer"), ("Build Guide", "build_guide"),
+                            ("Traceability Matrix", "rtm")):
             md = plan.get(key)
             if not md:
                 continue

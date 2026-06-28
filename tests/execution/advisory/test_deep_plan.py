@@ -76,6 +76,8 @@ def test_generate_returns_story_plan(fake_llm):
     # deterministic gate ran and every must is covered
     assert plan["trace"]["must_orphans"] == []
     assert "REQ-001" in plan["rtm"]
+    # trust is grounded in the canonical framework + shipped as a primer doc
+    assert "INPACT" in plan["tbi_primer"] and "Approval gate" in plan["tbi_primer"]
 
 
 def test_make_check_stops_on_pass(fake_llm, monkeypatch):
