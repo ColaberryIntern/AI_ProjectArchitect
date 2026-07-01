@@ -41,7 +41,7 @@ def _locate_build_guide(slug: str) -> str | None:
 
 def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
               slug: str, idea_text: str, *, blueprint: str | None = None,
-              name_prefix: str = "") -> None:
+              name_prefix: str = "", publisher_target: str = "basecamp") -> None:
     """Run phases b → verify → c → d. Writes status at each step; never raises.
 
     ``blueprint`` (standard|autonomous) selects the Build Guide blueprint;
@@ -68,7 +68,7 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
         )
         from execution.state_manager import load_state
         from execution.advisory.advisory_state_manager import load_session
-        from execution.advisory import deep_plan, deep_plan_publisher
+        from execution.advisory import deep_plan, deep_plan_publisher, deep_plan_targets
         from config.settings import COHORT_START_MONDAY
 
         state = load_state(slug)
@@ -89,15 +89,39 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
         plan = deep_plan.generate_deep_plan(raw_idea, choices, project_name)
         deep_plan.store_deep_plan(slug, plan)
 
-        # ── Phase c: publish docs + due-dated tickets to Basecamp ────
+        # ── Phase c: publish (pluggable target: basecamp | accelerator) ──
+        if publisher_target == "accelerator":
+            build_status.write_status(
+                slug, phase="publish",
+                message=f"Publishing {plan['ticket_count']} tasks to the student platform…",
+            )
+            result = deep_plan_targets.publish_plan(
+                "accelerator", plan, operator_email=operator_email,
+                project_ref=(name_prefix or slug))
+            if not result.get("ok"):
+                build_status.write_status(
+                    slug, phase="error",
+                    error=f"student-platform publish failed: {result.get('error') or result.get('status')}")
+                return
+            counts = result.get("response") if isinstance(result.get("response"), dict) else {}
+            build_status.write_status(
+                slug, phase="done",
+                message=f"Published {plan.get('story_count', 0)} tasks to the student platform.",
+                tasks_created=counts.get("tasks", plan.get("story_count", 0)),
+                target="accelerator",
+            )
+            return
+
+        # Default target: Basecamp (employees) — docs + due-dated tickets.
         build_status.write_status(
             slug, phase="basecamp",
             message=f"Publishing {plan['ticket_count']} tickets + 3 documents to Basecamp…",
         )
         anchor = deep_plan_publisher.anchor_from_cohort_start(COHORT_START_MONDAY)
         list_name = f"{name_prefix}{project_name} - Sprint Build Plan"
-        summary = deep_plan_publisher.publish_deep_plan(
-            plan, user, bc_project_id, anchor, list_name, project_name=project_name)
+        summary = deep_plan_targets.publish_plan(
+            "basecamp", plan, user=user, bc_project_id=bc_project_id,
+            anchor_monday=anchor, list_name=list_name, project_name=project_name)
 
         # ── Phase d: resync so My Day reflects the new list ─────────
         try:
@@ -121,12 +145,12 @@ def run_build(session_id: str, bc_project_id, pace: str, operator_email: str,
 
 def kick_build(session_id: str, bc_project_id, pace: str, operator_email: str,
                slug: str, idea_text: str, *, blueprint: str | None = None,
-               name_prefix: str = "") -> None:
+               name_prefix: str = "", publisher_target: str = "basecamp") -> None:
     """Spawn run_build in a daemon thread (mirrors my_day._kick_bg_full_sync)."""
     threading.Thread(
         target=run_build,
         args=(session_id, bc_project_id, pace, operator_email, slug, idea_text),
-        kwargs={"blueprint": blueprint, "name_prefix": name_prefix},
+        kwargs={"blueprint": blueprint, "name_prefix": name_prefix, "publisher_target": publisher_target},
         daemon=True,
         name=f"myday-build-{slug}",
     ).start()
