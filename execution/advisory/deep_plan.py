@@ -273,6 +273,16 @@ def _normalize_stories(stories, agent_names) -> list:
     return out
 
 
+def _drop_unknown_citations(stories, req_ids):
+    """Remove story ``fulfills`` that don't resolve to a real REQ id (the slicer
+    occasionally invents ids beyond the catalog). A story left with zero real
+    citations is still caught fail-closed by the trace gate, so this strips only
+    noise and never hides a genuinely untraceable story."""
+    for s in stories:
+        s["fulfills"] = [f for f in s.get("fulfills", []) if f in req_ids]
+    return stories
+
+
 # ── the chain ───────────────────────────────────────────────────────
 
 def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
@@ -339,6 +349,7 @@ def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
         all_stories.extend((out or {}).get("stories") or [])
 
     stories = _normalize_stories(all_stories, agent_names)
+    _drop_unknown_citations(stories, {r["id"] for r in reqs})
     if not stories:
         raise RuntimeError("deep_plan: story slicing produced no stories")
 

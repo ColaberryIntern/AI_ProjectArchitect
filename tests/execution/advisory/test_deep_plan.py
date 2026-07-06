@@ -155,3 +155,15 @@ def test_normalize_stories_coerces_dict_fields():
     assert st[0]["slice"] == "command: C; event: E; read_model: R"
     assert st[0]["build"] == "step one; step two"
     assert all(isinstance(st[0][k], str) for k in ("trust", "slice", "build", "narrative", "title"))
+
+
+def test_drop_unknown_citations_strips_hallucinated_reqs():
+    # the slicer sometimes cites REQ ids beyond the catalog; drop them so the
+    # trace gate isn't tripped by pure noise (but real uncited stories still fail).
+    stories = [
+        {"id": "STORY-001", "fulfills": ["REQ-001", "REQ-999"]},
+        {"id": "STORY-002", "fulfills": ["REQ-002"]},
+    ]
+    dp._drop_unknown_citations(stories, {"REQ-001", "REQ-002"})
+    assert stories[0]["fulfills"] == ["REQ-001"]
+    assert stories[1]["fulfills"] == ["REQ-002"]
