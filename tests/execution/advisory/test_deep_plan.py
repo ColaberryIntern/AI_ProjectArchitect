@@ -135,3 +135,23 @@ def test_store_deep_plan_writes_files(tmp_path, monkeypatch):
     assert (tmp_path / "slug-x" / "docs" / "TRACEABILITY.md").read_text(encoding="utf-8") == "MATRIX"
     assert (tmp_path / "slug-x" / "deep_plan.json").exists()
     assert paths["rtm"].endswith("TRACEABILITY.md")
+
+
+def test_as_text_flattens_nested_values():
+    assert dp._as_text({"control": "audit log", "gate": "manager"}) == "control: audit log; gate: manager"
+    assert dp._as_text(["a", {"x": "y"}]) == "a; x: y"
+    assert dp._as_text(None) == "" and dp._as_text("  hi ") == "hi"
+
+
+def test_normalize_stories_coerces_dict_fields():
+    # gpt-4o-mini sometimes returns trust/slice/build as objects, not strings;
+    # normalization must flatten them, not crash on .strip() (regression).
+    st = dp._normalize_stories([{
+        "title": "T", "fulfills": ["REQ-1"], "owner_agent": "A",
+        "trust": {"control": "audit log"}, "slice": {"command": "C", "event": "E", "read_model": "R"},
+        "build": ["step one", "step two"], "narrative": "n", "acceptance": [],
+    }], ["A"])
+    assert st[0]["trust"] == "control: audit log"
+    assert st[0]["slice"] == "command: C; event: E; read_model: R"
+    assert st[0]["build"] == "step one; step two"
+    assert all(isinstance(st[0][k], str) for k in ("trust", "slice", "build", "narrative", "title"))

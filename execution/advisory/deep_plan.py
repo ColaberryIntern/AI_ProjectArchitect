@@ -165,6 +165,21 @@ def _make_check(label: str, make_prompt: str, rubric: str, as_json: bool):
 
 # ── stage helpers ───────────────────────────────────────────────────
 
+def _as_text(v) -> str:
+    """Coerce an LLM-returned value to a clean string. The model sometimes returns
+    a nested dict/list where a plain string is expected (e.g. a story's ``trust`` or
+    ``slice`` as an object); flatten it instead of crashing on ``.strip()``."""
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, (list, tuple)):
+        return "; ".join(t for t in (_as_text(x) for x in v) if t)
+    if isinstance(v, dict):
+        return "; ".join(f"{k}: {_as_text(val)}" for k, val in v.items() if _as_text(val))
+    return str(v).strip()
+
+
 def _normalize_reqs(reqs) -> list:
     """Coerce the REQ catalog: stable REQ-### ids, lowercased priority, list acceptance."""
     out = []
@@ -180,8 +195,8 @@ def _normalize_reqs(reqs) -> list:
         acc = r.get("acceptance") or r.get("acceptance_criteria") or []
         if isinstance(acc, str):
             acc = [acc]
-        out.append({"id": rid, "priority": pri, "statement": (r.get("statement") or r.get("text") or "").strip(),
-                    "acceptance": [str(a) for a in acc], "cluster": (r.get("cluster") or r.get("area") or "General").strip()})
+        out.append({"id": rid, "priority": pri, "statement": _as_text(r.get("statement") or r.get("text")),
+                    "acceptance": [str(a) for a in acc], "cluster": _as_text(r.get("cluster") or r.get("area")) or "General"})
     return out
 
 
@@ -241,18 +256,18 @@ def _normalize_stories(stories, agent_names) -> list:
         if not isinstance(s, dict):
             continue
         fulfills = [str(f).strip().upper() for f in (s.get("fulfills") or []) if str(f).strip()]
-        owner = (s.get("owner_agent") or s.get("agent") or "").strip()
+        owner = _as_text(s.get("owner_agent") or s.get("agent"))
         out.append({
             "id": f"STORY-{i:03d}",
-            "title": (s.get("title") or "Untitled story").strip(),
+            "title": _as_text(s.get("title")) or "Untitled story",
             "fulfills": fulfills,
             "owner_agent": owner,
-            "slice": (s.get("slice") or "").strip(),
-            "narrative": (s.get("narrative") or s.get("story") or "").strip(),
+            "slice": _as_text(s.get("slice")),
+            "narrative": _as_text(s.get("narrative") or s.get("story")),
             "acceptance": _coerce_acceptance(s.get("acceptance")),
-            "build": (s.get("build") or s.get("design") or "").strip(),
-            "vibe": (s.get("vibe") or "").strip(),
-            "trust": (s.get("trust") or s.get("tbi") or "").strip(),
+            "build": _as_text(s.get("build") or s.get("design")),
+            "vibe": _as_text(s.get("vibe")),
+            "trust": _as_text(s.get("trust") or s.get("tbi")),
             "release": "",
         })
     return out
@@ -382,9 +397,9 @@ def _build_releases(raw_releases, stories, story_index) -> list:
         if not ids:
             continue
         seen.update(ids)
-        releases.append({"key": "", "name": (r.get("name") or "Release").strip(),
-                         "goal": (r.get("goal") or "").strip(), "stories": ids,
-                         "demo": (r.get("demo") or "").strip(), "weeks": (3, 3)})
+        releases.append({"key": "", "name": _as_text(r.get("name")) or "Release",
+                         "goal": _as_text(r.get("goal")), "stories": ids,
+                         "demo": _as_text(r.get("demo")), "weeks": (3, 3)})
     # Any stories the model dropped → append to the last release (or a new one).
     leftover = [s["id"] for s in stories if s["id"] not in seen]
     if leftover:
