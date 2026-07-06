@@ -164,6 +164,43 @@ def test_drop_unknown_citations_strips_hallucinated_reqs():
         {"id": "STORY-001", "fulfills": ["REQ-001", "REQ-999"]},
         {"id": "STORY-002", "fulfills": ["REQ-002"]},
     ]
-    dp._drop_unknown_citations(stories, {"REQ-001", "REQ-002"})
+    kept = dp._drop_unknown_citations(stories, {"REQ-001", "REQ-002"})
     assert stories[0]["fulfills"] == ["REQ-001"]
     assert stories[1]["fulfills"] == ["REQ-002"]
+    assert len(kept) == 2                                  # both keep a real citation
+
+
+def test_drop_unknown_citations_drops_untraceable_story():
+    # a story that cites only hallucinated ids (or nothing) traces to no REQ and
+    # is dropped as noise, rather than failing the whole build at the trace gate.
+    stories = [
+        {"id": "STORY-001", "fulfills": ["REQ-001"]},
+        {"id": "STORY-002", "fulfills": ["REQ-999"]},      # only a hallucinated id
+        {"id": "STORY-003", "fulfills": []},                # cites nothing
+    ]
+    kept = dp._drop_unknown_citations(stories, {"REQ-001"})
+    assert [s["id"] for s in kept] == ["STORY-001"]
+
+
+def test_chunk_releases_splits_giant_bucket_skeleton_first():
+    ids = [f"STORY-{i:03d}" for i in range(1, 16)]      # 15 stories
+    rels = dp._chunk_releases(ids)
+    assert len(rels) >= 3                                # never one giant release
+    assert rels[0]["name"] == "Walking Skeleton"
+    flat = [s for r in rels for s in r["stories"]]
+    assert flat == ids                                  # every story placed once, in order
+    assert all(len(r["stories"]) >= 1 for r in rels)
+
+
+def test_prompts_assume_claude_code_not_no_code():
+    # everything is built with Claude Code (real code), not no-code/low-code tools.
+    g, m = dp._guard("P"), dp._MAKER_SYS
+    c = dp._context("P", "a real product idea for a niche audience", "- cap: choice")
+    r = dp._rubric("P", "idea")
+    assert "Claude Code" in g and "Claude Code" in c and "Claude Code" in m
+    # the old positive minimal-code / no-code / non-technical-founder bias is gone
+    assert "minimal-code" not in m and "minimal code" not in m
+    assert "non-technical founder" not in c
+    assert "favor configuring" not in g.lower()
+    # the rubric now demands a real-code approach
+    assert "real code" in r.lower()
