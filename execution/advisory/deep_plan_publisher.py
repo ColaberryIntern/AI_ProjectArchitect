@@ -2,8 +2,10 @@
 
 One to-do list; each **release** a group; each **story** a rich, assigned, due-
 dated to-do (narrative / fulfills-REQ / owner-agent / Gherkin acceptance / build /
-vibe / trust + links to the project docs). Plus the four documents (Requirements,
-Architecture/Agent map, Build Guide, Traceability Matrix) into Docs & Files.
+vibe / trust + links to the project docs), and marked 🤖 [AI] or 🧑 [Human] so My
+Day splits it into the AI tier (auto-picked-up, operator approves) vs the Human
+tier. Plus the documents (Requirements, Architecture/Agent map, Trust (TBI)
+Primer, Build Guide, Traceability Matrix) into Docs & Files.
 
 Reuses the operator-scoped Basecamp primitives in ``project_plan_reconciler`` /
 ``basecamp_build_writer`` so posts are authored as the operator, every to-do is
@@ -21,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 # Program calendar: a 9-week build occupies weeks 3–11 (week 12 = presentations).
 _ANCHOR_OFFSET_DAYS = 14  # cohort-start Monday → Monday of week 3
+
+# AI/Human split: the My Day convention (see execution.products.ops.scorer).
+# A 🤖 / [AI] or 🧑 / [Human] marker on each to-do lets My Day split it into the
+# AI tier (auto-picked-up, operator approves) vs the Human tier. The emoji is
+# kept in sync with basecamp_build_writer, and classification reuses that
+# module's classify_task_kind, so the story-driven build list and the
+# requirement list split tasks identically. Every task stays assigned to the
+# operator; the split is a marker, not a reassignment.
+AI_EMOJI = "🤖"
+HUMAN_EMOJI = "🧑"
 
 
 def anchor_from_cohort_start(cohort_start_monday):
@@ -66,9 +78,14 @@ def _gherkin_html(acc):
     return f"<ul>{''.join(items)}</ul>" if items else ""
 
 
-def _story_html(s, doc_links_html=""):
+def _story_html(s, doc_links_html="", kind="ai"):
     fulfills = " ".join(f"<code>{_esc(f)}</code>" for f in (s.get("fulfills") or []))
+    emoji = AI_EMOJI if kind == "ai" else HUMAN_EMOJI
+    tag = "[AI]" if kind == "ai" else "[Human]"
+    kind_label = ("AI-buildable: the AI drafts it, you review and approve"
+                  if kind == "ai" else "Human task: you own this one")
     rows = [
+        f"<div><strong>{emoji} {tag}</strong> {kind_label}</div>",
         f"<div><strong>Story:</strong> {_esc(s.get('narrative'))}</div>",
         f"<div><strong>Fulfills:</strong> {fulfills or '—'} &nbsp;·&nbsp; <strong>Owner agent:</strong> {_esc(s.get('owner_agent') or '—')}</div>",
     ]
@@ -164,9 +181,12 @@ def publish_deep_plan(plan, user, bc_project_id, anchor_monday, list_name, proje
         sids = [sid for sid in rel.get("stories", []) if sid in story_index]
         for sid, due in zip(sids, _due_dates(len(sids), ws, we, anchor_monday)):
             s = story_index[sid]
+            kind = bw.classify_task_kind({"name": s.get("title", ""),
+                                          "description": f"{s.get('narrative', '')} {s.get('build', '')}"})
+            emoji = AI_EMOJI if kind == "ai" else HUMAN_EMOJI
             owner = f"  [{s['owner_agent']}]" if s.get("owner_agent") else ""
-            content = (f"{sid} - {s.get('title', '')}{owner}")[:230]
-            rec._create_todo(user, bc_project_id, gid, content, _story_html(s, doc_links_html),
+            content = (f"{emoji} {sid} - {s.get('title', '')}{owner}")[:230]
+            rec._create_todo(user, bc_project_id, gid, content, _story_html(s, doc_links_html, kind),
                              [assignee] if assignee else [], due)
             created += 1
 

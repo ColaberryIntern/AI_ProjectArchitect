@@ -96,3 +96,50 @@ def test_publish_requires_assignee(monkeypatch):
     with pytest.raises(RuntimeError):
         pub.publish_deep_plan({"project": "P", "releases": [], "stories": []},
                               object(), 7463955, date(2026, 8, 10), "P", "P")
+
+
+def test_story_html_marks_ai_and_human_kind():
+    s = {"narrative": "As a user...", "fulfills": ["REQ-001"], "owner_agent": "Booker",
+         "acceptance": [{"scenario": "audited", "trust": True, "given": "g", "when": "w", "then": "logged"}]}
+    ai = pub._story_html(s, kind="ai")
+    assert "🤖" in ai and "[AI]" in ai
+    human = pub._story_html(s, kind="human")
+    assert "🧑" in human and "[Human]" in human
+
+
+def test_publish_splits_ai_vs_human_marker_and_keeps_operator_assignee(monkeypatch):
+    """The split is a 🤖/🧑 marker (classifier-driven), NOT a reassignment: every
+    story stays assigned to the operator so My Day can tier-split them."""
+    import execution.advisory.basecamp_build_writer as bw
+    import execution.advisory.project_plan_reconciler as rec
+    from execution.products.library import mcp_tools
+
+    todos = []
+    monkeypatch.setattr(bw, "resolve_operator_bc_person_id", lambda u, b: 111)
+    monkeypatch.setattr(rec, "_discover_todoset", lambda u, b: 222)
+    monkeypatch.setattr(rec, "_create_todolist", lambda u, b, ts, name, desc="": 333)
+    monkeypatch.setattr(rec, "_create_group", lambda u, b, lst, name: 400)
+    monkeypatch.setattr(rec, "_create_todo",
+                        lambda u, b, parent, content, desc, assignees, due:
+                        todos.append({"content": content, "desc": desc, "assignees": assignees}) or 1)
+    monkeypatch.setattr(mcp_tools, "_bc_account", lambda: "acct")
+    monkeypatch.setattr(mcp_tools, "_bc_request", lambda *a, **k: {"dock": []})
+
+    ai_story = {"id": "STORY-001", "title": "Ingest booking events", "narrative": "As a system I ingest",
+                "fulfills": ["REQ-001"], "owner_agent": "Booker", "build": "wire a webhook",
+                "acceptance": [{"scenario": "ok", "trust": True, "then": "logged"}]}
+    human_story = {"id": "STORY-002", "title": "Stakeholder approves the budget", "narrative": "the sponsor decides",
+                   "fulfills": ["REQ-002"], "owner_agent": "Governance", "build": "meet and sign off",
+                   "acceptance": [{"scenario": "ok", "trust": True, "then": "recorded"}]}
+    plan = {"project": "P", "story_count": 2,
+            "releases": [{"key": "r0", "name": "WS", "goal": "g", "weeks": (3, 3),
+                          "stories": ["STORY-001", "STORY-002"], "demo": "d"}],
+            "stories": [ai_story, human_story]}
+
+    pub.publish_deep_plan(plan, object(), 7463955, date(2026, 8, 10), "P", "P")
+    assert len(todos) == 2
+    assert all(t["assignees"] == [111] for t in todos)          # marker, not reassignment
+    ai_todo = next(t for t in todos if "STORY-001" in t["content"])
+    human_todo = next(t for t in todos if "STORY-002" in t["content"])
+    assert ai_todo["content"].startswith("🤖") and "[AI]" in ai_todo["desc"]
+    assert human_todo["content"].startswith("🧑") and "[Human]" in human_todo["desc"]
