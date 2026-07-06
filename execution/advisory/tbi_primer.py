@@ -10,7 +10,7 @@ a296fe9). It is used two ways:
      grounds every trust requirement in the canonical INPACT / GOALS / 7-layer
      framework instead of improvising from its own priors.
   2. ``primer_markdown()`` is shipped as a "Trust (TBI) Primer" document with
-     every plan, so whoever builds a story (a non-technical founder OR the
+     every plan, so whoever builds a story (a builder using Claude Code OR the
      build-loop AI) has the definition INLINE — no access to the private book
      repo required.
 
@@ -109,8 +109,9 @@ def primer_markdown(project: str = "") -> str:
               "| Layer | Name | Purpose |", "|---|---|---|"]
     lines += [f"| L{n} | {name} | {purpose} |" for n, name, purpose in LAYERS]
     lines += ["", "## How to BUILD trust (the concrete controls)", "",
-              "Every 'trust' task in this plan is one of these. Build them with the same minimal-code "
-              "tools as the rest of the product (e.g. an audit-log table in Supabase, an approval queue in Retool).", ""]
+              "Every 'trust' task in this plan is one of these. Build them with Claude Code as real code, the "
+              "same way as the rest of the product (e.g. an append-only audit-log table plus a writer in the app's "
+              "own database, an approval-queue model with a review endpoint, an escalation handler).", ""]
     lines += [f"- **{n}** — {d}" for n, d in BUILD_PATTERNS]
     lines += ["", "---",
               f"*Source: {SOURCE}. Pinned for deterministic compliance; refreshing the snapshot is "

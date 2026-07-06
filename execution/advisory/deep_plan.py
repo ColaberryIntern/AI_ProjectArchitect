@@ -1,7 +1,7 @@
 """Story-driven deep build-plan generator — the sequential maker/checker chain.
 
-For ANY project this produces a real, deep, minimal-code, multi-agent, Trust-
-Before-Intelligence build plan as **traceable user stories**, not a flat ticket
+For ANY project this produces a real, deep, Claude-Code-buildable, multi-agent,
+Trust-Before-Intelligence build plan as **traceable user stories**, not a flat ticket
 list. The pipeline is SEQUENTIAL so every downstream artifact cites the one
 before it (this is what closes the "tickets don't coordinate the requirements
 document" gap). See ``docs/specs/myday-project-build-story-decomposition.md``.
@@ -38,7 +38,8 @@ _JSON_TOKENS = 6000
 _VERDICT_TOKENS = 800
 
 _MAKER_SYS = ("You are a senior product architect and technical writer. You produce real, deep, "
-              "minimal-code, multi-agent, trust-first build plans for non-technical founders. "
+              "Claude-Code-buildable, multi-agent, trust-first build plans that a builder implements as "
+              "real, working code with Claude Code (an agentic coding tool). "
               "Write COMPREHENSIVELY and at LENGTH — these are professional deliverables, not summaries. "
               "Never wrap up early, never truncate, never say 'and so on'. Fully develop EVERY section with "
               "specifics. Output exactly the artifact requested — no preamble, no meta-commentary.")
@@ -52,12 +53,12 @@ _BAD_IDEAS = {"", "undefined", "null", "none", "n/a"}
 def _guard(project: str) -> str:
     return (
         "ABSOLUTE RULES:\n"
-        f"- This is a BRAND-NEW product that DOES NOT EXIST YET: \"{project}\". There is NO codebase or pre-existing system.\n"
-        "- Do NOT reference any internal module, file path, function, or pre-existing system. Write from the idea below, from a blank page.\n"
+        f"- This is a BRAND-NEW product that DOES NOT EXIST YET: \"{project}\". There is no pre-existing codebase; you build it FROM SCRATCH with Claude Code, in a fresh repo.\n"
+        "- Do NOT reference the generator's own internal modules, file paths, or systems, and do NOT assume any pre-existing repo. Design the new product from the idea below, from a blank repo.\n"
         "- Stay strictly in THIS product's domain (derive the domain, users, and entities from the IDEA). Do NOT drift to another industry.\n"
-        "- Name EXTERNAL third-party SaaS/tools that fit THIS domain (e.g. Stripe payments, Twilio SMS, Cal.com/Calendly scheduling, "
-        "Mapbox/Google Maps, Supabase/Firebase data+auth, Bubble/Retool/Softr UI, Make.com/Zapier glue, OpenAI/Claude AI). "
-        "Favor configuring these over bespoke code. NEVER reference internal code."
+        "- BUILD APPROACH: everything is built with Claude Code as REAL, WORKING CODE in a coherent modern stack (e.g. a React or Next.js frontend, a Node/Express or Python/FastAPI backend, PostgreSQL, containerized with Docker). "
+        "Use EXTERNAL third-party APIs ONLY for genuinely external capabilities that fit THIS domain (e.g. Stripe payments, Twilio or SendGrid messaging, a maps/geocoding API, an LLM API such as OpenAI or Claude), NOT as a substitute for building the application. "
+        "Do NOT propose no-code or low-code app builders (Bubble, Retool, Softr, Glide, Adalo) or glue tools (Zapier, Make.com) as the way to build; the builder writes the code with Claude Code."
     )
 
 
@@ -65,9 +66,9 @@ def _context(project: str, idea: str, choices: str) -> str:
     return (
         f"{_guard(project)}\n\nPRODUCT: {project}\nIDEA: {idea}\n\n"
         f"WHAT THE FOUNDER CHOSE IN DISCOVERY:\n{choices}\n\n"
-        f"AUDIENCE: a non-technical founder in a build program who must BUILD \"{project}\" with AI help and UNDERSTAND what they built. "
+        f"AUDIENCE: a builder in a build program who builds \"{project}\" as real, working software WITH CLAUDE CODE and UNDERSTANDS what they built. "
         "Derive the real users/personas and core entities from the IDEA.\n"
-        "NON-NEGOTIABLES: (1) MINIMAL CODE — favor external no-code/low-code + AI tools over bespoke code. "
+        "NON-NEGOTIABLES: (1) BUILT WITH CLAUDE CODE: real code in a coherent stack (frontend + backend + database + deploy); reach for an external API only where the capability is genuinely external, never a no-code/low-code app builder. "
         "(2) It MUST be a multi-agent system (specialist AI assistants + a coordinator). "
         "(3) Trust-Before-Intelligence woven throughout, GROUNDED IN THE CANONICAL FRAMEWORK BELOW.\n\n"
         + tbi_primer.prompt_primer()
@@ -114,9 +115,9 @@ def _rubric(project: str, idea: str) -> str:
     return (
         f"You are a strict senior reviewer of a build artifact for the NEW product \"{project}\". Score 0-100; PASS requires >= {PASS_SCORE}.\n"
         f"Judge HARD on: real depth (no shallow one-liners/filler); specificity to THIS product's actual domain, users, and entities per the IDEA \"{idea}\"; "
-        "a genuine MINIMAL-CODE approach naming real EXTERNAL SaaS/tools — NOT bespoke or internal/repo code; teaches a non-technical founder; "
+        "a genuine CLAUDE-CODE build approach: real code in a coherent stack (frontend + backend + database + deploy), naming external APIs only where the capability is genuinely external, and NOT leaning on no-code or low-code app builders (Bubble, Retool, Softr, Glide) or glue tools (Zapier, Make.com); "
         "a real multi-agent design; Trust-Before-Intelligence woven in. "
-        "FAIL anything referencing a codebase/repo/files, or drifting to a different industry than the IDEA. "
+        "FAIL anything that builds via a no-code/low-code app builder instead of real code, references the GENERATOR's own internals or assumes a pre-existing repo, or drifts to a different industry than the IDEA. "
         "DEPTH IS MANDATORY — FAIL (score < 70) any artifact that is short or shallow: a requirements or build-guide document under ~1,500 words, "
         "any stub/placeholder section, OR functional requirements that are not numbered REQ-### each with 2+ explicit acceptance criteria. "
         "List each missing/thin part as a gap. Return JSON {\"score\": <int>, \"pass\": <bool>, \"gaps\": [<concrete fix>, ...]}. Be demanding."
@@ -152,7 +153,7 @@ def _make_check(label: str, make_prompt: str, rubric: str, as_json: bool):
             break
         gaps = "\n- ".join(str(g) for g in verdict.get("gaps", []))
         refine = (f"{_guard('this product')}\n\nImprove this {label} to FIX these gaps. Keep what works; go deeper, "
-                  f"stay minimal-code, stay strictly in this product's domain. Return the FULL improved {label} in the SAME format.\n\n"
+                  f"stay Claude-Code-buildable (real code, not no-code tools), stay strictly in this product's domain. Return the FULL improved {label} in the SAME format.\n\n"
                   f"GAPS:\n- {gaps}\n\nCURRENT {label}:\n{body}")
         out = _chat(_MAKER_SYS, refine, _JSON_TOKENS if as_json else _DOC_TOKENS, as_json)
         nxt = _extract_json(out) if as_json else out
@@ -164,6 +165,21 @@ def _make_check(label: str, make_prompt: str, rubric: str, as_json: bool):
 
 
 # ── stage helpers ───────────────────────────────────────────────────
+
+def _as_text(v) -> str:
+    """Coerce an LLM-returned value to a clean string. The model sometimes returns
+    a nested dict/list where a plain string is expected (e.g. a story's ``trust`` or
+    ``slice`` as an object); flatten it instead of crashing on ``.strip()``."""
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, (list, tuple)):
+        return "; ".join(t for t in (_as_text(x) for x in v) if t)
+    if isinstance(v, dict):
+        return "; ".join(f"{k}: {_as_text(val)}" for k, val in v.items() if _as_text(val))
+    return str(v).strip()
+
 
 def _normalize_reqs(reqs) -> list:
     """Coerce the REQ catalog: stable REQ-### ids, lowercased priority, list acceptance."""
@@ -180,8 +196,8 @@ def _normalize_reqs(reqs) -> list:
         acc = r.get("acceptance") or r.get("acceptance_criteria") or []
         if isinstance(acc, str):
             acc = [acc]
-        out.append({"id": rid, "priority": pri, "statement": (r.get("statement") or r.get("text") or "").strip(),
-                    "acceptance": [str(a) for a in acc], "cluster": (r.get("cluster") or r.get("area") or "General").strip()})
+        out.append({"id": rid, "priority": pri, "statement": _as_text(r.get("statement") or r.get("text")),
+                    "acceptance": [str(a) for a in acc], "cluster": _as_text(r.get("cluster") or r.get("area")) or "General"})
     return out
 
 
@@ -241,21 +257,35 @@ def _normalize_stories(stories, agent_names) -> list:
         if not isinstance(s, dict):
             continue
         fulfills = [str(f).strip().upper() for f in (s.get("fulfills") or []) if str(f).strip()]
-        owner = (s.get("owner_agent") or s.get("agent") or "").strip()
+        owner = _as_text(s.get("owner_agent") or s.get("agent"))
         out.append({
             "id": f"STORY-{i:03d}",
-            "title": (s.get("title") or "Untitled story").strip(),
+            "title": _as_text(s.get("title")) or "Untitled story",
             "fulfills": fulfills,
             "owner_agent": owner,
-            "slice": (s.get("slice") or "").strip(),
-            "narrative": (s.get("narrative") or s.get("story") or "").strip(),
+            "slice": _as_text(s.get("slice")),
+            "narrative": _as_text(s.get("narrative") or s.get("story")),
             "acceptance": _coerce_acceptance(s.get("acceptance")),
-            "build": (s.get("build") or s.get("design") or "").strip(),
-            "vibe": (s.get("vibe") or "").strip(),
-            "trust": (s.get("trust") or s.get("tbi") or "").strip(),
+            "build": _as_text(s.get("build") or s.get("design")),
+            "vibe": _as_text(s.get("vibe")),
+            "trust": _as_text(s.get("trust") or s.get("tbi")),
             "release": "",
         })
     return out
+
+
+def _drop_unknown_citations(stories, req_ids):
+    """Filter each story's ``fulfills`` to real REQ ids (the slicer occasionally
+    invents ids beyond the catalog), then drop any story left citing nothing: a
+    story that traces to no requirement is noise (often tail filler from an
+    over-eager generation). Genuine under-coverage still fails closed at the
+    trace gate (must-orphans, below-floor). Returns the surviving stories."""
+    kept = []
+    for s in stories:
+        s["fulfills"] = [f for f in s.get("fulfills", []) if f in req_ids]
+        if s["fulfills"]:
+            kept.append(s)
+    return kept
 
 
 # ── the chain ───────────────────────────────────────────────────────
@@ -313,17 +343,18 @@ def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
         cl_prompt = (f"{ctx}\n\nSlice the requirements in THIS capability cluster into vertical-slice USER STORIES. "
                      "For EACH story return: {\"title\",\"fulfills\":[\"REQ-###\",...],\"narrative\":\"As a ... I want ... so that ...\","
                      "\"slice\":\"Command → Event → Read-model\",\"owner_agent\":\"a name from the AGENT MAP\","
-                     "\"acceptance\":[{\"scenario\",\"trust\":true|false,\"given\",\"when\",\"then\"}],\"build\":\"concrete steps naming real external tools\","
-                     "\"vibe\":\"a paste-ready build prompt\",\"trust\":\"the trust controls for this slice\"}. "
+                     "\"acceptance\":[{\"scenario\",\"trust\":true|false,\"given\",\"when\",\"then\"}],\"build\":\"concrete Claude Code build steps for this slice: the files/modules to create, the stack, and any genuinely-external APIs to integrate (real code, no no-code tools)\","
+                     "\"vibe\":\"a paste-ready Claude Code prompt to implement this slice as real, working code\",\"trust\":\"the trust controls for this slice\"}. "
                      "HARD RULES: fulfills must be non-empty and cite only ids from THIS cluster (a story may also cite a cross-cutting id); "
                      "every story has Gherkin acceptance with concrete values AND at least one acceptance scenario with trust=true; "
-                     "owner_agent must be one of the agent names; cover every requirement in the cluster; bias toward depth. "
+                     "owner_agent must be one of the agent names; cover every requirement in the cluster, splitting a requirement into two vertical-slice stories wherever it has distinct slices so the FULL plan totals AT LEAST 12 stories (aim for 14 to 18), but never pad with filler. "
                      "Return JSON {\"stories\":[...]}.\n\n"
                      f"AGENT NAMES: {agent_names}\n\nCLUSTER '{cluster}' REQUIREMENTS:\n{json.dumps(creqs, ensure_ascii=False)}")
         out = _make_check(f"stories[{cluster}]", cl_prompt, story_rubric, True)
         all_stories.extend((out or {}).get("stories") or [])
 
     stories = _normalize_stories(all_stories, agent_names)
+    stories = _drop_unknown_citations(stories, {r["id"] for r in reqs})
     if not stories:
         raise RuntimeError("deep_plan: story slicing produced no stories")
 
@@ -342,8 +373,8 @@ def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
     # ── Stage 5: build guide (maker) ──
     guide = _chat(_MAKER_SYS,
                   f"{ctx}\n\nUsing the REQUIREMENTS, AGENT MAP, and RELEASES below, write the BUILD GUIDE (markdown) for \"{project}\": "
-                  "a release-by-release educational walkthrough for the founder to build this WITH AI and MINIMAL CODE while understanding each step. "
-                  "Per release: goal, the stories in it, the vibe-code prompts, minimal-code shortcuts (real external tools), and what the founder learns. "
+                  "a release-by-release educational walkthrough for the builder to build this WITH CLAUDE CODE as real, working code while understanding each step. "
+                  "Per release: goal, the stories in it, the paste-ready Claude Code prompts, the real code and stack to create (files/modules, and any genuinely-external APIs), and what the builder learns. "
                   "End with the trust dashboard + launch.\n\n"
                   f"REQUIREMENTS:\n{requirements}\n\nAGENTS:\n{json.dumps(agents, ensure_ascii=False)}\n\n"
                   f"RELEASES:\n{json.dumps([{k: r[k] for k in ('key', 'name', 'goal', 'stories')} for r in releases], ensure_ascii=False)}",
@@ -371,6 +402,26 @@ def generate_deep_plan(idea: str, choices: str, project: str) -> dict:
     }
 
 
+def _chunk_releases(ids):
+    """Deterministic release split, used when the map model returns nothing usable
+    or collapses everything into one oversized bucket. r0 is a thin walking
+    skeleton, the rest are even chunks; never a single giant release, never a
+    single-story one."""
+    m = deep_plan_trace.MIN_PER_RELEASE
+    n = len(ids)
+    if n <= 2 * m:
+        return [{"key": "", "name": "Walking Skeleton", "goal": "", "stories": list(ids), "demo": "", "weeks": (3, 3)}]
+    skel = max(m, min(3, n - m))                       # thin first release
+    rest = ids[skel:]
+    per = max(m + 1, 4)
+    groups = [ids[:skel]] + [rest[i:i + per] for i in range(0, len(rest), per)]
+    if len(groups) >= 2 and len(groups[-1]) < m:       # fold a thin tail into the prior release
+        groups[-2].extend(groups.pop())
+    names = ["Walking Skeleton", "Core Build", "Reliability & Trust", "Data & Export", "Polish", "Launch"]
+    return [{"key": "", "name": names[i] if i < len(names) else f"Release {i}",
+             "goal": "", "stories": g, "demo": "", "weeks": (3, 3)} for i, g in enumerate(groups)]
+
+
 def _build_releases(raw_releases, stories, story_index) -> list:
     """Validate/repair the release map: every story placed once, weeks assigned, no thin release."""
     seen, releases = set(), []
@@ -382,16 +433,18 @@ def _build_releases(raw_releases, stories, story_index) -> list:
         if not ids:
             continue
         seen.update(ids)
-        releases.append({"key": "", "name": (r.get("name") or "Release").strip(),
-                         "goal": (r.get("goal") or "").strip(), "stories": ids,
-                         "demo": (r.get("demo") or "").strip(), "weeks": (3, 3)})
-    # Any stories the model dropped → append to the last release (or a new one).
+        releases.append({"key": "", "name": _as_text(r.get("name")) or "Release",
+                         "goal": _as_text(r.get("goal")), "stories": ids,
+                         "demo": _as_text(r.get("demo")), "weeks": (3, 3)})
+    # Any stories the model dropped → append to the last release.
     leftover = [s["id"] for s in stories if s["id"] not in seen]
-    if leftover:
-        if releases:
-            releases[-1]["stories"].extend(leftover)
-        else:
-            releases.append({"key": "", "name": "Build", "goal": "", "stories": leftover, "demo": "", "weeks": (3, 3)})
+    if leftover and releases:
+        releases[-1]["stories"].extend(leftover)
+    # If the map model returned nothing usable, or collapsed everything into one
+    # oversized bucket, split deterministically so we never publish a single giant release.
+    all_ids = [s["id"] for s in stories]
+    if not releases or (len(releases) == 1 and len(all_ids) > 2 * deep_plan_trace.MIN_PER_RELEASE):
+        releases = _chunk_releases(all_ids)
     # Merge any single-story release into the previous (no thin releases).
     merged: list = []
     for r in releases:

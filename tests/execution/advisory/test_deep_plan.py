@@ -135,3 +135,72 @@ def test_store_deep_plan_writes_files(tmp_path, monkeypatch):
     assert (tmp_path / "slug-x" / "docs" / "TRACEABILITY.md").read_text(encoding="utf-8") == "MATRIX"
     assert (tmp_path / "slug-x" / "deep_plan.json").exists()
     assert paths["rtm"].endswith("TRACEABILITY.md")
+
+
+def test_as_text_flattens_nested_values():
+    assert dp._as_text({"control": "audit log", "gate": "manager"}) == "control: audit log; gate: manager"
+    assert dp._as_text(["a", {"x": "y"}]) == "a; x: y"
+    assert dp._as_text(None) == "" and dp._as_text("  hi ") == "hi"
+
+
+def test_normalize_stories_coerces_dict_fields():
+    # gpt-4o-mini sometimes returns trust/slice/build as objects, not strings;
+    # normalization must flatten them, not crash on .strip() (regression).
+    st = dp._normalize_stories([{
+        "title": "T", "fulfills": ["REQ-1"], "owner_agent": "A",
+        "trust": {"control": "audit log"}, "slice": {"command": "C", "event": "E", "read_model": "R"},
+        "build": ["step one", "step two"], "narrative": "n", "acceptance": [],
+    }], ["A"])
+    assert st[0]["trust"] == "control: audit log"
+    assert st[0]["slice"] == "command: C; event: E; read_model: R"
+    assert st[0]["build"] == "step one; step two"
+    assert all(isinstance(st[0][k], str) for k in ("trust", "slice", "build", "narrative", "title"))
+
+
+def test_drop_unknown_citations_strips_hallucinated_reqs():
+    # the slicer sometimes cites REQ ids beyond the catalog; drop them so the
+    # trace gate isn't tripped by pure noise (but real uncited stories still fail).
+    stories = [
+        {"id": "STORY-001", "fulfills": ["REQ-001", "REQ-999"]},
+        {"id": "STORY-002", "fulfills": ["REQ-002"]},
+    ]
+    kept = dp._drop_unknown_citations(stories, {"REQ-001", "REQ-002"})
+    assert stories[0]["fulfills"] == ["REQ-001"]
+    assert stories[1]["fulfills"] == ["REQ-002"]
+    assert len(kept) == 2                                  # both keep a real citation
+
+
+def test_drop_unknown_citations_drops_untraceable_story():
+    # a story that cites only hallucinated ids (or nothing) traces to no REQ and
+    # is dropped as noise, rather than failing the whole build at the trace gate.
+    stories = [
+        {"id": "STORY-001", "fulfills": ["REQ-001"]},
+        {"id": "STORY-002", "fulfills": ["REQ-999"]},      # only a hallucinated id
+        {"id": "STORY-003", "fulfills": []},                # cites nothing
+    ]
+    kept = dp._drop_unknown_citations(stories, {"REQ-001"})
+    assert [s["id"] for s in kept] == ["STORY-001"]
+
+
+def test_chunk_releases_splits_giant_bucket_skeleton_first():
+    ids = [f"STORY-{i:03d}" for i in range(1, 16)]      # 15 stories
+    rels = dp._chunk_releases(ids)
+    assert len(rels) >= 3                                # never one giant release
+    assert rels[0]["name"] == "Walking Skeleton"
+    flat = [s for r in rels for s in r["stories"]]
+    assert flat == ids                                  # every story placed once, in order
+    assert all(len(r["stories"]) >= 1 for r in rels)
+
+
+def test_prompts_assume_claude_code_not_no_code():
+    # everything is built with Claude Code (real code), not no-code/low-code tools.
+    g, m = dp._guard("P"), dp._MAKER_SYS
+    c = dp._context("P", "a real product idea for a niche audience", "- cap: choice")
+    r = dp._rubric("P", "idea")
+    assert "Claude Code" in g and "Claude Code" in c and "Claude Code" in m
+    # the old positive minimal-code / no-code / non-technical-founder bias is gone
+    assert "minimal-code" not in m and "minimal code" not in m
+    assert "non-technical founder" not in c
+    assert "favor configuring" not in g.lower()
+    # the rubric now demands a real-code approach
+    assert "real code" in r.lower()
