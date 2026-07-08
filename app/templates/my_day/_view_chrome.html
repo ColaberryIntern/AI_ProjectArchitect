@@ -79,45 +79,45 @@
 {% set qs_pp = ('&person=' ~ (person_filter|urlencode) if person_filter else '') %}
 {% set qs_tail = '&tier=' ~ tier ~ ('&project=' ~ project_filter if project_filter else '') ~ qs_pp %}
 <div class="view-tabs">
-  <a href="?view=briefing{{ qs_tail }}" class="view-tab {% if view == 'briefing' %}active{% endif %}">📋 Briefing</a>
-  <a href="?view=kanban{{ qs_tail }}" class="view-tab {% if view == 'kanban' %}active{% endif %}">🗂 Kanban</a>
-  <a href="?view=heatmap{{ qs_tail }}" class="view-tab {% if view == 'heatmap' %}active{% endif %}">🔥 Heat map</a>
-  <a href="?view=extract{{ qs_tail }}" class="view-tab {% if view == 'extract' %}active{% endif %}">📤 Extract</a>
+  <a href="?view=briefing{{ qs_tail }}" class="view-tab {% if view == 'briefing' %}active{% endif %}" data-track="myday.tab.briefing">📋 Briefing</a>
+  <a href="?view=kanban{{ qs_tail }}" class="view-tab {% if view == 'kanban' %}active{% endif %}" data-track="myday.tab.kanban">🗂 Kanban</a>
+  <a href="?view=heatmap{{ qs_tail }}" class="view-tab {% if view == 'heatmap' %}active{% endif %}" data-track="myday.tab.heatmap">🔥 Heat map</a>
+  <a href="?view=extract{{ qs_tail }}" class="view-tab {% if view == 'extract' %}active{% endif %}" data-track="myday.tab.extract">📤 Extract</a>
 </div>
 
 {# ── Tier filter chips ─────────────────────────────────── #}
 {% set qs_no_tier = (('&project=' ~ project_filter) if project_filter else '') ~ qs_pp %}
 <div class="project-chips" style="border-top: 0; padding-top: 0; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 0;">
   <a href="?view={{ view }}&tier=assigned{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'assigned' %}active{% endif %}">
+     class="proj-chip {% if tier == 'assigned' %}active{% endif %}" data-track="myday.tier.assigned">
     👤 Assigned to you <span class="chip-count">{{ tier_counts.get('assigned', 0) }}</span>
   </a>
   <a href="?view={{ view }}&tier=due{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'due' %}active{% endif %}">
+     class="proj-chip {% if tier == 'due' %}active{% endif %}" data-track="myday.tier.due">
     📅 Due-watching <span class="chip-count">{{ tier_counts.get('due', 0) }}</span>
   </a>
   <a href="?view={{ view }}&tier=unassigned{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'unassigned' %}active{% endif %}">
+     class="proj-chip {% if tier == 'unassigned' %}active{% endif %}" data-track="myday.tier.unassigned">
     🤝 Unassigned <span class="chip-count">{{ tier_counts.get('unassigned', 0) }}</span>
   </a>
   <a href="?view={{ view }}&tier=watching{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'watching' %}active{% endif %}">
+     class="proj-chip {% if tier == 'watching' %}active{% endif %}" data-track="myday.tier.watching">
     👀 Watching <span class="chip-count">{{ tier_counts.get('watching', 0) }}</span>
   </a>
   <span style="display: inline-block; width: 1px; height: 18px; background: #d0d7de; margin: 0 4px; align-self: center;"></span>
   <a href="?view={{ view }}&tier=human{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'human' %}active{% endif %}"
+     class="proj-chip {% if tier == 'human' %}active{% endif %}" data-track="myday.tier.human"
      style="{% if tier != 'human' %}background: #fff4d5; border-color: #f0d678; color: #8a5a00;{% endif %}">
     🧑 Human-needed <span class="chip-count">{{ tier_counts.get('human', 0) }}</span>
   </a>
   <a href="?view={{ view }}&tier=ai{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'ai' %}active{% endif %}"
+     class="proj-chip {% if tier == 'ai' %}active{% endif %}" data-track="myday.tier.ai"
      style="{% if tier != 'ai' %}background: #ddf4ff; border-color: #c6e2ff; color: #0550ae;{% endif %}">
     🤖 AI-doable <span class="chip-count">{{ tier_counts.get('ai', 0) }}</span>
   </a>
   <span style="display: inline-block; width: 1px; height: 18px; background: #d0d7de; margin: 0 4px; align-self: center;"></span>
   <a href="?view={{ view }}&tier=all{{ qs_no_tier }}"
-     class="proj-chip {% if tier == 'all' %}active{% endif %}">
+     class="proj-chip {% if tier == 'all' %}active{% endif %}" data-track="myday.tier.all">
     🌍 All <span class="chip-count">{{ tier_counts.get('all', 0) }}</span>
   </a>
 </div>
@@ -304,3 +304,9 @@
   }, true);
 })();
 </script>
+
+{# First-party usage telemetry — captures a view event per load + [data-track]
+   clicks so we can audit what's used and hide what isn't. Privacy-scoped
+   (labels + view/filter state only); see execution/products/ops/usage_events.py
+   and the audit at /my-day/usage. #}
+<script src="/static/js/my_day_track.js" defer></script>
