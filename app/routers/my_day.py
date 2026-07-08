@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from datetime import datetime, timezone
 
@@ -1412,6 +1412,45 @@ def _health_snapshot() -> dict:
         "recent_errors": sync.recent_errors(),
         "pilot_dash_delivery": pilot_delivery,
     }
+
+
+@router.post("/events")
+async def ops_usage_events(request: Request):
+    """First-party My Day usage-telemetry sink (click + view events).
+
+    Resilient by design: telemetry must never break the page. Unauthenticated
+    beacons are dropped quietly (204); any parse/store error returns ok:false
+    rather than raising. Records only stable control labels + view/filter state
+    — never form values or fingerprints (see execution/products/ops/usage_events).
+    """
+    user = _session_user(request)
+    if not user:
+        return Response(status_code=204)
+    try:
+        body = await request.json()
+        events = body.get("events") if isinstance(body, dict) else []
+        from execution.products.ops import usage_events
+        key = getattr(user, "email", None) or str(getattr(user, "id", "anon"))
+        n = usage_events.record_events(key, events or [])
+        return {"ok": True, "recorded": n}
+    except Exception:  # noqa: BLE001 — telemetry sink, never surface errors
+        return {"ok": False}
+
+
+@router.get("/usage")
+async def ops_usage_report(request: Request, days: int = 14):
+    """My Day usage audit — which views/filters/controls people actually use,
+    to drive the hide/simplify decisions. Admin-only (org-wide data)."""
+    user = _require_user(request)
+    if "admin" not in (user.roles or []):
+        raise HTTPException(403, "admin role required")
+    from execution.products.ops import usage_events
+    days = max(1, min(int(days or 14), 90))
+    agg = usage_events.aggregate(since_days=days)
+    return request.app.state.templates.TemplateResponse(
+        request, "my_day/usage.html",
+        _ctx(request, user, agg=agg, days=days),
+    )
 
 
 @router.get("/_health")

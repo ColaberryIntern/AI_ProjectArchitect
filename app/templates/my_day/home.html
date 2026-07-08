@@ -45,17 +45,17 @@
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
   <h1 style="font-size: 18px; font-weight: 700; margin: 0;">☀ My Day</h1>
   <div style="display: flex; gap: 8px; align-items: center;">
-    <a href="/advisory/new" class="md-btn md-btn-primary" style="font-size: 12px;"
+    <a href="/advisory/new" class="md-btn md-btn-primary" data-track="myday.action.new_project" style="font-size: 12px;"
        title="Describe an idea → AI designs the org, generates the build plan, and creates the Basecamp tasks">
       🚀 New project
     </a>
     <a href="/my-day/decisions-report{% if project_filter %}?project={{ project_filter }}{% endif %}"
-       class="md-btn md-btn-quiet" style="font-size: 12px;"
+       class="md-btn md-btn-quiet" data-track="myday.action.decisions_report" style="font-size: 12px;"
        title="Email-style decisions report — printable, with Mark Done + Copy Prompt baked in">
       📌 Decisions report
     </a>
     {% if is_my_day_admin %}
-    <a href="/my-day/_health" class="md-btn md-btn-quiet" style="font-size: 12px;"
+    <a href="/my-day/_health" class="md-btn md-btn-quiet" data-track="myday.action.health" style="font-size: 12px;"
        title="Operational health snapshot — scheduler state, per-user sync, recent errors">
       ⚙ Health
     </a>
@@ -68,7 +68,7 @@
       {% if project_filter %}<input type="hidden" name="project" value="{{ project_filter }}">{% endif %}
       {% if list_filter %}<input type="hidden" name="list" value="{{ list_filter }}">{% endif %}
       {% if person_filter %}<input type="hidden" name="person" value="{{ person_filter }}">{% endif %}
-      <button type="submit" class="md-btn md-btn-outline">↻ Sync</button>
+      <button type="submit" class="md-btn md-btn-outline" data-track="myday.action.sync">↻ Sync</button>
     </form>
   </div>
 </div>

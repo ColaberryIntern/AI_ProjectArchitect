@@ -1,0 +1,102 @@
+{% extends "library/_library_base.html" %}
+{% block title %}My Day · Usage audit{% endblock %}
+
+{% block content %}
+{% set max_view = (agg.views.values() | max) if agg.views else 1 %}
+{% set max_ctrl = (agg.top_controls.values() | max) if agg.top_controls else 1 %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+  <h1 style="font-size:18px; font-weight:700; margin:0;">📊 My Day · Usage audit</h1>
+  <div style="display:flex; gap:6px; align-items:center; font-size:12px;">
+    <span style="color:#57606a;">Window:</span>
+    {% for d in [7, 14, 30, 90] %}
+      <a href="/my-day/usage?days={{ d }}"
+         style="padding:4px 10px; border-radius:999px; text-decoration:none; border:1px solid #d0d7de;
+                {% if days == d %}background:#0f2540; color:#fff; border-color:#0f2540;{% else %}color:#1f2328; background:#fff;{% endif %}">{{ d }}d</a>
+    {% endfor %}
+    <a href="/my-day/" style="margin-left:8px; color:#0550ae; font-size:12px;">← My Day</a>
+  </div>
+</div>
+
+<p style="font-size:12px; color:#57606a; margin:0 0 16px;">
+  What people actually click on My Day, over the last {{ agg.since_days }} days. First-party + privacy-scoped:
+  control labels and view/filter state only — no form values, keystrokes, or fingerprints.
+</p>
+
+{% if agg.total_events == 0 %}
+<div style="background:#f6f8fa; border:1px solid #d0d7de; border-radius:8px; padding:24px; text-align:center; color:#57606a; font-size:14px;">
+  No events captured yet in this window. Once the tracker has been live for a bit, this fills in with real usage.
+</div>
+{% else %}
+
+<div style="display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
+  {% set tiles = [('Events', agg.total_events), ('People', agg.unique_users), ('Days', agg.per_day | length)] %}
+  {% for label, val in tiles %}
+  <div style="flex:1; min-width:120px; background:#fff; border:1px solid #d8dee4; border-radius:10px; padding:14px 16px;">
+    <div style="font-size:26px; font-weight:700; color:#0f2540; font-variant-numeric:tabular-nums;">{{ val }}</div>
+    <div style="font-size:12px; color:#57606a; margin-top:4px;">{{ label }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
+
+  <div>
+    <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:0 0 10px;">Views opened</h3>
+    {% for name, count in agg.views.items() %}
+    <div style="margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:3px;">
+        <span>{{ name }}</span><span style="color:#57606a; font-variant-numeric:tabular-nums;">{{ count }}</span>
+      </div>
+      <div style="height:7px; background:#eef1f4; border-radius:999px; overflow:hidden;">
+        <i style="display:block; height:100%; width:{{ (count / max_view * 100) | round(0, 'floor') }}%; background:#367895;"></i>
+      </div>
+    </div>
+    {% endfor %}
+
+    <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:20px 0 10px;">Tier filter used</h3>
+    {% if agg.tiers %}
+      {% for name, count in agg.tiers.items() %}
+      <div style="display:flex; justify-content:space-between; font-size:13px; padding:5px 0; border-bottom:1px solid #eef1f4;">
+        <span>{{ name }}</span><span style="color:#57606a; font-variant-numeric:tabular-nums;">{{ count }}</span>
+      </div>
+      {% endfor %}
+    {% else %}<div style="font-size:12px; color:#8a8f98;">No tier switches recorded.</div>{% endif %}
+
+    <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:20px 0 10px;">Deeper filters used</h3>
+    {% for name in ['project', 'list', 'person'] %}
+    <div style="display:flex; justify-content:space-between; font-size:13px; padding:5px 0; border-bottom:1px solid #eef1f4;">
+      <span>{{ name }} filter</span>
+      <span style="color:{% if agg.filter_use[name] %}#1f2328{% else %}#cf7a00{% endif %}; font-variant-numeric:tabular-nums;">
+        {{ agg.filter_use[name] }}{% if not agg.filter_use[name] %} · unused{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:0 0 10px;">Top controls clicked</h3>
+    {% if agg.top_controls %}
+      {% for label, count in agg.top_controls.items() %}
+      <div style="margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;">
+          <span style="font-family:ui-monospace,Consolas,monospace; color:#1f2328;">{{ label }}</span>
+          <span style="color:#57606a; font-variant-numeric:tabular-nums;">{{ count }}</span>
+        </div>
+        <div style="height:6px; background:#eef1f4; border-radius:999px; overflow:hidden;">
+          <i style="display:block; height:100%; width:{{ (count / max_ctrl * 100) | round(0, 'floor') }}%; background:#5BA63C;"></i>
+        </div>
+      </div>
+      {% endfor %}
+      <p style="font-size:11px; color:#8a8f98; margin-top:10px;">
+        Controls carry a <code>data-track</code> label. Anything absent here is either unlabeled or unused —
+        both are candidates to simplify or hide.
+      </p>
+    {% else %}
+      <div style="font-size:12px; color:#8a8f98;">No labeled control clicks recorded yet.</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endif %}
+{% endblock %}
