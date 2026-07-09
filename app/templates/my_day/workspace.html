@@ -113,6 +113,19 @@
        style="display: none;"></div>
 </div>
 
+{# ── Editable predicted outputs — the files this task hands back. Colored by
+     type, per-file confidence, add / remove / change. The edited set is written
+     into the copied prompt and saved per-ticket in localStorage. #}
+<div style="border: 1px solid #d0d7de; border-radius: 8px; background: #fff; padding: 16px 18px; margin-bottom: 14px;">
+  <h3 style="margin: 0 0 4px;">Expected outputs <span id="outCount" style="color:#6639ba; font-weight:700; font-size:13px;"></span></h3>
+  <div style="font-size: 12px; color: #57606a; margin-bottom: 12px;">
+    The files this task should hand back. Change the type, edit a name, set your confidence, or add / remove files. Your list is written into the copied prompt.
+  </div>
+  <div id="outEditor" class="out-editor"></div>
+  <button type="button" class="out-add" onclick="addOutputRow()">+ Add output</button>
+  <div id="outData" data-outputs='{{ suggestion.predicted_outputs|tojson }}' style="display: none;"></div>
+</div>
+
 <details class="ws-collapse">
   <summary>Suggested approach — {{ suggestion.action_kind }}</summary>
   <div class="ws-collapse-body">
@@ -200,6 +213,79 @@
 // nothing. The preview node is for display only.
 let _fullPrompt = '';
 
+// ── Editable predicted outputs (files this task hands back) ─────────────────
+// Rendered from the AI prediction (or the operator's saved edits), editable in
+// place; the assembled list is injected into the copied prompt by
+// rebuildFullPrompt() and persisted per-ticket. MD_OUTPUT_TYPES comes from
+// _my_day_styles.html so the dropdown + color classes can't drift.
+let _outputs = [];
+let _bcId = '';
+
+function _oEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderOutputs() {
+  const ed = document.getElementById('outEditor');
+  if (!ed) return;
+  ed.innerHTML = '';
+  _outputs.forEach(function (o, i) {
+    const row = document.createElement('div');
+    row.className = 'out-edit-row';
+    const opts = MD_OUTPUT_TYPES.map(function (t) {
+      return '<option value="' + t[0] + '"' + (t[0] === o.type ? ' selected' : '') + '>' + t[1] + '</option>';
+    }).join('');
+    row.innerHTML =
+      '<span class="out-pill out-' + o.type + '">' + o.type + '</span>' +
+      '<input class="oe-name" type="text" value="' + _oEsc(o.name) + '" placeholder="filename.ext" ' +
+        'oninput="updOutput(' + i + ', \'name\', this.value)">' +
+      '<select class="oe-type" onchange="updOutput(' + i + ', \'type\', this.value)">' + opts + '</select>' +
+      '<input class="oe-conf" type="number" min="0" max="100" value="' + (o.confidence || 0) + '" ' +
+        'oninput="updOutput(' + i + ', \'confidence\', this.value)">' +
+      '<span style="font-size:11px;color:#57606a;">% sure</span>' +
+      '<button type="button" class="oe-del" title="Remove" onclick="delOutput(' + i + ')">&times;</button>';
+    ed.appendChild(row);
+  });
+  const n = _outputs.length;
+  const cnt = document.getElementById('outCount');
+  if (cnt) cnt.textContent = n ? ('· ' + n + ' file' + (n === 1 ? '' : 's')) : '· none yet';
+  persistOutputs();
+  rebuildFullPrompt();
+}
+
+function updOutput(i, field, val) {
+  if (!_outputs[i]) return;
+  if (field === 'confidence') val = Math.max(0, Math.min(100, parseInt(val || '0', 10) || 0));
+  _outputs[i][field] = val;
+  if (field === 'type') {
+    // Recolor the pill in place (no full re-render — keeps input focus).
+    const rows = document.querySelectorAll('#outEditor .out-edit-row');
+    const pill = rows[i] && rows[i].querySelector('.out-pill');
+    if (pill) { pill.className = 'out-pill out-' + val; pill.textContent = val; }
+  }
+  persistOutputs();
+  rebuildFullPrompt();
+}
+
+function addOutputRow() { _outputs.push({ name: '', type: 'other', confidence: 50 }); renderOutputs(); }
+function delOutput(i) { _outputs.splice(i, 1); renderOutputs(); }
+
+function persistOutputs() {
+  try { localStorage.setItem('my-day-outputs-' + _bcId, JSON.stringify(_outputs)); } catch (e) {}
+}
+
+function outputsPromptBlock() {
+  const rows = _outputs.filter(function (o) { return (o.name || '').trim(); });
+  if (!rows.length) return '';
+  let s = '## Expected outputs (' + rows.length + ' file' + (rows.length === 1 ? '' : 's') + ')\n';
+  rows.forEach(function (o) {
+    s += '- ' + o.name.trim() + ' (' + o.type + ', ~' + (o.confidence || 0) + '% sure)\n';
+  });
+  return s;
+}
+
 function rebuildFullPrompt() {
   const builder = document.getElementById('promptBuilder');
   const taskPrompt = builder.dataset.taskPrompt || '';
@@ -210,6 +296,8 @@ function rebuildFullPrompt() {
   if (notes) {
     parts.push('## Notes from ' + (window._actor || 'me') + '\n\n' + notes + '\n');
   }
+  const ob = outputsPromptBlock();   // operator's edited output list, if any
+  if (ob) parts.push(ob);
   parts.push(_mdSetupBlock());
   // The task prompt self-titles with a top-level `# {title}` heading (see
   // _PROMPT_TEMPLATE), so no `## Task` wrapper here — wrapping produced a
@@ -281,12 +369,28 @@ function copyWorkspacePrompt() {
 (function () {
   const builder = document.getElementById('promptBuilder');
   if (!builder) return;
+  _bcId = builder.dataset.bcId;
   window._actor = {{ (current_session_user.display_name or current_session_user.email or 'me')|tojson }};
   try {
-    const saved = localStorage.getItem('my-day-notes-' + builder.dataset.bcId);
+    const saved = localStorage.getItem('my-day-notes-' + _bcId);
     if (saved) document.getElementById('userNotes').value = saved;
   } catch (e) {}
-  rebuildFullPrompt();
+  // Outputs: prefer the operator's saved edits for this ticket, else the AI
+  // prediction rendered into #outData.
+  let savedOut = null;
+  try {
+    const so = localStorage.getItem('my-day-outputs-' + _bcId);
+    if (so) savedOut = JSON.parse(so);
+  } catch (e) {}
+  if (Array.isArray(savedOut)) {
+    _outputs = savedOut;
+  } else {
+    const od = document.getElementById('outData');
+    try { _outputs = JSON.parse((od && od.dataset.outputs) || '[]') || []; }
+    catch (e) { _outputs = []; }
+  }
+  if (!Array.isArray(_outputs)) _outputs = [];
+  renderOutputs();   // renders the editor AND calls rebuildFullPrompt()
 })();
 </script>
 {% endblock %}

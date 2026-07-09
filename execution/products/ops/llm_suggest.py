@@ -96,7 +96,8 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # entries carry a now-unused claude_code_prompt, so the bump forces a refresh.
 # v6 = summary_paragraph now leads with the ticket + deliverable(s) and predicts
 # the final file type(s) (may be more than one); forces a cache refresh.
-PROMPT_VERSION = "v6"
+# v7 = adds the structured predicted_outputs list (name/type/confidence per file).
+PROMPT_VERSION = "v7"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -121,6 +122,9 @@ Respond with strict JSON matching this exact schema:
   ],
   "stop_conditions": [
     "Specific named conditions that should pause the work and get a human in the loop"
+  ],
+  "predicted_outputs": [
+    {"name": "best-guess filename WITH extension, e.g. match_engine.py", "type": "code|doc|pdf|slides|sheet|image|data|email|text|other", "confidence": 75}
   ]
 }
 
@@ -166,6 +170,8 @@ ABSOLUTE RULES for specific_steps. These are violations of the contract:
 If the ticket is genuinely too vague to be specific, the steps must be:
   - "Ask <specific named person> in BC reply: '<specific question>'"
   - Not "Clarify the requirements".
+
+PREDICTED OUTPUTS. List EVERY file the finished work hands back, one row each. There may be one or SEVERAL (e.g. a .pptx deck AND a .docx handout; or code plus a .md runbook). For each: name = best-guess filename with its extension; type = the category (code, doc for .docx/.md, pdf, slides for .pptx, sheet for .xlsx/.csv, image, data for .json/.xml, email, text, other); confidence = 0-100, how sure THIS specific file is needed. If the task produces no file at all (a pure decision, a scheduling), return an empty list.
 
 Length: 3-6 steps, each a single line. Total response ≤ 1000 tokens.
 
@@ -242,6 +248,7 @@ def enhance(user_id: str, todo: OpsTodo, comments_text: str = "") -> dict | None
         return None
     out.setdefault("stop_conditions", [])
     out.setdefault("summary_paragraph", "")
+    out.setdefault("predicted_outputs", [])
 
     cache[key] = out
     try:

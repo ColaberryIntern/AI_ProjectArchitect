@@ -29,6 +29,84 @@ from typing import Any
 from . import personas
 from .store import OpsTodo
 
+# ── Predicted deliverable outputs (structured, colored, per-file confidence) ──
+#
+# The LLM (llm_suggest) returns predicted_outputs; we normalize them here so the
+# briefing renders read-only colored bullets and the workspace renders editable
+# rows. Keys below MUST match the `.out-<key>` CSS in _my_day_styles.html and the
+# MD_OUTPUT_TYPES list in that same template's JS.
+OUTPUT_TYPES = [
+    {"key": "code",   "label": "Code"},
+    {"key": "doc",    "label": "Doc"},
+    {"key": "pdf",    "label": "PDF"},
+    {"key": "slides", "label": "Slides"},
+    {"key": "sheet",  "label": "Sheet"},
+    {"key": "image",  "label": "Image"},
+    {"key": "data",   "label": "Data"},
+    {"key": "email",  "label": "Email"},
+    {"key": "text",   "label": "Text"},
+    {"key": "other",  "label": "Other"},
+]
+_OUTPUT_TYPE_KEYS = {t["key"] for t in OUTPUT_TYPES}
+
+# Extension → type, used to recover a type when the model omits/garbles it.
+_EXT_TYPE = {
+    "py": "code", "js": "code", "ts": "code", "tsx": "code", "jsx": "code",
+    "java": "code", "go": "code", "rb": "code", "rs": "code", "php": "code",
+    "c": "code", "cpp": "code", "cs": "code", "sh": "code", "sql": "code",
+    "html": "code", "css": "code",
+    "json": "data", "xml": "data", "yaml": "data", "yml": "data",
+    "csv": "sheet", "xlsx": "sheet", "xls": "sheet",
+    "doc": "doc", "docx": "doc", "md": "doc", "rtf": "doc",
+    "txt": "text", "pdf": "pdf", "ppt": "slides", "pptx": "slides", "key": "slides",
+    "png": "image", "jpg": "image", "jpeg": "image", "gif": "image", "svg": "image",
+    "eml": "email", "msg": "email",
+}
+
+
+def _ext_to_type(name: str) -> str:
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return _EXT_TYPE.get(ext, "other")
+
+
+def normalize_outputs(raw) -> list:
+    """Coerce the model's predicted_outputs into [{name, type, confidence}].
+
+    Type falls back to the extension (then 'other') when missing/unknown;
+    confidence is clamped to an int 0-100; blank names are dropped. Tolerant of a
+    bare string, a single dict, or a list of either."""
+    if isinstance(raw, (str, dict)):
+        raw = [raw]
+    out: list = []
+    for item in raw or []:
+        if isinstance(item, str):
+            item = {"name": item}
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("file") or item.get("filename") or "").strip()
+        if not name:
+            continue
+        typ = str(item.get("type") or "").strip().lower()
+        if typ not in _OUTPUT_TYPE_KEYS:
+            typ = _ext_to_type(name)
+        try:
+            conf = int(round(float(item.get("confidence", 0))))
+        except (TypeError, ValueError):
+            conf = 0
+        out.append({"name": name, "type": typ, "confidence": max(0, min(100, conf))})
+    return out
+
+
+def _outputs_block(outputs) -> str:
+    """The '## Expected outputs' prompt section (empty string when none)."""
+    if not outputs:
+        return ""
+    n = len(outputs)
+    lines = [f"## Expected outputs ({n} file{'' if n == 1 else 's'})"]
+    lines += [f"- {o['name']} ({o['type']}, ~{o['confidence']}% sure)" for o in outputs]
+    return "\n".join(lines) + "\n\n"
+
+
 # ── Action recipes (regex-keyed, ordered most-specific-first) ──────────
 
 _RECIPES = [
@@ -344,6 +422,7 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
         "stop_conditions": list(recipe["stop_conditions"]),
         "urgency_summary": _urgency_summary(todo),
         "owner_note": owner_note,
+        "predicted_outputs": [],  # deterministic path predicts no files; the LLM fills this
     }
 
 
@@ -387,6 +466,7 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
         s["stop_conditions"] = [str(x) for x in stops]
 
     s["summary_paragraph"] = (enhanced.get("summary_paragraph") or "").strip()
+    s["predicted_outputs"] = normalize_outputs(enhanced.get("predicted_outputs"))
     return s
 
 
@@ -403,7 +483,7 @@ _PROMPT_TEMPLATE = """\
 ## You hand back
 {deliverable}
 
-{ownership_block}## Stop & escalate if
+{outputs_block}{ownership_block}## Stop & escalate if
 {stop_block}
 {dependency_block}
 ———
@@ -501,6 +581,7 @@ def generate_prompt(
     suggestion: dict[str, Any] | None = None,
     comments: str = "",
     persona: str | None = None,
+    outputs_in_prompt: bool = True,
 ) -> str:
     """A ready-to-paste Claude Code prompt for this specific todo.
 
@@ -536,10 +617,15 @@ def generate_prompt(
     # on the deterministic fallback (no LLM) — then the prompt opens as before.
     summary = (s.get("summary_paragraph") or "").strip()
     summary_block = f"{summary}\n\n" if summary else ""
+    # Expected-outputs section. On the workspace we pass outputs_in_prompt=False
+    # because the page injects the operator's EDITED output list client-side;
+    # everywhere else (briefing/kanban/etc.) the AI-predicted list is baked in.
+    outputs_block = _outputs_block(s.get("predicted_outputs")) if outputs_in_prompt else ""
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
         summary_block=summary_block,
+        outputs_block=outputs_block,
         project_name=todo.bc_project_name,
         project_url=todo.project_url or "(no URL)",
         todolist_name=todo.bc_todolist_name,

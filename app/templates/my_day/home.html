@@ -465,6 +465,20 @@
     {% for step in focus_suggestion.steps %}<li>{{ step }}</li>{% endfor %}
   </ol>
   {% endif %}
+  {% if focus_suggestion.predicted_outputs %}
+  <div class="out-block">
+    <div class="out-head">Expecting <span class="cnt">{{ focus_suggestion.predicted_outputs|length }}</span> file{{ '' if focus_suggestion.predicted_outputs|length == 1 else 's' }}</div>
+    <ul class="out-list">
+      {% for o in focus_suggestion.predicted_outputs %}
+      <li class="out-row">
+        <span class="out-pill out-{{ o.type }}">{{ o.type }}</span>
+        <span class="out-name">{{ o.name }}</span>
+        <span class="out-conf {{ 'hi' if o.confidence >= 75 else ('mid' if o.confidence >= 50 else 'lo') }}">{{ o.confidence }}%</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   {% if focus_suggestion.stop_conditions %}
   <div class="stops" style="font-size: 12px;">
     <strong>⚠ Stop if:</strong> {{ focus_suggestion.stop_conditions[0] }}
