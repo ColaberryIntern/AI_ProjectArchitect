@@ -113,21 +113,49 @@
        style="display: none;"></div>
 </div>
 
-<details class="ws-collapse" open>
-  <summary>Suggested approach — {{ suggestion.action_kind }}</summary>
+{# ── SUMMARY (visible): the who-needs-what story + what you hand back. #}
+<div style="border: 1px solid #d0d7de; border-radius: 8px; background: #fff; padding: 16px 18px; margin-bottom: 14px;">
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+    <h3 style="margin: 0;">Summary</h3>
+    <span class="ak-pill ak-{{ suggestion.action_kind }}">{{ suggestion.action_kind }}</span>
+  </div>
+  {% if suggestion.summary_paragraph %}
+  <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #1f2328;">{{ suggestion.summary_paragraph }}</p>
+  {% else %}
+  <p style="margin: 0; font-size: 14px; color: #1f2328;">{{ suggestion.one_line }}</p>
+  {% endif %}
+  <p style="margin: 10px 0 0; font-size: 13px; color: #57606a;"><strong>You hand back:</strong> {{ suggestion.deliverable }}</p>
+</div>
+
+{# ── DOWNLOADS (visible): the files this task hands back. Editable (name + type +
+     confidence + add/remove); the edited set fills the copied prompt's ## Downloads
+     slot and is saved per-ticket in localStorage. #}
+<div style="border: 1px solid #d0d7de; border-radius: 8px; background: #fff; padding: 16px 18px; margin-bottom: 14px;">
+  <h3 style="margin: 0 0 4px;">Downloads <span id="outCount" style="color:#6639ba; font-weight:700; font-size:13px;"></span></h3>
+  <div style="font-size: 12px; color: #57606a; margin-bottom: 12px;">
+    The files this task should hand back (created early, saved to your Downloads folder). Change the type, edit a name, set your confidence, or add / remove files. More than one visual goes in a folder. Your list is written into the copied prompt.
+  </div>
+  <div id="outEditor" class="out-editor"></div>
+  <button type="button" class="out-add" onclick="addOutputRow()">+ Add output</button>
+  <div id="outData" data-outputs='{{ suggestion.predicted_outputs|tojson }}' style="display: none;"></div>
+</div>
+
+{# ── DETAILS (collapsed): steps, verification (QA), resources, stop conditions. #}
+<details class="ws-collapse">
+  <summary>Details — steps, QA &amp; guardrails</summary>
   <div class="ws-collapse-body">
-    <div style="margin-bottom: 12px;">
-      <span class="ak-pill ak-{{ suggestion.action_kind }}">{{ suggestion.action_kind }}</span>
-      {% if suggestion.summary_paragraph %}
-      {# The 2-3 sentence who-needs-what story: makes it clear what's needed next. #}
-      <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: #1f2328;">{{ suggestion.summary_paragraph }}</p>
-      {% else %}
-      &nbsp; <span style="font-weight: 600;">{{ suggestion.one_line }}</span>
-      {% endif %}
-    </div>
-    <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
+    <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Suggested steps</div>
+    <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6; margin-top: 4px;">
       {% for step in suggestion.steps %}<li style="margin-bottom: 6px;">{{ step }}</li>{% endfor %}
     </ol>
+    {% if suggestion.qa_process and suggestion.qa_process.checks %}
+    <div style="margin-top: 16px; padding: 10px 14px; background: #f6f8fa; border-left: 3px solid #0f766e; border-radius: 4px;">
+      <strong style="font-size: 13px; color: #0f766e;">Verify (QA){% if suggestion.qa_process.target %} — {{ suggestion.qa_process.target }}{% endif %}:</strong>
+      <ul style="margin: 6px 0 0; padding-left: 20px; font-size: 13px;">
+        {% for c in suggestion.qa_process.checks %}<li style="margin-bottom: 3px;">{{ c }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     {% if suggestion.resources %}
     <div style="margin-top: 14px;">
       <strong style="font-size: 13px;">Lean on:</strong>
@@ -144,19 +172,6 @@
       </ul>
     </div>
     {% endif %}
-
-    {# Expected outputs — the files this task hands back. Editable (name + type +
-       confidence + add/remove); the edited set is written into the copied prompt
-       and saved per-ticket in localStorage. Sits at the bottom of the approach. #}
-    <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #eaeef2;">
-      <h4 style="margin: 0 0 4px; font-size: 14px;">Expected outputs <span id="outCount" style="color:#6639ba; font-weight:700; font-size:12px;"></span></h4>
-      <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
-        The files this task should hand back. Change the type, edit a name, set your confidence, or add / remove files. Your list is written into the copied prompt.
-      </div>
-      <div id="outEditor" class="out-editor"></div>
-      <button type="button" class="out-add" onclick="addOutputRow()">+ Add output</button>
-      <div id="outData" data-outputs='{{ suggestion.predicted_outputs|tojson }}' style="display: none;"></div>
-    </div>
   </div>
 </details>
 
@@ -281,19 +296,34 @@ function persistOutputs() {
   try { localStorage.setItem('my-day-outputs-' + _bcId, JSON.stringify(_outputs)); } catch (e) {}
 }
 
-function outputsPromptBlock() {
+// The ## Downloads body: the operator's edited file list, plus the folder rule
+// (>1 visual) and the HTML standard when relevant. Fills the [[DOWNLOADS]] slot
+// in the server task prompt. MD_VISUAL_TYPES / HTML_FORMAT_URL come from
+// _my_day_styles.html so they can't drift from the server.
+function downloadsBody() {
   const rows = _outputs.filter(function (o) { return (o.name || '').trim(); });
-  if (!rows.length) return '';
-  let s = '## Expected outputs (' + rows.length + ' file' + (rows.length === 1 ? '' : 's') + ')\n';
+  if (!rows.length) return 'No file downloads expected for this task.';
+  let s = 'Create these ' + rows.length + ' file' + (rows.length === 1 ? '' : 's') +
+          ' FIRST (stub them), then complete them per the Details below. Save them in your Downloads folder.\n';
   rows.forEach(function (o) {
     s += '- ' + o.name.trim() + ' (' + o.type + ', ~' + (o.confidence || 0) + '% sure)\n';
   });
+  const visuals = rows.filter(function (o) { return MD_VISUAL_TYPES.indexOf(o.type) !== -1; });
+  if (visuals.length > 1) {
+    s += 'You have ' + visuals.length + ' visuals: put them together in ONE named folder, not loose files.\n';
+  }
+  if (rows.some(function (o) { return o.type === 'html'; })) {
+    s += 'Any .html output follows the Colaberry HTML dashboard standard (self-contained, Mermaid + Chart.js, ' +
+         'data-shape -> visual mapping, executive palette, tell the story). Full spec: ' + HTML_FORMAT_URL + '\n';
+  }
   return s;
 }
 
 function rebuildFullPrompt() {
   const builder = document.getElementById('promptBuilder');
-  const taskPrompt = builder.dataset.taskPrompt || '';
+  let taskPrompt = builder.dataset.taskPrompt || '';
+  // Fill the server prompt's ## Downloads slot with the operator's edited list.
+  taskPrompt = taskPrompt.replace('[[DOWNLOADS]]', downloadsBody());
   const notes = document.getElementById('userNotes').value.trim();
   const bcId = builder.dataset.bcId;
 
@@ -301,8 +331,6 @@ function rebuildFullPrompt() {
   if (notes) {
     parts.push('## Notes from ' + (window._actor || 'me') + '\n\n' + notes + '\n');
   }
-  const ob = outputsPromptBlock();   // operator's edited output list, if any
-  if (ob) parts.push(ob);
   parts.push(_mdSetupBlock());
   // The task prompt self-titles with a top-level `# {title}` heading (see
   // _PROMPT_TEMPLATE), so no `## Task` wrapper here — wrapping produced a
