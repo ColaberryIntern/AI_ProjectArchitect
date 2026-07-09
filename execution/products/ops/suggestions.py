@@ -36,35 +36,70 @@ from .store import OpsTodo
 # rows. Keys below MUST match the `.out-<key>` CSS in _my_day_styles.html and the
 # MD_OUTPUT_TYPES list in that same template's JS.
 OUTPUT_TYPES = [
-    {"key": "code",   "label": "Code"},
-    {"key": "doc",    "label": "Doc"},
-    {"key": "pdf",    "label": "PDF"},
-    {"key": "slides", "label": "Slides"},
-    {"key": "sheet",  "label": "Sheet"},
-    {"key": "image",  "label": "Image"},
-    {"key": "data",   "label": "Data"},
-    {"key": "email",  "label": "Email"},
-    {"key": "text",   "label": "Text"},
-    {"key": "other",  "label": "Other"},
+    {"key": "code",     "label": "Code"},
+    {"key": "doc",      "label": "Doc"},
+    {"key": "pdf",      "label": "PDF"},
+    {"key": "slides",   "label": "Slides"},
+    {"key": "sheet",    "label": "Sheet"},
+    {"key": "html",     "label": "HTML"},
+    {"key": "image",    "label": "Image"},
+    {"key": "diagram",  "label": "Diagram"},
+    {"key": "notebook", "label": "Notebook"},
+    {"key": "video",    "label": "Video"},
+    {"key": "audio",    "label": "Audio"},
+    {"key": "data",     "label": "Data"},
+    {"key": "dataset",  "label": "Dataset"},
+    {"key": "config",   "label": "Config"},
+    {"key": "archive",  "label": "Archive"},
+    {"key": "folder",   "label": "Folder"},
+    {"key": "email",    "label": "Email"},
+    {"key": "text",     "label": "Text"},
+    {"key": "other",    "label": "Other"},
 ]
 _OUTPUT_TYPE_KEYS = {t["key"] for t in OUTPUT_TYPES}
+
+# Visual outputs: when a task produces MORE THAN ONE of these, they go in a folder.
+VISUAL_TYPES = {"image", "html", "diagram", "slides"}
+
+# The Colaberry HTML house standard (fetched from Basecamp). Any .html output
+# follows this; the pasted Claude Code session can read the full master prompt
+# at the URL via the Basecamp MCP.
+HTML_FORMAT_URL = "https://app.basecamp.com/3945211/buckets/7463955/todos/10039770075"
+HTML_FORMAT_RULE = (
+    "Any .html output follows the Colaberry HTML dashboard standard: ONE self-contained .html "
+    "(inline CSS, vanilla JS, Mermaid + Chart.js from CDN); model the data into ONE embedded JS "
+    "object that both the tables and the charts read; pick visuals from the data SHAPE (KPI cards, "
+    "bar/doughnut, grouped bar, Mermaid gantt/flowchart/sequence, conditional-format heatmap, full "
+    "detail table); executive palette (slate bg #eef2f6, ink #0f172a, accent teal #0f766e, "
+    "green/amber/red status); sticky nav; responsive; lead with the 'so what'. "
+    f"Full master prompt: {HTML_FORMAT_URL}"
+)
 
 # Extension → type, used to recover a type when the model omits/garbles it.
 _EXT_TYPE = {
     "py": "code", "js": "code", "ts": "code", "tsx": "code", "jsx": "code",
     "java": "code", "go": "code", "rb": "code", "rs": "code", "php": "code",
-    "c": "code", "cpp": "code", "cs": "code", "sh": "code", "sql": "code",
-    "html": "code", "css": "code",
-    "json": "data", "xml": "data", "yaml": "data", "yml": "data",
-    "csv": "sheet", "xlsx": "sheet", "xls": "sheet",
+    "c": "code", "cpp": "code", "cs": "code", "sh": "code", "sql": "code", "css": "code",
+    "html": "html", "htm": "html",
+    "json": "data", "xml": "data",
+    "yaml": "config", "yml": "config", "toml": "config", "ini": "config", "env": "config",
+    "csv": "sheet", "xlsx": "sheet", "xls": "sheet", "tsv": "sheet",
     "doc": "doc", "docx": "doc", "md": "doc", "rtf": "doc",
     "txt": "text", "pdf": "pdf", "ppt": "slides", "pptx": "slides", "key": "slides",
-    "png": "image", "jpg": "image", "jpeg": "image", "gif": "image", "svg": "image",
+    "png": "image", "jpg": "image", "jpeg": "image", "gif": "image", "svg": "image", "webp": "image",
+    "mmd": "diagram", "drawio": "diagram", "vsdx": "diagram",
+    "ipynb": "notebook",
+    "mp4": "video", "mov": "video", "webm": "video",
+    "mp3": "audio", "wav": "audio", "m4a": "audio",
+    "zip": "archive", "tar": "archive", "gz": "archive", "7z": "archive",
+    "parquet": "dataset", "db": "dataset", "sqlite": "dataset",
     "eml": "email", "msg": "email",
 }
 
 
 def _ext_to_type(name: str) -> str:
+    if name.endswith("/"):
+        return "folder"
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     return _EXT_TYPE.get(ext, "other")
 
@@ -97,13 +132,51 @@ def normalize_outputs(raw) -> list:
     return out
 
 
-def _outputs_block(outputs) -> str:
-    """The '## Expected outputs' prompt section (empty string when none)."""
+def normalize_qa(raw) -> dict:
+    """Coerce the model's qa_process into {target, checks}. Checks is a clean list
+    of non-empty strings; target is a trimmed string. Tolerant of a bare list/str."""
+    if isinstance(raw, list):
+        raw = {"checks": raw}
+    if isinstance(raw, str):
+        raw = {"checks": [raw]}
+    if not isinstance(raw, dict):
+        return {"target": "", "checks": []}
+    checks = raw.get("checks") or raw.get("steps") or []
+    if isinstance(checks, str):
+        checks = [checks]
+    checks = [str(c).strip() for c in checks if str(c).strip()]
+    return {"target": str(raw.get("target") or raw.get("artifact") or "").strip(), "checks": checks}
+
+
+def _downloads_block(outputs) -> str:
+    """The '## Downloads' body: the files to create early, plus the folder rule
+    and the HTML standard when relevant. Empty-ish note when there are no files."""
     if not outputs:
-        return ""
+        return "No file downloads expected for this task.\n"
     n = len(outputs)
-    lines = [f"## Expected outputs ({n} file{'' if n == 1 else 's'})"]
+    lines = [
+        f"Create these {n} file{'' if n == 1 else 's'} FIRST (stub them), then complete them per the "
+        "Details below. Save them in your Downloads folder."
+    ]
     lines += [f"- {o['name']} ({o['type']}, ~{o['confidence']}% sure)" for o in outputs]
+    visuals = [o for o in outputs if o["type"] in VISUAL_TYPES]
+    if len(visuals) > 1:
+        lines.append(f"You have {len(visuals)} visuals: put them together in ONE named folder, not loose files.")
+    if any(o["type"] == "html" for o in outputs):
+        lines.append(HTML_FORMAT_RULE)
+    return "\n".join(lines) + "\n"
+
+
+def _qa_block(qa) -> str:
+    """The '### Verify (QA)' Details section (empty string when no checks)."""
+    qa = qa or {}
+    checks = qa.get("checks") or []
+    if not checks:
+        return ""
+    target = qa.get("target") or "the artifact"
+    lines = [f"### Verify (QA) — {target}",
+             "Get the artifact, then run this EXACT check before you approve or ship:"]
+    lines += [f"- {c}" for c in checks]
     return "\n".join(lines) + "\n\n"
 
 
@@ -423,6 +496,7 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
         "urgency_summary": _urgency_summary(todo),
         "owner_note": owner_note,
         "predicted_outputs": [],  # deterministic path predicts no files; the LLM fills this
+        "qa_process": {"target": "", "checks": []},  # LLM fills the verification process
     }
 
 
@@ -467,41 +541,41 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
 
     s["summary_paragraph"] = (enhanced.get("summary_paragraph") or "").strip()
     s["predicted_outputs"] = normalize_outputs(enhanced.get("predicted_outputs"))
+    s["qa_process"] = normalize_qa(enhanced.get("qa_process"))
     return s
 
 
-# BLUF (Bottom Line Up Front): the first three sections answer the questions a
-# newcomer asks before doing anything — what am I being asked to do, what do I
-# hand back (and who owns the call), and what stops me. Everything heavier
-# (full BC metadata, description, steps, resources, working protocol) sits below
-# the divider so it never buries the point. Order here is load-bearing; the
-# directive my-day-action-recipes.md documents it and a test asserts it.
+# Structure is load-bearing (a test asserts it): SUMMARY (the story + what you
+# hand back) → DOWNLOADS (the files to create early) → DETAILS (everything heavier
+# — context, description, steps, QA, resources, stop, working protocol). Create
+# the files early, elaborate later. Mirrors the workspace's Summary/Downloads/Details.
 _PROMPT_TEMPLATE = """\
 # {title}
-{summary_block}This is a **{action_kind}** task. {one_line}
 
-## You hand back
-{deliverable}
+## Summary
+{summary_block}**You hand back:** {deliverable}
 
-{outputs_block}{ownership_block}## Stop & escalate if
-{stop_block}
-{dependency_block}
-———
+## Downloads
+{downloads_block}
+## Details
+This is a **{action_kind}** task. {one_line}
 
-## Task details
-**Project:** {project_name} — {project_url}
+{ownership_block}**Project:** {project_name} — {project_url}
 **List:** {todolist_name} — {list_url}
 **Due:** {due_on} · **Urgency:** {urgency_summary}
 **BC URL (this task):** {bc_app_url}
 
 {description_block}
 
-{comments_block}## Suggested steps
+{comments_block}### Suggested steps
 {steps_block}
 
-## Lean on
+{qa_block}### Lean on
 {resources_block}
 
+### Stop & escalate if
+{stop_block}
+{dependency_block}
 {working_block}
 
 ## Deliver, then confirm
@@ -608,24 +682,24 @@ def generate_prompt(
     )
     stop_block = "\n".join(f"- {c}" for c in s["stop_conditions"]) if s["stop_conditions"] else "(none)"
     owner_note = s.get("owner_note") or ""
-    # Ownership sits in the BLUF header (right under "You hand back"), not at the
-    # bottom — who owns the call modifies the deliverable, so a reader needs it
-    # before they start. Trailing blank line separates it from "Stop & escalate".
-    ownership_block = f"## Ownership\n{owner_note}\n\n" if owner_note else ""
-    # The LLM-enhanced summary (ticket + deliverable + predicted file types) leads
-    # the prompt as a 2-4 sentence initial analysis, right under the title. Absent
-    # on the deterministic fallback (no LLM) — then the prompt opens as before.
+    # Ownership rides in Details, right before the metadata (who owns the call
+    # modifies the deliverable). Trailing blank line separates it from the meta.
+    ownership_block = f"**Ownership:** {owner_note}\n\n" if owner_note else ""
+    # The LLM-enhanced who-needs-what story leads the ## Summary section. Absent on
+    # the deterministic fallback (no LLM) — then Summary shows only "You hand back".
     summary = (s.get("summary_paragraph") or "").strip()
     summary_block = f"{summary}\n\n" if summary else ""
-    # Expected-outputs section. On the workspace we pass outputs_in_prompt=False
-    # because the page injects the operator's EDITED output list client-side;
-    # everywhere else (briefing/kanban/etc.) the AI-predicted list is baked in.
-    outputs_block = _outputs_block(s.get("predicted_outputs")) if outputs_in_prompt else ""
+    # ## Downloads body: on the workspace (outputs_in_prompt=False) we emit a
+    # [[DOWNLOADS]] marker the page fills client-side from the operator's EDITED
+    # list; everywhere else the AI-predicted list (+ folder/HTML rules) is baked in.
+    downloads_block = _downloads_block(s.get("predicted_outputs")) if outputs_in_prompt else "[[DOWNLOADS]]\n"
+    qa_block = _qa_block(s.get("qa_process"))
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
         summary_block=summary_block,
-        outputs_block=outputs_block,
+        downloads_block=downloads_block,
+        qa_block=qa_block,
         project_name=todo.bc_project_name,
         project_url=todo.project_url or "(no URL)",
         todolist_name=todo.bc_todolist_name,

@@ -441,6 +441,15 @@
   .out-email  { background: #eaeef2; color: #57606a; border-color: #d0d7de; }
   .out-text   { background: #eef1f4; color: #475059; border-color: #dbe1e8; }
   .out-other  { background: #f0eef2; color: #6a5f75; border-color: #e0dae6; }
+  .out-html     { background: #ffe9e0; color: #c2410c; border-color: #ffd3c2; }
+  .out-diagram  { background: #e6ecff; color: #3538cd; border-color: #c7d2fe; }
+  .out-notebook { background: #fff0e6; color: #b45309; border-color: #ffddc2; }
+  .out-video    { background: #ffe4ee; color: #be185d; border-color: #fbcfe0; }
+  .out-audio    { background: #f3e8ff; color: #7e22ce; border-color: #e9d5ff; }
+  .out-dataset  { background: #ccf2ee; color: #0f766e; border-color: #a3e5dd; }
+  .out-config   { background: #e7ecf3; color: #475569; border-color: #cdd8e3; }
+  .out-archive  { background: #f4ece0; color: #92600e; border-color: #e6d5b8; }
+  .out-folder   { background: #fdf6d3; color: #a16207; border-color: #f5e79e; }
   /* workspace editor rows */
   .out-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
   .out-edit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -489,9 +498,15 @@
 // the .out-<key> CSS above and suggestions.OUTPUT_TYPES on the server.
 const MD_OUTPUT_TYPES = [
   ['code', 'Code'], ['doc', 'Doc'], ['pdf', 'PDF'], ['slides', 'Slides'],
-  ['sheet', 'Sheet'], ['image', 'Image'], ['data', 'Data'], ['email', 'Email'],
-  ['text', 'Text'], ['other', 'Other']
+  ['sheet', 'Sheet'], ['html', 'HTML'], ['image', 'Image'], ['diagram', 'Diagram'],
+  ['notebook', 'Notebook'], ['video', 'Video'], ['audio', 'Audio'], ['data', 'Data'],
+  ['dataset', 'Dataset'], ['config', 'Config'], ['archive', 'Archive'], ['folder', 'Folder'],
+  ['email', 'Email'], ['text', 'Text'], ['other', 'Other']
 ];
+// Visual types that must be grouped into a folder when there is more than one,
+// and the Colaberry HTML dashboard standard URL (both mirror suggestions.py).
+const MD_VISUAL_TYPES = ['image', 'html', 'diagram', 'slides'];
+const HTML_FORMAT_URL = 'https://app.basecamp.com/3945211/buckets/7463955/todos/10039770075';
 
 function _mdSetupBlock() {
   return (

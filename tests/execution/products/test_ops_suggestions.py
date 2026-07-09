@@ -84,18 +84,18 @@ def test_generate_prompt_includes_title_and_steps():
     assert "1." in prompt
 
 
-def test_generate_prompt_is_bluf_ordered():
-    # The prompt must lead with the point, not a throat-clear: title as the H1,
-    # then "You hand back", and the heavy "Task details" only AFTER. Regression
-    # for the "huhhhh?" wall-of-text the old template produced.
+def test_generate_prompt_is_summary_downloads_details_ordered():
+    # The prompt must lead with the point: title, then Summary (what you hand
+    # back), then Downloads (files early), then the heavy Details only AFTER.
     t = _make("Approve the budget", desc="Need sign-off by Friday")
     prompt = generate_prompt(t)
     assert prompt.startswith("# Approve the budget")
-    assert "## You hand back" in prompt
+    assert "## Summary" in prompt
+    assert "You hand back:" in prompt
     # Deliverable text reaches the reader.
     assert "verdict" in prompt.lower()
-    # BLUF order: what-you-hand-back comes before the metadata dump.
-    assert prompt.index("## You hand back") < prompt.index("## Task details")
+    # Structure order: Summary -> Downloads -> Details.
+    assert prompt.index("## Summary") < prompt.index("## Downloads") < prompt.index("## Details")
     # The old process-first opener is gone.
     assert "You're helping me work through" not in prompt
 
@@ -104,7 +104,7 @@ def test_generate_prompt_has_no_duplicate_stop_heading():
     # "Stop & escalate" lives in the BLUF header now; the old standalone
     # "When to stop and escalate" section was removed (no duplication).
     prompt = generate_prompt(_make("Approve the budget"))
-    assert "## Stop & escalate if" in prompt
+    assert "### Stop & escalate if" in prompt
     assert "When to stop and escalate" not in prompt
 
 
@@ -207,7 +207,7 @@ def test_human_owned_decision_reframes_step3_to_recommendation():
 def test_human_owned_prompt_has_ownership_section():
     t = _make("Approve the cohort plan", desc=_HUMAN_DESC, category="human_required")
     prompt = generate_prompt(t)
-    assert "## Ownership" in prompt
+    assert "**Ownership:**" in prompt
     assert "recommendation for them to confirm" in prompt
 
 
@@ -236,7 +236,7 @@ def test_non_human_decision_keeps_verdict_wording():
     assert s["action_kind"] == "decision"
     assert "verdict, reason, next action" in s["steps"][2]
     assert s["owner_note"] == ""
-    assert "## Ownership" not in generate_prompt(t)
+    assert "**Ownership:**" not in generate_prompt(t)
 
 
 def test_human_required_category_alone_triggers_reframe():
@@ -366,11 +366,12 @@ def test_generate_prompt_leads_with_summary_when_present():
     assert prompt.index("This ticket wires inbox matching") < prompt.index("This is a **build** task")
 
 
-def test_generate_prompt_without_summary_opens_as_before():
-    # No LLM summary (deterministic fallback) => prompt still opens on the action
-    # line right under the title (BLUF preserved, no empty gap).
+def test_generate_prompt_without_summary_still_has_summary_section():
+    # No LLM story (deterministic fallback) => the Summary section is still there,
+    # leading with what you hand back (no empty gap, action line moves to Details).
     prompt = generate_prompt(_make("Approve the budget"))
-    assert prompt.startswith("# Approve the budget\nThis is a **decision** task")
+    assert prompt.startswith("# Approve the budget\n\n## Summary\n**You hand back:**")
+    assert "This is a **decision** task" in prompt   # now in Details
 
 
 def test_generate_prompt_has_delivery_contract():
@@ -422,7 +423,7 @@ def test_build_suggestion_has_empty_predicted_outputs():
     assert build_suggestion(_make("Approve the budget"))["predicted_outputs"] == []
 
 
-def test_generate_prompt_includes_outputs_block_when_enabled():
+def test_generate_prompt_downloads_section_lists_files_when_enabled():
     t = _make("Build the wire")
     s = S.merge_llm_suggestion(t, {
         "action_kind": "build", "goal_line": "A wire.", "specific_steps": ["do it"],
@@ -432,21 +433,62 @@ def test_generate_prompt_includes_outputs_block_when_enabled():
         ],
     })
     prompt = generate_prompt(t, suggestion=s)                  # outputs_in_prompt defaults True
-    assert "## Expected outputs (2 files)" in prompt
+    assert "## Downloads" in prompt
+    assert "Create these 2 files FIRST" in prompt
     assert "- wire.py (code, ~80% sure)" in prompt
     assert "- runbook.md (doc, ~55% sure)" in prompt
 
 
-def test_generate_prompt_omits_outputs_block_when_disabled():
+def test_generate_prompt_downloads_marker_when_disabled():
     # The workspace passes outputs_in_prompt=False (it injects the edited list
-    # client-side), so the server task prompt must NOT bake the list in.
+    # client-side into the [[DOWNLOADS]] slot), so the server prompt has the
+    # marker, not the baked-in file list.
     t = _make("Build the wire")
     s = S.merge_llm_suggestion(t, {
         "action_kind": "build", "goal_line": "A wire.", "specific_steps": ["do it"],
         "predicted_outputs": [{"name": "wire.py", "type": "code", "confidence": 80}],
     })
     prompt = generate_prompt(t, suggestion=s, outputs_in_prompt=False)
-    assert "Expected outputs" not in prompt
+    assert "## Downloads\n[[DOWNLOADS]]" in prompt
+    assert "wire.py" not in prompt
+
+
+def test_downloads_block_folder_rule_for_multiple_visuals():
+    # More than one visual (image/html/diagram/slides) => group into one folder.
+    block = S._downloads_block([
+        {"name": "a.png", "type": "image", "confidence": 60},
+        {"name": "b.html", "type": "html", "confidence": 60},
+    ])
+    assert "2 visuals: put them together in ONE named folder" in block
+    # An html output pulls in the Colaberry HTML standard + the spec URL.
+    assert S.HTML_FORMAT_URL in block
+
+
+def test_generate_prompt_includes_qa_block():
+    t = _make("Approve the resolver change")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "decision", "goal_line": "A signed-off change.", "specific_steps": ["get it"],
+        "qa_process": {"target": "the resolver PR", "checks": ["Run the test suite", "Lint + build"]},
+    })
+    prompt = generate_prompt(t, suggestion=s)
+    assert "### Verify (QA) — the resolver PR" in prompt
+    assert "- Run the test suite" in prompt
+
+
+def test_normalize_qa_coerces_shapes():
+    assert S.normalize_qa({"target": "x", "checks": ["a", "", "b"]}) == {"target": "x", "checks": ["a", "b"]}
+    assert S.normalize_qa(["a", "b"]) == {"target": "", "checks": ["a", "b"]}
+    assert S.normalize_qa("just one") == {"target": "", "checks": ["just one"]}
+    assert S.normalize_qa(None) == {"target": "", "checks": []}
+
+
+def test_normalize_outputs_supports_new_types():
+    out = S.normalize_outputs([
+        {"name": "dash.html"},        # ext -> html
+        {"name": "flow.mmd"},         # ext -> diagram
+        {"name": "assets/", "type": "folder"},
+    ])
+    assert [o["type"] for o in out] == ["html", "diagram", "folder"]
 
 
 def test_generate_prompt_omits_comments_block_when_absent():

@@ -305,9 +305,9 @@ class TestScanForUser:
         r = wi.scan_for_user("ali@colaberry.com")
         assert r["drafted"] == 1
         assert r["buckets_checked"] == 1
-        # The embedded prompt is rendered through the shared BLUF template from
-        # the LLM fields (not a hand-written claude_code_prompt).
-        assert "## You hand back" in posted["html"]
+        # The embedded prompt is rendered through the shared Summary/Downloads/
+        # Details template from the LLM fields (not a hand-written prompt).
+        assert "## Summary" in posted["html"]
         assert "A vendor decision posted to BC." in posted["html"]
 
     def test_skips_when_already_drafted_in_recent_comments(self, monkeypatch):
