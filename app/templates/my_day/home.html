@@ -446,7 +446,7 @@
 <div class="steps-card">
   <div class="head">
     <h3>WHAT TO DO</h3>
-    <span class="pill {{ 'trivial' if focus_suggestion.action_kind in ('reply','schedule','decision') else '' }}">
+    <span class="ak-pill ak-{{ focus_suggestion.action_kind }}">
       {{ focus_suggestion.action_kind|upper }}
     </span>
     {% if focus_llm_source == 'llm' %}

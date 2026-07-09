@@ -97,7 +97,9 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # v6 = summary_paragraph now leads with the ticket + deliverable(s) and predicts
 # the final file type(s) (may be more than one); forces a cache refresh.
 # v7 = adds the structured predicted_outputs list (name/type/confidence per file).
-PROMPT_VERSION = "v7"
+# v8 = summary_paragraph reframed as a who-needs-what STORY (file types now live
+# in predicted_outputs, not the prose); forces a cache refresh.
+PROMPT_VERSION = "v8"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -115,7 +117,7 @@ Respond with strict JSON matching this exact schema:
 {
   "action_kind": "decision|reply|email|build|research|meeting|schedule|review|default",
   "goal_line": "One sentence naming the concrete DELIVERABLE: what 'done' looks like as an artifact, not an activity. This becomes the 'You hand back' line.",
-  "summary_paragraph": "ONE flowing paragraph (2-4 sentences) that OPENS by stating what this ticket is and the deliverable(s), then how to do it, and PREDICTS the file type(s) the final deliverable will need. There may be MORE THAN ONE (e.g. a .pptx deck plus a .docx handout, or code plus a .pdf runbook); name the concrete extension(s). Use specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. A smart human reads it in 15 seconds and knows what this is and what to produce.",
+  "summary_paragraph": "A 2-3 sentence STORY that makes it instantly clear what is needed next. Start with WHO needs WHAT: name the person or team from the ticket and the thing they need. Then elaborate: what they are trying to accomplish and why, and the next concrete move. Ground every sentence in ticket specifics (named people, deadlines, numbers, systems). NO bullet points, NO 'Step 1, Step 2', and do NOT list file types here (the predicted_outputs list covers that). A smart human reads it in 15 seconds and knows who this is for and what to do next.",
   "specific_steps": [
     "<verb> <specific named thing from the ticket>",
     "..."
