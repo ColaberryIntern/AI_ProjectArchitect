@@ -113,25 +113,17 @@
        style="display: none;"></div>
 </div>
 
-{# ── Editable predicted outputs — the files this task hands back. Colored by
-     type, per-file confidence, add / remove / change. The edited set is written
-     into the copied prompt and saved per-ticket in localStorage. #}
-<div style="border: 1px solid #d0d7de; border-radius: 8px; background: #fff; padding: 16px 18px; margin-bottom: 14px;">
-  <h3 style="margin: 0 0 4px;">Expected outputs <span id="outCount" style="color:#6639ba; font-weight:700; font-size:13px;"></span></h3>
-  <div style="font-size: 12px; color: #57606a; margin-bottom: 12px;">
-    The files this task should hand back. Change the type, edit a name, set your confidence, or add / remove files. Your list is written into the copied prompt.
-  </div>
-  <div id="outEditor" class="out-editor"></div>
-  <button type="button" class="out-add" onclick="addOutputRow()">+ Add output</button>
-  <div id="outData" data-outputs='{{ suggestion.predicted_outputs|tojson }}' style="display: none;"></div>
-</div>
-
-<details class="ws-collapse">
+<details class="ws-collapse" open>
   <summary>Suggested approach — {{ suggestion.action_kind }}</summary>
   <div class="ws-collapse-body">
     <div style="margin-bottom: 12px;">
-      <span class="action-kind-badge">{{ suggestion.action_kind }}</span>
+      <span class="ak-pill ak-{{ suggestion.action_kind }}">{{ suggestion.action_kind }}</span>
+      {% if suggestion.summary_paragraph %}
+      {# The 2-3 sentence who-needs-what story: makes it clear what's needed next. #}
+      <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: #1f2328;">{{ suggestion.summary_paragraph }}</p>
+      {% else %}
       &nbsp; <span style="font-weight: 600;">{{ suggestion.one_line }}</span>
+      {% endif %}
     </div>
     <ol style="padding-left: 22px; font-size: 14px; line-height: 1.6;">
       {% for step in suggestion.steps %}<li style="margin-bottom: 6px;">{{ step }}</li>{% endfor %}
@@ -152,6 +144,19 @@
       </ul>
     </div>
     {% endif %}
+
+    {# Expected outputs — the files this task hands back. Editable (name + type +
+       confidence + add/remove); the edited set is written into the copied prompt
+       and saved per-ticket in localStorage. Sits at the bottom of the approach. #}
+    <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #eaeef2;">
+      <h4 style="margin: 0 0 4px; font-size: 14px;">Expected outputs <span id="outCount" style="color:#6639ba; font-weight:700; font-size:12px;"></span></h4>
+      <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
+        The files this task should hand back. Change the type, edit a name, set your confidence, or add / remove files. Your list is written into the copied prompt.
+      </div>
+      <div id="outEditor" class="out-editor"></div>
+      <button type="button" class="out-add" onclick="addOutputRow()">+ Add output</button>
+      <div id="outData" data-outputs='{{ suggestion.predicted_outputs|tojson }}' style="display: none;"></div>
+    </div>
   </div>
 </details>
 

@@ -454,6 +454,22 @@
   .out-add { margin-top: 2px; background: #fff; border: 1px dashed #b0b8c0; color: #57606a;
              border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
   .out-add:hover { background: #f6f8fa; color: #1f2328; }
+
+  /* Action-kind pills — one color per approach type so the operator learns the
+     result types (decision / build / reply / …). Shared by the briefing pill and
+     the workspace badge so the colors mean the same thing everywhere. */
+  .ak-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; font-size: 11px;
+             font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+             border: 1px solid transparent; vertical-align: middle; }
+  .ak-decision { background: #efe9ff; color: #5a32b0; border-color: #dcd0ff; }
+  .ak-build    { background: #ddf4ff; color: #0550ae; border-color: #b6e3ff; }
+  .ak-reply    { background: #dafbe1; color: #1a7f37; border-color: #aceebb; }
+  .ak-email    { background: #d3f4f1; color: #0f7c73; border-color: #a9e6df; }
+  .ak-meeting  { background: #fff4d5; color: #8a5a00; border-color: #f0d678; }
+  .ak-research { background: #e6ecff; color: #3538cd; border-color: #c7d2fe; }
+  .ak-review   { background: #fff1e0; color: #bc4c00; border-color: #ffd9b3; }
+  .ak-schedule { background: #d8f3f8; color: #0b6b78; border-color: #b0e6ef; }
+  .ak-default  { background: #eaeef2; color: #57606a; border-color: #d0d7de; }
 </style>
 
 <script>
