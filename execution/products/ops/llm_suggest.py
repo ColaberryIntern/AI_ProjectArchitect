@@ -94,7 +94,9 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # (action_kind, goal_line, summary_paragraph, specific_steps, stop_conditions)
 # which merge_llm_suggestion folds into the shared BLUF template. Old v4 cache
 # entries carry a now-unused claude_code_prompt, so the bump forces a refresh.
-PROMPT_VERSION = "v5"
+# v6 = summary_paragraph now leads with the ticket + deliverable(s) and predicts
+# the final file type(s) (may be more than one); forces a cache refresh.
+PROMPT_VERSION = "v6"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -112,7 +114,7 @@ Respond with strict JSON matching this exact schema:
 {
   "action_kind": "decision|reply|email|build|research|meeting|schedule|review|default",
   "goal_line": "One sentence naming the concrete DELIVERABLE: what 'done' looks like as an artifact, not an activity. This becomes the 'You hand back' line.",
-  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) describing what to do AND how, with specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. A smart human reads it in 15 seconds and knows exactly what to do.",
+  "summary_paragraph": "ONE flowing paragraph (2-4 sentences) that OPENS by stating what this ticket is and the deliverable(s), then how to do it, and PREDICTS the file type(s) the final deliverable will need. There may be MORE THAN ONE (e.g. a .pptx deck plus a .docx handout, or code plus a .pdf runbook); name the concrete extension(s). Use specifics from the ticket (file paths, named people, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. A smart human reads it in 15 seconds and knows what this is and what to produce.",
   "specific_steps": [
     "<verb> <specific named thing from the ticket>",
     "..."

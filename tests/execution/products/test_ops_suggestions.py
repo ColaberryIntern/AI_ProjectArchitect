@@ -349,6 +349,40 @@ def test_generate_prompt_includes_comments_block_when_present():
     assert "Can you send the export?" in prompt
 
 
+# ── summary lead + deterministic delivery contract (briefing prompt) ─────────
+
+def test_generate_prompt_leads_with_summary_when_present():
+    # The LLM-enhanced summary_paragraph leads the copied prompt as the initial
+    # analysis, right under the title and before the action line.
+    t = _make("Build the inbox-match wire")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "build",
+        "goal_line": "A working inbox-match wire plus a runbook.",
+        "specific_steps": ["Open app/wire.py and add match()"],
+        "summary_paragraph": "This ticket wires inbox matching for reply counts. Hand back working code plus a .pdf runbook.",
+    })
+    prompt = generate_prompt(t, suggestion=s)
+    assert "This ticket wires inbox matching" in prompt
+    assert prompt.index("This ticket wires inbox matching") < prompt.index("This is a **build** task")
+
+
+def test_generate_prompt_without_summary_opens_as_before():
+    # No LLM summary (deterministic fallback) => prompt still opens on the action
+    # line right under the title (BLUF preserved, no empty gap).
+    prompt = generate_prompt(_make("Approve the budget"))
+    assert prompt.startswith("# Approve the budget\nThis is a **decision** task")
+
+
+def test_generate_prompt_has_delivery_contract():
+    # Every copied prompt carries the deterministic delivery contract: Downloads
+    # staging path, a confidence statement, and the ask-before-posting gate.
+    prompt = generate_prompt(_make("Approve the budget"))
+    assert "## Deliver, then confirm" in prompt
+    assert "Downloads folder" in prompt
+    assert "before you post anything to Basecamp" in prompt
+    assert "confidence" in prompt.lower()
+
+
 def test_generate_prompt_omits_comments_block_when_absent():
     assert "## Recent comments" not in generate_prompt(_make("Reply to Karun"))
 

@@ -398,7 +398,7 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
 # directive my-day-action-recipes.md documents it and a test asserts it.
 _PROMPT_TEMPLATE = """\
 # {title}
-This is a **{action_kind}** task. {one_line}
+{summary_block}This is a **{action_kind}** task. {one_line}
 
 ## You hand back
 {deliverable}
@@ -423,6 +423,12 @@ This is a **{action_kind}** task. {one_line}
 {resources_block}
 
 {working_block}
+
+## Deliver, then confirm
+- Aim to complete the deliverable in this session; if you have what you need, produce it in one full attempt before coming back with questions.
+- Save every file you produce or download into the Downloads folder, and attach it to the Basecamp ticket FROM the Downloads folder. Use that same path every time.
+- When the work is done, state your confidence as a percentage (0-100) that the deliverable is complete and correct.
+- Then ASK before you post anything to Basecamp, send any outbound message, or mark this todo complete. Do not auto-post, auto-send, or auto-close.
 
 Begin.
 """
@@ -525,9 +531,15 @@ def generate_prompt(
     # bottom — who owns the call modifies the deliverable, so a reader needs it
     # before they start. Trailing blank line separates it from "Stop & escalate".
     ownership_block = f"## Ownership\n{owner_note}\n\n" if owner_note else ""
+    # The LLM-enhanced summary (ticket + deliverable + predicted file types) leads
+    # the prompt as a 2-4 sentence initial analysis, right under the title. Absent
+    # on the deterministic fallback (no LLM) — then the prompt opens as before.
+    summary = (s.get("summary_paragraph") or "").strip()
+    summary_block = f"{summary}\n\n" if summary else ""
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
+        summary_block=summary_block,
         project_name=todo.bc_project_name,
         project_url=todo.project_url or "(no URL)",
         todolist_name=todo.bc_todolist_name,
