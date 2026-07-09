@@ -43,7 +43,7 @@ Respond with strict JSON matching this exact schema:
 
 {
   "anticipated_goal": "Single sentence: what 'done' concretely looks like. A deliverable.",
-  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) explaining what to do and how. Mention specifics from the bundle (file paths, names, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. This is what Ali reads at a glance to decide whether to proceed.",
+  "summary_paragraph": "ONE flowing paragraph (3-5 sentences) explaining what to do and how, and PREDICTING the file type(s) the final deliverable will need. There may be MORE THAN ONE (e.g. a .pptx deck plus a .docx leave-behind, or a .xlsx model plus a .pdf summary); name the concrete file extension(s) you expect to hand back. Mention specifics from the bundle (file paths, names, deadlines, numbers). NO bullet points, NO 'Step 1, Step 2'. This is what Ali reads at a glance to decide whether to proceed.",
   "inferred_output_type": "pptx | docx | pdf | email | code | text | other",
   "inferred_success_criteria": [
     "Specific testable criterion 1 (e.g. '10 slides max')",
@@ -90,7 +90,7 @@ being higher.
 
 6. claude_code_prompt rules. The string must use REAL newline characters between sections (encode each section break as a literal \\n\\n in the JSON, so json.loads produces a string with actual blank lines). The structure is FIVE sections separated by blank lines.
 
-Section 1: WHAT to do (the anticipated_goal) on a single line at the top.
+Section 1: A short SUMMARY (2 to 3 sentences) that is the INITIAL ANALYSIS of the request: what this ticket is and what the deliverable(s) are, naming the predicted file type(s) for the final output (there may be more than one). Put this at the very top, before any detail; then get into the meat below.
 
 Section 2: A "CONTEXT:" block with all known ticket metadata (title, project, list, due date, BC URL) each on its own line, followed by a blank line, then "BUNDLE:" on its own line, then the full context bundle verbatim (root ticket description, linked items, external URLs that the rabbit-hole walker collected).
 
@@ -98,7 +98,7 @@ Section 3: A "SUCCESS CRITERIA:" block listing inferred_success_criteria, one pe
 
 Section 4: A "STEPS:" block listing execution_plan as numbered actions.
 
-Section 5: This EXACT closing block, byte-for-byte (replace nothing): "DO the work. Complete the deliverable in this session if you have everything you need. If anything is missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Drafts of outbound communications go through Ali before send. Begin."
+Section 5: This EXACT closing block, byte-for-byte (replace nothing): "Attempt the full deliverable on the FIRST pass: if you have what you need, produce the complete output now instead of stopping to ask permission part-way. Save every file you create or download into the Downloads folder, and attach it to the Basecamp ticket FROM the Downloads folder; use that same path every time. When the work is done, STATE your confidence as a percentage (0 to 100) that the deliverable is complete and correct, then ASK before you post anything to Basecamp, send any outbound message, or mark the todo complete: do not auto-post, auto-send, or auto-close (this overrides any standing order to close automatically). If something is genuinely missing, do NOT guess: list exactly what input you need from Ali so he can answer in one round. Begin."
 
 Length: do not constrain. A thin bundle produces a short prompt; a rich bundle produces a long one. Treat the prompt as self-sufficient: if Claude Code has zero ability to fetch external resources, it must still be able to act from this prompt alone.
 
