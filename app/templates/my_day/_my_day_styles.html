@@ -414,6 +414,46 @@
   .steps-card .actions .hint { font-size: 11px; color: #8a8a8a; margin-left: 6px; align-self: center; }
 
   .hidden-prompt { position: absolute; left: -10000px; }
+
+  /* Predicted deliverable outputs — briefing renders read-only, workspace editable.
+     Type keys MUST match suggestions.OUTPUT_TYPES and MD_OUTPUT_TYPES (below). */
+  .out-block { margin: 2px 0 14px; }
+  .out-head { font-size: 12px; font-weight: 700; color: #1f2328; margin-bottom: 8px; letter-spacing: 0.2px; }
+  .out-head .cnt { color: #6639ba; }
+  .out-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .out-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .out-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px;
+              font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+              border: 1px solid transparent; min-width: 48px; text-align: center; }
+  .out-name { font-family: ui-monospace, monospace; font-size: 12.5px; color: #1f2328; }
+  .out-conf { font-size: 11px; font-weight: 700; }
+  .out-conf.hi  { color: #1a7f37; }
+  .out-conf.mid { color: #8a5a00; }
+  .out-conf.lo  { color: #cf222e; }
+  /* type → color */
+  .out-code   { background: #ddf4ff; color: #0550ae; border-color: #b6e3ff; }
+  .out-doc    { background: #efeaff; color: #5a32b0; border-color: #dcd0ff; }
+  .out-pdf    { background: #ffeef0; color: #cf222e; border-color: #ffcdd4; }
+  .out-slides { background: #fff1e0; color: #bc4c00; border-color: #ffd9b3; }
+  .out-sheet  { background: #dafbe1; color: #1a7f37; border-color: #aceebb; }
+  .out-image  { background: #d3f4f1; color: #0f7c73; border-color: #a9e6df; }
+  .out-data   { background: #fff4d5; color: #8a5a00; border-color: #f0d678; }
+  .out-email  { background: #eaeef2; color: #57606a; border-color: #d0d7de; }
+  .out-text   { background: #eef1f4; color: #475059; border-color: #dbe1e8; }
+  .out-other  { background: #f0eef2; color: #6a5f75; border-color: #e0dae6; }
+  /* workspace editor rows */
+  .out-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .out-edit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .out-edit-row .oe-name { flex: 1 1 200px; min-width: 140px; padding: 6px 8px; font-size: 12.5px;
+                           font-family: ui-monospace, monospace; border: 1px solid #d0d7de; border-radius: 6px; }
+  .out-edit-row .oe-type { padding: 6px 8px; font-size: 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; }
+  .out-edit-row .oe-conf { width: 62px; padding: 6px 8px; font-size: 12px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .out-edit-row .oe-del { background: none; border: none; color: #cf222e; cursor: pointer;
+                          font-size: 18px; line-height: 1; padding: 2px 6px; }
+  .out-edit-row .oe-del:hover { color: #a40e26; }
+  .out-add { margin-top: 2px; background: #fff; border: 1px dashed #b0b8c0; color: #57606a;
+             border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .out-add:hover { background: #f6f8fa; color: #1f2328; }
 </style>
 
 <script>
@@ -429,6 +469,14 @@
 // and the Basecamp + memory tools all reach the Claude Code session through the
 // Colaberry MCP, so the only setup is "have the MCP connected" — no clone, no
 // cd, no git pull. See directives/my-day-action-recipes.md Rule 2.
+// Deliverable output types for the workspace editor dropdown. Keys MUST match
+// the .out-<key> CSS above and suggestions.OUTPUT_TYPES on the server.
+const MD_OUTPUT_TYPES = [
+  ['code', 'Code'], ['doc', 'Doc'], ['pdf', 'PDF'], ['slides', 'Slides'],
+  ['sheet', 'Sheet'], ['image', 'Image'], ['data', 'Data'], ['email', 'Email'],
+  ['text', 'Text'], ['other', 'Other']
+];
+
 function _mdSetupBlock() {
   return (
     '## How to run this prompt\n\n' +

@@ -383,6 +383,72 @@ def test_generate_prompt_has_delivery_contract():
     assert "confidence" in prompt.lower()
 
 
+# ── predicted outputs (structured, colored, per-file confidence) ─────────────
+
+def test_normalize_outputs_coerces_type_and_confidence():
+    out = S.normalize_outputs([
+        {"name": "deck.pptx", "type": "slides", "confidence": "90"},
+        {"name": "notes.docx", "confidence": 200},          # over-cap + type inferred
+        {"name": "  ", "type": "code"},                     # blank name dropped
+        "runbook.md",                                       # bare string
+    ])
+    assert out == [
+        {"name": "deck.pptx", "type": "slides", "confidence": 90},
+        {"name": "notes.docx", "type": "doc", "confidence": 100},
+        {"name": "runbook.md", "type": "doc", "confidence": 0},
+    ]
+
+
+def test_normalize_outputs_infers_type_from_extension_when_unknown():
+    out = S.normalize_outputs([{"name": "engine.py", "type": "bogus"}])
+    assert out[0]["type"] == "code"
+
+
+def test_normalize_outputs_handles_empty_and_garbage():
+    assert S.normalize_outputs(None) == []
+    assert S.normalize_outputs([123, {"no_name": "x"}]) == []
+
+
+def test_merge_llm_suggestion_carries_predicted_outputs():
+    t = _make("Build the wire")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "build", "goal_line": "A wire.", "specific_steps": ["do it"],
+        "predicted_outputs": [{"name": "wire.py", "type": "code", "confidence": 80}],
+    })
+    assert s["predicted_outputs"] == [{"name": "wire.py", "type": "code", "confidence": 80}]
+
+
+def test_build_suggestion_has_empty_predicted_outputs():
+    assert build_suggestion(_make("Approve the budget"))["predicted_outputs"] == []
+
+
+def test_generate_prompt_includes_outputs_block_when_enabled():
+    t = _make("Build the wire")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "build", "goal_line": "A wire.", "specific_steps": ["do it"],
+        "predicted_outputs": [
+            {"name": "wire.py", "type": "code", "confidence": 80},
+            {"name": "runbook.md", "type": "doc", "confidence": 55},
+        ],
+    })
+    prompt = generate_prompt(t, suggestion=s)                  # outputs_in_prompt defaults True
+    assert "## Expected outputs (2 files)" in prompt
+    assert "- wire.py (code, ~80% sure)" in prompt
+    assert "- runbook.md (doc, ~55% sure)" in prompt
+
+
+def test_generate_prompt_omits_outputs_block_when_disabled():
+    # The workspace passes outputs_in_prompt=False (it injects the edited list
+    # client-side), so the server task prompt must NOT bake the list in.
+    t = _make("Build the wire")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "build", "goal_line": "A wire.", "specific_steps": ["do it"],
+        "predicted_outputs": [{"name": "wire.py", "type": "code", "confidence": 80}],
+    })
+    prompt = generate_prompt(t, suggestion=s, outputs_in_prompt=False)
+    assert "Expected outputs" not in prompt
+
+
 def test_generate_prompt_omits_comments_block_when_absent():
     assert "## Recent comments" not in generate_prompt(_make("Reply to Karun"))
 

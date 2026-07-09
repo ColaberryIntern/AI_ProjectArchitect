@@ -872,11 +872,32 @@ async def ops_todo(bc_id: int, request: Request):
     todo = store.get_todo(user.email, bc_id)
     if not todo:
         raise HTTPException(404, f"Todo {bc_id} not in your queue (run /my-day/sync to refresh)")
-    suggestion = suggestions.build_suggestion(todo)
-    prompt = suggestions.generate_prompt(todo, suggestion, persona=getattr(user, "prompt_persona", None))
+    # LLM-enhance (cached per ticket, same cache key as the briefing) so the
+    # workspace shows the same summary + predicted outputs; fall back to the
+    # deterministic recipe when the LLM is unavailable or errors.
+    comments_text = ""
+    suggestion = None
+    try:
+        token, _src = tokens.get_user_token(user.email)
+        comments_text = bc_comments.fetch_recent_comments(todo, token) if token else ""
+        enhanced = llm_suggest.enhance(user.user_id, todo, comments_text)
+        if enhanced:
+            suggestion = suggestions.merge_llm_suggestion(todo, enhanced)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "workspace enhance failed for todo %s; using deterministic recipe", bc_id, exc_info=True)
+    if suggestion is None:
+        suggestion = suggestions.build_suggestion(todo)
+    # outputs_in_prompt=False: the page injects the operator's EDITED output list
+    # client-side (see workspace.html), so the server task prompt omits the list.
+    prompt = suggestions.generate_prompt(
+        todo, suggestion, comments=comments_text,
+        persona=getattr(user, "prompt_persona", None), outputs_in_prompt=False)
     return request.app.state.templates.TemplateResponse(
         request, "my_day/workspace.html",
         _ctx(request, user, todo=todo, suggestion=suggestion, prompt=prompt,
+             output_types=suggestions.OUTPUT_TYPES,
              personas=personas.PERSONAS,
              active_persona=personas.get(getattr(user, "prompt_persona", None))["id"]),
     )
