@@ -611,6 +611,7 @@ This is a **{action_kind}** task. {one_line}
 ## Deliver, then confirm
 - Aim to complete the deliverable in this session; if you have what you need, produce it in one full attempt before coming back with questions.
 - Save every file you produce or download into the Downloads folder, and attach it to the Basecamp ticket FROM the Downloads folder. Use that same path every time.
+- Every document or file is a REAL EXTERNAL FILE (e.g. .docx, .pdf, .md, .html) created on your machine and saved to the Downloads folder. Do NOT create Basecamp documents: all deliverables are external files attached to the ticket, NEVER authored as Basecamp Docs.
 - When the work is done, state your confidence as a percentage (0-100) that the deliverable is complete and correct.
 - Then ASK before you post anything to Basecamp, send any outbound message, or mark this todo complete. Do not auto-post, auto-send, or auto-close.
 
