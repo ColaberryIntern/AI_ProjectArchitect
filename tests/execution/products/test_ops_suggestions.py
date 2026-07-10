@@ -483,6 +483,30 @@ def test_generate_prompt_includes_qa_block():
     assert "- Run the test suite" in prompt
 
 
+def test_normalize_next_actions_caps_at_three_and_strips():
+    assert S.normalize_next_actions(["a", " b ", "", "c", "d"]) == ["a", "b", "c"]
+    assert S.normalize_next_actions("just one") == ["just one"]
+    assert S.normalize_next_actions(None) == []
+
+
+def test_generate_prompt_includes_ask_me_next_ordered():
+    t = _make("Approve the plan")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "decision", "goal_line": "A call.", "specific_steps": ["decide"],
+        "next_actions": ["Post the decision record to this ticket", "Email Kes the summary", "Schedule a review"],
+    })
+    prompt = generate_prompt(t, suggestion=s)
+    assert "## Ask me next" in prompt
+    assert "1. Post the decision record to this ticket" in prompt
+    assert "3. Schedule a review" in prompt
+    # It sits at the end (after Downloads, before the deliver contract).
+    assert prompt.index("## Downloads") < prompt.index("## Ask me next") < prompt.index("## Deliver, then confirm")
+
+
+def test_generate_prompt_omits_ask_me_next_when_empty():
+    assert "## Ask me next" not in generate_prompt(_make("Reply to Karun"))
+
+
 def test_normalize_qa_coerces_shapes():
     assert S.normalize_qa({"target": "x", "checks": ["a", "", "b"]}) == {"target": "x", "checks": ["a", "b"]}
     assert S.normalize_qa(["a", "b"]) == {"target": "", "checks": ["a", "b"]}
