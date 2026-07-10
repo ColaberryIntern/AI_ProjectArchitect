@@ -32,7 +32,8 @@ from .store import OpsTodo
 logger = logging.getLogger(__name__)
 
 MODEL = os.environ.get("OPS_LLM_MODEL", "gpt-4o")
-MAX_TOKENS = int(os.environ.get("OPS_LLM_MAX_TOKENS", "2800"))
+# Headroom for a longer predicted_outputs list (we bias toward more files).
+MAX_TOKENS = int(os.environ.get("OPS_LLM_MAX_TOKENS", "3200"))
 CACHE_FILENAME = "_llm_cache.json"
 
 _client = None
@@ -102,7 +103,9 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # v9 = adds qa_process (dynamic per-artifact verification) + more output types
 # (html/folder/diagram/…); forces a cache refresh.
 # v10 = decisions/approvals predict a distributable decision record; refresh.
-PROMPT_VERSION = "v10"
+# v11 = bias predicted_outputs toward MORE files (one per item + supporting
+# artifacts) so multi-part deliverables aren't under-listed; refresh.
+PROMPT_VERSION = "v11"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -180,7 +183,7 @@ If the ticket is genuinely too vague to be specific, the steps must be:
   - "Ask <specific named person> in BC reply: '<specific question>'"
   - Not "Clarify the requirements".
 
-PREDICTED OUTPUTS. List EVERY file the finished work hands back, one row each. There may be one or SEVERAL (e.g. a .pptx deck AND a .docx handout; or code plus a .md runbook). For each: name = best-guess filename with its extension; type = the best category from: code, doc (.docx/.md), pdf, slides (.pptx), sheet (.xlsx/.csv), image, html, diagram (.mmd/.drawio), notebook (.ipynb), video, audio, archive (.zip), config (.yaml/.env), dataset, data (.json/.xml), email, text, folder, other; confidence = 0-100, how sure THIS specific file is needed. If the finished work has MORE THAN ONE visual (image / html / diagram / slides), group them into a single 'folder' output instead of loose files. For any .html output, the file follows the Colaberry HTML dashboard standard. A DECISION or APPROVAL still hands back a distributable decision record (a doc, e.g. decision-record.md) — include it as an output. Only a task that genuinely saves nothing (e.g. a bare scheduling ping) returns an empty list.
+PREDICTED OUTPUTS. List EVERY file the finished work hands back, one row each, and ERR ON THE SIDE OF MORE files, not fewer — it is better to over-list and let the operator trim than to under-list. BREAK A MULTI-PART DELIVERABLE INTO ITS COMPONENT FILES: if the task names or implies multiple items (e.g. 'five video concepts', 'a script per video', 'per-week questions', 'one pager per persona'), predict a SEPARATE file for EACH item. Also add the natural SUPPORTING artifacts around the main deliverable — e.g. a set of concepts → one doc per concept PLUS a production plan PLUS a one-page summary; code → the code PLUS tests PLUS a runbook; a deck → the deck PLUS speaker notes. For each: name = best-guess filename with its extension; type = the best category from: code, doc (.docx/.md), pdf, slides (.pptx), sheet (.xlsx/.csv), image, html, diagram (.mmd/.drawio), notebook (.ipynb), video, audio, archive (.zip), config (.yaml/.env), dataset, data (.json/.xml), email, text, folder, other; confidence = 0-100, how sure THIS specific file is needed (a supporting artifact can carry lower confidence). If the finished work has MORE THAN ONE visual (image / html / diagram / slides), OR you predict several related files, group them under a named 'folder'. For any .html output, the file follows the Colaberry HTML dashboard standard. A DECISION or APPROVAL still hands back a distributable decision record (a doc, e.g. decision-record.md). Only a task that genuinely saves nothing (e.g. a bare scheduling ping) returns an empty list.
 
 QA PROCESS. When the ticket is an APPROVAL, a REVIEW, or a build/change that must be validated before it ships: first GET the artifact being approved, then give the EXACT check to run for THAT artifact's type — never generic. Tune the checks to the type: code → run the test suite + lint + a build, exercise the changed path on real input; html → open in a browser, confirm it renders and is responsive (320 / 768 / 1200px), run an accessibility pass (contrast, alt text, focus order, keyboard) and confirm it follows the Colaberry HTML dashboard standard; document → proofread + fact-check every claim against its source; design / UI → audit against UI/UX heuristics (visual hierarchy, consistency, affordances, feedback, error/empty states); research → verify each source and look for conflicting evidence (deep-research rigor); data → validate the schema, row counts, and nulls. Put the artifact in qa_process.target and the concrete steps in qa_process.checks. Leave checks empty ONLY when there is genuinely nothing to verify.
 

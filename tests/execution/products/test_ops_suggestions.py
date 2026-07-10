@@ -460,6 +460,14 @@ def test_downloads_block_folder_rule_for_multiple_visuals():
     assert S.HTML_FORMAT_URL in block
 
 
+def test_downloads_block_folder_rule_for_many_files():
+    # 4+ non-visual files => still suggest grouping under a folder.
+    block = S._downloads_block([
+        {"name": f"concept_{i}.docx", "type": "doc", "confidence": 70} for i in range(4)
+    ])
+    assert "4 files: group related ones under a named folder" in block
+
+
 def test_generate_prompt_includes_qa_block():
     t = _make("Approve the resolver change")
     s = S.merge_llm_suggestion(t, {
