@@ -207,6 +207,26 @@ def _qa_block(qa) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def normalize_next_actions(raw) -> list:
+    """Up to 3 follow-up actions to offer, order preserved (most-confident first).
+    Tolerant of a bare string; blanks dropped; capped at 3."""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()][:3]
+
+
+def _next_actions_block(actions) -> str:
+    """The '## Ask me next' section: 3 follow-ups to offer, most-confident first."""
+    if not actions:
+        return ""
+    lines = ["## Ask me next",
+             "When the deliverable is done, ask me whether to do any of these (most confident first):"]
+    lines += [f"{i}. {a}" for i, a in enumerate(actions, 1)]
+    return "\n".join(lines) + "\n\n"
+
+
 # ── Action recipes (regex-keyed, ordered most-specific-first) ──────────
 
 _RECIPES = [
@@ -526,6 +546,7 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
         # deterministic (no-LLM) path; other kinds predict nothing until the LLM fills it.
         "predicted_outputs": _ensure_decision_record(recipe["kind"], []),
         "qa_process": {"target": "", "checks": []},  # LLM fills the verification process
+        "next_actions": [],  # LLM fills up to 3 follow-ups to offer
     }
 
 
@@ -572,6 +593,7 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
     s["predicted_outputs"] = _ensure_decision_record(
         s["action_kind"], normalize_outputs(enhanced.get("predicted_outputs")))
     s["qa_process"] = normalize_qa(enhanced.get("qa_process"))
+    s["next_actions"] = normalize_next_actions(enhanced.get("next_actions"))
     return s
 
 
@@ -608,7 +630,7 @@ This is a **{action_kind}** task. {one_line}
 
 ## Downloads
 {downloads_block}
-## Deliver, then confirm
+{next_actions_block}## Deliver, then confirm
 - Aim to complete the deliverable in this session; if you have what you need, produce it in one full attempt before coming back with questions.
 - Save every file you produce or download into the Downloads folder, and attach it to the Basecamp ticket FROM the Downloads folder. Use that same path every time.
 - Every document or file is a REAL EXTERNAL FILE (e.g. .docx, .pdf, .md, .html) created on your machine and saved to the Downloads folder. Do NOT create Basecamp documents: all deliverables are external files attached to the ticket, NEVER authored as Basecamp Docs.
@@ -726,11 +748,13 @@ def generate_prompt(
     downloads_block = (_downloads_block(s.get("predicted_outputs"), s.get("action_kind", ""))
                        if outputs_in_prompt else "[[DOWNLOADS]]\n")
     qa_block = _qa_block(s.get("qa_process"))
+    next_actions_block = _next_actions_block(s.get("next_actions"))
 
     return _PROMPT_TEMPLATE.format(
         title=todo.title,
         summary_block=summary_block,
         downloads_block=downloads_block,
+        next_actions_block=next_actions_block,
         qa_block=qa_block,
         project_name=todo.bc_project_name,
         project_url=todo.project_url or "(no URL)",
