@@ -84,9 +84,9 @@ def test_generate_prompt_includes_title_and_steps():
     assert "1." in prompt
 
 
-def test_generate_prompt_is_summary_downloads_details_ordered():
-    # The prompt must lead with the point: title, then Summary (what you hand
-    # back), then Downloads (files early), then the heavy Details only AFTER.
+def test_generate_prompt_is_details_then_summary_downloads_ordered():
+    # Operator preference: lead with the Details (the work), then recap the
+    # Summary and Downloads (files) at the END, before the deliver contract.
     t = _make("Approve the budget", desc="Need sign-off by Friday")
     prompt = generate_prompt(t)
     assert prompt.startswith("# Approve the budget")
@@ -94,8 +94,8 @@ def test_generate_prompt_is_summary_downloads_details_ordered():
     assert "You hand back:" in prompt
     # Deliverable text reaches the reader.
     assert "verdict" in prompt.lower()
-    # Structure order: Summary -> Downloads -> Details.
-    assert prompt.index("## Summary") < prompt.index("## Downloads") < prompt.index("## Details")
+    # Structure order: Details -> Summary -> Downloads.
+    assert prompt.index("## Details") < prompt.index("## Summary") < prompt.index("## Downloads")
     # The old process-first opener is gone.
     assert "You're helping me work through" not in prompt
 
@@ -363,15 +363,16 @@ def test_generate_prompt_leads_with_summary_when_present():
     })
     prompt = generate_prompt(t, suggestion=s)
     assert "This ticket wires inbox matching" in prompt
-    assert prompt.index("This ticket wires inbox matching") < prompt.index("This is a **build** task")
+    # The story now recaps at the END, after the Details opener (action line).
+    assert prompt.index("This ticket wires inbox matching") > prompt.index("This is a **build** task")
 
 
 def test_generate_prompt_without_summary_still_has_summary_section():
-    # No LLM story (deterministic fallback) => the Summary section is still there,
-    # leading with what you hand back (no empty gap, action line moves to Details).
+    # No LLM story (deterministic fallback) => the prompt opens on Details, and the
+    # Summary section (what you hand back) still appears near the end.
     prompt = generate_prompt(_make("Approve the budget"))
-    assert prompt.startswith("# Approve the budget\n\n## Summary\n**You hand back:**")
-    assert "This is a **decision** task" in prompt   # now in Details
+    assert prompt.startswith("# Approve the budget\n\n## Details")
+    assert "## Summary\n**You hand back:**" in prompt
 
 
 def test_generate_prompt_has_delivery_contract():

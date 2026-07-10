@@ -575,18 +575,13 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
     return s
 
 
-# Structure is load-bearing (a test asserts it): SUMMARY (the story + what you
-# hand back) → DOWNLOADS (the files to create early) → DETAILS (everything heavier
-# — context, description, steps, QA, resources, stop, working protocol). Create
-# the files early, elaborate later. Mirrors the workspace's Summary/Downloads/Details.
+# Structure (a test asserts it): DETAILS first (context, description, steps, QA,
+# resources, stop, working protocol), then SUMMARY (the story + what you hand back)
+# and DOWNLOADS (the files) at the END, right before the deliver contract — per
+# operator preference to lead with the work and recap the summary + files last.
 _PROMPT_TEMPLATE = """\
 # {title}
 
-## Summary
-{summary_block}**You hand back:** {deliverable}
-
-## Downloads
-{downloads_block}
 ## Details
 This is a **{action_kind}** task. {one_line}
 
@@ -608,6 +603,11 @@ This is a **{action_kind}** task. {one_line}
 {dependency_block}
 {working_block}
 
+## Summary
+{summary_block}**You hand back:** {deliverable}
+
+## Downloads
+{downloads_block}
 ## Deliver, then confirm
 - Aim to complete the deliverable in this session; if you have what you need, produce it in one full attempt before coming back with questions.
 - Save every file you produce or download into the Downloads folder, and attach it to the Basecamp ticket FROM the Downloads folder. Use that same path every time.
