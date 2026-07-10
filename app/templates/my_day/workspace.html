@@ -110,6 +110,7 @@
        data-task-prompt="{{ prompt }}"
        data-workspace-url="{{ current_session_user.workspace_repo or '' }}"
        data-bc-id="{{ todo.bc_id }}"
+       data-action-kind="{{ suggestion.action_kind }}"
        style="display: none;"></div>
 </div>
 
@@ -312,6 +313,11 @@ function downloadsBody() {
   if (visuals.length > 1) {
     s += 'You have ' + visuals.length + ' visuals: put them together in ONE named folder, not loose files.\n';
   }
+  const builder = document.getElementById('promptBuilder');
+  const kind = (builder && builder.dataset.actionKind) || '';
+  if (MD_DECISION_KINDS.indexOf(kind) !== -1) {
+    s += MD_DECISION_RUBRIC + '\n';
+  }
   if (rows.some(function (o) { return o.type === 'html'; })) {
     s += 'Any .html output follows the Colaberry HTML dashboard standard (self-contained, Mermaid + Chart.js, ' +
          'data-shape -> visual mapping, executive palette, tell the story). Full spec: ' + HTML_FORMAT_URL + '\n';
@@ -415,7 +421,12 @@ function copyWorkspacePrompt() {
     const so = localStorage.getItem('my-day-outputs-' + _bcId);
     if (so) savedOut = JSON.parse(so);
   } catch (e) {}
-  if (Array.isArray(savedOut)) {
+  // Prefer the operator's saved edits ONLY if they contain a real file; a stale
+  // all-blank list (e.g. an unfinished "+ Add output") falls back to the AI
+  // prediction so it isn't hidden.
+  const savedHasFile = Array.isArray(savedOut) &&
+    savedOut.some(function (o) { return o && (o.name || '').trim(); });
+  if (savedHasFile) {
     _outputs = savedOut;
   } else {
     const od = document.getElementById('outData');

@@ -101,7 +101,8 @@ def _save_cache(user_id: str, cache: dict[str, Any]) -> None:
 # in predicted_outputs, not the prose); forces a cache refresh.
 # v9 = adds qa_process (dynamic per-artifact verification) + more output types
 # (html/folder/diagram/…); forces a cache refresh.
-PROMPT_VERSION = "v9"
+# v10 = decisions/approvals predict a distributable decision record; refresh.
+PROMPT_VERSION = "v10"
 
 
 def _cache_key(todo: OpsTodo, comments: str) -> str:
@@ -179,7 +180,7 @@ If the ticket is genuinely too vague to be specific, the steps must be:
   - "Ask <specific named person> in BC reply: '<specific question>'"
   - Not "Clarify the requirements".
 
-PREDICTED OUTPUTS. List EVERY file the finished work hands back, one row each. There may be one or SEVERAL (e.g. a .pptx deck AND a .docx handout; or code plus a .md runbook). For each: name = best-guess filename with its extension; type = the best category from: code, doc (.docx/.md), pdf, slides (.pptx), sheet (.xlsx/.csv), image, html, diagram (.mmd/.drawio), notebook (.ipynb), video, audio, archive (.zip), config (.yaml/.env), dataset, data (.json/.xml), email, text, folder, other; confidence = 0-100, how sure THIS specific file is needed. If the finished work has MORE THAN ONE visual (image / html / diagram / slides), group them into a single 'folder' output instead of loose files. For any .html output, the file follows the Colaberry HTML dashboard standard. If the task produces no file at all (a pure decision, a scheduling), return an empty list.
+PREDICTED OUTPUTS. List EVERY file the finished work hands back, one row each. There may be one or SEVERAL (e.g. a .pptx deck AND a .docx handout; or code plus a .md runbook). For each: name = best-guess filename with its extension; type = the best category from: code, doc (.docx/.md), pdf, slides (.pptx), sheet (.xlsx/.csv), image, html, diagram (.mmd/.drawio), notebook (.ipynb), video, audio, archive (.zip), config (.yaml/.env), dataset, data (.json/.xml), email, text, folder, other; confidence = 0-100, how sure THIS specific file is needed. If the finished work has MORE THAN ONE visual (image / html / diagram / slides), group them into a single 'folder' output instead of loose files. For any .html output, the file follows the Colaberry HTML dashboard standard. A DECISION or APPROVAL still hands back a distributable decision record (a doc, e.g. decision-record.md) — include it as an output. Only a task that genuinely saves nothing (e.g. a bare scheduling ping) returns an empty list.
 
 QA PROCESS. When the ticket is an APPROVAL, a REVIEW, or a build/change that must be validated before it ships: first GET the artifact being approved, then give the EXACT check to run for THAT artifact's type — never generic. Tune the checks to the type: code → run the test suite + lint + a build, exercise the changed path on real input; html → open in a browser, confirm it renders and is responsive (320 / 768 / 1200px), run an accessibility pass (contrast, alt text, focus order, keyboard) and confirm it follows the Colaberry HTML dashboard standard; document → proofread + fact-check every claim against its source; design / UI → audit against UI/UX heuristics (visual hierarchy, consistency, affordances, feedback, error/empty states); research → verify each source and look for conflicting evidence (deep-research rigor); data → validate the schema, row counts, and nulls. Put the artifact in qa_process.target and the concrete steps in qa_process.checks. Leave checks empty ONLY when there is genuinely nothing to verify.
 
