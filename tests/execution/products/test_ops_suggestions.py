@@ -382,6 +382,9 @@ def test_generate_prompt_has_delivery_contract():
     assert "Downloads folder" in prompt
     assert "before you post anything to Basecamp" in prompt
     assert "confidence" in prompt.lower()
+    # Deliverables are external files, never Basecamp Docs.
+    assert "Do NOT create Basecamp documents" in prompt
+    assert "NEVER authored as Basecamp Docs" in prompt
 
 
 # ── predicted outputs (structured, colored, per-file confidence) ─────────────
