@@ -185,6 +185,8 @@ def _downloads_block(outputs, action_kind: str = "") -> str:
     visuals = [o for o in outputs if o["type"] in VISUAL_TYPES]
     if len(visuals) > 1:
         lines.append(f"You have {len(visuals)} visuals: put them together in ONE named folder, not loose files.")
+    elif n >= 4:
+        lines.append(f"You have {n} files: group related ones under a named folder so the deliverable stays organized.")
     if action_kind in DECISION_KINDS:
         lines.append(DECISION_RECORD_RULE)
     if any(o["type"] == "html" for o in outputs):

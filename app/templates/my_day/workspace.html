@@ -312,6 +312,8 @@ function downloadsBody() {
   const visuals = rows.filter(function (o) { return MD_VISUAL_TYPES.indexOf(o.type) !== -1; });
   if (visuals.length > 1) {
     s += 'You have ' + visuals.length + ' visuals: put them together in ONE named folder, not loose files.\n';
+  } else if (rows.length >= 4) {
+    s += 'You have ' + rows.length + ' files: group related ones under a named folder so the deliverable stays organized.\n';
   }
   const builder = document.getElementById('promptBuilder');
   const kind = (builder && builder.dataset.actionKind) || '';
