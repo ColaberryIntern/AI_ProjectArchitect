@@ -507,6 +507,14 @@ const MD_OUTPUT_TYPES = [
 // and the Colaberry HTML dashboard standard URL (both mirror suggestions.py).
 const MD_VISUAL_TYPES = ['image', 'html', 'diagram', 'slides'];
 const HTML_FORMAT_URL = 'https://app.basecamp.com/3945211/buckets/7463955/todos/10039770075';
+// Decision/approval tickets always hand back a decision record; this rubric
+// mirrors suggestions.DECISION_RECORD_RULE so the workspace prompt matches.
+const MD_DECISION_KINDS = ['decision'];
+const MD_DECISION_RUBRIC = 'The decision record follows the Colaberry decision rubric: ' +
+  '(1) DECISION - the verdict in one line; (2) CONTEXT - who needs it, what is being decided, and why now; ' +
+  '(3) OPTIONS - each option considered with its trade-offs (cost / risk / effort); (4) RATIONALE - why this ' +
+  'option won; (5) CONSEQUENCES & NEXT ACTIONS - what happens now, the owner, and the date; (6) SIGN-OFF - ' +
+  'who approves. One page, decision-first, ready to distribute.';
 
 function _mdSetupBlock() {
   return (

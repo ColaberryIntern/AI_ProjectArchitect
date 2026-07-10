@@ -419,10 +419,6 @@ def test_merge_llm_suggestion_carries_predicted_outputs():
     assert s["predicted_outputs"] == [{"name": "wire.py", "type": "code", "confidence": 80}]
 
 
-def test_build_suggestion_has_empty_predicted_outputs():
-    assert build_suggestion(_make("Approve the budget"))["predicted_outputs"] == []
-
-
 def test_generate_prompt_downloads_section_lists_files_when_enabled():
     t = _make("Build the wire")
     s = S.merge_llm_suggestion(t, {
@@ -489,6 +485,45 @@ def test_normalize_outputs_supports_new_types():
         {"name": "assets/", "type": "folder"},
     ])
     assert [o["type"] for o in out] == ["html", "diagram", "folder"]
+
+
+# ── decision/approval tickets always hand back a decision record ─────────────
+
+def test_decision_build_suggestion_predicts_a_decision_record():
+    s = build_suggestion(_make("Approve the budget"))
+    assert s["action_kind"] == "decision"
+    assert s["predicted_outputs"] == [{"name": "decision-record.md", "type": "doc", "confidence": 90}]
+
+
+def test_non_decision_predicts_no_record():
+    assert build_suggestion(_make("Reply to Karun"))["predicted_outputs"] == []
+
+
+def test_ensure_decision_record_does_not_duplicate_an_existing_doc():
+    existing = [{"name": "memo.docx", "type": "doc", "confidence": 70}]
+    assert S._ensure_decision_record("decision", existing) == existing
+
+
+def test_merge_decision_gets_record_even_when_llm_omits_outputs():
+    t = _make("Approve the vendor")
+    s = S.merge_llm_suggestion(t, {
+        "action_kind": "decision", "goal_line": "A vendor decision.",
+        "specific_steps": ["choose"], "predicted_outputs": [],
+    })
+    assert any(o["name"] == "decision-record.md" for o in s["predicted_outputs"])
+
+
+def test_downloads_block_appends_decision_rubric_for_decisions():
+    block = S._downloads_block(
+        [{"name": "decision-record.md", "type": "doc", "confidence": 90}], action_kind="decision")
+    assert "Colaberry decision rubric" in block
+    assert "SIGN-OFF" in block
+
+
+def test_generate_prompt_decision_downloads_has_record_and_rubric():
+    prompt = generate_prompt(_make("Approve the budget"))
+    assert "decision-record.md (doc, ~90% sure)" in prompt
+    assert "Colaberry decision rubric" in prompt
 
 
 def test_generate_prompt_omits_comments_block_when_absent():

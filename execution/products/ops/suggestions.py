@@ -64,6 +64,17 @@ VISUAL_TYPES = {"image", "html", "diagram", "slides"}
 # The Colaberry HTML house standard (fetched from Basecamp). Any .html output
 # follows this; the pasted Claude Code session can read the full master prompt
 # at the URL via the Basecamp MCP.
+# Decision / approval tickets always hand back a distributable decision record.
+DECISION_KINDS = {"decision"}
+_RECORD_TYPES = {"doc", "pdf", "html"}
+DECISION_RECORD_RULE = (
+    "The decision record follows the Colaberry decision rubric: (1) DECISION — the verdict in one line; "
+    "(2) CONTEXT — who needs it, what is being decided, and why now; (3) OPTIONS — each option considered "
+    "with its trade-offs (cost / risk / effort); (4) RATIONALE — why this option won; (5) CONSEQUENCES & "
+    "NEXT ACTIONS — what happens now, the owner, and the date; (6) SIGN-OFF — who approves. One page, "
+    "decision-first, ready to distribute."
+)
+
 HTML_FORMAT_URL = "https://app.basecamp.com/3945211/buckets/7463955/todos/10039770075"
 HTML_FORMAT_RULE = (
     "Any .html output follows the Colaberry HTML dashboard standard: ONE self-contained .html "
@@ -132,6 +143,17 @@ def normalize_outputs(raw) -> list:
     return out
 
 
+def _ensure_decision_record(action_kind: str, outputs: list) -> list:
+    """A decision/approval always hands back a distributable decision record. If
+    the model didn't already predict a document output (doc/pdf/html), prepend a
+    'decision-record.md' so the Downloads list is never empty for a decision."""
+    if action_kind not in DECISION_KINDS:
+        return outputs
+    if any(o.get("type") in _RECORD_TYPES for o in outputs):
+        return outputs
+    return [{"name": "decision-record.md", "type": "doc", "confidence": 90}] + list(outputs)
+
+
 def normalize_qa(raw) -> dict:
     """Coerce the model's qa_process into {target, checks}. Checks is a clean list
     of non-empty strings; target is a trimmed string. Tolerant of a bare list/str."""
@@ -148,9 +170,10 @@ def normalize_qa(raw) -> dict:
     return {"target": str(raw.get("target") or raw.get("artifact") or "").strip(), "checks": checks}
 
 
-def _downloads_block(outputs) -> str:
-    """The '## Downloads' body: the files to create early, plus the folder rule
-    and the HTML standard when relevant. Empty-ish note when there are no files."""
+def _downloads_block(outputs, action_kind: str = "") -> str:
+    """The '## Downloads' body: the files to create early, plus the folder rule,
+    the decision-record rubric, and the HTML standard when relevant. Empty-ish
+    note when there are no files."""
     if not outputs:
         return "No file downloads expected for this task.\n"
     n = len(outputs)
@@ -162,6 +185,8 @@ def _downloads_block(outputs) -> str:
     visuals = [o for o in outputs if o["type"] in VISUAL_TYPES]
     if len(visuals) > 1:
         lines.append(f"You have {len(visuals)} visuals: put them together in ONE named folder, not loose files.")
+    if action_kind in DECISION_KINDS:
+        lines.append(DECISION_RECORD_RULE)
     if any(o["type"] == "html" for o in outputs):
         lines.append(HTML_FORMAT_RULE)
     return "\n".join(lines) + "\n"
@@ -495,7 +520,9 @@ def build_suggestion(todo: OpsTodo) -> dict[str, Any]:
         "stop_conditions": list(recipe["stop_conditions"]),
         "urgency_summary": _urgency_summary(todo),
         "owner_note": owner_note,
-        "predicted_outputs": [],  # deterministic path predicts no files; the LLM fills this
+        # A decision/approval always hands back a decision record, even on the
+        # deterministic (no-LLM) path; other kinds predict nothing until the LLM fills it.
+        "predicted_outputs": _ensure_decision_record(recipe["kind"], []),
         "qa_process": {"target": "", "checks": []},  # LLM fills the verification process
     }
 
@@ -540,7 +567,8 @@ def merge_llm_suggestion(todo: OpsTodo, enhanced: dict[str, Any]) -> dict[str, A
         s["stop_conditions"] = [str(x) for x in stops]
 
     s["summary_paragraph"] = (enhanced.get("summary_paragraph") or "").strip()
-    s["predicted_outputs"] = normalize_outputs(enhanced.get("predicted_outputs"))
+    s["predicted_outputs"] = _ensure_decision_record(
+        s["action_kind"], normalize_outputs(enhanced.get("predicted_outputs")))
     s["qa_process"] = normalize_qa(enhanced.get("qa_process"))
     return s
 
@@ -692,7 +720,8 @@ def generate_prompt(
     # ## Downloads body: on the workspace (outputs_in_prompt=False) we emit a
     # [[DOWNLOADS]] marker the page fills client-side from the operator's EDITED
     # list; everywhere else the AI-predicted list (+ folder/HTML rules) is baked in.
-    downloads_block = _downloads_block(s.get("predicted_outputs")) if outputs_in_prompt else "[[DOWNLOADS]]\n"
+    downloads_block = (_downloads_block(s.get("predicted_outputs"), s.get("action_kind", ""))
+                       if outputs_in_prompt else "[[DOWNLOADS]]\n")
     qa_block = _qa_block(s.get("qa_process"))
 
     return _PROMPT_TEMPLATE.format(
