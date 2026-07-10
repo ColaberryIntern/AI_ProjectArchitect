@@ -272,6 +272,35 @@ operator-memory facts ("Ali prefers X", "we use the Y convention").
 BC Docs is for longer artifacts that other people / projects need
 to see, not for personal-memory snippets.
 
+### 9b. Real FILE vs. Basecamp Document -- pick the right one
+
+`colaberry_save_doc_to_bc` creates a rich-text Basecamp *Document* (a web
+page in Docs & Files). That's the right home for text writeups other
+Claude sessions read back via the BC API.
+
+But when the operator wants an actual, downloadable FILE on Basecamp --
+a PDF, a spreadsheet, an image, a zip, or any artifact they built or
+staged locally (e.g. "the deliverable I just put in my Downloads
+folder") -- do NOT use `save_doc_to_bc` (it would flatten the file into
+reformatted rich text). Use the native-file tools, which produce a real
+attachment:
+
+  - `colaberry_attach_file_to_ticket` -- puts the file on a ticket
+    (as a comment attachment). This is "attach the file to the ticket".
+  - `colaberry_upload_file_to_project` -- puts the file in the project's
+    Docs & Files as a native Upload (no ticket needed).
+
+This server is REMOTE and cannot read the operator's disk, so you must
+pass the file's bytes yourself as `content_base64`: read the local file
+and base64-encode it first (`base64 <file>` on Mac/Linux, or
+`[Convert]::ToBase64String([IO.File]::ReadAllBytes('<file>'))` in
+PowerShell), then pass that string plus the `filename` (with extension,
+so the file type is inferred). Keep files under ~10 MB.
+
+Rule of thumb: if the operator would expect to click and download the
+exact file, use the native-file tools. If they just need the text/content
+to live at a readable BC URL, use `save_doc_to_bc`.
+
 ## 10. Reading existing tickets + comment threads
 
 When the user references an existing Basecamp ticket -- by URL

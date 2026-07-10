@@ -24,10 +24,14 @@ BC membership before letting them target a project.
 """
 from __future__ import annotations
 
+import base64
+import html
 import json
+import mimetypes
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -1727,6 +1731,310 @@ TOOLS.append(Tool(
         "required": ["title", "content"],
     },
     handler=_tool_save_doc_to_bc,
+))
+
+
+# ── Native file uploads (real BC attachments, NOT rich-text Documents) ──
+#
+# This server is REMOTE (advisor.colaberry.ai) — it cannot read the operator's
+# local disk. So the file bytes travel in the call as base64: the operator's
+# Claude Code reads the local file (e.g. a PDF it just built in Downloads) and
+# passes `content_base64`; the server decodes and pushes it to Basecamp via BC's
+# two-step attachment flow (POST /attachments.json -> attachable_sgid, then
+# reference the sgid in a ticket comment or a vault Upload). Unlike
+# save_doc_to_bc, the result is a genuine downloadable file, not a Document.
+
+# Cap the decoded payload so a giant base64 arg can't blow up the JSON-RPC
+# request. Deliverables (PDFs, docs) are well under this; override via env.
+_MAX_UPLOAD_BYTES = int(os.environ.get("BC_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+
+
+def _decode_upload_content(content_base64: str, filename: str):
+    """Validate + decode a base64 file payload. Returns (data, content_type) on
+    success, or an {ok: False, error} dict the caller should return as-is."""
+    if not content_base64:
+        return {"ok": False, "error": "content_base64 is required (base64-encoded file bytes)"}
+    try:
+        data = base64.b64decode(content_base64, validate=False)
+    except (ValueError, TypeError) as e:
+        return {"ok": False, "error": f"content_base64 is not valid base64: {e}"}
+    if not data:
+        return {"ok": False, "error": "decoded file is empty"}
+    if len(data) > _MAX_UPLOAD_BYTES:
+        return {"ok": False, "error": (
+            f"file too large: {len(data)} bytes exceeds the {_MAX_UPLOAD_BYTES}-byte "
+            "limit for MCP uploads (set BC_MAX_UPLOAD_BYTES to raise it)")}
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return data, content_type
+
+
+def _bc_create_attachment(name: str, data: bytes, content_type: str, user=None,
+                          *, _retries_left: int = 3, _auth_retried: bool = False) -> str:
+    """Step 1 of BC's attachment flow: upload raw bytes -> return attachable_sgid.
+
+        POST /attachments.json?name=<name>   (raw binary body, file Content-Type)
+
+    Mirrors _bc_request's 429/503 backoff + single-401 self-heal, but sends the
+    file's own Content-Type and the raw body — _bc_request is JSON-only and
+    json.dumps would corrupt binary, and the endpoint rejects application/json.
+    """
+    import time as _t
+    url = (f"https://3.basecampapi.com/{_bc_account()}/attachments.json"
+           f"?name={urllib.parse.quote(name)}")
+    req = urllib.request.Request(
+        url, method="POST", data=data,
+        headers={
+            "Authorization": f"Bearer {_bc_token(user)}",
+            "Content-Type": content_type,
+            "Content-Length": str(len(data)),
+            "Accept": "application/json",
+            "User-Agent": USER_AGENT,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            body = r.read()
+        parsed = json.loads(body) if body else {}
+    except urllib.error.HTTPError as e:
+        if e.code in (429, 503) and _retries_left > 0:
+            wait_s = 5
+            try:
+                ra = e.headers.get("Retry-After") if e.headers else None
+                if ra:
+                    wait_s = max(1, min(int(float(ra)), 30))
+            except Exception:
+                pass
+            attempt = 4 - _retries_left
+            _t.sleep(max(wait_s, attempt * 5))
+            return _bc_create_attachment(name, data, content_type, user,
+                                         _retries_left=_retries_left - 1,
+                                         _auth_retried=_auth_retried)
+        if e.code == 401 and not _auth_retried:
+            _invalidate_bc_token_caches(user)
+            return _bc_create_attachment(name, data, content_type, user,
+                                         _retries_left=_retries_left,
+                                         _auth_retried=True)
+        msg = ""
+        try:
+            msg = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            pass
+        raise RuntimeError(f"BC POST attachments -> HTTP {e.code} {e.reason}: {msg}") from e
+    sgid = parsed.get("attachable_sgid") if isinstance(parsed, dict) else None
+    if not sgid:
+        raise RuntimeError(f"BC attachment upload returned no sgid: {str(parsed)[:200]}")
+    return sgid
+
+
+def _tool_attach_file_to_ticket(user, args: dict) -> dict:
+    """Upload a local file and attach it to a BC ticket as a NATIVE file.
+
+    The operator's Claude Code passes the file's bytes as `content_base64`
+    (this server can't reach their local disk). Two BC calls: upload the bytes
+    for an attachable_sgid, then post a comment on the ticket that embeds the
+    file via <bc-attachment>. The comment carries the operator's attribution
+    and authorship shows the operator's real BC identity (their OAuth grant).
+
+    Returns { ok, filename, bytes, comment_id, ticket_url }.
+    """
+    filename = (args.get("filename") or "").strip()
+    if not filename:
+        return {"ok": False, "error": "filename is required"}
+    try:
+        ticket_id = int(args.get("ticket_id") or 0)
+    except (TypeError, ValueError):
+        ticket_id = 0
+    if not ticket_id:
+        return {"ok": False, "error": (
+            "ticket_id is required. To add a file to a project's Docs & Files "
+            "without a ticket, use colaberry_upload_file_to_project instead.")}
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        anchor = _resolve_default_anchor(user)
+        bc_project_id = anchor.get("bc_project_id") or 0
+        if not bc_project_id:
+            return {"ok": False, "error": "bc_project_id required and no personal anchor configured"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
+
+    decoded = _decode_upload_content(args.get("content_base64") or "", filename)
+    if isinstance(decoded, dict):
+        return decoded
+    data, content_type = decoded
+
+    try:
+        sgid = _bc_create_attachment(filename, data, content_type, user)
+    except RuntimeError as e:
+        return {"ok": False, "error": "attachment_upload_failed", "detail": str(e)[:200]}
+
+    safe_name = html.escape(filename, quote=True)
+    caption = (args.get("comment_html") or "").strip() or f"📎 Attached file: {safe_name}"
+    body = (f'{caption}<br>'
+            f'<bc-attachment sgid="{sgid}" caption="{safe_name}"></bc-attachment>')
+    try:
+        r = _bc_request(
+            "POST",
+            f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/recordings/{ticket_id}/comments.json",
+            payload={"content": _with_attribution(user, body)},
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "comment_post_failed", "detail": str(e)[:200],
+                "note": "file uploaded to BC but attaching it to the ticket comment failed"}
+    return {
+        "ok": True,
+        "filename": filename,
+        "bytes": len(data),
+        "comment_id": r.get("id") if isinstance(r, dict) else None,
+        "bc_project_id": bc_project_id,
+        "ticket_id": ticket_id,
+        "ticket_url": f"https://3.basecamp.com/{_bc_account()}/buckets/{bc_project_id}/todos/{ticket_id}",
+        "attachment_kind": "native_file",
+    }
+
+
+def _tool_upload_file_to_project(user, args: dict) -> dict:
+    """Upload a local file into a project's Docs & Files as a NATIVE Upload.
+
+    Like attach_file_to_ticket but the file lands in Docs & Files rather than on
+    a ticket. Bytes arrive as `content_base64`. Resolves the project's vault the
+    same way save_doc_to_bc does, then POSTs an Upload referencing the sgid.
+
+    Returns { ok, filename, bytes, upload_id, upload_url, bc_project_id }.
+    """
+    filename = (args.get("filename") or "").strip()
+    if not filename:
+        return {"ok": False, "error": "filename is required"}
+    try:
+        bc_project_id = int(args.get("bc_project_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bc_project_id must be a positive integer"}
+    if not bc_project_id:
+        anchor = _resolve_default_anchor(user)
+        bc_project_id = anchor.get("bc_project_id") or 0
+        if not bc_project_id:
+            return {"ok": False, "error": "bc_project_id required and no personal anchor configured"}
+    acct_err = _account_id_as_bucket_error(bc_project_id)
+    if acct_err:
+        return acct_err
+
+    decoded = _decode_upload_content(args.get("content_base64") or "", filename)
+    if isinstance(decoded, dict):
+        return decoded
+    data, content_type = decoded
+
+    # Resolve the project's vault uploads_url (same dock walk as save_doc_to_bc).
+    try:
+        proj = _bc_request(
+            "GET",
+            f"https://3.basecampapi.com/{_bc_account()}/projects/{bc_project_id}.json",
+            user=user,
+        )
+    except RuntimeError as e:
+        return {"ok": False, "error": "project_unreachable", "detail": str(e)[:200]}
+    vault_url = ""
+    for dock in proj.get("dock", []) or []:
+        if dock.get("name") == "vault":
+            vault_url = dock.get("url") or ""
+            break
+    if not vault_url:
+        return {"ok": False, "error": "project_has_no_vault"}
+    try:
+        vault = _bc_request("GET", vault_url, user=user)
+    except RuntimeError as e:
+        return {"ok": False, "error": "vault_unreachable", "detail": str(e)[:200]}
+    uploads_url = vault.get("uploads_url") or ""
+    if not uploads_url:
+        return {"ok": False, "error": "vault_missing_uploads_url"}
+
+    try:
+        sgid = _bc_create_attachment(filename, data, content_type, user)
+    except RuntimeError as e:
+        return {"ok": False, "error": "attachment_upload_failed", "detail": str(e)[:200]}
+
+    base_name = filename.rsplit(".", 1)[0] if "." in filename else filename
+    payload = {"attachable_sgid": sgid, "base_name": base_name}
+    desc = (args.get("description_html") or "").strip()
+    if desc:
+        payload["description"] = desc
+    try:
+        up = _bc_request("POST", uploads_url, payload=payload, user=user)
+    except RuntimeError as e:
+        return {"ok": False, "error": "create_upload_failed", "detail": str(e)[:200]}
+    return {
+        "ok": True,
+        "filename": filename,
+        "bytes": len(data),
+        "upload_id": up.get("id") if isinstance(up, dict) else None,
+        "upload_url": up.get("app_url") if isinstance(up, dict) else None,
+        "bc_project_id": bc_project_id,
+        "attachment_kind": "native_file",
+    }
+
+
+TOOLS.append(Tool(
+    name="colaberry_attach_file_to_ticket",
+    description=(
+        "Attach a LOCAL file (e.g. a PDF you just built in the Downloads folder) "
+        "to a Basecamp ticket as a REAL, downloadable file attachment — NOT a "
+        "rich-text Basecamp Document. Use this, not colaberry_save_doc_to_bc, "
+        "whenever the operator wants an actual file on the ticket. You MUST pass "
+        "the file's bytes as `content_base64` (this server is remote and cannot "
+        "read the operator's disk): read the local file and base64-encode it "
+        "first (e.g. `base64 <file>` on Mac/Linux, or "
+        "`[Convert]::ToBase64String([IO.File]::ReadAllBytes('<file>'))` in "
+        "PowerShell). The file is uploaded to Basecamp and embedded in a comment "
+        "on the ticket."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "filename": {"type": "string",
+                         "description": "File name WITH extension, e.g. 'design-spec.pdf'. Drives the MIME type and the caption."},
+            "content_base64": {"type": "string",
+                               "description": "Base64 of the raw file bytes. Required. Max ~10 MB decoded."},
+            "ticket_id": {"type": "integer",
+                          "description": "The BC todo/ticket id to attach the file to. Required."},
+            "bc_project_id": {"type": "integer",
+                              "description": "Project (bucket) the ticket lives in. Defaults to the operator's personal project."},
+            "comment_html": {"type": "string",
+                             "description": "Optional note shown above the attached file (BC rich-text). Defaults to a short caption."},
+        },
+        "required": ["filename", "content_base64", "ticket_id"],
+    },
+    handler=_tool_attach_file_to_ticket,
+))
+
+
+TOOLS.append(Tool(
+    name="colaberry_upload_file_to_project",
+    description=(
+        "Upload a LOCAL file into a Basecamp project's Docs & Files as a REAL "
+        "file (a native Upload), NOT a rich-text Document. Use this when the file "
+        "belongs in Docs & Files rather than on a specific ticket. As with "
+        "colaberry_attach_file_to_ticket, pass the file's bytes as "
+        "`content_base64` (base64-encode the local file first). The project's "
+        "root vault is resolved automatically."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "filename": {"type": "string",
+                         "description": "File name WITH extension, e.g. 'report.pdf'."},
+            "content_base64": {"type": "string",
+                               "description": "Base64 of the raw file bytes. Required. Max ~10 MB decoded."},
+            "bc_project_id": {"type": "integer",
+                              "description": "Project (bucket) to upload into. Defaults to the operator's personal project."},
+            "description_html": {"type": "string",
+                                 "description": "Optional caption/description for the Upload (BC rich-text)."},
+        },
+        "required": ["filename", "content_base64"],
+    },
+    handler=_tool_upload_file_to_project,
 ))
 
 
