@@ -441,6 +441,34 @@ def _tool_list_project_todolists(user, args: dict) -> dict:
     }
 
 
+def _assignment_fields(user, bc_project_id, args: dict) -> dict:
+    """Optional ``due_on`` + ``assignee_ids`` for a created todo.
+
+    - ``due_on``: ISO date string (``YYYY-MM-DD``), passed straight through.
+    - ``assignee_ids``: explicit BC person ids (list of ints).
+    - ``assign_to_me``: resolve the operator's BC person id in this project.
+
+    Lets ``create_ticket`` match the deep-plan publisher, where every build task
+    is **assigned** and **due-dated** (My Day drops todos with neither).
+    """
+    extra: dict = {}
+    due_on = str(args.get("due_on") or "").strip()
+    if due_on:
+        extra["due_on"] = due_on
+    ids = [int(i) for i in (args.get("assignee_ids") or []) if str(i).strip().lstrip("-").isdigit()]
+    if args.get("assign_to_me") and bc_project_id:
+        try:
+            from execution.advisory.basecamp_build_writer import resolve_operator_bc_person_id
+            pid = resolve_operator_bc_person_id(user, int(bc_project_id))
+            if pid and pid not in ids:
+                ids.append(pid)
+        except Exception:  # noqa: BLE001 — assignment is best-effort, never block ticket creation
+            pass
+    if ids:
+        extra["assignee_ids"] = ids
+    return extra
+
+
 def _tool_create_ticket(user, args: dict) -> dict:
     """Create a BC todo. Defaults to the user's personal project + a
     categorized todolist when bc_project_id/list_id aren't supplied --
@@ -542,11 +570,12 @@ def _tool_create_ticket(user, args: dict) -> dict:
                     "personal BC anchor isn't set. Visit /admin/users/<you>/ai-clone "
                     "or ask an admin to repair it.'"
                 )}
+    extra = _assignment_fields(user, bc_project_id, args)
     try:
         body = _bc_request(
             "POST",
             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{todolist_id}/todos.json",
-            payload={"content": title, "description": _with_attribution(user, description)},
+            payload={"content": title, "description": _with_attribution(user, description), **extra},
             user=user,
         )
     except RuntimeError as e:
@@ -568,7 +597,7 @@ def _tool_create_ticket(user, args: dict) -> dict:
                             "POST",
                             f"https://3.basecampapi.com/{_bc_account()}/buckets/{bc_project_id}/todolists/{recovered_id}/todos.json",
                             payload={"content": title,
-                                            "description": _with_attribution(user, description)},
+                                            "description": _with_attribution(user, description), **extra},
                             user=user,
                         )
                         return {
@@ -1085,7 +1114,10 @@ TOOLS: list[Tool] = [
             "the user's personal project + default todolist (the common case for creating "
             "a session anchor). Pass explicit ids to create in any other project the user "
             "has access to (e.g. when working on an Enterprise Accelerator task, target that "
-            "project's BC; per Op 2 doctrine, ALSO create a session anchor in personal)."
+            "project's BC; per Op 2 doctrine, ALSO create a session anchor in personal). "
+            "Set due_on (YYYY-MM-DD) and assign_to_me=true (or pass assignee_ids) so the "
+            "todo is due-dated + assigned — required for any build task (My Day drops todos "
+            "with neither a due date nor an assignee)."
         ),
         input_schema={
             "type": "object",
@@ -1094,6 +1126,10 @@ TOOLS: list[Tool] = [
                 "description": {"type": "string", "description": "HTML allowed"},
                 "bc_project_id": {"type": "integer"},
                 "todolist_id": {"type": "integer"},
+                "due_on": {"type": "string", "description": "Due date, ISO YYYY-MM-DD."},
+                "assign_to_me": {"type": "boolean", "description": "Assign to the operator's BC person in this project."},
+                "assignee_ids": {"type": "array", "items": {"type": "integer"},
+                                 "description": "Explicit BC person ids to assign."},
             },
             "required": ["title"],
         },
